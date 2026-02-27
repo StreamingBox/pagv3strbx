@@ -1,0 +1,274 @@
+/* FRONTEND
+   src/components/dashboard/cartDrawer.css
+*/
+
+.cart-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 50;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.cart-drawer {
+    width: min(520px, 92vw);
+    height: 100%;
+    border-radius: 0;
+    overflow: auto;
+    padding: 16px;
+}
+
+/* Header */
+.cart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.cart-title {
+    margin: 0;
+    font-weight: 950;
+    font-size: 18px;
+}
+
+.cart-error {
+    margin-top: 12px;
+}
+
+.cart-empty {
+    color: var(--muted);
+    margin-top: 12px;
+}
+
+/* Items */
+.cart-items {
+    margin-top: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.cart-item {
+    border: 1px solid rgba(124, 92, 255, 0.22);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.cart-logoBox {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.03);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+
+.cart-logoImg {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 6px;
+}
+
+.cart-logoFallback {
+    font-weight: 900;
+}
+
+.cart-itemMain {
+    flex: 1;
+}
+
+.cart-itemName {
+    font-weight: 900;
+}
+
+.cart-itemMeta {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.cart-itemRight {
+    text-align: right;
+}
+
+.cart-itemPrice {
+    font-weight: 900;
+}
+
+.cart-removeBtn {
+    margin-top: 6px;
+}
+
+/* WhatsApp section */
+.cart-whatsapp {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(124, 92, 255, 0.22);
+    background: rgba(124, 92, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.cart-sectionTitle {
+    font-weight: 900;
+}
+
+.cart-sectionDesc {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.cart-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.cart-toggleLabel {
+    font-weight: 900;
+}
+
+/* Footer */
+.cart-footer {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(124, 92, 255, 0.18);
+}
+
+.cart-totalBlock {
+    display: block;
+}
+
+.cart-totalLabel {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.cart-totalValue {
+    font-weight: 950;
+    font-size: 18px;
+}
+
+/* Actions row */
+.cart-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    align-items: flex-start;
+}
+
+/* Profit box */
+.cart-profitBox {
+    padding: 12px;
+    border-radius: 14px;
+    border: 1px solid rgba(124, 92, 255, 0.22);
+    background: rgba(124, 92, 255, 0.06);
+    min-width: 260px;
+}
+
+.cart-profitToggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cart-profitTitle {
+    font-weight: 900;
+}
+
+.cart-profitChevron {
+    opacity: 0.8;
+}
+
+.cart-profitBody {
+    margin-top: 12px;
+    display: grid;
+    gap: 10px;
+}
+
+.cart-profitRadios {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+}
+
+.cart-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-weight: 900;
+}
+
+.cart-profitInputWrap {
+    display: block;
+}
+
+.cart-profitHint {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 6px;
+}
+
+.cart-profitNote {
+    color: var(--muted2);
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+/* Result box */
+.cart-result {
+    margin-top: 16px;
+}
+
+.cart-resultTitle {
+    font-weight: 900;
+    margin-bottom: 10px;
+}
+
+.cart-resultHint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+
+.cart-resultPre {
+    white-space: pre-wrap;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(124, 92, 255, 0.22);
+    margin: 0;
+}
+
+.cart-resultActions {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.cart-resultSaved {
+    margin-top: 10px;
+    color: var(--muted2);
+    font-size: 12px;
+}
+
+/* Responsive */
+@media (max-width: 520px) {
+    .cart-profitBox {
+        min-width: 100%;
+    }
+}

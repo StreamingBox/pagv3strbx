@@ -1,0 +1,270 @@
+/* =========================
+   AdminCodeLogs — Premium table
+   ========================= */
+
+.aclPage {
+    padding: 16px;
+}
+
+.aclCard {
+    background: var(--card, rgba(255, 255, 255, .07));
+    border: 1px solid var(--border, rgba(255, 255, 255, .10));
+    border-radius: 18px;
+    box-shadow: 0 22px 70px rgba(0, 0, 0, .55);
+    backdrop-filter: blur(12px);
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.aclCard::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(124, 92, 255, .55), rgba(57, 208, 255, .35));
+    opacity: .14;
+    filter: blur(14px);
+    z-index: -1;
+}
+
+/* header */
+.aclHeader {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.aclTitle {
+    margin: 0;
+    font-size: 20px;
+    letter-spacing: .2px;
+    color: var(--text);
+}
+
+.aclSub {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.aclStats {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.aclStat {
+    padding: 10px 12px;
+    border-radius: 14px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .10));
+    background: var(--card, rgba(255, 255, 255, .03));
+    min-width: 120px;
+}
+
+.aclStatLabel {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.aclStatValue {
+    margin-top: 2px;
+    font-size: 18px;
+    font-weight: 900;
+    color: var(--text);
+}
+
+/* controls */
+.aclControls {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.aclSearchWrap {
+    flex: 1;
+    min-width: 260px;
+    position: relative;
+}
+
+.aclSearchIcon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: .75;
+}
+
+.aclSearch {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px 0 38px;
+    border-radius: 14px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .12));
+    background: var(--card, rgba(10, 12, 20, .35));
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s ease, background .15s ease;
+}
+
+.aclSearch:focus {
+    border-color: var(--text);
+    background: var(--card);
+}
+
+.aclSelect {
+    height: 44px;
+    border-radius: 14px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .12));
+    background: var(--card, rgba(10, 12, 20, .35));
+    color: var(--text);
+    padding: 0 12px;
+    outline: none;
+}
+
+/* table */
+.aclTableWrap {
+    margin-top: 14px;
+    overflow: auto;
+    border-radius: 16px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .08));
+}
+
+.aclTable {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 980px;
+}
+
+.aclTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: left;
+    padding: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    color: var(--text);
+    background: var(--card, rgba(10, 12, 20, .85));
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, .08));
+}
+
+.aclTable tbody td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border, rgba(255, 255, 255, .06));
+    font-size: 13px;
+    color: var(--text);
+}
+
+.aclTable tbody tr:hover td {
+    background: rgba(124, 92, 255, 0.05);
+}
+
+/* helpers */
+.aclMono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 12.5px;
+}
+
+.aclEllipsis {
+    max-width: 210px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.aclPlatform {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .10));
+    background: var(--card, rgba(255, 255, 255, .03));
+    font-size: 12px;
+}
+
+/* badges */
+.aclBadge {
+    display: inline-flex;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 800;
+    border: 1px solid var(--border, rgba(255, 255, 255, .10));
+    background: var(--card, rgba(255, 255, 255, .03));
+    color: var(--text);
+}
+
+.aclBadge.ok {
+    border-color: rgba(64, 211, 156, .28);
+    background: rgba(64, 211, 156, .12);
+}
+
+.aclBadge.warn {
+    border-color: rgba(255, 180, 46, .28);
+    background: rgba(255, 180, 46, .12);
+}
+
+.aclBadge.danger {
+    border-color: rgba(255, 92, 122, .28);
+    background: rgba(255, 92, 122, .12);
+}
+
+.aclBadge.info {
+    border-color: rgba(46, 123, 255, .25);
+    background: rgba(46, 123, 255, .12);
+}
+
+/* empty */
+.aclEmpty {
+    padding: 18px !important;
+    text-align: center;
+    color: var(--muted) !important;
+}
+
+/* loading */
+.aclLoading {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid var(--border, rgba(255, 255, 255, .10));
+    background: var(--card, rgba(255, 255, 255, .03));
+    color: var(--muted);
+}
+
+.aclSpinner {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    border: 2px solid rgba(255, 255, 255, .25);
+    border-top-color: rgba(124, 92, 255, .95);
+    animation: aclSpin .8s linear infinite;
+}
+
+@keyframes aclSpin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* responsive */
+@media (max-width: 560px) {
+    .aclPage {
+        padding: 12px;
+    }
+
+    .aclStat {
+        min-width: 100%;
+    }
+
+    .aclTable {
+        min-width: 1050px;
+    }
+}

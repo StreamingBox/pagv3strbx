@@ -1,0 +1,42 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go
+go-backend/api-gateway/api-gateway.exe
+go-backend/store-service/store-service.exe
+go-backend/codes-service/codes-service.exe
+
+# React / Frontend
+frontend/dist/
+frontend/build/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# PM2 / Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Other
+coverage/
+.next/
+out/
+build/
+.gemini/

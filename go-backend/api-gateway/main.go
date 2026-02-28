@@ -36,6 +36,11 @@ func main() {
 		codesServiceURL = "http://localhost:8001"
 	}
 
+	storeServiceURL := os.Getenv("STORE_SERVICE_URL")
+	if storeServiceURL == "" {
+		storeServiceURL = "http://localhost:8002"
+	}
+
 	// Gateway Routes
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "Gateway OK"})
@@ -108,6 +113,29 @@ func main() {
 
 	api.All("/platforms/*", func(c *fiber.Ctx) error {
 		targetUrl := codesServiceURL + "/api/platforms/" + c.Params("*")
+		return proxy.Do(c, targetUrl)
+	})
+
+	// Store Service Routing
+	api.All("/checkout*", func(c *fiber.Ctx) error {
+		return proxy.Do(c, storeServiceURL+"/api/checkout")
+	})
+	api.All("/catalog*", func(c *fiber.Ctx) error {
+		return proxy.Do(c, storeServiceURL+"/api/catalog")
+	})
+	api.All("/orders*", func(c *fiber.Ctx) error {
+		return proxy.Do(c, storeServiceURL+"/api/orders")
+	})
+
+	// Fallback for all other /api/* routes -> forward to Node Backend (Port 3000)
+	api.All("/*", func(c *fiber.Ctx) error {
+		targetUrl := "http://localhost:3000/api/" + c.Params("*")
+		// Forward query params too
+		queryString := string(c.Request().URI().QueryString())
+		if queryString != "" {
+			targetUrl += "?" + queryString
+		}
+		log.Printf("[Gateway] Proxying unhandled route to Node: %s", targetUrl)
 		return proxy.Do(c, targetUrl)
 	})
 

@@ -1,3 +1,5 @@
+const isWin = process.platform === "win32";
+
 module.exports = {
     apps: [
         {
@@ -8,6 +10,9 @@ module.exports = {
             env: {
                 NODE_ENV: "development",
             },
+            env_production: {
+                NODE_ENV: "production",
+            }
         },
         {
             name: "react-frontend",
@@ -17,10 +22,13 @@ module.exports = {
             env: {
                 NODE_ENV: "development",
             },
+            env_production: {
+                NODE_ENV: "production",
+            }
         },
         {
             name: "go-api-gateway",
-            script: "api-gateway.exe",
+            script: isWin ? "api-gateway.exe" : "./api-gateway",
             cwd: "./go-backend/api-gateway",
             watch: false,
             env: {
@@ -34,7 +42,7 @@ module.exports = {
         },
         {
             name: "go-codes-service",
-            script: "codes.exe",
+            script: isWin ? "codes.exe" : "./codes",
             cwd: "./go-backend/codes-service",
             watch: false,
             env: {
@@ -49,7 +57,7 @@ module.exports = {
         },
         {
             name: "go-store-service",
-            script: "store.exe",
+            script: isWin ? "store.exe" : "./store",
             cwd: "./go-backend/store-service",
             watch: false,
             env: {

@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { Eye, EyeOff } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
-const LOGO_URL = `${API_BASE}/branding/logo`;
+const LOGO_URL = "/logo.png";
 
 export default function Login() {
     const navigate = useNavigate();

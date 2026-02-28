@@ -6,7 +6,7 @@ import { apiLogout } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
-const LOGO_URL = `${API_BASE}/branding/logo`;
+const LOGO_URL = "/logo.png";
 
 export default function Admin() {
     const navigate = useNavigate();

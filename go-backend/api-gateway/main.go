@@ -111,22 +111,6 @@ func main() {
 		return nil
 	})
 
-	api.All("/platforms/*", func(c *fiber.Ctx) error {
-		targetUrl := codesServiceURL + "/api/platforms/" + c.Params("*")
-		return proxy.Do(c, targetUrl)
-	})
-
-	// Store Service Routing
-	api.All("/checkout*", func(c *fiber.Ctx) error {
-		return proxy.Do(c, storeServiceURL+"/api/checkout")
-	})
-	api.All("/catalog*", func(c *fiber.Ctx) error {
-		return proxy.Do(c, storeServiceURL+"/api/catalog")
-	})
-	api.All("/orders*", func(c *fiber.Ctx) error {
-		return proxy.Do(c, storeServiceURL+"/api/orders")
-	})
-
 	// Fallback for all other /api/* routes -> forward to Node Backend (Port 3000)
 	api.All("/*", func(c *fiber.Ctx) error {
 		targetUrl := "http://localhost:3000/api/" + c.Params("*")

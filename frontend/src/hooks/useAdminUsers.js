@@ -1,25 +1,47 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+    adjustProfit,
     changeUserPassword,
     createUser,
     fetchUsers,
+    fetchUserStats,
     topupWallet,
     updateUser,
 } from "../api/adminUsersApi";
 
 export function useAdminUsers() {
     const [users, setUsers] = useState([]);
+    const [allUsers, setAllUsers] = useState([]); // ✅ Full list for dropdowns
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    const loadUsers = useCallback(async () => {
+    // PAGINATION
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(5);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+
+    // STATS
+    const [stats, setStats] = useState([]);
+
+    const loadUsers = useCallback(async (pageNum = 1, currentLimit = 5) => {
         setLoading(true);
         setError("");
         try {
-            // ✅ auth por cookies HttpOnly (credentials: "include" dentro del api helper)
-            const data = await fetchUsers();
-            setUsers(data);
+            const [userData, statsData, fullData] = await Promise.all([
+                fetchUsers({ page: pageNum, limit: currentLimit }),
+                fetchUserStats(),
+                fetchUsers({ page: 1, limit: 1000 }) // ✅ Fetch "all" for dropdowns
+            ]);
+
+            setUsers(userData.items || []);
+            setAllUsers(fullData.items || []);
+            setTotal(userData.total || 0);
+            setTotalPages(userData.totalPages || 1);
+            setPage(pageNum);
+            setLimit(currentLimit);
+            setStats(statsData || []);
         } catch (e) {
             setError(e?.message || "Error cargando usuarios.");
         } finally {
@@ -28,14 +50,14 @@ export function useAdminUsers() {
     }, []);
 
     useEffect(() => {
-        loadUsers();
+        loadUsers(1, 5);
     }, [loadUsers]);
 
     const usersById = useMemo(() => {
         const map = new Map();
-        for (const u of users) map.set(String(u.id), u);
+        for (const u of allUsers) map.set(String(u.id), u);
         return map;
-    }, [users]);
+    }, [allUsers]);
 
     const doTopup = useCallback(
         async ({ userId, amount, note }) => {
@@ -44,18 +66,39 @@ export function useAdminUsers() {
             try {
                 await topupWallet({
                     userId: Number(userId),
-                    amount: Number(amount),
+                    amount: Number(amount), // Puede ser negativo ahora
                     note: note || "",
                 });
-                await loadUsers();
+                await loadUsers(page, limit);
             } catch (e) {
-                setError(e?.message || "Error recargando saldo.");
+                setError(e?.message || "Error ajustando saldo.");
                 throw e;
             } finally {
                 setSaving(false);
             }
         },
-        [loadUsers]
+        [loadUsers, page, limit]
+    );
+
+    const doAdjustProfit = useCallback(
+        async ({ userId, amount, note }) => {
+            setSaving(true);
+            setError("");
+            try {
+                await adjustProfit({
+                    userId: Number(userId),
+                    amount: Number(amount),
+                    note: note || "",
+                });
+                await loadUsers(page, limit);
+            } catch (e) {
+                setError(e?.message || "Error ajustando ganancia.");
+                throw e;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [loadUsers, page, limit]
     );
 
     const doCreateUser = useCallback(
@@ -64,7 +107,7 @@ export function useAdminUsers() {
             setError("");
             try {
                 await createUser({ name, email, password, role, currency });
-                await loadUsers();
+                await loadUsers(1, limit);
             } catch (e) {
                 setError(e?.message || "Error creando usuario.");
                 throw e;
@@ -72,7 +115,7 @@ export function useAdminUsers() {
                 setSaving(false);
             }
         },
-        [loadUsers]
+        [loadUsers, limit]
     );
 
     const doChangePassword = useCallback(async ({ userId, password }) => {
@@ -94,7 +137,7 @@ export function useAdminUsers() {
             setError("");
             try {
                 await updateUser(userId, { currency });
-                await loadUsers();
+                await loadUsers(page, limit);
             } catch (e) {
                 setError(e?.message || "Error cambiando moneda.");
                 throw e;
@@ -102,17 +145,24 @@ export function useAdminUsers() {
                 setSaving(false);
             }
         },
-        [loadUsers]
+        [loadUsers, page, limit]
     );
 
     return {
         users,
+        allUsers,
         usersById,
         loading,
         saving,
         error,
+        page,
+        limit,
+        total,
+        totalPages,
+        stats,
         loadUsers,
         doTopup,
+        doAdjustProfit,
         doCreateUser,
         doChangePassword,
         doUpdateCurrency,

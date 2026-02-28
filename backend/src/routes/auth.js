@@ -103,8 +103,8 @@ router.post("/login", async (req, res) => {
             user: { id: user.id, name: user.name, email: user.email, role: user.role, currency: user.currency },
         });
     } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Error interno." });
+        console.error("LOGIN ERROR DETAILS:", err);
+        return res.status(500).json({ message: "Error interno.", error: err.message });
     }
 });
 
@@ -221,7 +221,7 @@ router.post("/refresh", async (req, res) => {
     } catch (err) {
         try {
             await conn.rollback();
-        } catch {}
+        } catch { }
         conn.release();
         console.error(err);
         return res.status(500).json({ message: "Error interno." });

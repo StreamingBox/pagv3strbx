@@ -17,7 +17,7 @@ export default function Dashboard() {
     // ✅ user viene del AuthContext (memoria), NO localStorage
     const { user, setUser } = useAuth();
 
-    const { wallet, setWallet, catalog, loading, error, setError } = useDashboardData();
+    const { wallet, setWallet, catalog, loading, error, setError, reload } = useDashboardData();
 
     const [cartOpen, setCartOpen] = useState(false);
     const [cart, setCart] = useState([]);
@@ -119,12 +119,15 @@ export default function Dashboard() {
                     user={user}
                     wallet={wallet}
                     cartCount={cart.length}
-                    onOpenCart={() => setCartOpen(true)}
+                    onOpenCart={() => setCartOpen((v) => !v)}
                     onGoOrders={() => navigate("/orders")}
-                    onGoWallet={() => navigate("/wallet")} // ✅ NUEVO (menú + botón junto saldo)
+                    onGoWallet={() => navigate("/wallet")}
+                    onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
                     onGoCodeLogs={() => navigate("/admin/code-logs")}
                     onGoAdmin={() => navigate("/admin")}
+                    onGoExpirations={() => navigate("/expirations")}
+                    onGoHome={() => navigate("/dashboard")}
                     onLogout={logout}
                 />
 
@@ -241,6 +244,11 @@ export default function Dashboard() {
                 setCart={setCart}
                 wallet={wallet}
                 setWallet={setWallet}
+                onPurchaseSuccess={() => {
+                    // Cierra el carrito y recarga el catálogo para actualizar stock
+                    setCartOpen(false);
+                    reload();
+                }}
             />
         </div>
     );

@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { Eye, EyeOff } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = `${API_BASE}/branding/logo`;
@@ -11,6 +12,7 @@ export default function Login() {
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -22,7 +24,7 @@ export default function Login() {
             localStorage.removeItem("accessToken");
             localStorage.removeItem("refreshToken");
             localStorage.removeItem("user");
-        } catch {}
+        } catch { }
     }, []);
 
     const canSubmit = useMemo(() => {
@@ -56,7 +58,7 @@ export default function Login() {
                 localStorage.removeItem("accessToken");
                 localStorage.removeItem("refreshToken");
                 localStorage.removeItem("user");
-            } catch {}
+            } catch { }
 
             // ✅ Redirección sin recargar
             const role = String(data?.user?.role || "user").toLowerCase();
@@ -113,14 +115,36 @@ export default function Login() {
 
                     <label className="label">
                         Contraseña
-                        <input
-                            className="input"
-                            type="password"
-                            autoComplete="current-password"
-                            placeholder="Pon tu contraseña"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
+                        <div style={{ position: "relative" }}>
+                            <input
+                                className="input"
+                                type={showPassword ? "text" : "password"}
+                                autoComplete="current-password"
+                                placeholder="Pon tu contraseña"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                style={{ paddingRight: "40px" }}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                style={{
+                                    position: "absolute",
+                                    right: "12px",
+                                    top: "50%",
+                                    transform: "translateY(-50%)",
+                                    background: "none",
+                                    border: "none",
+                                    color: "var(--muted)",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    padding: "0"
+                                }}
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </label>
 
                     {error ? <div className="error">{error}</div> : null}

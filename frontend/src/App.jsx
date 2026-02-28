@@ -9,12 +9,14 @@ import AdminCategories from "./pages/AdminCategories.jsx";
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 
 import AdminUsers from "./pages/AdminUsers.jsx";
+import AdminTransactions from "./pages/AdminTransactions.jsx";
 import AdminPlatforms from "./pages/AdminPlatforms.jsx";
 import AdminAccounts from "./pages/AdminAccounts.jsx";
 import AdminOrders from "./pages/AdminOrders.jsx";
 import AdminPrices from "./pages/AdminPrices.jsx";
 import AdminInventory from "./pages/AdminInventory.jsx";
 import AdminDurations from "./pages/AdminDurations.jsx";
+import AdminAnalytics from "./pages/AdminAnalytics.jsx";
 
 import Codes from "./pages/Codes.jsx";
 import AdminCodeLogs from "./pages/AdminCodeLogs.jsx";
@@ -22,6 +24,11 @@ import AdminCodeLogs from "./pages/AdminCodeLogs.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import AdminSupport from "./pages/AdminSupport.jsx";
 import Wallet from "./pages/Wallet.jsx";
+import CredentialRedirect from "./pages/CredentialRedirect.jsx";
+import UserAnalyticsPage from "./pages/UserAnalyticsPage.jsx";
+import AdminRenewals from "./pages/AdminRenewals.jsx";
+import UserExpirations from "./pages/UserExpirations.jsx";
+import AdminExpirations from "./pages/AdminExpirations.jsx";
 
 /* ==========================================
    Redirección automática por rol
@@ -77,6 +84,16 @@ export default function App() {
                 }
             />
 
+            {/* ================= User Analytics ================= */}
+            <Route
+                path="/analytics"
+                element={
+                    <ProtectedRoute roles={["admin", "user"]}>
+                        <UserAnalyticsPage />
+                    </ProtectedRoute>
+                }
+            />
+
             {/* ================= Codes ================= */}
             <Route
                 path="/codes"
@@ -103,6 +120,33 @@ export default function App() {
                 element={
                     <ProtectedRoute roles={["admin"]}>
                         <AdminUsers />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/admin/renewals"
+                element={
+                    <ProtectedRoute roles={["admin"]}>
+                        <AdminRenewals />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/admin/analytics"
+                element={
+                    <ProtectedRoute roles={["admin"]}>
+                        <AdminAnalytics />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
+                path="/admin/transactions"
+                element={
+                    <ProtectedRoute roles={["admin"]}>
+                        <AdminTransactions />
                     </ProtectedRoute>
                 }
             />
@@ -180,6 +224,15 @@ export default function App() {
             />
 
             <Route
+                path="/admin/expirations"
+                element={
+                    <ProtectedRoute roles={["admin"]}>
+                        <AdminExpirations />
+                    </ProtectedRoute>
+                }
+            />
+
+            <Route
                 path="/admin/support"
                 element={
                     <ProtectedRoute roles={["admin"]}>
@@ -187,6 +240,18 @@ export default function App() {
                     </ProtectedRoute>
                 }
             />
+
+            <Route
+                path="/expirations"
+                element={
+                    <ProtectedRoute roles={["admin", "user"]}>
+                        <UserExpirations />
+                    </ProtectedRoute>
+                }
+            />
+
+            {/* ================= Shared Credentials (Redirección al Backend) ================= */}
+            <Route path="/s/:token" element={<CredentialRedirect />} />
 
             {/* ================= Catch-all (SIEMPRE al final) ================= */}
             <Route path="*" element={<RedirectByRole />} />

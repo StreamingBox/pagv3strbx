@@ -27,11 +27,18 @@ async function request(url, options = {}) {
    USERS
 ========================= */
 
-export async function fetchUsers() {
-    const data = await request("/admin/users", {
+export async function fetchUsers(query = {}) {
+    const params = new URLSearchParams(query);
+    const data = await request(`/admin/users?${params.toString()}`, {
         method: "GET",
     });
-    return Array.isArray(data) ? data : [];
+    return data;
+}
+
+export async function fetchUserStats() {
+    return request("/admin/users/stats", {
+        method: "GET",
+    });
 }
 
 export async function createUser(body) {
@@ -63,5 +70,26 @@ export async function topupWallet(body) {
     return request("/admin/wallet/topup", {
         method: "POST",
         body: JSON.stringify(body),
+    });
+}
+
+export async function adjustProfit(body) {
+    return request("/admin/wallet/adjust-profit", {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function fetchAdminWalletTransactions(userId, query = {}) {
+    const params = new URLSearchParams(query);
+    return request(`/admin/wallet/transactions/${userId}?${params.toString()}`, {
+        method: "GET",
+    });
+}
+
+export async function fetchAdminGlobalTransactions(query = {}) {
+    const params = new URLSearchParams(query);
+    return request(`/admin/wallet/transactions?${params.toString()}`, {
+        method: "GET",
     });
 }

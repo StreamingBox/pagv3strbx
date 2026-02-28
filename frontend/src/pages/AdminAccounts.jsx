@@ -147,6 +147,33 @@ export default function AdminAccounts() {
         }
     }
 
+    function downloadTemplate() {
+        const headers = ["platformId", "platformName", "email", "password", "profileNumber", "pin"];
+        const exampleRow = {
+            platformId: 1,
+            platformName: "Netflix",
+            email: "ejemplo@correo.com",
+            password: "mypassword123",
+            profileNumber: "1",
+            pin: "1234"
+        };
+
+        const wsCuentas = XLSX.utils.json_to_sheet([exampleRow], { header: headers });
+
+        // Pestaña con el listado de plataformas
+        const plataformasRows = platforms.map(p => ({
+            "ID": p.id,
+            "Plataforma": p.name
+        }));
+        const wsPlataformas = XLSX.utils.json_to_sheet(plataformasRows);
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, wsCuentas, "Plantilla Cuentas");
+        XLSX.utils.book_append_sheet(wb, wsPlataformas, "Plataformas");
+
+        XLSX.writeFile(wb, "Plantilla_Cuentas_StreamingBox.xlsx");
+    }
+
     useEffect(() => {
         loadPlatforms();
         // eslint-disable-next-line
@@ -201,19 +228,29 @@ export default function AdminAccounts() {
                         </div>
 
                         <div className="hint" style={{ marginBottom: 10 }}>
-                            Encabezados recomendados: <b>platformId</b> o <b>platformName</b>,{" "}
-                            <b>email</b>, <b>password</b>, <b>pin</b> (opcional),{" "}
-                            <b>profileNumber</b> (opcional), <b>expiresAt</b> (YYYY-MM-DD opcional).
+                            Encabezados requeridos/sugeridos: <b>platformId</b> o <b>platformName</b>,{" "}
+                            <b>email</b>, <b>password</b>, <b>profileNumber</b> (opcional),{" "}
+                            <b>pin</b> (opcional).
                         </div>
 
-                        <button
-                            className="btn-ghost"
-                            type="button"
-                            onClick={openExcelPicker}
-                            disabled={excelLoading}
-                        >
-                            {excelLoading ? "Subiendo Excel..." : "Subir Excel (.xlsx)"}
-                        </button>
+                        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "10px" }}>
+                            <button
+                                className="btn-ghost"
+                                type="button"
+                                onClick={openExcelPicker}
+                                disabled={excelLoading}
+                            >
+                                {excelLoading ? "Subiendo Excel..." : "Subir Excel (.xlsx)"}
+                            </button>
+
+                            <button
+                                className="btn-ghost"
+                                type="button"
+                                onClick={downloadTemplate}
+                            >
+                                Descargar Plantilla (.xlsx)
+                            </button>
+                        </div>
 
                         <input
                             ref={fileExcelRef}

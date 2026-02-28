@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function CreateUserCard({ saving, onCreate }) {
     const [newName, setNewName] = useState("");
@@ -6,6 +7,7 @@ export default function CreateUserCard({ saving, onCreate }) {
     const [newPassword, setNewPassword] = useState("");
     const [newRole, setNewRole] = useState("user");
     const [newCurrency, setNewCurrency] = useState("COP");
+    const [showPassword, setShowPassword] = useState(false);
 
     async function handleCreate() {
         await onCreate({
@@ -40,7 +42,34 @@ export default function CreateUserCard({ saving, onCreate }) {
 
                 <label className="label">
                     Contraseña
-                    <input className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
+                    <div style={{ position: "relative" }}>
+                        <input
+                            className="input"
+                            type={showPassword ? "text" : "password"}
+                            value={newPassword}
+                            onChange={(e) => setNewPassword(e.target.value)}
+                            style={{ paddingRight: "40px" }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{
+                                position: "absolute",
+                                right: "12px",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                background: "none",
+                                border: "none",
+                                color: "var(--muted)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                padding: "0"
+                            }}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
                 </label>
 
                 <label className="label">

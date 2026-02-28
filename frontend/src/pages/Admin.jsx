@@ -105,7 +105,7 @@ export default function Admin() {
                         </button>
                     </div>
 
-                    <AdminKpiCards />
+                    <AdminKpiCards onNavigate={navigate} />
 
                     <div style={{ marginTop: 24 }}>
                         {/* El contenido de las subrutas se cargará aquí por Admin.jsx original era un layout */}

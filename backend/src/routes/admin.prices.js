@@ -44,36 +44,60 @@ router.get("/admin/prices", requireAuth, requireRole("admin"), async (req, res) 
  */
 router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const [rows] = await pool.query(`
-      SELECT
-        pp.platform_id,
-        p.name AS platform_name,
-        pp.duration_id,
-        d.name AS duration_name,
-        d.days,
+        const { page = 1, limit = 5 } = req.query;
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.max(parseInt(limit, 10) || 5, 1);
+        const offset = (pageNum - 1) * limitNum;
 
-        MAX(CASE WHEN pp.currency='COP' THEN pp.id END)        AS id_cop,
-        MAX(CASE WHEN pp.currency='MXN' THEN pp.id END)        AS id_mxn,
-        MAX(CASE WHEN pp.currency='USD' THEN pp.id END)        AS id_usd,
+        const countSql = `
+            SELECT COUNT(*) as total FROM (
+                SELECT pp.platform_id, pp.duration_id
+                FROM platform_prices pp
+                GROUP BY pp.platform_id, pp.duration_id
+            ) as sub
+        `;
+        const [countRows] = await pool.query(countSql);
+        const total = countRows[0]?.total || 0;
 
-        MAX(CASE WHEN pp.currency='COP' THEN pp.price END)     AS price_cop,
-        MAX(CASE WHEN pp.currency='MXN' THEN pp.price END)     AS price_mxn,
-        MAX(CASE WHEN pp.currency='USD' THEN pp.price END)     AS price_usd,
+        const querySql = `
+            SELECT
+                pp.platform_id,
+                p.name AS platform_name,
+                pp.duration_id,
+                d.name AS duration_name,
+                d.days,
 
-        MAX(CASE WHEN pp.currency='COP' THEN pp.is_active END) AS active_cop,
-        MAX(CASE WHEN pp.currency='MXN' THEN pp.is_active END) AS active_mxn,
-        MAX(CASE WHEN pp.currency='USD' THEN pp.is_active END) AS active_usd,
+                MAX(CASE WHEN pp.currency='COP' THEN pp.id END)        AS id_cop,
+                MAX(CASE WHEN pp.currency='MXN' THEN pp.id END)        AS id_mxn,
+                MAX(CASE WHEN pp.currency='USD' THEN pp.id END)        AS id_usd,
 
-        MAX(pp.is_renewable) AS is_renewable
+                MAX(CASE WHEN pp.currency='COP' THEN pp.price END)     AS price_cop,
+                MAX(CASE WHEN pp.currency='MXN' THEN pp.price END)     AS price_mxn,
+                MAX(CASE WHEN pp.currency='USD' THEN pp.price END)     AS price_usd,
 
-      FROM platform_prices pp
-      JOIN platforms p ON p.id = pp.platform_id
-      JOIN durations d ON d.id = pp.duration_id
-      GROUP BY pp.platform_id, p.name, pp.duration_id, d.name, d.days
-      ORDER BY p.name ASC, d.days ASC
-    `);
+                MAX(CASE WHEN pp.currency='COP' THEN pp.is_active END) AS active_cop,
+                MAX(CASE WHEN pp.currency='MXN' THEN pp.is_active END) AS active_mxn,
+                MAX(CASE WHEN pp.currency='USD' THEN pp.is_active END) AS active_usd,
 
-        return res.json(rows);
+                MAX(pp.is_renewable) AS is_renewable
+
+            FROM platform_prices pp
+            JOIN platforms p ON p.id = pp.platform_id
+            JOIN durations d ON d.id = pp.duration_id
+            GROUP BY pp.platform_id, p.name, pp.duration_id, d.name, d.days
+            ORDER BY p.name ASC, d.days ASC
+            LIMIT ${limitNum} OFFSET ${offset}
+        `;
+
+        const [rows] = await pool.query(querySql);
+
+        return res.json({
+            items: rows,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+        });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error interno." });
@@ -197,8 +221,8 @@ router.patch("/admin/prices/:id", requireAuth, requireRole("admin"), async (req,
         const { price, is_active, is_renewable } = req.body || {};
 
         // si no mandan nada, no hacemos nada
-        if (price === undefined && is_active === undefined) {
-            return res.status(400).json({ message: "Debes enviar price o is_active." });
+        if (price === undefined && is_active === undefined && is_renewable === undefined) {
+            return res.status(400).json({ message: "Debes enviar price, is_active o is_renewable." });
         }
 
         await pool.query(

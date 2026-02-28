@@ -5,8 +5,9 @@ import "../styles/dashboard.css";
 import "../styles/wallet.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { apiGet, apiPost, apiLogout } from "../api/api";
+import { apiGet, apiPost, apiLogout, apiGetTransactions } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
+import TransactionsList from "../components/wallet/TransactionsList.jsx";
 
 export default function Wallet() {
     const navigate = useNavigate();
@@ -94,12 +95,15 @@ export default function Wallet() {
                     user={user}
                     wallet={wallet}
                     cartCount={0}
-                    onOpenCart={() => {}}
+                    onOpenCart={() => { }}
                     onGoOrders={() => navigate("/orders")}
                     onGoWallet={() => navigate("/wallet")}
+                    onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
                     onGoCodeLogs={() => navigate("/admin/code-logs")}
                     onGoAdmin={() => navigate("/admin")}
+                    onGoExpirations={() => navigate("/expirations")}
+                    onGoHome={() => navigate("/dashboard")}
                     onLogout={logout}
                 />
 
@@ -109,17 +113,17 @@ export default function Wallet() {
                             ← Volver
                         </button>
 
-                        <h1 className="wallet-title">Billetera</h1>
+                        <h1 className="wallet-title">Transacciones y Saldo</h1>
                     </div>
 
                     <div className="wallet-grid">
                         <section className="wallet-card">
                             <div className="wallet-card__title">Saldo</div>
                             <div className="wallet-balance">
-                                {Number(wallet?.balance || 0).toLocaleString()}{" "}
+                                {Number(wallet?.balance || 0).toLocaleString("es-CO")}{" "}
                                 <span className="wallet-balance__cur">
-                  {wallet?.currency || "COP"}
-                </span>
+                                    {wallet?.currency || "COP"}
+                                </span>
                             </div>
 
                             <div className="wallet-meta">
@@ -129,80 +133,21 @@ export default function Wallet() {
                         </section>
 
                         <section className="wallet-card">
-                            <div className="wallet-card__title">Recargar con Binance Pay</div>
+                            <div className="wallet-card__title">Ganancia obtenida</div>
+                            <div className="wallet-balance" style={{ color: "#10b981" }}>
+                                {Number(wallet?.profit_total || 0).toLocaleString("es-CO")}{" "}
+                                <span className="wallet-balance__cur">
+                                    {wallet?.currency || "COP"}
+                                </span>
+                            </div>
 
-                            {currency !== "USD" ? (
-                                <div className="wallet-alert">
-                                    Binance Pay solo está habilitado para usuarios con moneda{" "}
-                                    <b>USD</b>.
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="wallet-row">
-                                        <label className="wallet-label">
-                                            Monto (USD)
-                                            <input
-                                                className="wallet-input"
-                                                value={amount}
-                                                onChange={(e) => setAmount(e.target.value)}
-                                                type="number"
-                                                min="1"
-                                                step="1"
-                                            />
-                                        </label>
-
-                                        <button className="btn" onClick={startTopup} disabled={loading}>
-                                            {loading ? "Creando orden..." : "Pagar con Binance"}
-                                        </button>
-                                    </div>
-
-                                    {pay ? (
-                                        <div className="wallet-paybox">
-                                            <div className="wallet-qr">
-                                                <div className="wallet-qr__title">Escanea el QR</div>
-                                                {pay.qrcodeLink ? (
-                                                    <img
-                                                        src={pay.qrcodeLink}
-                                                        alt="Binance Pay QR"
-                                                        className="wallet-qr__img"
-                                                    />
-                                                ) : (
-                                                    <div className="wallet-muted">QR no disponible</div>
-                                                )}
-                                            </div>
-
-                                            <div className="wallet-links">
-                                                <div className="wallet-links__title">Links</div>
-
-                                                {pay.checkoutUrl ? (
-                                                    <a className="wallet-link" href={pay.checkoutUrl} target="_blank" rel="noreferrer">
-                                                        Abrir checkout (web)
-                                                    </a>
-                                                ) : null}
-
-                                                {pay.universalUrl ? (
-                                                    <a className="wallet-link" href={pay.universalUrl} target="_blank" rel="noreferrer">
-                                                        Abrir en Binance (universal)
-                                                    </a>
-                                                ) : null}
-
-                                                <div className="wallet-small">
-                                                    Intent: <b>#{pay.intentId}</b> — Estado:{" "}
-                                                    <b>{status?.status || "pending"}</b>
-                                                </div>
-
-                                                {status?.status === "paid" || status?.credited === 1 ? (
-                                                    <div className="wallet-success">
-                                                        ✅ Pago confirmado. Saldo acreditado.
-                                                    </div>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </>
-                            )}
+                            <div className="wallet-meta">
+                                <span className="wallet-meta__label">Acumulada por ventas</span>
+                            </div>
                         </section>
                     </div>
+
+                    <TransactionsList fetchFn={(q) => apiGetTransactions(q)} />
                 </main>
             </div>
         </div>

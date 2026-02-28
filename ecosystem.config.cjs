@@ -2,9 +2,8 @@ module.exports = {
     apps: [
         {
             name: "node-backend",
-            script: "npm",
-            args: "run dev:backend",
-            cwd: "./",
+            script: "src/index.js",
+            cwd: "./backend",
             watch: false,
             env: {
                 NODE_ENV: "development",
@@ -12,9 +11,8 @@ module.exports = {
         },
         {
             name: "react-frontend",
-            script: "npm",
-            args: "run dev:frontend",
-            cwd: "./",
+            script: "node_modules/vite/bin/vite.js",
+            cwd: "./frontend",
             watch: false,
             env: {
                 NODE_ENV: "development",

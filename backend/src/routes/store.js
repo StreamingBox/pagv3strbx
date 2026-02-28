@@ -69,4 +69,79 @@ router.get("/platforms", requireAuth, async (req, res) => {
     res.json(rows);
 });
 
+// ✅ Vencimientos (User) - Solo las cuentas del usuario (<= 3 días o vencidas)
+router.get("/orders/expiring", requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const page = Math.max(1, Number(req.query.page) || 1);
+        const limit = Math.max(1, Number(req.query.limit) || 20);
+        const offset = (page - 1) * limit;
+
+        const { q, platform } = req.query;
+
+        let whereCols = [
+            "s.user_id = ?",
+            "s.status != 'cancelled'",
+            "s.expires_at <= DATE_ADD(NOW(), INTERVAL 3 DAY)"
+        ];
+        let params = [userId];
+
+        if (q) {
+            whereCols.push("s.id = ?");
+            const qStr = String(q).trim().replace(/^ORD-0*/i, "");
+            const qNum = Number(qStr) || 0;
+            params.push(qNum);
+        }
+
+        if (platform) {
+            whereCols.push("p.slug = ?");
+            params.push(platform);
+        }
+
+        const whereSql = "WHERE " + whereCols.join(" AND ");
+
+        const [countRows] = await pool.query(
+            `SELECT COUNT(*) as total
+             FROM subscriptions s
+             JOIN platforms p ON p.id = s.platform_id
+             ${whereSql}`,
+            params
+        );
+        const total = countRows[0].total;
+        const pages = Math.ceil(total / limit);
+
+        const [rows] = await pool.query(
+            `SELECT
+               s.id,
+               s.platform_id,
+               s.platform_account_id,
+               s.expires_at,
+               s.status,
+               p.name AS platform_name,
+               p.slug AS platform_slug,
+               acc.email AS account_email,
+               acc.profile_number
+             FROM subscriptions s
+             JOIN platforms p ON p.id = s.platform_id
+             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+             ${whereSql}
+             ORDER BY s.expires_at ASC
+             LIMIT ?, ?`,
+            [...params, offset, limit]
+        );
+
+        return res.json({
+            page,
+            limit,
+            total,
+            pages,
+            items: rows,
+        });
+
+    } catch (err) {
+        console.error("Error en GET /orders/expiring:", err);
+        return res.status(500).json({ message: "Error cargando vencimientos." });
+    }
+});
+
 module.exports = router;

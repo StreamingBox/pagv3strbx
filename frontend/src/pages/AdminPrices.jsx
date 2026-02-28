@@ -14,6 +14,10 @@ export default function AdminPrices() {
         loading,
         saving,
         error,
+        page,
+        limit,
+        total,
+        totalPages,
         loadAll,
         saveMulti,
         toggleAll,
@@ -38,7 +42,7 @@ export default function AdminPrices() {
                     <button
                         className="btn-ghost"
                         style={{ width: "100%", marginTop: 10 }}
-                        onClick={loadAll}
+                        onClick={() => loadAll(1, limit)}
                         disabled={loading}
                     >
                         {loading ? "Cargando..." : "Refrescar"}
@@ -66,8 +70,13 @@ export default function AdminPrices() {
                         prices={prices}
                         loading={loading}
                         saving={saving}
+                        page={page}
+                        limit={limit}
+                        total={total}
+                        totalPages={totalPages}
                         onToggleAll={toggleAll}
                         onSaveMulti={saveMulti}
+                        loadAll={loadAll}
                     />
                 </main>
             </div>

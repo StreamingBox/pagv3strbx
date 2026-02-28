@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function ChangePasswordCard({ users, saving, onChangePassword }) {
     const [pwdUserId, setPwdUserId] = useState("");
     const [pwd, setPwd] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     async function handleChange() {
         await onChangePassword({ userId: pwdUserId, password: pwd });
@@ -29,7 +31,34 @@ export default function ChangePasswordCard({ users, saving, onChangePassword }) 
 
                 <label className="label">
                     Nueva contraseña
-                    <input className="input" type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} />
+                    <div style={{ position: "relative" }}>
+                        <input
+                            className="input"
+                            type={showPassword ? "text" : "password"}
+                            value={pwd}
+                            onChange={(e) => setPwd(e.target.value)}
+                            style={{ paddingRight: "40px" }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            style={{
+                                position: "absolute",
+                                right: "12px",
+                                top: "50%",
+                                transform: "translateY(-50%)",
+                                background: "none",
+                                border: "none",
+                                color: "var(--muted)",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                padding: "0"
+                            }}
+                        >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
                 </label>
             </div>
 

@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/joho/godotenv"
 
@@ -30,11 +32,23 @@ func main() {
 
 	api := app.Group("/api")
 
+	// Límite secundario de 500 por hora
+	codesLimiter := limiter.New(limiter.Config{
+		Max:        500,
+		Expiration: 1 * time.Hour,
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"ok":      false,
+				"message": "Límite excedido (500/hr).",
+			})
+		},
+	})
+
 	api.Get("/codes/_ping", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"ok": true, "mounted": true})
 	})
 
-	api.Post("/codes/request", handlers.RequestCodeHandler)
+	api.Post("/codes/request", codesLimiter, handlers.RequestCodeHandler)
 
 	api.Get("/platforms", func(c *fiber.Ctx) error {
 		// TODO: Implement Platforms retrieval

@@ -15,7 +15,7 @@ export function useDashboardData() {
             // ✅ NO Authorization header, todo por cookies HttpOnly
             const [wRes, cRes] = await Promise.all([
                 apiGet("/wallet"),
-                apiGet("/catalog"),
+                apiGet(`/catalog?_t=${Date.now()}`),
             ]);
 
             if (!wRes.ok) throw new Error(wRes.data?.message || "Error cargando wallet.");

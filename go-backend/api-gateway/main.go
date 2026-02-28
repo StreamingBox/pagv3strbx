@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/proxy"
 	"github.com/joho/godotenv"
@@ -80,9 +82,20 @@ func main() {
 	api := app.Group("/api")
 
 	// Add CORS for the API group if needed, but it's already global
+	// Límite de 500 por hora para servicios de códigos
+	apiCodesLimiter := limiter.New(limiter.Config{
+		Max:        500,
+		Expiration: 1 * time.Hour,
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"ok":      false,
+				"message": "Límite de solicitudes de código excedido (máximo 500 por hora).",
+			})
+		},
+	})
 
-	// Codes Service Routing
-	api.All("/codes/*", func(c *fiber.Ctx) error {
+	// Codes Service Routing con Límite de 500/hr
+	api.All("/codes/*", apiCodesLimiter, func(c *fiber.Ctx) error {
 		// Forward anything going to /api/codes to Codes Service
 		targetUrl := codesServiceURL + "/api/codes/" + c.Params("*")
 		if err := proxy.Do(c, targetUrl); err != nil {

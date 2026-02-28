@@ -18,7 +18,12 @@ export function useAdminPrices() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
 
-    const loadAll = useCallback(async () => {
+    const [page, setPage] = useState(1);
+    const [limit, setLimit] = useState(5);
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(1);
+
+    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5) => {
         setLoading(true);
         setError("");
 
@@ -26,12 +31,16 @@ export function useAdminPrices() {
             const [p, d, g] = await Promise.all([
                 fetchPlatforms(),
                 fetchDurations(),
-                fetchPricesGrouped(),
+                fetchPricesGrouped({ page: pageNum, limit: currentLimit }),
             ]);
 
             setPlatforms(p);
             setDurations(d);
-            setPrices(g);
+            setPrices(g.items || []);
+            setTotal(g.total || 0);
+            setTotalPages(g.totalPages || 1);
+            setPage(pageNum);
+            setLimit(currentLimit);
         } catch (e) {
             setError(e?.message || "No se pudo cargar precios.");
             setPlatforms([]);
@@ -43,7 +52,7 @@ export function useAdminPrices() {
     }, []);
 
     useEffect(() => {
-        loadAll();
+        loadAll(1, 5);
     }, [loadAll]);
 
     /**
@@ -81,20 +90,26 @@ export function useAdminPrices() {
     );
 
     const toggleAll = useCallback(
-        async (id, patchBody) => {
+        async (row) => {
             setSaving(true);
             setError("");
 
             try {
-                await patchPrice(id, patchBody);
-                await loadAll();
+                // Si alguno está activo, desactivamos todo. Si todos están inactivos, activamos todo.
+                const newState = (row.active_cop || row.active_mxn || row.active_usd) ? 0 : 1;
+                const ids = [row.id_cop, row.id_mxn, row.id_usd].filter(v => !!v);
+
+                if (!ids.length) return;
+
+                await Promise.all(ids.map(id => patchPrice(id, { is_active: newState })));
+                await loadAll(page, limit);
             } catch (e) {
                 setError(e?.message || "No se pudo actualizar.");
             } finally {
                 setSaving(false);
             }
         },
-        [loadAll]
+        [loadAll, page, limit]
     );
 
     return {
@@ -104,6 +119,10 @@ export function useAdminPrices() {
         loading,
         saving,
         error,
+        page,
+        limit,
+        total,
+        totalPages,
         loadAll,
         saveMulti,
         toggleAll,

@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import ThemeToggle from "../components/ThemeToggle.jsx";
 import { useNavigate } from "react-router-dom";
 import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
 import { apiLogout, apiGet } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
+import Sidebar from "../components/dashboard/Sidebar.jsx";
 
-const LOGO_URL = "/logo.png"; // pon logo en /public/logo.png
 
 export default function Orders() {
     const { user, setUser } = useAuth();
     const navigate = useNavigate();
 
-    const [logoOk, setLogoOk] = useState(true);
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
     const [platforms, setPlatforms] = useState([]);
@@ -106,15 +104,13 @@ export default function Orders() {
             if (data && typeof data === "object" && Array.isArray(data.orders)) {
                 setOrders(data.orders);
                 setTotal(Number(data.total || 0));
-                setPage(Number(data.page || nextPage));
+                // Eliminado setPage para no tener feedback loop con useEffect
             } else if (Array.isArray(data)) {
                 setOrders(data);
                 setTotal(data.length);
-                setPage(1);
             } else {
                 setOrders([]);
                 setTotal(0);
-                setPage(1);
             }
         } catch (e) {
             setError(e?.message || "Error cargando historial.");
@@ -128,7 +124,7 @@ export default function Orders() {
     // carga inicial
     useEffect(() => {
         loadPlatforms();
-        loadOrders(1);
+        // loadOrders(page) se disparará por el useEffect de [page]
         // eslint-disable-next-line
     }, []);
 
@@ -151,44 +147,21 @@ export default function Orders() {
             <div className="bg-grid" />
 
             <div className="page-inner">
-                {/* SIDEBAR */}
-                <aside className="sidebar">
-                    <div className="sidebar-top">
-                        <div className="brand-row">
-                            {logoOk ? (
-                                <img
-                                    className="brand-logo-img"
-                                    src={LOGO_URL}
-                                    alt="Logo"
-                                    onError={() => setLogoOk(false)}
-                                />
-                            ) : null}
-
-                            <div>
-                                <div className="nav-title" style={{ margin: 0 }}>
-                                    Historial
-                                </div>
-                                <p className="nav-sub" style={{ margin: 0 }}>
-                                    {user?.email || ""}
-                                </p>
-                            </div>
-                        </div>
-
-                        <ThemeToggle />
-                    </div>
-
-                    <button
-                        className="btn-ghost"
-                        style={{ marginTop: 12, width: "100%" }}
-                        onClick={() => navigate("/dashboard")}
-                    >
-                        ⬅ Volver
-                    </button>
-
-                    <button className="btn-ghost" onClick={logout} style={{ marginTop: 12, width: "100%" }}>
-                        Cerrar sesión
-                    </button>
-                </aside>
+                <Sidebar
+                    user={user}
+                    wallet={null}
+                    cartCount={0}
+                    onOpenCart={() => { }}
+                    onGoOrders={() => navigate("/orders")}
+                    onGoWallet={() => navigate("/wallet")}
+                    onGoAnalytics={() => navigate("/analytics")}
+                    onGoCodes={() => navigate("/codes")}
+                    onGoCodeLogs={() => navigate("/admin/code-logs")}
+                    onGoAdmin={() => navigate("/admin")}
+                    onGoExpirations={() => navigate("/expirations")}
+                    onGoHome={() => navigate("/dashboard")}
+                    onLogout={logout}
+                />
 
                 {/* MAIN */}
                 <main className="main">

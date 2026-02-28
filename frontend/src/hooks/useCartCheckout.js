@@ -19,7 +19,7 @@ function saveLastWhatsappPayload({ data, cartTotal, cartCurrency, cartCount }) {
     }
 }
 
-export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setWallet }) {
+export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setWallet, onPurchaseSuccess }) {
     const [buyLoading, setBuyLoading] = useState(false);
     const [buyResult, setBuyResult] = useState(null);
     const [error, setError] = useState("");
@@ -69,6 +69,11 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
                 cartCurrency,
                 cartCount: Array.isArray(cart) ? cart.length : null,
             });
+
+            // ✅ Llama al callback de éxito para cerrar el modal y recargar el catálogo
+            if (typeof onPurchaseSuccess === "function") {
+                onPurchaseSuccess();
+            }
         } catch (e) {
             setError(e?.message || "Error en checkout.");
         } finally {

@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
+const crypto = require("crypto"); // ← Required to use createHash and randomUUID
 
 function signAccessToken(payload) {
     return jwt.sign(payload, process.env.JWT_ACCESS_SECRET, {

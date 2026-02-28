@@ -113,3 +113,8 @@ export async function apiLogout() {
     const data = await safeJson(res);
     return { ok: res.ok, status: res.status, data };
 }
+
+export async function apiGetTransactions(query = {}) {
+    const params = new URLSearchParams(query);
+    return apiGet(`/wallet/transactions?${params.toString()}`);
+}

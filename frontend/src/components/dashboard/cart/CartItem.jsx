@@ -27,7 +27,7 @@ export default function CartItem({ item, index, onRemove }) {
 
             <div className="cart-itemRight">
                 <div className="cart-itemPrice">
-                    {Number(c.price).toLocaleString()} {c.currency}
+                    {Number(c.price).toLocaleString("es-CO")} {c.currency}
                 </div>
                 <button className="btn-ghost cart-removeBtn" onClick={() => onRemove(index)}>
                     Quitar

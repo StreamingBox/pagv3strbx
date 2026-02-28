@@ -1,25 +1,25 @@
 import ProfitBox from "./ProfitBox.jsx";
 
 export default function CartFooter({
-                                       cartTotal,
-                                       cartCurrency,
-                                       buyLoading,
-                                       onClear,
-                                       onCheckout,
-                                       wallet,
-                                       profitOpen,
-                                       setProfitOpen,
-                                       recordProfit,
-                                       setRecordProfit,
-                                       profitAmount,
-                                       setProfitAmount,
-                                   }) {
+    cartTotal,
+    cartCurrency,
+    buyLoading,
+    onClear,
+    onCheckout,
+    wallet,
+    profitOpen,
+    setProfitOpen,
+    recordProfit,
+    setRecordProfit,
+    profitAmount,
+    setProfitAmount,
+}) {
     return (
         <section className="cart-footer">
             <div className="cart-totalBlock">
                 <div className="cart-totalLabel">Total</div>
                 <div className="cart-totalValue">
-                    {Number(cartTotal).toLocaleString()} {cartCurrency}
+                    {Number(cartTotal).toLocaleString("es-CO")} {cartCurrency}
                 </div>
             </div>
 

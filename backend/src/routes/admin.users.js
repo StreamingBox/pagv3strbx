@@ -8,12 +8,44 @@ const router = express.Router();
 
 router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
+        const { page = 1, limit = 5 } = req.query;
+        const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+        const limitNum = Math.max(parseInt(limit, 10) || 5, 1);
+        const offset = (pageNum - 1) * limitNum;
+
+        // COUNT
+        const [countRows] = await pool.query("SELECT COUNT(*) as total FROM users");
+        const total = countRows[0].total;
+
+        // DATA
         const [rows] = await pool.query(
             `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
-              COALESCE(w.balance, 0) AS balance, COALESCE(w.currency, 'COP') AS currency
-       FROM users u
-       LEFT JOIN wallets w ON w.user_id = u.id
-       ORDER BY u.id DESC`
+               COALESCE(w.balance, 0) AS balance, 
+               COALESCE(w.profit_total, 0) AS profit_total,
+               COALESCE(w.currency, 'COP') AS currency
+        FROM users u
+        LEFT JOIN wallets w ON w.user_id = u.id
+        ORDER BY u.id DESC
+        LIMIT ${limitNum} OFFSET ${offset}`
+        );
+
+        return res.json({
+            items: rows,
+            total,
+            page: pageNum,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+        });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.get("/admin/users/stats", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            "SELECT SUM(profit_total) as total_profit, currency FROM wallets GROUP BY currency"
         );
         return res.json(rows);
     } catch (err) {
@@ -27,7 +59,7 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
     try {
         const { name, email, password, role, currency } = req.body || {};
         const finalCurrency = (currency || "COP").toString().toUpperCase();
-        if (!["COP","USD", "MXN"].includes(finalCurrency)) {
+        if (!["COP", "USD", "MXN"].includes(finalCurrency)) {
             return res.status(400).json({ message: "currency inválida. Usa COP, USD o MXN." });
         }
 
@@ -112,7 +144,7 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
         await conn.commit();
         return res.json({ ok: true });
     } catch (err) {
-        try { await conn.rollback(); } catch {}
+        try { await conn.rollback(); } catch { }
         console.error(err);
         return res.status(500).json({ message: "Error interno." });
     } finally {

@@ -9,7 +9,7 @@ const { normalizeOptionalValue } = require("../utils/normalize");
 /**
  * Construye WHERE dinámico + params para inventory/export.
  */
-function buildInventoryWhere({ platformId, status, q, expiresFrom, expiresTo }) {
+function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, expiresTo }) {
     const where = [];
     const params = [];
 
@@ -34,6 +34,11 @@ function buildInventoryWhere({ platformId, status, q, expiresFrom, expiresTo }) 
         params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
+    if (assignedTo) {
+        where.push("u.email LIKE ?");
+        params.push(`%${assignedTo}%`);
+    }
+
     const from = parseDateOnly(expiresFrom);
     const to = parseDateOnly(expiresTo);
 
@@ -54,17 +59,31 @@ function buildInventoryWhere({ platformId, status, q, expiresFrom, expiresTo }) 
  * GET /admin/inventory
  */
 async function getInventory(query = {}) {
-    const { platformId, status, q, limit, expiresFrom, expiresTo } = query;
+    const { platformId, status, q, assignedTo, expiresFrom, expiresTo, page = 1, limit = 5 } = query;
 
     const { whereSql, params } = buildInventoryWhere({
         platformId,
         status,
         q,
+        assignedTo,
         expiresFrom,
         expiresTo,
     });
 
-    const lim = Math.min(Math.max(parseInt(limit || "200", 10), 1), 2000);
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 5, 1), 2000);
+    const offset = (pageNum - 1) * limitNum;
+
+    // Obtener total
+    const [countRows] = await pool.query(
+        `SELECT COUNT(*) as total
+         FROM platform_accounts pa
+         LEFT JOIN platforms p ON p.id = pa.platform_id
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         ${whereSql}`,
+        params
+    );
+    const total = countRows[0]?.total || 0;
 
     const [rows] = await pool.query(
         `SELECT
@@ -88,16 +107,24 @@ async function getInventory(query = {}) {
     LEFT JOIN platforms p ON p.id = pa.platform_id
     LEFT JOIN users u ON u.id = pa.assigned_to_user_id
     ${whereSql}
-    ORDER BY pa.expires_at DESC, pa.id DESC
-    LIMIT ${lim}`,
+    ORDER BY pa.id DESC
+    LIMIT ${limitNum} OFFSET ${offset}`,
         params
     );
 
-    return rows.map((r) => ({
+    const items = rows.map((r) => ({
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
+
+    return {
+        items,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum)
+    };
 }
 
 /**
@@ -105,12 +132,13 @@ async function getInventory(query = {}) {
  * Devuelve { filename, csv } para que el route sete headers y responda.
  */
 async function exportInventoryCsv(query = {}) {
-    const { platformId, status, q, expiresFrom, expiresTo } = query;
+    const { platformId, status, q, assignedTo, expiresFrom, expiresTo } = query;
 
     const { whereSql, params } = buildInventoryWhere({
         platformId,
         status,
         q,
+        assignedTo,
         expiresFrom,
         expiresTo,
     });

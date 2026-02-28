@@ -29,9 +29,10 @@ export async function fetchDurations() {
     return Array.isArray(data) ? data : [];
 }
 
-export async function fetchPricesGrouped() {
-    const data = await request("/admin/prices/grouped", { method: "GET" });
-    return Array.isArray(data) ? data : [];
+export async function fetchPricesGrouped(query = {}) {
+    const params = new URLSearchParams(query);
+    const data = await request(`/admin/prices/grouped?${params.toString()}`, { method: "GET" });
+    return data;
 }
 
 /**
@@ -50,13 +51,13 @@ function normalizeMultiBody(payload) {
     const platform_id = payload?.platform_id ?? payload?.platformId;
     const duration_id = payload?.duration_id ?? payload?.durationId;
     const prices = payload?.prices ?? {};
-    const is_renewable = payload?.is_renewable;
+    const is_renewable = payload?.is_renewable !== undefined ? payload.is_renewable : payload?.isRenewable;
 
     return {
         platform_id: platform_id != null ? Number(platform_id) : platform_id,
         duration_id: duration_id != null ? Number(duration_id) : duration_id,
         prices,
-        is_renewable: is_renewable != null ? !!is_renewable : undefined,
+        is_renewable: !!is_renewable,
     };
 }
 

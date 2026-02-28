@@ -9,13 +9,14 @@ import CartResult from "./cart/CartResult.jsx";
 import "./cartDrawer.css";
 
 export default function CartDrawer({
-                                       open,
-                                       onClose,
-                                       cart,
-                                       setCart,
-                                       wallet,
-                                       setWallet,
-                                   }) {
+    open,
+    onClose,
+    cart,
+    setCart,
+    wallet,
+    setWallet,
+    onPurchaseSuccess
+}) {
     const [includeWhatsapp, setIncludeWhatsapp] = useState(true);
 
     const [profitOpen, setProfitOpen] = useState(false);
@@ -49,6 +50,7 @@ export default function CartDrawer({
         cartCurrency,
         clearCart,
         setWallet,
+        onPurchaseSuccess,
     });
 
     async function onCheckout() {
@@ -66,8 +68,13 @@ export default function CartDrawer({
             <aside className="cart-drawer kpi" onClick={(e) => e.stopPropagation()}>
                 <header className="cart-header">
                     <h3 className="cart-title">🛒 Carrito</h3>
-                    <button className="btn-ghost" onClick={onClose}>
-                        Cerrar
+                    <button
+                        className="btn-ghost"
+                        onClick={onClose}
+                        style={{ padding: "0 10px", fontSize: 18, minWidth: 36, height: 36 }}
+                        title="Cerrar carrito"
+                    >
+                        ✕
                     </button>
                 </header>
 

@@ -94,6 +94,15 @@ app.use(
     })
 );
 
+// ✅ Límite específico para códigos: 500 por hora
+const codesRateLimit = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hora
+    max: 500,
+    message: { ok: false, message: "Límite de solicitudes de código excedido (máximo 500 por hora)." },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 app.use(express.json({
     limit: "5mb",
     verify: (req, res, buf) => {
@@ -111,8 +120,8 @@ app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 app.use(adminSupport);
 app.use("/api", adminSupport);
 
-// ✅ CÓDIGOS (ya está bajo /api)
-app.use("/api/codes", codesRoutes);
+// ✅ CÓDIGOS (ya está bajo /api) con límite de 500/hr
+app.use("/api/codes", codesRateLimit, codesRoutes);
 app.get("/api/codes/_ping", (req, res) => res.json({ ok: true, mounted: true }));
 
 // ✅ LOGS SOLO ADMIN (ruta interna en su router)
@@ -139,8 +148,9 @@ app.use("/api/users", usersRoutes); // opcional pero recomendado
 app.use(storeRoutes); // /checkout, /orders, /platforms
 app.use("/api", storeRoutes); // /api/checkout, /api/orders, /api/platforms
 
-// ✅ Short links /s/:token (NO lo metas bajo /api, va directo)
+// ✅ Short links /s/:token (expuesto también en /api para evadir el NGINX SPA catch-all)
 app.use(shareRoutes);
+app.use("/api", shareRoutes);
 
 // ✅ Wallet y Catalog (ahora también bajo /api)
 app.use(walletRoutes); // /wallet
@@ -168,6 +178,11 @@ app.use("/api", adminInventoryRoutes);
 app.use("/api", adminOrders);
 app.use("/api", adminPrices);
 app.use("/api", adminDurations);
+
+// ✅ Analytics
+const analyticsRoutes = require("./routes/analytics");
+app.use(analyticsRoutes);
+app.use("/api", analyticsRoutes);
 
 // Health
 app.get("/health", (_, res) => res.json({ ok: true }));

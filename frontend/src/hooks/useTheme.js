@@ -12,9 +12,8 @@ export default function useTheme() {
             return;
         }
 
-        // 2) Preferencia del sistema
-        const prefersLight = window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
-        const defaultTheme = prefersLight ? "light" : "dark";
+        // 2) App siempre inicia en dark por defecto (plataforma de streaming premium)
+        const defaultTheme = "dark";
 
         setTheme(defaultTheme);
         document.documentElement.setAttribute("data-theme", defaultTheme);

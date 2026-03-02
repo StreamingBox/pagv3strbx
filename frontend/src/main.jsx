@@ -12,13 +12,12 @@ try {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
-} catch {}
+} catch { }
 
-// aplica el tema lo antes posible (evita “flash”)
-const saved = localStorage.getItem("theme");
-if (saved === "light" || saved === "dark") {
-    document.documentElement.setAttribute("data-theme", saved);
-}
+// Aplica el tema lo antes posible (evita "flash") — DARK por defecto siempre
+const savedTheme = localStorage.getItem("theme");
+const initialTheme = (savedTheme === "light" || savedTheme === "dark") ? savedTheme : "dark";
+document.documentElement.setAttribute("data-theme", initialTheme);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>

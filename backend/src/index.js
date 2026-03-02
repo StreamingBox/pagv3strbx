@@ -4,19 +4,19 @@ const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
-const binancePaymentsRoutes = require("./routes/payments.binance");
+const sanitize = require("./middleware/sanitize");
 
-// ✅ Rutas existentes
+// ✅ Rutas
 const codesRoutes = require("./routes/codes");
 const codeLogsRoutes = require("./routes/codeLogs");
 const adminSupport = require("./routes/admin.support");
 const adminCategories = require("./routes/admin.categories");
 
 const usersRoutes = require("./routes/users");
-const storeRoutes = require("./routes/store"); // ✅ aquí viven /checkout, /orders, /platforms
-const shareRoutes = require("./routes/share"); // ✅ /s/:token
-const walletRoutes = require("./routes/wallet"); // ✅ /wallet
-const catalogRoutes = require("./routes/catalog"); // ✅ /catalog
+const storeRoutes = require("./routes/store");
+const shareRoutes = require("./routes/share");
+const walletRoutes = require("./routes/wallet");
+const catalogRoutes = require("./routes/catalog");
 
 const adminUsers = require("./routes/admin.users");
 const adminWallet = require("./routes/admin.wallet");
@@ -25,7 +25,6 @@ const adminOrders = require("./routes/admin.orders");
 const adminPrices = require("./routes/admin.prices");
 const adminDurations = require("./routes/admin.durations");
 
-// ✅ cuentas e inventario
 const adminAccountsRoutes = require("./routes/admin.accounts.routes");
 const adminInventoryRoutes = require("./routes/admin.inventory.routes");
 
@@ -33,18 +32,13 @@ const brandingRoutes = require("./routes/branding");
 const adminBrandingRoutes = require("./routes/admin.branding");
 
 const authRoutes = require("./routes/auth");
+const analyticsRoutes = require("./routes/analytics");
 
 const app = express();
 
 // IP real detrás de Nginx
 app.set("trust proxy", 1);
 
-// ✅ Cookies
-app.use(cookieParser());
-
-/* =======================
-   CORS (ANTES DE RUTAS)
-   ======================= */
 /* =======================
    CORS (ANTES DE RUTAS)
    ======================= */
@@ -69,107 +63,123 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// ✅ Preflight global (NO uses "*")
 app.options(/.*/, cors(corsOptions));
-app.use("/api", binancePaymentsRoutes);
-
-
 
 /* =======================
-   SECURITY / LIMITS
+   SECURITY — PRIMERO QUE LAS RUTAS
    ======================= */
 app.use(
     helmet({
         crossOriginResourcePolicy: { policy: "cross-origin" },
+        contentSecurityPolicy: {
+            useDefaults: true,
+            directives: {
+                "default-src": ["'self'"],
+                "script-src": ["'self'"],
+                "style-src": ["'self'", "'unsafe-inline'"],
+                "img-src": ["'self'", "data:", "https:"],
+                "connect-src": ["'self'"],
+                "font-src": ["'self'", "https://fonts.gstatic.com"],
+                "object-src": ["'none'"],
+                "frame-ancestors": ["'none'"],
+            },
+        },
+        hsts: {
+            maxAge: 31536000,
+            includeSubDomains: true,
+            preload: true,
+        },
     })
 );
 
-app.use(
-    rateLimit({
-        windowMs: 60 * 1000,
-        max: 120,
-        standardHeaders: true,
-        legacyHeaders: false,
-    })
-);
+// Rate limit global: 120 req/min por IP
+const globalRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, message: "Demasiadas solicitudes. Intenta de nuevo en un minuto." },
+});
+app.use(globalRateLimit);
 
-// ✅ Límite específico para códigos: 500 por hora
+// Rate limit para auth/login: 10 intentos/min por IP (anti fuerza bruta)
+const loginRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, message: "Demasiados intentos de inicio de sesión. Intenta de nuevo en un minuto." },
+});
+
+// Rate limit para códigos: 500 por hora
 const codesRateLimit = rateLimit({
-    windowMs: 60 * 60 * 1000, // 1 hora
+    windowMs: 60 * 60 * 1000,
     max: 500,
     message: { ok: false, message: "Límite de solicitudes de código excedido (máximo 500 por hora)." },
     standardHeaders: true,
     legacyHeaders: false,
 });
 
+/* =======================
+   BODY PARSERS
+   ======================= */
+app.use(cookieParser());
 app.use(express.json({
     limit: "5mb",
-    verify: (req, res, buf) => {
+    verify: (req, _res, buf) => {
         req.rawBody = buf.toString("utf8");
     },
 }));
-
 app.use(express.urlencoded({ extended: true, limit: "5mb" }));
 
+// ✅ Sanitización de inputs (trim + anti prototype pollution)
+app.use(sanitize);
+
 /* =======================
-   ROUTES
+   ROUTES (solo bajo /api)
    ======================= */
 
-// ✅ Soporte (AHORA sí con CORS aplicado)
-app.use(adminSupport);
-app.use("/api", adminSupport);
+// Health
+app.get("/health", (_, res) => res.json({ ok: true }));
+app.get("/api/health", (_, res) => res.json({ ok: true }));
 
-// ✅ CÓDIGOS (ya está bajo /api) con límite de 500/hr
+// Auth — con rate limit específico en login
+app.use("/api/auth", loginRateLimit);
+app.use("/api/auth", authRoutes);
+app.use("/auth", authRoutes); // compat backwards
+
+// Codes — con rate limit de 500/hr
 app.use("/api/codes", codesRateLimit, codesRoutes);
 app.get("/api/codes/_ping", (req, res) => res.json({ ok: true, mounted: true }));
 
-// ✅ LOGS SOLO ADMIN (ruta interna en su router)
-app.use(codeLogsRoutes);
-app.use("/api", codeLogsRoutes); // ✅ también /api/...
+// Code Logs (solo admin, ruta interna en su router)
+app.use("/api", codeLogsRoutes);
 
-// ✅ Categorías (ruta interna en su router)
-app.use(adminCategories);
-app.use("/api", adminCategories); // ✅ también /api/...
+// Soporte admin
+app.use("/api", adminSupport);
 
-// ✅ Auth (cookies)
-app.use("/auth", authRoutes); // compat viejo
-app.use("/api/auth", authRoutes); // frontend prod con /api
+// Categorías
+app.use("/api", adminCategories);
 
-// ✅ Branding (ya está bajo /api)
+// Branding
 app.use("/api", brandingRoutes);
 app.use("/api", adminBrandingRoutes);
 
-// ✅ Users
-app.use("/users", usersRoutes);
-app.use("/api/users", usersRoutes); // opcional pero recomendado
+// Users
+app.use("/api/users", usersRoutes);
 
-// ✅ Store: AQUÍ viven /checkout, /orders, /platforms
-app.use(storeRoutes); // /checkout, /orders, /platforms
-app.use("/api", storeRoutes); // /api/checkout, /api/orders, /api/platforms
+// Store: /checkout, /orders, /platforms
+app.use("/api", storeRoutes);
 
-// ✅ Short links /s/:token (expuesto también en /api para evadir el NGINX SPA catch-all)
-app.use(shareRoutes);
+// Short links /s/:token
 app.use("/api", shareRoutes);
+app.use(shareRoutes); // acceso directo sin /api para Nginx SPA catch-all
 
-// ✅ Wallet y Catalog (ahora también bajo /api)
-app.use(walletRoutes); // /wallet
-app.use("/api", walletRoutes); // /api/wallet
+// Wallet y Catalog
+app.use("/api", walletRoutes);
+app.use("/api", catalogRoutes);
 
-app.use(catalogRoutes); // /catalog
-app.use("/api", catalogRoutes); // /api/catalog
-
-// ✅ Admin (SIN /api) - compat viejo
-app.use(adminUsers);
-app.use(adminWallet);
-app.use(adminPlatforms);
-app.use(adminAccountsRoutes);
-app.use(adminInventoryRoutes);
-app.use(adminOrders);
-app.use(adminPrices);
-app.use(adminDurations);
-
-// ✅ Admin (CON /api) - ✅ FIX DEFINITIVO para producción con VITE_API_BASE=/api
+// Admin
 app.use("/api", adminUsers);
 app.use("/api", adminWallet);
 app.use("/api", adminPlatforms);
@@ -179,14 +189,8 @@ app.use("/api", adminOrders);
 app.use("/api", adminPrices);
 app.use("/api", adminDurations);
 
-// ✅ Analytics
-const analyticsRoutes = require("./routes/analytics");
-app.use(analyticsRoutes);
+// Analytics
 app.use("/api", analyticsRoutes);
-
-// Health
-app.get("/health", (_, res) => res.json({ ok: true }));
-app.get("/api/health", (_, res) => res.json({ ok: true })); // ✅ útil para smoke test
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`API running on :${port}`));

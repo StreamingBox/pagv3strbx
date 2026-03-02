@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/dashboard.css";
+import "../styles/dashboard-stitch.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import CatalogGrid from "../components/dashboard/CatalogGrid.jsx";

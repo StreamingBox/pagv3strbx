@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import "../styles/dashboard.css";
 import "../styles/wallet.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { apiGet, apiPost, apiLogout, apiGetTransactions } from "../api/api";
+import { apiGet, apiLogout, apiGetTransactions } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import TransactionsList from "../components/wallet/TransactionsList.jsx";
 
@@ -14,12 +14,6 @@ export default function Wallet() {
     const { user, setUser } = useAuth();
 
     const [wallet, setWallet] = useState(null);
-    const [amount, setAmount] = useState("10");
-    const [loading, setLoading] = useState(false);
-
-    const [pay, setPay] = useState(null);
-    const [status, setStatus] = useState(null);
-    const timerRef = useRef(null);
 
     async function loadWallet() {
         const r = await apiGet("/wallet");
@@ -28,13 +22,9 @@ export default function Wallet() {
 
     useEffect(() => {
         loadWallet();
-        return () => timerRef.current && clearInterval(timerRef.current);
     }, []);
 
-    const currency = useMemo(
-        () => String(wallet?.currency || "").toUpperCase(),
-        [wallet]
-    );
+    const currency = String(wallet?.currency || "").toUpperCase();
 
     async function logout() {
         try {
@@ -42,45 +32,6 @@ export default function Wallet() {
         } finally {
             setUser(null);
             navigate("/", { replace: true });
-        }
-    }
-
-    async function startTopup() {
-        setPay(null);
-        setStatus(null);
-
-        const n = Number(amount);
-        if (!Number.isFinite(n) || n <= 0) {
-            alert("Monto inválido");
-            return;
-        }
-
-        setLoading(true);
-        try {
-            const r = await apiPost("/payments/binance/topup", { amount: n });
-            if (!r.ok) {
-                alert(r.data?.message || "No se pudo iniciar el pago");
-                return;
-            }
-
-            setPay(r.data);
-
-            if (timerRef.current) clearInterval(timerRef.current);
-            timerRef.current = setInterval(async () => {
-                const s = await apiGet(`/payments/binance/${r.data.intentId}`);
-                if (s.ok) {
-                    const p = s.data?.payment;
-                    setStatus(p);
-
-                    if (p?.status === "paid" || p?.credited === 1) {
-                        clearInterval(timerRef.current);
-                        timerRef.current = null;
-                        await loadWallet();
-                    }
-                }
-            }, 3500);
-        } finally {
-            setLoading(false);
         }
     }
 

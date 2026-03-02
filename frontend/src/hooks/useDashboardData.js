@@ -21,6 +21,8 @@ export function useDashboardData() {
             if (!wRes.ok) throw new Error(wRes.data?.message || "Error cargando wallet.");
             if (!cRes.ok) throw new Error(cRes.data?.message || "Error cargando catálogo.");
 
+            console.log("PURO JSON API CATALOG:", cRes.data?.[0]);
+
             const user = JSON.parse(localStorage.getItem("user") || "{}");
 
             setWallet({

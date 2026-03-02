@@ -1,10 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = "/logo.png";
+
+function getInitialTheme() {
+    try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
+}
 
 export default function Login() {
     const navigate = useNavigate();
@@ -15,10 +20,17 @@ export default function Login() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-
     const [logoOk, setLogoOk] = useState(true);
+    const [theme, setTheme] = useState(getInitialTheme);
+    const [showTerms, setShowTerms] = useState(false);
 
-    // ✅ Limpia cualquier rastro legacy al abrir Login (tokens + user)
+    // Apply theme
+    useEffect(() => {
+        document.documentElement.setAttribute("data-theme", theme);
+        try { localStorage.setItem("sb-theme", theme); } catch { }
+    }, [theme]);
+
+    // Clean legacy tokens
     useEffect(() => {
         try {
             localStorage.removeItem("accessToken");
@@ -27,40 +39,30 @@ export default function Login() {
         } catch { }
     }, []);
 
-    const canSubmit = useMemo(() => {
-        return email.trim().length > 3 && password.length >= 1 && !loading;
-    }, [email, password, loading]);
+    const canSubmit = useMemo(() =>
+        email.trim().length > 3 && password.length >= 1 && !loading,
+        [email, password, loading]
+    );
 
     async function handleSubmit(e) {
         e.preventDefault();
         setError("");
         setLoading(true);
-
         try {
             const res = await fetch(`${API_BASE}/auth/login`, {
                 method: "POST",
-                credentials: "include", // ✅ cookies HttpOnly
+                credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password }),
             });
-
             const data = await res.json().catch(() => ({}));
-
-            if (!res.ok) {
-                throw new Error(data?.message || "No se pudo iniciar sesión.");
-            }
-
-            // ✅ Guardamos el user SOLO en memoria (AuthContext), NO en localStorage
+            if (!res.ok) throw new Error(data?.message || "No se pudo iniciar sesión.");
             setUser(data?.user || null);
-
-            // ✅ Limpieza extra por si queda algo viejo
             try {
                 localStorage.removeItem("accessToken");
                 localStorage.removeItem("refreshToken");
                 localStorage.removeItem("user");
             } catch { }
-
-            // ✅ Redirección sin recargar
             const role = String(data?.user?.role || "user").toLowerCase();
             navigate(role === "admin" ? "/admin" : "/dashboard", { replace: true });
         } catch (err) {
@@ -77,7 +79,34 @@ export default function Login() {
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
 
-            <div className="card">
+            {/* Theme Toggle — top right */}
+            <motion.button
+                className="theme-toggle-float"
+                onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.94 }}
+                title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
+                aria-label="Toggle tema"
+            >
+                <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                        key={theme}
+                        initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
+                        animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                        exit={{ opacity: 0, rotate: 90, scale: 0.5 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                    </motion.span>
+                </AnimatePresence>
+            </motion.button>
+
+            <motion.div
+                className="card"
+                initial={{ opacity: 0, y: 28, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            >
                 <div className="brand">
                     {logoOk ? (
                         <img
@@ -93,7 +122,6 @@ export default function Login() {
                             <div className="logo-ring ring-2" />
                         </div>
                     )}
-
                     <div>
                         <div className="title">Streaming Box</div>
                         <div className="subtitle">Accede a tu plataforma</div>
@@ -103,65 +131,153 @@ export default function Login() {
                 <form onSubmit={handleSubmit} className="form">
                     <label className="label">
                         Email
-                        <input
+                        <motion.input
                             className="input"
                             type="email"
                             autoComplete="email"
                             placeholder="Pon tu correo"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            whileFocus={{ scale: 1.01 }}
+                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         />
                     </label>
 
                     <label className="label">
                         Contraseña
                         <div style={{ position: "relative" }}>
-                            <input
+                            <motion.input
                                 className="input"
                                 type={showPassword ? "text" : "password"}
                                 autoComplete="current-password"
                                 placeholder="Pon tu contraseña"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                style={{ paddingRight: "40px" }}
+                                style={{ paddingRight: "44px" }}
+                                whileFocus={{ scale: 1.01 }}
+                                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                             />
-                            <button
+                            <motion.button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
+                                whileHover={{ scale: 1.15 }}
+                                whileTap={{ scale: 0.85 }}
                                 style={{
-                                    position: "absolute",
-                                    right: "12px",
-                                    top: "50%",
+                                    position: "absolute", right: "13px", top: "50%",
                                     transform: "translateY(-50%)",
-                                    background: "none",
-                                    border: "none",
-                                    color: "var(--muted)",
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    padding: "0"
+                                    background: "none", border: "none",
+                                    color: "var(--muted)", cursor: "pointer",
+                                    display: "flex", alignItems: "center", padding: "0"
                                 }}
                             >
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
+                            </motion.button>
                         </div>
                     </label>
 
-                    {error ? <div className="error">{error}</div> : null}
+                    <AnimatePresence>
+                        {error && (
+                            <motion.div
+                                className="error"
+                                initial={{ opacity: 0, height: 0, y: -8 }}
+                                animate={{ opacity: 1, height: "auto", y: 0 }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {error}
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                    <button className="btn" disabled={!canSubmit}>
-                        {loading ? "Ingresando..." : "Iniciar sesión"}
-                    </button>
+                    <motion.button
+                        className="btn"
+                        disabled={!canSubmit}
+                        whileHover={canSubmit ? { scale: 1.02, y: -2 } : {}}
+                        whileTap={canSubmit ? { scale: 0.97, y: 0 } : {}}
+                        transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                    >
+                        {loading ? (
+                            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <motion.span
+                                    animate={{ rotate: 360 }}
+                                    transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                                    style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "white", borderRadius: "50%" }}
+                                />
+                                Ingresando...
+                            </span>
+                        ) : "Iniciar sesión"}
+                    </motion.button>
 
                     <div className="hint">
                         * Usuario creado por admin. Si no tienes acceso, contacta al administrador.
                     </div>
                 </form>
+
+                {/* Footer con T&C */}
+                <div className="auth-card-footer">
+                    <button className="tos-link" onClick={() => setShowTerms(true)}>
+                        Términos y Condiciones
+                    </button>
+                    <span className="tos-sep">·</span>
+                    <span className="tos-copy">Todos los derechos reservados</span>
+                </div>
+            </motion.div>
+
+            {/* Footer flotante */}
+            <div className="footer">
+                <span className="dot" />
+                © Streaming Box 2026
             </div>
 
-            <div className="footer">
-                <span className="dot" /> Azul neón / Dark UI
-            </div>
+            {/* Modal T&C */}
+            <AnimatePresence>
+                {showTerms && (
+                    <motion.div
+                        className="tos-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowTerms(false)}
+                    >
+                        <motion.div
+                            className="tos-modal"
+                            initial={{ opacity: 0, scale: 0.92, y: 24 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <div className="tos-header">
+                                <h2>Términos y Condiciones</h2>
+                                <motion.button
+                                    className="tos-close"
+                                    onClick={() => setShowTerms(false)}
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                >
+                                    <X size={20} />
+                                </motion.button>
+                            </div>
+                            <div className="tos-body">
+                                <p><strong>1. Uso del Servicio</strong><br />
+                                    Streaming Box es una plataforma de gestión y venta de cuentas de servicios de streaming. El acceso está restringido a usuarios autorizados por el administrador.</p>
+                                <p><strong>2. Privacidad</strong><br />
+                                    Los datos proporcionados son utilizados únicamente con fines operativos. No compartimos información personal con terceros sin consentimiento.</p>
+                                <p><strong>3. Responsabilidad</strong><br />
+                                    Streaming Box no se hace responsable de interrupciones en los servicios de terceros (Netflix, Disney+, etc.) ni de cambios en sus políticas de uso.</p>
+                                <p><strong>4. Pagos y Reembolsos</strong><br />
+                                    Los saldos del wallet son no reembolsables una vez acreditados. Las compras de cuentas son definitivas salvo fallo comprobable del servicio.</p>
+                                <p><strong>5. Prohibiciones</strong><br />
+                                    Está prohibido compartir credenciales de acceso, realizar scraping o cualquier uso no autorizado de la plataforma.</p>
+                                <p><strong>6. Modificaciones</strong><br />
+                                    Nos reservamos el derecho de modificar estos términos en cualquier momento. El uso continuo implica aceptación de los cambios.</p>
+                                <p className="tos-legal">© 2026 Streaming Box. Todos los derechos reservados.<br />
+                                    Plataforma desarrollada y operada de forma privada.</p>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

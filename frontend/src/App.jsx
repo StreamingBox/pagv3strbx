@@ -64,7 +64,7 @@ export default function App() {
                 }
             />
 
-            {/* ================= Wallet (Binance Pay) ================= */}
+            {/* ================= Wallet ================= */}
             <Route
                 path="/wallet"
                 element={

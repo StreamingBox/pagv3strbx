@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import AdminKpiCards from "../components/admin/AdminKpiCards.jsx";
 import { apiLogout } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
+import "../styles/special-effects.css";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = "/logo.png";
@@ -16,11 +18,7 @@ export default function Admin() {
     const [uploadingLogo, setUploadingLogo] = useState(false);
 
     async function logout() {
-        try {
-            await apiLogout();
-        } catch (e) {
-            console.error(e);
-        } finally {
+        try { await apiLogout(); } catch (e) { console.error(e); } finally {
             setUser(null);
             try {
                 localStorage.removeItem("user");
@@ -31,9 +29,7 @@ export default function Admin() {
         }
     }
 
-    function openLogoPicker() {
-        fileRef.current?.click();
-    }
+    function openLogoPicker() { fileRef.current?.click(); }
 
     async function onPickLogo(e) {
         const file = e.target.files?.[0];
@@ -47,8 +43,7 @@ export default function Admin() {
                 r.readAsDataURL(file);
             });
             const res = await fetch(`${API_BASE}/admin/branding/logo`, {
-                method: "POST",
-                credentials: "include",
+                method: "POST", credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ dataUrl }),
             });
@@ -66,9 +61,9 @@ export default function Admin() {
 
     return (
         <div className="page-shell">
-            <div className="bg-grid"></div>
-            <div className="bg-orb orb-1"></div>
-            <div className="bg-orb orb-2"></div>
+            <div className="bg-grid" />
+            <div className="bg-orb orb-1" />
+            <div className="bg-orb orb-2" />
 
             <div className="page-inner">
                 <AdminSidebar
@@ -91,26 +86,33 @@ export default function Admin() {
                 />
 
                 <main className="main">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <motion.div
+                        initial={{ opacity: 0, y: -14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}
+                    >
                         <div>
                             <h1 className="title">Panel Administrador</h1>
                             <p className="subtitle">Gestión centralizada de servicios</p>
                         </div>
 
-                        <button
-                            className="btn-ghost"
-                            onClick={() => navigate("/dashboard")}
+                        <motion.div
+                            className="stitch-beam-container"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.96 }}
                         >
-                            Ir a Dashboard
-                        </button>
-                    </div>
+                            <button
+                                className="stitch-beam-content"
+                                onClick={() => navigate("/dashboard")}
+                                style={{ fontSize: 13, border: "none" }}
+                            >
+                                Ir a Dashboard
+                            </button>
+                        </motion.div>
+                    </motion.div>
 
                     <AdminKpiCards onNavigate={navigate} />
-
-                    <div style={{ marginTop: 24 }}>
-                        {/* El contenido de las subrutas se cargará aquí por Admin.jsx original era un layout */}
-                        {/* Si el Admin.jsx original tenía más cosas, las recuperaré al ver el archivo */}
-                    </div>
                 </main>
             </div>
         </div>

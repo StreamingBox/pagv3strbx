@@ -67,7 +67,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
       WHERE pp.is_active = 1
         AND p.is_active = 1
         AND pp.currency = ?
-        AND FIND_IN_SET(?, p.allowed_currencies) > 0
+        AND (p.allowed_currencies IS NULL OR p.allowed_currencies = '' OR FIND_IN_SET(?, p.allowed_currencies) > 0)
 
       ORDER BY
         COALESCE(c.sort_order, 9999) ASC,
@@ -82,6 +82,38 @@ router.get("/catalog", requireAuth, async (req, res) => {
   } catch (err) {
     console.error("GET /catalog error:", err);
     return res.status(500).json({ message: "Error interno." });
+  }
+});
+
+router.get("/debug-catalog", async (req, res) => {
+  try {
+    const [rows] = await pool.query(
+      `SELECT
+        pp.id AS platformPriceId,
+        p.id AS platformId,
+        p.name AS platformName,
+        p.slug AS platformSlug,
+        c.id AS categoryId,
+        c.name AS categoryName,
+        d.id AS durationId,
+        d.name AS durationName,
+        pp.price,
+        pp.currency,
+        pp.is_renewable,
+        COALESCE(s.stock, 0) AS stock
+      FROM platform_prices pp
+      JOIN platforms p ON p.id = pp.platform_id
+      JOIN durations d ON d.id = pp.duration_id
+      LEFT JOIN (
+        SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
+        WHERE status = 'available' AND (expires_at IS NULL OR expires_at > NOW())
+        GROUP BY platform_id
+      ) s ON s.platform_id = p.id
+      LEFT JOIN categories c ON c.id = p.category_id LIMIT 5`
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

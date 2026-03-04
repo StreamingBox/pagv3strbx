@@ -44,7 +44,16 @@ export default function AdminPlatforms() {
     const [slug, setSlug] = useState("");
     const [slugManual, setSlugManual] = useState(false);
     const [categoryId, setCategoryId] = useState("");
-    const [whatsappTemplate, setWhatsappTemplate] = useState("");
+    const [whatsappInstructions, setWhatsappInstructions] = useState("");
+
+    // Toggles Options
+    const [waShowId, setWaShowId] = useState(true);
+    const [waShowEmail, setWaShowEmail] = useState(true);
+    const [waShowPass, setWaShowPass] = useState(true);
+    const [waShowProfile, setWaShowProfile] = useState(true);
+    const [waShowPin, setWaShowPin] = useState(true);
+    const [waShowExpire, setWaShowExpire] = useState(true);
+
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
     const [uploadingId, setUploadingId] = useState(null);
@@ -86,10 +95,17 @@ export default function AdminPlatforms() {
             const r = await apiPost("/admin/platforms", {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
-                whatsapp_template: whatsappTemplate,
+                whatsapp_instructions: whatsappInstructions,
+                wa_show_id: waShowId,
+                wa_show_email: waShowEmail,
+                wa_show_pass: waShowPass,
+                wa_show_profile: waShowProfile,
+                wa_show_pin: waShowPin,
+                wa_show_expire: waShowExpire
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
-            setName(""); setSlug(""); setCategoryId(""); setWhatsappTemplate(""); setSlugManual(false);
+            setName(""); setSlug(""); setCategoryId(""); setWhatsappInstructions(""); setSlugManual(false);
+            setWaShowId(true); setWaShowEmail(true); setWaShowPass(true); setWaShowProfile(true); setWaShowPin(true); setWaShowExpire(true);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -128,7 +144,13 @@ export default function AdminPlatforms() {
                 name: editingPlatform.name,
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
-                whatsapp_template: editingPlatform.whatsapp_template,
+                whatsapp_instructions: editingPlatform.whatsapp_instructions,
+                wa_show_id: editingPlatform.wa_show_id !== 0,
+                wa_show_email: editingPlatform.wa_show_email !== 0,
+                wa_show_pass: editingPlatform.wa_show_pass !== 0,
+                wa_show_profile: editingPlatform.wa_show_profile !== 0,
+                wa_show_pin: editingPlatform.wa_show_pin !== 0,
+                wa_show_expire: editingPlatform.wa_show_expire !== 0
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");
@@ -304,23 +326,49 @@ export default function AdminPlatforms() {
                                 </div>
                             </div>
                         </div>
-                        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
-                            <div style={{ flex: 1 }}>
-                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
-                                    Plantilla del Mensaje de Entrega
-                                    <span style={{ fontSize: 9, opacity: 0.8, textTransform: "none" }}>(Opcional). Variables: {'{PLATAFORMA}'}, {'{CORREO}'}, {'{PASSWORD}'}, {'{PERFIL}'}, {'{PIN}'}, {'{EXPIRA}'}, {'{URL}'}</span>
+                        <div style={{ marginTop: 10 }}>
+                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                                Formato de Mensaje de WhatsApp (Checklist)
+                            </label>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginBottom: 14, background: "rgba(255,255,255,0.02)", padding: 12, borderRadius: 10, border: "1px solid var(--stroke)" }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowId} onChange={e => setWaShowId(e.target.checked)} /> Mostrar ID y Plataforma
                                 </label>
-                                <textarea style={{ ...inputStyle, height: 60, padding: "10px 14px", resize: "none" }}
-                                    placeholder="Dejar en blanco para usar mensaje por defecto.&#10;Ej: Tu cuenta de {PLATAFORMA} es {CORREO} y clave {PASSWORD}."
-                                    value={whatsappTemplate} onChange={e => setWhatsappTemplate(e.target.value)}
-                                    onFocus={e => e.target.style.borderColor = "#0da6f2"}
-                                    onBlur={e => e.target.style.borderColor = "var(--stroke)"}
-                                ></textarea>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowEmail} onChange={e => setWaShowEmail(e.target.checked)} /> Mostrar Correo
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowPass} onChange={e => setWaShowPass(e.target.checked)} /> Mostrar Contraseña
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowProfile} onChange={e => setWaShowProfile(e.target.checked)} /> Mostrar Perfil
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowPin} onChange={e => setWaShowPin(e.target.checked)} /> Mostrar PIN
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowExpire} onChange={e => setWaShowExpire(e.target.checked)} /> Mostrar Expiración
+                                </label>
                             </div>
-                            <button className="btn" onClick={create} disabled={saving || !name.trim() || !slug.trim()}
-                                style={{ height: 42, padding: "0 22px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
-                                {saving ? "Creando..." : "+ Crear"}
-                            </button>
+
+                            <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                                        Texto o Instrucciones Adicionales
+                                        <span style={{ fontSize: 9, opacity: 0.8, textTransform: "none" }}>(Opcional). Variables: {'{URL}'}</span>
+                                    </label>
+                                    <textarea style={{ ...inputStyle, height: 60, padding: "10px 14px", resize: "none" }}
+                                        placeholder="Se mostrará al final del mensaje.&#10;Ej: Para acceder, entra a {URL}"
+                                        value={whatsappInstructions} onChange={e => setWhatsappInstructions(e.target.value)}
+                                        onFocus={e => e.target.style.borderColor = "#0da6f2"}
+                                        onBlur={e => e.target.style.borderColor = "var(--stroke)"}
+                                    ></textarea>
+                                </div>
+                                <button className="btn" onClick={create} disabled={saving || !name.trim() || !slug.trim()}
+                                    style={{ height: 42, padding: "0 22px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
+                                    {saving ? "Creando..." : "+ Crear"}
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
 
@@ -519,16 +567,40 @@ export default function AdminPlatforms() {
                                     </select>
                                 </div>
                                 <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                                        Checklist de WhatsApp
+                                    </label>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10, background: "rgba(255,255,255,0.02)", padding: "12px 14px", borderRadius: 10, border: "1px solid var(--stroke)" }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_id !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_id: e.target.checked ? 1 : 0 })} /> ID y Plataforma
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_email !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_email: e.target.checked ? 1 : 0 })} /> Correo
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_pass !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_pass: e.target.checked ? 1 : 0 })} /> Contraseña
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_profile !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_profile: e.target.checked ? 1 : 0 })} /> Perfil
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_pin !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_pin: e.target.checked ? 1 : 0 })} /> PIN
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_expire !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_expire: e.target.checked ? 1 : 0 })} /> Expiración
+                                        </label>
+                                    </div>
+
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
-                                        Plantilla del Mensaje de Entrega
+                                        Texto o Instrucciones Adicionales
                                     </label>
                                     <span style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 6 }}>
-                                        Variables: <code>{'{PLATAFORMA}'}</code>, <code>{'{CORREO}'}</code>, <code>{'{PASSWORD}'}</code>, <code>{'{PERFIL}'}</code>, <code>{'{PIN}'}</code>, <code>{'{EXPIRA}'}</code>, <code>{'{URL}'}</code>
+                                        Aparecerá al final del mensaje. Puedes usar la variable: <code>{'{URL}'}</code>
                                     </span>
-                                    <textarea style={{ ...inputStyle, height: 120, padding: "10px 14px", resize: "none" }}
-                                        placeholder="Dejar en blanco para formato predeterminado..."
-                                        value={editingPlatform.whatsapp_template || ""}
-                                        onChange={e => setEditingPlatform({ ...editingPlatform, whatsapp_template: e.target.value })}
+                                    <textarea style={{ ...inputStyle, height: 80, padding: "10px 14px", resize: "none" }}
+                                        placeholder="Para ver más detalles visita {URL}"
+                                        value={editingPlatform.whatsapp_instructions || ""}
+                                        onChange={e => setEditingPlatform({ ...editingPlatform, whatsapp_instructions: e.target.value })}
                                     ></textarea>
                                 </div>
                                 <div style={{ display: "flex", gap: 12, marginTop: 10 }}>

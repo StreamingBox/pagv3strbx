@@ -8,53 +8,62 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
     lines.push("");
 
     for (const r of results) {
-        const yyyy = r.expiresAt.toISOString().slice(0, 10);
         const credentialUrl = `${cleanBaseUrl}/s/${r.token}`;
+        const plan = r.plan || {};
 
-        const template = r?.plan?.whatsapp_template;
+        // Extracción de booleanos (por defecto true si undefined/null)
+        const showId = plan.wa_show_id !== 0;
+        const showEmail = plan.wa_show_email !== 0;
+        const showPass = plan.wa_show_pass !== 0;
+        const showProfile = plan.wa_show_profile !== 0;
+        const showPin = plan.wa_show_pin !== 0;
+        const showExpire = plan.wa_show_expire !== 0;
 
-        if (template && String(template).trim() !== "") {
-            // Flujo Opción 2: Plantilla absoluta
-            const pinVal = r?.account?.pin || "";
-            const profVal = r?.account?.profile_number || "";
-            const emailVal = r?.account?.email || "";
-            const passVal = r?.account?.password || "";
-            const platName = r?.plan?.platform_name || "";
-
-            let finalMsg = String(template)
-                .replace(/{PLATAFORMA}/gi, platName)
-                .replace(/{CORREO}/gi, emailVal)
-                .replace(/{PASSWORD}/gi, passVal)
-                .replace(/{CLAVE}/gi, passVal) // alias
-                .replace(/{PIN}/gi, pinVal)
-                .replace(/{PERFIL}/gi, profVal)
-                .replace(/{EXPIRA}/gi, yyyy)
-                .replace(/{URL}/gi, credentialUrl)
-                .replace(/{ENLACE}/gi, credentialUrl); // alias
-
-            lines.push(finalMsg);
-            lines.push("");
-
+        // Construcción condicional
+        if (showId) {
+            lines.push(`🆔 ID: ${r.subscriptionId} | 🖥️ ${plan.platform_name}`);
         } else {
-            // Flujo original (Fallback)
-            lines.push(`🆔 ID: ${r.subscriptionId} | 🖥️ ${r.plan.platform_name}`);
-            lines.push(`📧 Correo: ${r.account.email}`);
-            lines.push(`🔑 Contraseña: ${r.account.password}`);
+            lines.push(`🖥️ ${plan.platform_name}`);
+        }
 
+        if (showEmail) {
+            lines.push(`📧 Correo: ${r.account.email}`);
+        }
+
+        if (showPass) {
+            lines.push(`🔑 Contraseña: ${r.account.password}`);
+        }
+
+        if (showProfile) {
             const profile = r?.account?.profile_number;
             if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
                 lines.push(`👤 Perfil: ${profile}`);
             }
+        }
 
+        if (showPin) {
             const pin = r?.account?.pin;
             if (pin !== null && pin !== undefined && String(pin).trim() !== "") {
                 lines.push(`🔢 Pin: ${pin}`);
             }
-
-            lines.push(`📅 Expira: ${yyyy}`);
-            lines.push("");
-            lines.push("");
         }
+
+        if (showExpire) {
+            const yyyy = r.expiresAt.toISOString().slice(0, 10);
+            lines.push(`📅 Expira: ${yyyy}`);
+        }
+
+        const customInstructions = plan.whatsapp_instructions;
+        if (customInstructions && String(customInstructions).trim() !== "") {
+            const finalInstruction = String(customInstructions)
+                .replace(/{URL}/gi, credentialUrl)
+                .replace(/{ENLACE}/gi, credentialUrl);
+
+            lines.push(finalInstruction);
+        }
+
+        lines.push("");
+        lines.push("");
     }
 
     return lines.join("\n").trim();

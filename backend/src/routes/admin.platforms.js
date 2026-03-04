@@ -24,16 +24,16 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
 
 // POST /admin/platforms
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
-    const { name, slug, category_id } = req.body || {};
+    const { name, slug, category_id, whatsapp_instructions } = req.body || {};
 
     if (!name || !slug) {
         return res.status(400).json({ message: "name y slug son obligatorios." });
     }
 
     const [r] = await pool.query(
-        `INSERT INTO platforms (name, slug, category_id, is_active, allowed_currencies)
-     VALUES (?, ?, ?, 1, 'COP,MXN,USD')`,
-        [name, slug, category_id ?? null]
+        `INSERT INTO platforms (name, slug, category_id, is_active, allowed_currencies, whatsapp_instructions)
+     VALUES (?, ?, ?, 1, 'COP,MXN,USD', ?)`,
+        [name, slug, category_id ?? null, whatsapp_instructions ?? null]
     );
 
     res.status(201).json({
@@ -43,6 +43,7 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         category_id: category_id ?? null,
         is_active: 1,
         allowed_currencies: "COP,MXN,USD",
+        whatsapp_instructions: whatsapp_instructions ?? null,
     });
 });
 
@@ -50,10 +51,10 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
 router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (req, res) => {
     const { id } = req.params;
 
-    // Acepta category_id y allowed_currencies
-    const { name, slug, is_active, category_id, allowed_currencies } = req.body || {};
+    // Acepta category_id, allowed_currencies, y whatsapp_instructions
+    const { name, slug, is_active, category_id, allowed_currencies, whatsapp_instructions } = req.body || {};
 
-    let allowedCurrenciesCSV = null;
+    let allowedCurrenciesCSV = undefined;
 
     // Si llega allowed_currencies, lo validamos
     if (allowed_currencies !== undefined) {
@@ -83,14 +84,16 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          slug = COALESCE(?, slug),
          is_active = COALESCE(?, is_active),
          category_id = COALESCE(?, category_id),
-         allowed_currencies = COALESCE(?, allowed_currencies)
+         allowed_currencies = COALESCE(?, allowed_currencies),
+         whatsapp_instructions = COALESCE(?, whatsapp_instructions)
      WHERE id = ?`,
         [
             name ?? null,
             slug ?? null,
             is_active ?? null,
             category_id ?? null,
-            allowedCurrenciesCSV,
+            allowedCurrenciesCSV ?? null,
+            whatsapp_instructions !== undefined ? whatsapp_instructions : null,
             id,
         ]
     );

@@ -29,9 +29,16 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
         }
 
         lines.push(`📅 Expira: ${yyyy}`);
-        lines.push(
-            `*🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:*`
-        );
+
+        const customInstructions = r?.plan?.whatsapp_instructions;
+        if (customInstructions && String(customInstructions).trim() !== "") {
+            const finalInstruction = String(customInstructions)
+                .replace(/{URL}/gi, credentialUrl)
+                .replace(/{ENLACE}/gi, credentialUrl);
+
+            lines.push(finalInstruction);
+        }
+
         lines.push("");
         lines.push("");
     }

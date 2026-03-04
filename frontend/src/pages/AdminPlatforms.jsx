@@ -44,11 +44,15 @@ export default function AdminPlatforms() {
     const [slug, setSlug] = useState("");
     const [slugManual, setSlugManual] = useState(false);
     const [categoryId, setCategoryId] = useState("");
+    const [whatsappInst, setWhatsappInst] = useState("");
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
     const [uploadingId, setUploadingId] = useState(null);
     // Cache-busters por plataforma: { [platformId]: timestamp }
     const [logoTimestamps, setLogoTimestamps] = useState({});
+
+    // Estado para edición
+    const [editingPlatform, setEditingPlatform] = useState(null);
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -82,9 +86,10 @@ export default function AdminPlatforms() {
             const r = await apiPost("/admin/platforms", {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
+                whatsapp_instructions: whatsappInst,
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
-            setName(""); setSlug(""); setCategoryId(""); setSlugManual(false);
+            setName(""); setSlug(""); setCategoryId(""); setWhatsappInst(""); setSlugManual(false);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -113,6 +118,28 @@ export default function AdminPlatforms() {
             if (!r.ok) throw new Error(r.data?.message || "Error.");
             await load();
         } catch (e) { setError(e?.message || "Error actualizando monedas."); }
+    }
+
+    async function saveEditedPlatform(e) {
+        e.preventDefault();
+        setSaving(true); setError(""); setSuccessMsg("");
+        try {
+            const r = await apiPatch(`/admin/platforms/${editingPlatform.id}`, {
+                name: editingPlatform.name,
+                slug: editingPlatform.slug,
+                category_id: editingPlatform.category_id || null,
+                whatsapp_instructions: editingPlatform.whatsapp_instructions,
+            });
+            if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
+            setSuccessMsg("✅ Plataforma actualizada.");
+            setTimeout(() => setSuccessMsg(""), 4000);
+            setEditingPlatform(null);
+            await load();
+        } catch (err) {
+            setError(err?.message || "Error al actualizar.");
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function toggleActive(platformId, current) {
@@ -242,7 +269,7 @@ export default function AdminPlatforms() {
                             <span style={{ fontSize: 16 }}>✨</span>
                             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" }}>Nueva Plataforma</h3>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, alignItems: "end", marginBottom: 16 }}>
                             <div>
                                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Nombre *</label>
                                 <input style={inputStyle} placeholder="Ej: Netflix"
@@ -275,6 +302,20 @@ export default function AdminPlatforms() {
                                     </select>
                                     <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                 </div>
+                            </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                                    Instrucciones de Compra (WhatsApp/Bot)
+                                    <span style={{ fontSize: 9, opacity: 0.8, textTransform: "none" }}>Opcional. Usa {'{URL}'} para inyectar el enlace de credenciales.</span>
+                                </label>
+                                <textarea style={{ ...inputStyle, height: 42, padding: "10px 14px", resize: "none" }}
+                                    placeholder="Ej: Para ver tu clave ingresa a {URL}"
+                                    value={whatsappInst} onChange={e => setWhatsappInst(e.target.value)}
+                                    onFocus={e => e.target.style.borderColor = "#0da6f2"}
+                                    onBlur={e => e.target.style.borderColor = "var(--stroke)"}
+                                ></textarea>
                             </div>
                             <button className="btn" onClick={create} disabled={saving || !name.trim() || !slug.trim()}
                                 style={{ height: 42, padding: "0 22px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
@@ -411,19 +452,31 @@ export default function AdminPlatforms() {
                                                     </label>
                                                 </td>
 
-                                                {/* Activo */}
+                                                {/* Activo y Editar */}
                                                 <td style={{ padding: "12px 16px" }}>
-                                                    <button onClick={() => toggleActive(p.id, p.is_active)}
-                                                        style={{
-                                                            background: p.is_active ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-                                                            color: p.is_active ? "#10b981" : "#ef4444",
-                                                            border: `1px solid ${p.is_active ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
-                                                            padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 800,
-                                                            cursor: "pointer", fontFamily: "var(--font)",
-                                                            boxShadow: p.is_active ? "0 0 8px rgba(16,185,129,0.15)" : "none"
-                                                        }}>
-                                                        {p.is_active ? "● Activo" : "○ Inactivo"}
-                                                    </button>
+                                                    <div style={{ display: "flex", gap: 8 }}>
+                                                        <button onClick={() => toggleActive(p.id, p.is_active)}
+                                                            style={{
+                                                                background: p.is_active ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+                                                                color: p.is_active ? "#10b981" : "#ef4444",
+                                                                border: `1px solid ${p.is_active ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`,
+                                                                padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 800,
+                                                                cursor: "pointer", fontFamily: "var(--font)",
+                                                                boxShadow: p.is_active ? "0 0 8px rgba(16,185,129,0.15)" : "none"
+                                                            }}>
+                                                            {p.is_active ? "● Activo" : "○ Inactivo"}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setEditingPlatform(p)}
+                                                            style={{
+                                                                background: "rgba(255,255,255,0.05)", border: "1px solid var(--stroke)",
+                                                                color: "var(--text)", padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 800,
+                                                                cursor: "pointer"
+                                                            }}
+                                                        >
+                                                            ✎ Editar
+                                                        </button>
+                                                    </div>
                                                 </td>
                                             </motion.tr>
                                         );
@@ -434,6 +487,56 @@ export default function AdminPlatforms() {
                     </motion.div>
                 </main>
             </div>
+
+            {/* Modal Editar Plataforma */}
+            <AnimatePresence>
+                {editingPlatform && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        style={{ position: "fixed", inset: 0, zIndex: 99999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)" }}
+                        onClick={() => setEditingPlatform(null)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, y: 15 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 15 }}
+                            onClick={e => e.stopPropagation()}
+                            style={{ background: "var(--bg0)", border: "1px solid var(--stroke)", borderRadius: 20, width: "100%", maxWidth: 500, padding: 24, boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }}
+                        >
+                            <h2 style={{ fontSize: 18, fontWeight: 800, marginTop: 0, marginBottom: 20 }}>Editar Plataforma</h2>
+                            <form onSubmit={saveEditedPlatform} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Nombre</label>
+                                    <input style={inputStyle} value={editingPlatform.name || ""} onChange={e => setEditingPlatform({ ...editingPlatform, name: e.target.value })} required />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Slug</label>
+                                    <input style={{ ...inputStyle, fontFamily: "monospace" }} value={editingPlatform.slug || ""} onChange={e => setEditingPlatform({ ...editingPlatform, slug: e.target.value })} required />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Categoría</label>
+                                    <select style={selStyle} value={editingPlatform.category_id || ""} onChange={e => setEditingPlatform({ ...editingPlatform, category_id: e.target.value })}>
+                                        <option value="">Sin categoría</option>
+                                        {activeCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
+                                        Instrucciones de Compra (WhatsApp/Bot)
+                                    </label>
+                                    <textarea style={{ ...inputStyle, height: 80, padding: "10px 14px", resize: "none" }}
+                                        placeholder="Ej: Para tu clave ingresa a {URL}"
+                                        value={editingPlatform.whatsapp_instructions || ""}
+                                        onChange={e => setEditingPlatform({ ...editingPlatform, whatsapp_instructions: e.target.value })}
+                                    ></textarea>
+                                </div>
+                                <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
+                                    <button type="button" onClick={() => setEditingPlatform(null)} style={{ flex: 1, height: 44, borderRadius: 12, background: "transparent", border: "1px solid var(--stroke)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
+                                    <button type="submit" disabled={saving} style={{ flex: 1, height: 44, borderRadius: 12, background: "var(--accent)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(13,166,242,0.3)" }}>{saving ? "Guardando..." : "Guardar Cambios"}</button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

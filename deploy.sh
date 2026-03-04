@@ -3,7 +3,7 @@
 # Este script debe ser ejecutado EN EL VPS para desplegar los cambios desde GitHub.
 
 # Configuración
-PROJECT_DIR="/var/www/pagev3"  # <-- Ajusta esta ruta a la ubicación de tu proyecto en el VPS
+PROJECT_DIR="/var/www/pagv3strbx"  # <-- Confirmado con la versión V3 basada en los chats anteriores
 REPO_BRANCH="main"
 
 echo "========================================="

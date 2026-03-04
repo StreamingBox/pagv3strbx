@@ -21,8 +21,9 @@ export function useAdminPrices() {
     const [limit, setLimit] = useState(5);
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
+    const [q, setQ] = useState("");
 
-    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5) => {
+    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5, queryStr = q) => {
         setLoading(true);
         setError("");
 
@@ -30,7 +31,7 @@ export function useAdminPrices() {
             const [p, d, g] = await Promise.all([
                 fetchPlatforms(),
                 fetchDurations(),
-                fetchPricesGrouped({ page: pageNum, limit: currentLimit }),
+                fetchPricesGrouped({ page: pageNum, limit: currentLimit, q: queryStr }),
             ]);
 
             setPlatforms(p);
@@ -51,7 +52,7 @@ export function useAdminPrices() {
     }, []);
 
     useEffect(() => {
-        loadAll(1, 5);
+        loadAll(1, 5, "");
     }, [loadAll]);
 
     /**
@@ -78,7 +79,7 @@ export function useAdminPrices() {
                 };
 
                 await createPricesMulti(body);
-                await loadAll();
+                await loadAll(page, limit, q);
             } catch (e) {
                 setError(e?.message || "No se pudo guardar los precios.");
             } finally {
@@ -101,14 +102,14 @@ export function useAdminPrices() {
                 if (!ids.length) return;
 
                 await Promise.all(ids.map(id => patchPrice(id, { is_active: newState })));
-                await loadAll(page, limit);
+                await loadAll(page, limit, q);
             } catch (e) {
                 setError(e?.message || "No se pudo actualizar.");
             } finally {
                 setSaving(false);
             }
         },
-        [loadAll, page, limit]
+        [loadAll, page, limit, q]
     );
 
     return {
@@ -120,6 +121,8 @@ export function useAdminPrices() {
         error,
         page,
         limit,
+        q,
+        setQ,
         total,
         totalPages,
         loadAll,

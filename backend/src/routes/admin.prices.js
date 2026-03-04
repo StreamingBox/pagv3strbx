@@ -44,19 +44,31 @@ router.get("/admin/prices", requireAuth, requireRole("admin"), async (req, res) 
  */
 router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const { page = 1, limit = 5 } = req.query;
+        const { page = 1, limit = 5, q = "" } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
         const limitNum = Math.max(parseInt(limit, 10) || 5, 1);
         const offset = (pageNum - 1) * limitNum;
+
+        let whereClause = "";
+        let params = [];
+
+        if (q && q.trim().length > 0) {
+            whereClause = "WHERE p.name LIKE ? OR d.name LIKE ?";
+            const qStr = `%${q.trim()}%`;
+            params = [qStr, qStr];
+        }
 
         const countSql = `
             SELECT COUNT(*) as total FROM (
                 SELECT pp.platform_id, pp.duration_id
                 FROM platform_prices pp
+                JOIN platforms p ON p.id = pp.platform_id
+                JOIN durations d ON d.id = pp.duration_id
+                ${whereClause}
                 GROUP BY pp.platform_id, pp.duration_id
             ) as sub
         `;
-        const [countRows] = await pool.query(countSql);
+        const [countRows] = await pool.query(countSql, params);
         const total = countRows[0]?.total || 0;
 
         const querySql = `
@@ -84,12 +96,13 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
             FROM platform_prices pp
             JOIN platforms p ON p.id = pp.platform_id
             JOIN durations d ON d.id = pp.duration_id
+            ${whereClause}
             GROUP BY pp.platform_id, p.name, pp.duration_id, d.name, d.days
             ORDER BY p.name ASC, d.days ASC
             LIMIT ${limitNum} OFFSET ${offset}
         `;
 
-        const [rows] = await pool.query(querySql);
+        const [rows] = await pool.query(querySql, params);
 
         return res.json({
             items: rows,

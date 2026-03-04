@@ -64,6 +64,7 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
                 .replace(/{URL}/gi, credentialUrl)
                 .replace(/{ENLACE}/gi, credentialUrl);
 
+            lines.push("");
             lines.push(finalInstruction);
         }
 

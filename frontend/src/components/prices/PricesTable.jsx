@@ -17,7 +17,7 @@ const inputStyle = {
     fontFamily: "var(--font)", transition: "border-color 0.2s",
 };
 
-export default function PricesTable({ prices, loading, saving, page, limit, total, totalPages, onToggleAll, onSaveMulti, loadAll }) {
+export default function PricesTable({ prices, loading, saving, page, limit, total, totalPages, q, setQ, onToggleAll, onSaveMulti, loadAll }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
@@ -34,7 +34,19 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                 </div>
                 <div style={{ position: "relative" }}>
                     <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.4, pointerEvents: "none" }}>🔎</span>
-                    <input style={inputStyle} placeholder="Buscar plataforma o plan..."
+                    <input style={inputStyle} placeholder="Buscar plataforma o plan... (Enter)"
+                        value={q}
+                        onChange={e => {
+                            setQ(e.target.value);
+                            if (e.target.value === "") {
+                                loadAll(1, limit, "");
+                            }
+                        }}
+                        onKeyDown={e => {
+                            if (e.key === "Enter") {
+                                loadAll(1, limit, q);
+                            }
+                        }}
                         onFocus={e => e.target.style.borderColor = "#0da6f2"}
                         onBlur={e => e.target.style.borderColor = "var(--stroke)"}
                     />

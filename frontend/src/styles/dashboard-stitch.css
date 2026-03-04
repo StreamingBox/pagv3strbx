@@ -162,9 +162,8 @@
 
 .sb-cart-badge {
     position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    right: 14px;
+    top: 12px;
     background: #EF4444;
     color: white;
     font-size: 11px;

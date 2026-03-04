@@ -59,14 +59,28 @@ function guard(handler) {
 /** /start */
 async function cmdStart(msg) {
     const name = msg.from?.first_name || "Admin";
+    const opts = {
+        parse_mode: "MarkdownV2",
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🛒 Comprar a cliente", callback_data: "cmd_comprar" }
+                ],
+                [
+                    { text: "📦 Ver Stock", callback_data: "cmd_stock" },
+                    { text: "📊 Últimas Ventas", callback_data: "cmd_ventas" }
+                ],
+                [
+                    { text: "💳 Consultar mi saldo", callback_data: "cmd_saldo" }
+                ]
+            ]
+        }
+    };
+
     await bot.sendMessage(msg.chat.id,
         `👋 Hola *${escMd(name)}*\\!\n\n` +
-        `Soy el bot de *StreamingBox Admin*\\. Comandos disponibles:\n\n` +
-        `📦 /stock — Ver stock disponible\n` +
-        `📊 /ventas \\[n\\] — Últimas ventas\n` +
-        `💳 /saldo \\[@nombre\\] — Saldo de usuario\n` +
-        `🛒 /comprar — Asistente de compra interactivo`,
-        { parse_mode: "MarkdownV2" }
+        `Soy el bot de *StreamingBox Admin*\\. ¿Qué deseas hacer hoy?`,
+        opts
     );
 }
 
@@ -138,7 +152,7 @@ async function cmdVentas(msg, match) {
         const platStrs = Object.entries(counts).map(([name, q]) => q > 1 ? `${q}x ${name}` : name);
         const formatPlats = platStrs.join(", ");
 
-        const g = Number(r.profit) > 0 ? ` \\| 💵 *${escMd(money(r.profit))}*` : '';
+        const g = ` \\| 💵 *${escMd(money(r.profit || 0))}*`;
 
         return `🛒 *${escMd(r.order_code)}*\n👤 ${escMd(r.name || r.email)}\n📺 ${escMd(formatPlats)}\n💰 *${escMd(money(r.total))}*${g} \\| 📅 ${escMd(d)}`;
     });
@@ -335,6 +349,14 @@ async function handleBuyCallback(query) {
 
 /* ─── Registrar comandos ──────────────────────────────────────── */
 function setupCommands() {
+    bot.setMyCommands([
+        { command: "start", description: "Menú principal" },
+        { command: "comprar", description: "Asistente de compra" },
+        { command: "stock", description: "Ver stock disponible" },
+        { command: "ventas", description: "Últimas ventas" },
+        { command: "saldo", description: "Consultar un saldo" }
+    ]).catch(err => console.error("[TelegramBot] Error setting commands:", err));
+
     bot.onText(/^\/start$/, guard(cmdStart));
     bot.onText(/^\/stock$/, guard(cmdStock));
     bot.onText(/^\/ventas(?:\s+(\d+))?$/, guard(cmdVentas));
@@ -358,7 +380,20 @@ function setupCommands() {
     bot.on("callback_query", Object.assign(async (query) => {
         if (!isAuthorized(query.message.chat.id)) return bot.answerCallbackQuery(query.id, { text: "No autorizado" });
         try {
-            await handleBuyCallback(query);
+            const data = query.data;
+            const mockMsg = { chat: query.message.chat, from: query.from };
+
+            if (data === "cmd_stock") {
+                await cmdStock(mockMsg);
+            } else if (data === "cmd_ventas") {
+                await cmdVentas(mockMsg, [null, "10"]);
+            } else if (data === "cmd_saldo") {
+                await cmdSaldo(mockMsg, []);
+            } else if (data === "cmd_comprar") {
+                await cmdComprarStart(mockMsg, []);
+            } else {
+                await handleBuyCallback(query);
+            }
             bot.answerCallbackQuery(query.id).catch(() => { });
         } catch (e) {
             console.error("[TelegramBot callback error]", e);

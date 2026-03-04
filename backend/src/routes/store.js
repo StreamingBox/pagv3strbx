@@ -82,7 +82,8 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
         let whereCols = [
             "s.user_id = ?",
             "s.status != 'cancelled'",
-            "s.expires_at <= DATE_ADD(NOW(), INTERVAL 3 DAY)"
+            "s.expires_at <= DATE_ADD(NOW(), INTERVAL 3 DAY)",
+            "IFNULL(s.is_attended, 0) = 0"
         ];
         let params = [userId];
 

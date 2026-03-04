@@ -62,10 +62,10 @@ async function cmdStart(msg) {
     await bot.sendMessage(msg.chat.id,
         `👋 Hola *${escMd(name)}*\\!\n\n` +
         `Soy el bot de *StreamingBox Admin*\\. Comandos disponibles:\n\n` +
-        `📦 /stock \\— Ver stock disponible\n` +
-        `📊 /ventas \\[n\\] \\— Últimas ventas\n` +
-        `💳 /saldo \\[@username\\] \\— Saldo de usuario\n` +
-        `🛒 /comprar \\— Asistente de compra manual a cliente`,
+        `📦 /stock — Ver stock disponible\n` +
+        `📊 /ventas \\[n\\] — Últimas ventas\n` +
+        `💳 /saldo \\[@nombre\\] — Saldo de usuario\n` +
+        `🛒 /comprar — Asistente de compra interactivo`,
         { parse_mode: "MarkdownV2" }
     );
 }

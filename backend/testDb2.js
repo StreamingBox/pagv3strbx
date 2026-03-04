@@ -1,13 +1,13 @@
 require('dotenv').config();
 const pool = require('./src/db');
 
-async function migrate() {
+async function migrate_template() {
     try {
-        await pool.query("ALTER TABLE platforms ADD COLUMN whatsapp_instructions TEXT DEFAULT NULL");
-        console.log("Columna añadida con éxito.");
+        await pool.query("ALTER TABLE platforms RENAME COLUMN whatsapp_instructions TO whatsapp_template");
+        console.log("Columna renombrada con éxito.");
     } catch (e) {
-        if (e.code === 'ER_DUP_FIELDNAME') {
-            console.log("La columna ya existe.");
+        if (e.code === 'ER_BAD_FIELD_ERROR') {
+            console.log("whatsapp_instructions no existe. Verificando si existe whatsapp_template...");
         } else {
             console.error("Error MIGRATION:", e);
         }
@@ -15,4 +15,4 @@ async function migrate() {
         process.exit();
     }
 }
-migrate();
+migrate_template();

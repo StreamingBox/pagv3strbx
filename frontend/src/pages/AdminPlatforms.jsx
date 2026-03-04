@@ -44,7 +44,7 @@ export default function AdminPlatforms() {
     const [slug, setSlug] = useState("");
     const [slugManual, setSlugManual] = useState(false);
     const [categoryId, setCategoryId] = useState("");
-    const [whatsappInst, setWhatsappInst] = useState("");
+    const [whatsappTemplate, setWhatsappTemplate] = useState("");
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
     const [uploadingId, setUploadingId] = useState(null);
@@ -86,10 +86,10 @@ export default function AdminPlatforms() {
             const r = await apiPost("/admin/platforms", {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
-                whatsapp_instructions: whatsappInst,
+                whatsapp_template: whatsappTemplate,
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
-            setName(""); setSlug(""); setCategoryId(""); setWhatsappInst(""); setSlugManual(false);
+            setName(""); setSlug(""); setCategoryId(""); setWhatsappTemplate(""); setSlugManual(false);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -128,7 +128,7 @@ export default function AdminPlatforms() {
                 name: editingPlatform.name,
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
-                whatsapp_instructions: editingPlatform.whatsapp_instructions,
+                whatsapp_template: editingPlatform.whatsapp_template,
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");
@@ -307,12 +307,12 @@ export default function AdminPlatforms() {
                         <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
                             <div style={{ flex: 1 }}>
                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
-                                    Instrucciones de Compra (WhatsApp/Bot)
-                                    <span style={{ fontSize: 9, opacity: 0.8, textTransform: "none" }}>Opcional. Usa {'{URL}'} para inyectar el enlace de credenciales.</span>
+                                    Plantilla del Mensaje de Entrega
+                                    <span style={{ fontSize: 9, opacity: 0.8, textTransform: "none" }}>(Opcional). Variables: {'{PLATAFORMA}'}, {'{CORREO}'}, {'{PASSWORD}'}, {'{PERFIL}'}, {'{PIN}'}, {'{EXPIRA}'}, {'{URL}'}</span>
                                 </label>
-                                <textarea style={{ ...inputStyle, height: 42, padding: "10px 14px", resize: "none" }}
-                                    placeholder="Ej: Para ver tu clave ingresa a {URL}"
-                                    value={whatsappInst} onChange={e => setWhatsappInst(e.target.value)}
+                                <textarea style={{ ...inputStyle, height: 60, padding: "10px 14px", resize: "none" }}
+                                    placeholder="Dejar en blanco para usar mensaje por defecto.&#10;Ej: Tu cuenta de {PLATAFORMA} es {CORREO} y clave {PASSWORD}."
+                                    value={whatsappTemplate} onChange={e => setWhatsappTemplate(e.target.value)}
                                     onFocus={e => e.target.style.borderColor = "#0da6f2"}
                                     onBlur={e => e.target.style.borderColor = "var(--stroke)"}
                                 ></textarea>
@@ -520,12 +520,15 @@ export default function AdminPlatforms() {
                                 </div>
                                 <div>
                                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>
-                                        Instrucciones de Compra (WhatsApp/Bot)
+                                        Plantilla del Mensaje de Entrega
                                     </label>
-                                    <textarea style={{ ...inputStyle, height: 80, padding: "10px 14px", resize: "none" }}
-                                        placeholder="Ej: Para tu clave ingresa a {URL}"
-                                        value={editingPlatform.whatsapp_instructions || ""}
-                                        onChange={e => setEditingPlatform({ ...editingPlatform, whatsapp_instructions: e.target.value })}
+                                    <span style={{ fontSize: 10, color: "var(--muted)", display: "block", marginBottom: 6 }}>
+                                        Variables: <code>{'{PLATAFORMA}'}</code>, <code>{'{CORREO}'}</code>, <code>{'{PASSWORD}'}</code>, <code>{'{PERFIL}'}</code>, <code>{'{PIN}'}</code>, <code>{'{EXPIRA}'}</code>, <code>{'{URL}'}</code>
+                                    </span>
+                                    <textarea style={{ ...inputStyle, height: 120, padding: "10px 14px", resize: "none" }}
+                                        placeholder="Dejar en blanco para formato predeterminado..."
+                                        value={editingPlatform.whatsapp_template || ""}
+                                        onChange={e => setEditingPlatform({ ...editingPlatform, whatsapp_template: e.target.value })}
                                     ></textarea>
                                 </div>
                                 <div style={{ display: "flex", gap: 12, marginTop: 10 }}>

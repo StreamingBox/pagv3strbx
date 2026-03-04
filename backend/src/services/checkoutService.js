@@ -43,7 +43,7 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
          d.days,
          p.name AS platform_name,
          p.slug AS platform_slug,
-         p.whatsapp_instructions
+         p.whatsapp_template
        FROM platform_prices pp
        JOIN durations d ON d.id = pp.duration_id
        JOIN platforms p ON p.id = pp.platform_id

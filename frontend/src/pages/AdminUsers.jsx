@@ -54,6 +54,7 @@ export default function AdminUsers() {
         stats, loadUsers,
         doTopup, doAdjustProfit,
         doCreateUser, doChangePassword, doUpdateCurrency,
+        doResetInvestment, doAdjustInvested,
     } = useAdminUsers();
 
     async function logout() {
@@ -196,18 +197,18 @@ export default function AdminUsers() {
                                         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                             <thead>
                                                 <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                                                    {["ID", "Usuario", "Rol", "Moneda", "Saldo", "Ganancia", "Acciones"].map(h => (
+                                                    {["ID", "Usuario", "Rol", "Moneda", "Saldo", "Ganancia", "Inversión", "Acciones"].map(h => (
                                                         <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                                     ))}
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {loading ? (
-                                                    <tr><td colSpan={7} style={{ padding: "60px", textAlign: "center" }}>
+                                                    <tr><td colSpan={8} style={{ padding: "60px", textAlign: "center" }}>
                                                         <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                                                     </td></tr>
                                                 ) : filteredUsers.length === 0 ? (
-                                                    <tr><td colSpan={7} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                                    <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                         <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
                                                         {search ? "Sin resultados para esa búsqueda." : "No hay usuarios registrados."}
                                                     </td></tr>
@@ -245,6 +246,42 @@ export default function AdminUsers() {
                                                             </td>
                                                             <td style={{ padding: "13px 16px", color: "#10b981", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                                                                 +{fmtNum(u.profit_total)} <span style={{ fontSize: 10, color: "rgba(16,185,129,0.7)" }}>{u.currency}</span>
+                                                            </td>
+                                                            <td style={{ padding: "13px 16px" }}>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                                                    <span style={{
+                                                                        background: "rgba(20,184,166,0.1)",
+                                                                        border: "1px solid rgba(20,184,166,0.3)",
+                                                                        color: "#14b8a6",
+                                                                        borderRadius: 6, padding: "3px 8px",
+                                                                        fontSize: 11, fontWeight: 700,
+                                                                        fontVariantNumeric: "tabular-nums",
+                                                                        display: "flex", alignItems: "center", gap: 4
+                                                                    }}>
+                                                                        <span style={{ fontSize: 10, opacity: 0.7 }}>$</span>
+                                                                        {fmtNum(u.total_invested)}
+                                                                    </span>
+                                                                    <button
+                                                                        title="Resetear inversión total"
+                                                                        disabled={saving || !u.total_invested || Number(u.total_invested) === 0}
+                                                                        onClick={async () => {
+                                                                            if (!window.confirm(`¿Resetear la inversión total de ${u.name || u.email}? El saldo no se verá afectado.`)) return;
+                                                                            try { await doResetInvestment(u.id); }
+                                                                            catch { }
+                                                                        }}
+                                                                        style={{
+                                                                            background: "rgba(239,68,68,0.08)",
+                                                                            color: Number(u.total_invested) > 0 ? "#ef4444" : "var(--muted)",
+                                                                            border: `1px solid ${Number(u.total_invested) > 0 ? "rgba(239,68,68,0.3)" : "var(--stroke2)"}`,
+                                                                            borderRadius: 6, padding: "3px 8px",
+                                                                            fontSize: 11, fontWeight: 700,
+                                                                            cursor: Number(u.total_invested) > 0 ? "pointer" : "default",
+                                                                            opacity: Number(u.total_invested) > 0 ? 1 : 0.35,
+                                                                            fontFamily: "var(--font)",
+                                                                            transition: "all 0.2s",
+                                                                        }}
+                                                                    >🗑</button>
+                                                                </div>
                                                             </td>
                                                             <td style={{ padding: "13px 16px" }}>
                                                                 <button onClick={() => setHistoryUser(u)}
@@ -298,6 +335,7 @@ export default function AdminUsers() {
                                 <TopupCard
                                     users={allUsers} usersById={usersById}
                                     saving={saving} onTopup={doTopup} onAdjustProfit={doAdjustProfit}
+                                    onAdjustInvested={doAdjustInvested}
                                 />
                             )}
 

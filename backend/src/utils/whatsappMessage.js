@@ -10,6 +10,27 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
     for (const r of results) {
         const credentialUrl = `${cleanBaseUrl}/s/${r.token}`;
         const plan = r.plan || {};
+        const account = r.account || {};
+
+        if (plan.type === 'correo') {
+            lines.push(`🖥️ ${plan.platform_name}`);
+            const yyyy = r.expiresAt.toISOString().slice(0, 10);
+            lines.push(`📅 Expira: ${yyyy}`);
+            lines.push(``);
+            lines.push(`📲 *Escribe al numero 3006952221 para continuar con el proceso.*`);
+
+            const customInstructions = plan.whatsapp_instructions;
+            if (customInstructions && String(customInstructions).trim() !== "") {
+                const finalInstruction = String(customInstructions)
+                    .replace(/{URL}/gi, credentialUrl)
+                    .replace(/{ENLACE}/gi, credentialUrl);
+
+                lines.push("");
+                lines.push(finalInstruction);
+            }
+            lines.push("");
+            continue;
+        }
 
         // Extracción de booleanos (por defecto true si undefined/null)
         const showId = plan.wa_show_id !== 0;
@@ -27,23 +48,23 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
             lines.push(`🖥️ ${plan.platform_name}`);
         }
 
-        if (showEmail) {
-            lines.push(`📧 Correo: ${r.account.email}`);
+        if (showEmail && account.email) {
+            lines.push(`📧 Correo: ${account.email}`);
         }
 
-        if (showPass) {
-            lines.push(`🔑 Contraseña: ${r.account.password}`);
+        if (showPass && account.password) {
+            lines.push(`🔑 Contraseña: ${account.password}`);
         }
 
         if (showProfile) {
-            const profile = r?.account?.profile_number;
+            const profile = account.profile_number;
             if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
                 lines.push(`👤 Perfil: ${profile}`);
             }
         }
 
         if (showPin) {
-            const pin = r?.account?.pin;
+            const pin = account.pin;
             if (pin !== null && pin !== undefined && String(pin).trim() !== "") {
                 lines.push(`🔢 Pin: ${pin}`);
             }

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     adjustProfit,
+    adjustInvested,
     changeUserPassword,
     createUser,
     fetchUsers,
     fetchUserStats,
+    resetInvestment,
     topupWallet,
     updateUser,
 } from "../api/adminUsersApi";
@@ -101,6 +103,27 @@ export function useAdminUsers() {
         [loadUsers, page, limit]
     );
 
+    const doAdjustInvested = useCallback(
+        async ({ userId, amount, note }) => {
+            setSaving(true);
+            setError("");
+            try {
+                await adjustInvested({
+                    userId: Number(userId),
+                    amount: Number(amount),
+                    note: note || "",
+                });
+                await loadUsers(page, limit);
+            } catch (e) {
+                setError(e?.message || "Error ajustando inversión.");
+                throw e;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [loadUsers, page, limit]
+    );
+
     const doCreateUser = useCallback(
         async ({ name, email, password, role, currency }) => {
             setSaving(true);
@@ -148,6 +171,23 @@ export function useAdminUsers() {
         [loadUsers, page, limit]
     );
 
+    const doResetInvestment = useCallback(
+        async (userId) => {
+            setSaving(true);
+            setError("");
+            try {
+                await resetInvestment(userId);
+                await loadUsers(page, limit);
+            } catch (e) {
+                setError(e?.message || "Error reseteando inversión.");
+                throw e;
+            } finally {
+                setSaving(false);
+            }
+        },
+        [loadUsers, page, limit]
+    );
+
     return {
         users,
         allUsers,
@@ -166,5 +206,7 @@ export function useAdminUsers() {
         doCreateUser,
         doChangePassword,
         doUpdateCurrency,
+        doResetInvestment,
+        doAdjustInvested,
     };
 }

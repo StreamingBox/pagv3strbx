@@ -134,10 +134,44 @@ export default function Sidebar({
                                         {wallet?.currency || "COP"}
                                     </span>
                                 </div>
-                                <div className="sb-profit-row">
-                                    <span className="sb-profit-label">Ganancias totales</span>
-                                    <span className="sb-profit-value">
+
+                                {/* Divisor */}
+                                <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "10px 0 8px" }} />
+
+                                {/* Ganancias totales */}
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                    <span style={{
+                                        width: 22, height: 22, borderRadius: "50%",
+                                        background: "rgba(16,185,129,0.18)",
+                                        border: "1px solid rgba(16,185,129,0.35)",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        fontSize: 11, flexShrink: 0,
+                                    }}>📈</span>
+                                    <span className="sb-profit-label" style={{ flex: 1, fontSize: 12 }}>Ganancias totales</span>
+                                    <span className="sb-profit-value" style={{ fontSize: 13, fontWeight: 800, color: "#10b981" }}>
                                         +{Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
+                                    </span>
+                                </div>
+
+                                {/* Divisor sutil */}
+                                <div style={{ height: 1, background: "rgba(255,255,255,0.04)", margin: "4px 0" }} />
+
+                                {/* Inversión total — estilo Stitch: borde teal izquierdo */}
+                                <div style={{
+                                    display: "flex", alignItems: "center", gap: 8,
+                                    borderLeft: "2.5px solid #13c8ec",
+                                    paddingLeft: 8, marginTop: 4,
+                                }}>
+                                    <span style={{
+                                        width: 22, height: 22, borderRadius: "50%",
+                                        background: "rgba(19,200,236,0.15)",
+                                        border: "1px solid rgba(19,200,236,0.4)",
+                                        display: "flex", alignItems: "center", justifyContent: "center",
+                                        fontSize: 11, fontWeight: 900, color: "#13c8ec", flexShrink: 0,
+                                    }}>$</span>
+                                    <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>Inversión total</span>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: "#13c8ec" }}>
+                                        {Number(wallet?.total_invested || 0).toLocaleString("es-CO")}
                                     </span>
                                 </div>
                             </div>

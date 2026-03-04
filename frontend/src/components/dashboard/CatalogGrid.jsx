@@ -36,8 +36,13 @@ function getPlatformColor(slug, name) {
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart }) {
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
-        if (sa > 0 && sb <= 0) return -1;
-        if (sa <= 0 && sb > 0) return 1;
+        const aUnlim = a.platformType === 'correo';
+        const bUnlim = b.platformType === 'correo';
+        const aHasStock = aUnlim || sa > 0;
+        const bHasStock = bUnlim || sb > 0;
+
+        if (aHasStock && !bHasStock) return -1;
+        if (!aHasStock && bHasStock) return 1;
         const getPriority = (item) => {
             const cat = String(item.categoryName || "").toLowerCase();
             if (cat.includes("video")) return 1;
@@ -54,8 +59,9 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart }) {
         <div className="catalog-grid">
             {sorted.map((item, index) => {
                 if (index === 0) console.log("Catalog Item Sample:", item);
+                const isUnlimited = item.platformType === 'correo';
                 const stock = Number(item.stock || 0);
-                const outOfStock = stock <= 0;
+                const outOfStock = !isUnlimited && stock <= 0;
                 const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
                 const color = getPlatformColor(item.platformSlug, item.platformName);
 
@@ -120,9 +126,11 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart }) {
                             <div className="catalog-card__stock">
                                 <span className={`stock-dot${outOfStock ? " stock-dot--out" : ""}`} />
                                 <span className="catalog-card__stock-text">
-                                    {outOfStock
-                                        ? "Sin Stock"
-                                        : `Stock: ${stock}`
+                                    {isUnlimited
+                                        ? "Stock: ∞"
+                                        : outOfStock
+                                            ? "Sin Stock"
+                                            : `Stock: ${stock}`
                                     }
                                 </span>
                             </div>

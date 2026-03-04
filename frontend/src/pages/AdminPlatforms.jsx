@@ -44,6 +44,7 @@ export default function AdminPlatforms() {
     const [slug, setSlug] = useState("");
     const [slugManual, setSlugManual] = useState(false);
     const [categoryId, setCategoryId] = useState("");
+    const [type, setType] = useState("normal");
     const [whatsappInstructions, setWhatsappInstructions] = useState("");
 
     // Toggles Options
@@ -96,6 +97,7 @@ export default function AdminPlatforms() {
             const r = await apiPost("/admin/platforms", {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
+                type,
                 whatsapp_instructions: whatsappInstructions,
                 wa_show_id: waShowId,
                 wa_show_email: waShowEmail,
@@ -106,7 +108,7 @@ export default function AdminPlatforms() {
                 wa_show_url: waShowUrl
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
-            setName(""); setSlug(""); setCategoryId(""); setWhatsappInstructions(""); setSlugManual(false);
+            setName(""); setSlug(""); setCategoryId(""); setType("normal"); setWhatsappInstructions(""); setSlugManual(false);
             setWaShowId(true); setWaShowEmail(true); setWaShowPass(true); setWaShowProfile(true); setWaShowPin(true); setWaShowExpire(true); setWaShowUrl(true);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
@@ -146,6 +148,7 @@ export default function AdminPlatforms() {
                 name: editingPlatform.name,
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
+                type: editingPlatform.type || 'normal',
                 whatsapp_instructions: editingPlatform.whatsapp_instructions,
                 wa_show_id: editingPlatform.wa_show_id !== 0,
                 wa_show_email: editingPlatform.wa_show_email !== 0,
@@ -328,6 +331,18 @@ export default function AdminPlatforms() {
                                     <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                 </div>
                             </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Modo</label>
+                                <div style={{ position: "relative" }}>
+                                    <select style={selStyle} value={type} onChange={e => setType(e.target.value)}
+                                        onFocus={e => e.target.style.borderColor = "#0da6f2"}
+                                        onBlur={e => e.target.style.borderColor = "var(--stroke)"}>
+                                        <option value="normal">🎟 Normal (Control Stock)</option>
+                                        <option value="correo">📧 A correo (Sin Stock, Automático)</option>
+                                    </select>
+                                    <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
+                                </div>
+                            </div>
                         </div>
                         <div style={{ marginTop: 10 }}>
                             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
@@ -406,7 +421,7 @@ export default function AdminPlatforms() {
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                                        {["ID", "Nombre", "Slug", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
+                                        {["ID", "Nombre", "Slug", "Modo", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
                                             <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                         ))}
                                     </tr>
@@ -452,6 +467,19 @@ export default function AdminPlatforms() {
                                                 {/* Slug */}
                                                 <td style={{ padding: "12px 16px" }}>
                                                     <code style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--stroke)", borderRadius: 6, padding: "3px 8px", fontSize: 12, color: "var(--muted)", fontFamily: "monospace" }}>{p.slug}</code>
+                                                </td>
+
+                                                {/* Modo */}
+                                                <td style={{ padding: "12px 16px" }}>
+                                                    <span style={{
+                                                        fontSize: 11, fontWeight: 800, textTransform: "uppercase",
+                                                        padding: "3px 8px", borderRadius: 8,
+                                                        background: p.type === "correo" ? "rgba(13,166,242,0.15)" : "transparent",
+                                                        color: p.type === "correo" ? "#0da6f2" : "var(--muted)",
+                                                        border: p.type === "correo" ? "1px solid rgba(13,166,242,0.3)" : "none"
+                                                    }}>
+                                                        {p.type === "correo" ? "A CORREO" : "NORMAL"}
+                                                    </span>
                                                 </td>
 
                                                 {/* Categoría inline select */}
@@ -570,6 +598,13 @@ export default function AdminPlatforms() {
                                     <select style={selStyle} value={editingPlatform.category_id || ""} onChange={e => setEditingPlatform({ ...editingPlatform, category_id: e.target.value })}>
                                         <option value="">Sin categoría</option>
                                         {activeCategories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Modo</label>
+                                    <select style={selStyle} value={editingPlatform.type || "normal"} onChange={e => setEditingPlatform({ ...editingPlatform, type: e.target.value })}>
+                                        <option value="normal">Normal (Control de stock)</option>
+                                        <option value="correo">A Correo (Sin Stock, Automático)</option>
                                     </select>
                                 </div>
                                 <div>

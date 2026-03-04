@@ -13,7 +13,7 @@ const inp = {
 
 const lbl = { fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, display: "block" };
 
-export default function TopupCard({ users, usersById, saving, onTopup, onAdjustProfit }) {
+export default function TopupCard({ users, usersById, saving, onTopup, onAdjustProfit, onAdjustInvested }) {
     const [topupUserId, setTopupUserId] = useState("");
     const [amount, setAmount] = useState("");
     const [note, setNote] = useState("Ajuste admin");
@@ -31,6 +31,7 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
     const typeOptions = [
         { value: "balance", label: "💰 Saldo (Wallet)" },
         { value: "profit", label: "📈 Ganancia" },
+        { value: "invested", label: "💹 Inversión" },
     ];
 
     const opOptions = [
@@ -43,8 +44,13 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
         setErr("");
         const finalAmount = operation === "sub" ? -Math.abs(Number(amount)) : Math.abs(Number(amount));
         try {
-            if (adjustType === "balance") await onTopup({ userId: topupUserId, amount: finalAmount, note });
-            else await onAdjustProfit({ userId: topupUserId, amount: finalAmount, note });
+            if (adjustType === "balance") {
+                await onTopup({ userId: topupUserId, amount: finalAmount, note });
+            } else if (adjustType === "profit") {
+                await onAdjustProfit({ userId: topupUserId, amount: finalAmount, note });
+            } else if (adjustType === "invested") {
+                await onAdjustInvested({ userId: topupUserId, amount: finalAmount, note });
+            }
             setAmount("");
             setSuccess("✅ Ajuste realizado correctamente.");
             setTimeout(() => setSuccess(""), 4000);
@@ -62,7 +68,7 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
 
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
                 <span style={{ fontSize: 18 }}>💰</span>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Gestionar Saldo / Ganancia</h3>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Gestionar Ajustes (Saldo / Ganancia / Inversión)</h3>
             </div>
 
             {/* User info chip */}
@@ -73,6 +79,9 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
                     </span>
                     <span style={{ fontSize: 13, color: "var(--muted)" }}>
                         Ganancia: <b style={{ color: "#10b981" }}>{Number(selectedUser.profit_total).toLocaleString()} {selectedUser.currency}</b>
+                    </span>
+                    <span style={{ fontSize: 13, color: "var(--muted)" }}>
+                        Inversión: <b style={{ color: "#13c8ec" }}>{Number(selectedUser.total_invested).toLocaleString()} {selectedUser.currency}</b>
                     </span>
                 </div>
             )}

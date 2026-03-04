@@ -421,16 +421,21 @@
     font-family: var(--font);
     text-transform: uppercase;
     letter-spacing: .4px;
-    line-height: 1.2;
-    white-space: nowrap;
+    line-height: 1.25;
+    
+    /* Permite ver el texto en multiples lineas si es necesario (max 2 lineas) */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: normal;
 }
 
 /* Fila nombre + badge RENOVABLE */
 .catalog-card__name-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
     min-width: 0;
 }

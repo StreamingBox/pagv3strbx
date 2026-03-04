@@ -43,6 +43,7 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
          d.days,
          p.name AS platform_name,
          p.slug AS platform_slug,
+         p.type,
          p.whatsapp_instructions,
          p.wa_show_id,
          p.wa_show_email,
@@ -127,23 +128,27 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
         const results = [];
 
         for (const plan of plans) {
-            const [accRows] = await conn.query(
-                `SELECT id, email, password, pin, profile_number, access_url
-         FROM platform_accounts
-         WHERE platform_id = ? AND status = 'available'
-         ORDER BY id ASC
-         LIMIT 1
-         FOR UPDATE`,
-                [plan.platform_id]
-            );
+            let account = null;
 
-            if (!accRows.length) {
-                const err = new Error(`No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
-                err.status = 409;
-                throw err;
+            if (plan.type !== 'correo') {
+                const [accRows] = await conn.query(
+                    `SELECT id, email, password, pin, profile_number, access_url
+             FROM platform_accounts
+             WHERE platform_id = ? AND status = 'available'
+             ORDER BY id ASC
+             LIMIT 1
+             FOR UPDATE`,
+                    [plan.platform_id]
+                );
+
+                if (!accRows.length) {
+                    const err = new Error(`No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
+                    err.status = 409;
+                    throw err;
+                }
+                account = accRows[0];
             }
 
-            const account = accRows[0];
             const expiresAt = new Date(Date.now() + Number(plan.days) * 24 * 60 * 60 * 1000);
 
             const [subIns] = await conn.query(
@@ -156,7 +161,7 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
                     plan.platform_id,
                     plan.platform_price_id,
                     plan.duration_id,
-                    account.id,
+                    account ? account.id : null,
                     expiresAt,
                     Number(plan.price),
                     currency,
@@ -165,12 +170,14 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
 
             const subscriptionId = subIns.insertId;
 
-            await conn.query(
-                `UPDATE platform_accounts
-         SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
-         WHERE id=?`,
-                [userId, expiresAt, account.id]
-            );
+            if (account) {
+                await conn.query(
+                    `UPDATE platform_accounts
+             SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
+             WHERE id=?`,
+                    [userId, expiresAt, account.id]
+                );
+            }
 
             const token = await insertCredentialLinkWithRetry(conn, {
                 subscriptionId,

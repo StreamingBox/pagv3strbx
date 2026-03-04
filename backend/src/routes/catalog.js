@@ -34,6 +34,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.id AS platformId,
         p.name AS platformName,
         p.slug AS platformSlug,
+        p.type AS platformType,
 
         c.id AS categoryId,
         c.name AS categoryName,
@@ -95,6 +96,7 @@ router.get("/debug-catalog", async (req, res) => {
         p.id AS platformId,
         p.name AS platformName,
         p.slug AS platformSlug,
+        p.type AS platformType,
         c.id AS categoryId,
         c.name AS categoryName,
         d.id AS durationId,

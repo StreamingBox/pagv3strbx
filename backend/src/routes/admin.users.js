@@ -22,12 +22,25 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
             `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
                COALESCE(w.balance, 0) AS balance, 
                COALESCE(w.profit_total, 0) AS profit_total,
-               COALESCE(w.currency, 'COP') AS currency
+               COALESCE(w.currency, 'COP') AS currency,
+               (
+                 SELECT COALESCE(SUM(ABS(t.amount)), 0)
+                 FROM wallet_transactions t
+                 WHERE t.wallet_id = w.id
+                   AND t.type = 'purchase'
+                   AND t.amount < 0
+               ) + (
+                 SELECT COALESCE(SUM(t.amount), 0)
+                 FROM wallet_transactions t
+                 WHERE t.wallet_id = w.id
+                   AND t.type = 'invest_adj'
+               ) AS total_invested
         FROM users u
         LEFT JOIN wallets w ON w.user_id = u.id
         ORDER BY u.id DESC
         LIMIT ${limitNum} OFFSET ${offset}`
         );
+
 
         return res.json({
             items: rows,

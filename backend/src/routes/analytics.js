@@ -205,7 +205,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
         if (isAdmin) {
             if (req.query.userIds) {
                 targetUserIds = req.query.userIds.split(",").map(id => Number(id.trim())).filter(id => id > 0);
-            } else {
+            } else if (req.query.global === 'true') {
                 isGlobalAdmin = true; // No filter = ALL USERS
             }
         }
@@ -293,8 +293,11 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
                 userFilter = `AND user_id IN (${ids.map(() => "?").join(",")})`;
                 params.push(...ids);
             }
-            // no userIds param → global (todos los usuarios), sin filtro extra
-        } else if (!isAdmin) {
+            // no userIds param → si es global=true (todos los usuarios), sin filtro extra
+        } else if (isAdmin && req.query.global === 'true') {
+            userFilter = "";
+        } else {
+            // Personal view for admin (global NO es true) o vista de usuario normal
             userFilter = "AND user_id = ?";
             params.push(actingUser.id);
         }

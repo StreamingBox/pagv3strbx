@@ -102,6 +102,46 @@ router.post("/admin/wallet/adjust-profit", requireAuth, requireRole("admin"), as
     }
 });
 
+router.post("/admin/wallet/adjust-invested", requireAuth, requireRole("admin"), async (req, res) => {
+    const { userId, amount, note } = req.body || {};
+    if (!userId || amount === undefined) {
+        return res.status(400).json({ message: "userId y amount son obligatorios." });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [wrows] = await conn.query(
+            "SELECT id FROM wallets WHERE user_id = ? FOR UPDATE",
+            [userId]
+        );
+
+        if (!wrows.length) {
+            return res.status(404).json({ message: "Wallet no encontrada." });
+        }
+
+        const walletId = wrows[0].id;
+        const amt = Number(amount);
+
+        await conn.query(
+            `INSERT INTO wallet_transactions
+        (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+       VALUES (?, 'invest_adj', ?, 0, 'admin_invest_adj', NULL, ?)`,
+            [walletId, amt, note || "Ajuste de inversión admin"]
+        );
+
+        await conn.commit();
+        return res.json({ ok: true });
+    } catch (err) {
+        await conn.rollback();
+        console.error(err);
+        return res.status(500).json({ message: "Error interno." });
+    } finally {
+        conn.release();
+    }
+});
+
 // Obtener todas las transacciones globales (con filtro de usuario, tipo, búsqueda y fechas)
 router.get("/admin/wallet/transactions", requireAuth, requireRole("admin"), async (req, res) => {
     try {
@@ -252,6 +292,45 @@ router.get("/admin/wallet/transactions/:userId", requireAuth, requireRole("admin
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+// Resetear inversión total de un usuario (sin tocar el saldo)
+router.delete("/admin/wallet/investment/:userId", requireAuth, requireRole("admin"), async (req, res) => {
+    const { userId } = req.params;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const [wrows] = await conn.query(
+            "SELECT id FROM wallets WHERE user_id = ? LIMIT 1",
+            [userId]
+        );
+
+        if (!wrows.length) {
+            await conn.rollback();
+            return res.status(404).json({ message: "Wallet no encontrada." });
+        }
+
+        const walletId = wrows[0].id;
+
+        await conn.query("UPDATE wallets SET total_invested = 0 WHERE id = ?", [walletId]);
+
+        await conn.query(
+            `INSERT INTO wallet_transactions
+            (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+            VALUES (?, 'adjustment', 0, 0, 'admin_invest_reset', NULL, 'Reset inversión total')`,
+            [walletId]
+        );
+
+        await conn.commit();
+        return res.json({ ok: true, total_invested: 0 });
+    } catch (err) {
+        await conn.rollback();
+        console.error(err);
+        return res.status(500).json({ message: "Error interno." });
+    } finally {
+        conn.release();
     }
 });
 

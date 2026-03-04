@@ -79,14 +79,18 @@ export default function Dashboard() {
                     slug: item.categorySlug || "",
                     sortOrder: item.categorySortOrder ?? 9999,
                     totalStock: 0,
+                    hasUnlimited: false,
                 });
             }
 
             map.get(item.categoryId).totalStock += (Number(item.stock) || 0);
+            if (item.platformType === 'correo') {
+                map.get(item.categoryId).hasUnlimited = true;
+            }
         }
 
         return Array.from(map.values())
-            .filter(c => c.totalStock > 0)
+            .filter(c => c.totalStock > 0 || c.hasUnlimited)
             .sort((a, b) => {
                 const diff = (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
                 return diff !== 0 ? diff : String(a.name).localeCompare(String(b.name));

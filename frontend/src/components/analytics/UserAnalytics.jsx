@@ -451,6 +451,7 @@ function UserAnalyticsContent({ admin }) {
                 setMonthsData(results);
             } else {
                 let url = `/analytics/sales/multi?months=${selectedKeys.join(",")}`;
+                if (admin && selectedUserIds.length === 0) url += `&global=true`;
                 if (admin && selectedUserIds.length === 1) url += `&userIds=${selectedUserIds[0]}`;
                 const res = await apiGet(url);
                 const list = Array.isArray(res?.months) ? res.months : (Array.isArray(res?.data?.months) ? res.data.months : []);

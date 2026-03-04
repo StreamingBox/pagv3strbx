@@ -80,6 +80,13 @@ export async function adjustProfit(body) {
     });
 }
 
+export async function adjustInvested(body) {
+    return request("/admin/wallet/adjust-invested", {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
 export async function fetchAdminWalletTransactions(userId, query = {}) {
     const params = new URLSearchParams(query);
     return request(`/admin/wallet/transactions/${userId}?${params.toString()}`, {
@@ -94,4 +101,8 @@ export async function fetchAdminGlobalTransactions(query = {}) {
     });
 }
 
-
+export async function resetInvestment(userId) {
+    return request(`/admin/wallet/investment/${userId}`, {
+        method: "DELETE",
+    });
+}

@@ -3,38 +3,38 @@ const pool = require("../db");
 const router = express.Router();
 
 function escapeHtml(v) {
-    if (v === null || v === undefined) return "";
-    return String(v)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+  if (v === null || v === undefined) return "";
+  return String(v)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function fmtYMD(date) {
-    if (!date) return "-";
-    const d = new Date(date);
-    if (Number.isNaN(d.getTime())) return "-";
-    return d.toISOString().slice(0, 10);
+  if (!date) return "-";
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toISOString().slice(0, 10);
 }
 
 function daysLeft(date) {
-    if (!date) return null;
-    const end = new Date(date);
-    if (Number.isNaN(end.getTime())) return null;
-    end.setHours(23, 59, 59, 999);
-    const now = new Date();
-    const diff = end.getTime() - now.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  if (!date) return null;
+  const end = new Date(date);
+  if (Number.isNaN(end.getTime())) return null;
+  end.setHours(23, 59, 59, 999);
+  const now = new Date();
+  const diff = end.getTime() - now.getTime();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 router.get("/s/:token", async (req, res) => {
-    try {
-        const { token } = req.params;
+  try {
+    const { token } = req.params;
 
-        const [rows] = await pool.query(
-            `SELECT
+    const [rows] = await pool.query(
+      `SELECT
          cl.token,
          s.id AS order_id,
          s.expires_at,
@@ -45,39 +45,41 @@ router.get("/s/:token", async (req, res) => {
          a.pin,
          a.profile_number,
          cl.show_whatsapp,
-         u.whatsapp AS whatsapp_number
+         u.whatsapp AS whatsapp_number,
+         p.type AS platform_type,
+         p.whatsapp_instructions
        FROM credential_links cl
        JOIN subscriptions s ON s.id = cl.subscription_id
        JOIN platforms p ON p.id = s.platform_id
-       JOIN platform_accounts a ON a.id = s.platform_account_id
+       LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
        LEFT JOIN users u ON u.id = cl.created_by_user_id
        WHERE cl.token = ?
        LIMIT 1`,
-            [token]
-        );
+      [token]
+    );
 
-        if (!rows.length) return res.status(404).send("Link inválido.");
+    if (!rows.length) return res.status(404).send("Link inválido.");
 
-        const r = rows[0];
+    const r = rows[0];
 
-        const expired = new Date(r.expires_at).getTime() < Date.now();
-        const statusOk = r.status === "active";
-        if (expired || !statusOk) return res.status(403).send("Este link ya expiró.");
+    const expired = new Date(r.expires_at).getTime() < Date.now();
+    const statusOk = r.status === "active";
+    if (expired || !statusOk) return res.status(403).send("Este link ya expiró.");
 
-        const exp = fmtYMD(r.expires_at);
-        const remaining = daysLeft(r.expires_at);
+    const exp = fmtYMD(r.expires_at);
+    const remaining = daysLeft(r.expires_at);
 
-        // ✅ WhatsApp condicional (desde users)
-        const showWA = Number(r.show_whatsapp) === 1 && !!r.whatsapp_number;
+    // ✅ WhatsApp condicional (desde users)
+    const showWA = Number(r.show_whatsapp) === 1 && !!r.whatsapp_number;
 
-        const waNumber = showWA ? String(r.whatsapp_number) : null;
-        const waMsg = encodeURIComponent(
-            `Hola, necesito ayuda con mi cuenta.\nPedido: ${r.order_id}\nPlataforma: ${r.platform_name}`
-        );
-        const waLink = showWA ? `https://wa.me/${waNumber}?text=${waMsg}` : "";
+    const waNumber = showWA ? String(r.whatsapp_number) : null;
+    const waMsg = encodeURIComponent(
+      `Hola, necesito ayuda con mi cuenta.\nPedido: ${r.order_id}\nPlataforma: ${r.platform_name}`
+    );
+    const waLink = showWA ? `https://wa.me/${waNumber}?text=${waMsg}` : "";
 
-        const waButtonHtml = showWA
-            ? `
+    const waButtonHtml = showWA
+      ? `
         <div class="wa">
           <a href="${waLink}" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -88,21 +90,24 @@ router.get("/s/:token", async (req, res) => {
           </a>
         </div>
       `
-            : "";
+      : "";
 
-        const platformName = escapeHtml(r.platform_name || "Plataforma");
-        const email = escapeHtml(r.email || "-");
-        const password = escapeHtml(r.password || "-");
-        const pin = escapeHtml(r.pin ?? "-");
-        const profile = escapeHtml(r.profile_number ?? "-");
-        const orderId = escapeHtml(r.order_id ?? "-");
-        const expEsc = escapeHtml(exp);
-        const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
+    const platformName = escapeHtml(r.platform_name || "Plataforma");
+    const email = escapeHtml(r.email || "-");
+    const password = escapeHtml(r.password || "-");
+    const pin = escapeHtml(r.pin ?? "-");
+    const profile = escapeHtml(r.profile_number ?? "-");
+    const orderId = escapeHtml(r.order_id ?? "-");
+    const expEsc = escapeHtml(exp);
+    const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
 
-        const statusText = expired ? "Vencido" : "Activo";
-        const statusClass = expired ? "danger" : "ok";
+    const statusText = expired ? "Vencido" : "Activo";
+    const statusClass = expired ? "danger" : "ok";
 
-        return res.send(`<!doctype html>
+    const isEmailMode = r.platform_type === 'correo';
+    const customWaitMsg = r.whatsapp_instructions || "Por favor, escribe al administrador para continuar con el proceso.";
+
+    return res.send(`<!doctype html>
 <html lang="es">
 <head>
   <meta charset="utf-8" />
@@ -215,10 +220,20 @@ router.get("/s/:token", async (req, res) => {
     <div class="divider"></div>
 
     <div class="row"><div class="label">ID:</div><div class="value">${orderId}</div></div>
-    <div class="row"><div class="label">Correo:</div><div class="value">${email}</div></div>
-    <div class="row"><div class="label">Contraseña:</div><div class="value">${password}</div></div>
-    <div class="row"><div class="label">Perfil:</div><div class="value">${profile}</div></div>
-    <div class="row"><div class="label">Pin:</div><div class="value">${pin}</div></div>
+    
+    ${isEmailMode ? `
+        <div class="row" style="flex-direction: column; text-align: center; gap: 8px; padding: 20px 0;">
+            <div style="font-size: 24px;">📧</div>
+            <div style="color: var(--text); font-weight: bold;">Plataforma bajo pedido</div>
+            <div style="color: var(--muted); font-size: 13px;">${escapeHtml(customWaitMsg)}</div>
+        </div>
+    ` : `
+        <div class="row"><div class="label">Correo:</div><div class="value">${email}</div></div>
+        <div class="row"><div class="label">Contraseña:</div><div class="value">${password}</div></div>
+        <div class="row"><div class="label">Perfil:</div><div class="value">${profile}</div></div>
+        <div class="row"><div class="label">Pin:</div><div class="value">${pin}</div></div>
+    `}
+    
     <div class="row"><div class="label">Fecha Final:</div><div class="value">${expEsc}</div></div>
     <div class="row"><div class="label">Días restantes:</div><div class="value">${remainingEsc}</div></div>
     <div class="row"><div class="label">Estado:</div>
@@ -231,10 +246,10 @@ router.get("/s/:token", async (req, res) => {
   </div>
 </body>
 </html>`);
-    } catch (err) {
-        console.error(err);
-        return res.status(500).send("Error interno.");
-    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).send("Error interno.");
+  }
 });
 
 module.exports = router;

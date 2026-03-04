@@ -99,7 +99,9 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
             const promises = selectedMonthKeys.map(async (mk) => {
                 const [year, month] = mk.split("-").map(Number);
                 let url = `/analytics/sales/weekly?year=${year}&month=${month}`;
-                if (admin && selectedUserIds.length > 0) {
+                if (admin && selectedUserIds.length === 0) {
+                    url += `&global=true`;
+                } else if (admin && selectedUserIds.length > 0) {
                     url += `&userIds=${selectedUserIds.join(",")}`;
                 }
                 const res = await apiGet(url);

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { apiGet } from "../api/api";
 
 export function useDashboardData() {
-    const [wallet, setWallet] = useState({ balance: 0, profit_total: 0, currency: "COP" });
+    const [wallet, setWallet] = useState({ balance: 0, profit_total: 0, total_invested: 0, currency: "COP" });
     const [catalog, setCatalog] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -26,6 +26,7 @@ export function useDashboardData() {
             setWallet({
                 balance: Number(wRes.data?.balance ?? 0),
                 profit_total: Number(wRes.data?.profit_total ?? 0),
+                total_invested: Number(wRes.data?.total_invested ?? 0),
                 currency: wRes.data?.currency || "COP",
             });
 

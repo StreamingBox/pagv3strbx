@@ -25,7 +25,7 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
 // POST /admin/platforms
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
-        name, slug, category_id, whatsapp_instructions,
+        name, slug, category_id, type, whatsapp_instructions,
         wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
     } = req.body || {};
 
@@ -43,11 +43,11 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
 
     const [r] = await pool.query(
         `INSERT INTO platforms (
-            name, slug, category_id, is_active, allowed_currencies, 
+            name, slug, category_id, type, is_active, allowed_currencies, 
             whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
          )
-         VALUES (?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, slug, category_id ?? null, whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl]
+         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, slug, category_id ?? null, type ?? 'normal', whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl]
     );
 
     res.status(201).json({
@@ -55,6 +55,7 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         name,
         slug,
         category_id: category_id ?? null,
+        type: type ?? 'normal',
         is_active: 1,
         allowed_currencies: "COP,MXN,USD",
         whatsapp_instructions: whatsapp_instructions ?? null,
@@ -73,7 +74,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const { id } = req.params;
 
     const {
-        name, slug, is_active, category_id, allowed_currencies, whatsapp_instructions,
+        name, slug, is_active, category_id, type, allowed_currencies, whatsapp_instructions,
         wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
     } = req.body || {};
 
@@ -107,6 +108,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          slug = COALESCE(?, slug),
          is_active = COALESCE(?, is_active),
          category_id = COALESCE(?, category_id),
+         type = COALESCE(?, type),
          allowed_currencies = COALESCE(?, allowed_currencies),
          whatsapp_instructions = COALESCE(?, whatsapp_instructions),
          wa_show_id = COALESCE(?, wa_show_id),
@@ -122,6 +124,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             slug ?? null,
             is_active ?? null,
             category_id ?? null,
+            type ?? null,
             allowedCurrenciesCSV ?? null,
             whatsapp_instructions !== undefined ? whatsapp_instructions : null,
             wa_show_id !== undefined ? (wa_show_id ? 1 : 0) : null,

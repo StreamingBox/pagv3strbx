@@ -18,6 +18,7 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
         const showProfile = plan.wa_show_profile !== 0;
         const showPin = plan.wa_show_pin !== 0;
         const showExpire = plan.wa_show_expire !== 0;
+        const showUrl = plan.wa_show_url !== 0;
 
         // Construcción condicional
         if (showId) {
@@ -51,6 +52,10 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
         if (showExpire) {
             const yyyy = r.expiresAt.toISOString().slice(0, 10);
             lines.push(`📅 Expira: ${yyyy}`);
+        }
+
+        if (showUrl) {
+            lines.push(`*🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:*`);
         }
 
         const customInstructions = plan.whatsapp_instructions;

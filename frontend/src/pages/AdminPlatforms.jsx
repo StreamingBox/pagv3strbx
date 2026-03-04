@@ -53,6 +53,7 @@ export default function AdminPlatforms() {
     const [waShowProfile, setWaShowProfile] = useState(true);
     const [waShowPin, setWaShowPin] = useState(true);
     const [waShowExpire, setWaShowExpire] = useState(true);
+    const [waShowUrl, setWaShowUrl] = useState(true);
 
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
@@ -101,11 +102,12 @@ export default function AdminPlatforms() {
                 wa_show_pass: waShowPass,
                 wa_show_profile: waShowProfile,
                 wa_show_pin: waShowPin,
-                wa_show_expire: waShowExpire
+                wa_show_expire: waShowExpire,
+                wa_show_url: waShowUrl
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setWhatsappInstructions(""); setSlugManual(false);
-            setWaShowId(true); setWaShowEmail(true); setWaShowPass(true); setWaShowProfile(true); setWaShowPin(true); setWaShowExpire(true);
+            setWaShowId(true); setWaShowEmail(true); setWaShowPass(true); setWaShowProfile(true); setWaShowPin(true); setWaShowExpire(true); setWaShowUrl(true);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -150,7 +152,8 @@ export default function AdminPlatforms() {
                 wa_show_pass: editingPlatform.wa_show_pass !== 0,
                 wa_show_profile: editingPlatform.wa_show_profile !== 0,
                 wa_show_pin: editingPlatform.wa_show_pin !== 0,
-                wa_show_expire: editingPlatform.wa_show_expire !== 0
+                wa_show_expire: editingPlatform.wa_show_expire !== 0,
+                wa_show_url: editingPlatform.wa_show_url !== 0
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");
@@ -348,6 +351,9 @@ export default function AdminPlatforms() {
                                 </label>
                                 <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
                                     <input type="checkbox" checked={waShowExpire} onChange={e => setWaShowExpire(e.target.checked)} /> Mostrar Expiración
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+                                    <input type="checkbox" checked={waShowUrl} onChange={e => setWaShowUrl(e.target.checked)} /> Mostrar Link de Credenciales
                                 </label>
                             </div>
 
@@ -588,6 +594,9 @@ export default function AdminPlatforms() {
                                         </label>
                                         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
                                             <input type="checkbox" checked={editingPlatform.wa_show_expire !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_expire: e.target.checked ? 1 : 0 })} /> Expiración
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+                                            <input type="checkbox" checked={editingPlatform.wa_show_url !== 0} onChange={e => setEditingPlatform({ ...editingPlatform, wa_show_url: e.target.checked ? 1 : 0 })} /> Link Credenciales
                                         </label>
                                     </div>
 

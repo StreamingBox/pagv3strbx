@@ -26,7 +26,7 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire
+        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
     } = req.body || {};
 
     if (!name || !slug) {
@@ -39,14 +39,15 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const showProfile = wa_show_profile !== undefined ? (wa_show_profile ? 1 : 0) : 1;
     const showPin = wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : 1;
     const showExpire = wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : 1;
+    const showUrl = wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : 1;
 
     const [r] = await pool.query(
         `INSERT INTO platforms (
             name, slug, category_id, is_active, allowed_currencies, 
-            whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire
+            whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
          )
-         VALUES (?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?)`,
-        [name, slug, category_id ?? null, whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire]
+         VALUES (?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, slug, category_id ?? null, whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl]
     );
 
     res.status(201).json({
@@ -62,7 +63,8 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         wa_show_pass: showPass,
         wa_show_profile: showProfile,
         wa_show_pin: showPin,
-        wa_show_expire: showExpire
+        wa_show_expire: showExpire,
+        wa_show_url: showUrl
     });
 });
 
@@ -72,7 +74,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, allowed_currencies, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire
+        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -112,7 +114,8 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          wa_show_pass = COALESCE(?, wa_show_pass),
          wa_show_profile = COALESCE(?, wa_show_profile),
          wa_show_pin = COALESCE(?, wa_show_pin),
-         wa_show_expire = COALESCE(?, wa_show_expire)
+         wa_show_expire = COALESCE(?, wa_show_expire),
+         wa_show_url = COALESCE(?, wa_show_url)
      WHERE id = ?`,
         [
             name ?? null,
@@ -127,6 +130,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             wa_show_profile !== undefined ? (wa_show_profile ? 1 : 0) : null,
             wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : null,
             wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : null,
+            wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : null,
             id,
         ]
     );

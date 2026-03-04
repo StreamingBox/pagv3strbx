@@ -49,7 +49,8 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
          p.wa_show_pass,
          p.wa_show_profile,
          p.wa_show_pin,
-         p.wa_show_expire
+         p.wa_show_expire,
+         p.wa_show_url
        FROM platform_prices pp
        JOIN durations d ON d.id = pp.duration_id
        JOIN platforms p ON p.id = pp.platform_id

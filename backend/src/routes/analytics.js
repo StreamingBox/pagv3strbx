@@ -263,4 +263,93 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
     }
 });
 
+/**
+ * Ventas semanales: GET /analytics/sales/weekly?year=&month=&userIds=
+ * Agrupa las órdenes del mes en 4 semanas:
+ *   Sem1: días 1-7 | Sem2: 8-14 | Sem3: 15-21 | Sem4: 22-fin
+ */
+router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
+    try {
+        const actingUser = req.user;
+        const isAdmin = actingUser.role === "admin";
+
+        const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
+        const targetYear = parseInt(req.query.year, 10) || now.getUTCFullYear();
+        const targetMonth = parseInt(req.query.month, 10) || (now.getUTCMonth() + 1);
+
+        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+            targetMonth < 1 || targetMonth > 12) {
+            return res.status(400).json({ error: "Parámetros year/month inválidos" });
+        }
+
+        // Build user filter
+        let userFilter = "";
+        let params = [targetYear, targetMonth];
+
+        if (isAdmin && req.query.userIds) {
+            const ids = req.query.userIds.split(",")
+                .map(id => Number(id.trim())).filter(id => id > 0);
+            if (ids.length > 0) {
+                userFilter = `AND user_id IN (${ids.map(() => "?").join(",")})`;
+                params.push(...ids);
+            }
+            // no userIds param → global (todos los usuarios), sin filtro extra
+        } else if (!isAdmin) {
+            userFilter = "AND user_id = ?";
+            params.push(actingUser.id);
+        }
+
+        // Daily totals for the month (Colombia time UTC-5)
+        const [rows] = await pool.query(`
+            SELECT
+                DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) AS day,
+                COUNT(id)    AS orders,
+                SUM(total)   AS revenue
+            FROM orders
+            WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR))  = ?
+              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              ${userFilter}
+            GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
+            ORDER BY day ASC
+        `, params);
+
+        // Week buckets
+        const WEEKS = [
+            { week: 1, label: "Semana 1", startDay: 1, endDay: 7, revenue: 0, orders: 0, daily: [] },
+            { week: 2, label: "Semana 2", startDay: 8, endDay: 14, revenue: 0, orders: 0, daily: [] },
+            { week: 3, label: "Semana 3", startDay: 15, endDay: 21, revenue: 0, orders: 0, daily: [] },
+            { week: 4, label: "Semana 4", startDay: 22, endDay: 31, revenue: 0, orders: 0, daily: [] },
+        ];
+
+        for (const row of rows) {
+            const day = Number(row.day);
+            const wk = WEEKS.find(w => day >= w.startDay && day <= w.endDay);
+            if (wk) {
+                wk.revenue += Number(row.revenue || 0);
+                wk.orders += Number(row.orders || 0);
+                wk.daily.push({ day, revenue: Number(row.revenue || 0), orders: Number(row.orders || 0) });
+            }
+        }
+
+        // Add growth vs previous week
+        const weeks = WEEKS.map((w, i) => {
+            const prev = WEEKS[i - 1];
+            const growth = prev && prev.revenue > 0
+                ? Number(((w.revenue - prev.revenue) / prev.revenue * 100).toFixed(1))
+                : null;
+            return { ...w, growth };
+        });
+
+        const bestWeek = [...weeks].sort((a, b) => b.revenue - a.revenue)[0];
+        const totalRevenue = weeks.reduce((s, w) => s + w.revenue, 0);
+        const totalOrders = weeks.reduce((s, w) => s + w.orders, 0);
+
+        return res.json({ year: targetYear, month: targetMonth, weeks, bestWeek, total: totalRevenue, orders: totalOrders });
+    } catch (err) {
+        console.error("Error GET /analytics/sales/weekly:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
+    }
+});
+
 module.exports = router;
+

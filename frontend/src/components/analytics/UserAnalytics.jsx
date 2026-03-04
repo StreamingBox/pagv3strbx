@@ -2,6 +2,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import SalesChart, { MONTH_COLORS } from "./SalesChart";
 import DistributionChart from "./DistributionChart";
+import WeeklyChart from "./WeeklyChart";
 import { apiGet } from "../../api/api";
 
 class ErrorBoundary extends React.Component {
@@ -364,6 +365,7 @@ function UserAnalyticsContent({ admin }) {
     const now = new Date();
     const currentYear = now.getFullYear();
 
+    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly"
     const [year, setYear] = useState(currentYear);
     const [chartType, setChartType] = useState("area");
 
@@ -472,7 +474,13 @@ function UserAnalyticsContent({ admin }) {
 
     function toggleMonth(key) {
         setSelectedKeys(prev => {
-            if (admin && selectedUserIds.length >= 2) return [key];
+            if (admin && selectedUserIds.length >= 2) return [key]; // comparando usuarios: 1 mes
+            // Modo semanal: máx 3 meses
+            if (viewMode === "weekly") {
+                if (prev.includes(key)) return prev.length > 1 ? prev.filter(k => k !== key) : prev; // no dejar vacío
+                if (prev.length >= 3) return prev; // máx 3
+                return [...prev, key];
+            }
             if (prev.includes(key)) return prev.filter(k => k !== key);
             if (prev.length >= 6) return prev;
             return [...prev, key];
@@ -518,7 +526,7 @@ function UserAnalyticsContent({ admin }) {
                             {admin ? "Analíticas Globales" : "Mis Analíticas de Ventas"}
                         </h1>
                         <p style={{ margin: "6px 0 0 42px", fontSize: 13, color: "var(--muted)" }}>
-                            {isComparingUsers ? "Comparando usuarios en el mes seleccionado" : "Selecciona hasta 6 meses para comparar"}
+                            {isComparingUsers ? "Comparando usuarios en el mes seleccionado" : viewMode === "weekly" ? "Desglose semanal del mes seleccionado" : "Selecciona hasta 6 meses para comparar"}
                         </p>
                     </div>
 
@@ -573,13 +581,42 @@ function UserAnalyticsContent({ admin }) {
                             />
                         )}
 
-                        {/* Chart type */}
+                        {/* Chart type — disponible en ambos modos */}
                         <PillSelect
                             value={chartType}
                             onChange={e => setChartType(e.target.value)}
                             options={[{ value: "area", label: "Área" }, { value: "bar", label: "Barras" }]}
                             icon="📈"
                         />
+
+                        {/* Tab toggle Mensual / Semanal */}
+                        <div style={{
+                            display: "inline-flex", background: "var(--bg0)",
+                            border: "1px solid var(--stroke)", borderRadius: 12,
+                            padding: 3, gap: 2,
+                        }}>
+                            {[{ key: "monthly", icon: "📅", label: "Mensual" }, { key: "weekly", icon: "📊", label: "Semanal" }].map(tab => (
+                                <button
+                                    key={tab.key}
+                                    onClick={() => setViewMode(tab.key)}
+                                    style={{
+                                        height: CTRL_H, padding: "0 12px", borderRadius: 9,
+                                        fontSize: 12, fontWeight: 700, fontFamily: "var(--font)",
+                                        cursor: "pointer", border: "none",
+                                        display: "inline-flex", alignItems: "center", gap: 5,
+                                        background: viewMode === tab.key
+                                            ? "linear-gradient(135deg, var(--accent), #8b5cf6)"
+                                            : "transparent",
+                                        color: viewMode === tab.key ? "#fff" : "var(--muted)",
+                                        boxShadow: viewMode === tab.key ? "0 2px 12px rgba(13,166,242,0.3)" : "none",
+                                        transition: "all 0.18s ease",
+                                    }}
+                                >
+                                    <span>{tab.icon}</span>
+                                    <span>{tab.label}</span>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -600,7 +637,7 @@ function UserAnalyticsContent({ admin }) {
                                 fontSize: 11, fontWeight: 800, color: "var(--muted)",
                                 textTransform: "uppercase", letterSpacing: "0.8px", marginRight: 4, flexShrink: 0,
                             }}>
-                                {isComparingUsers ? "Mes a analizar:" : "Comparar:"}
+                                {viewMode === "weekly" ? "Mes a desglosar:" : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
                             </span>
                             {filteredMonths.map((m) => {
                                 const key = monthKey(m.year, m.month);
@@ -644,8 +681,20 @@ function UserAnalyticsContent({ admin }) {
                 </motion.div>
             )}
 
-            {/* KPI Cards */}
-            {monthsData.length > 0 && !loadingData && (
+            {/* ─── Vista Semanal ─── */}
+            {viewMode === "weekly" && !loadingMonths && (
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+                    <WeeklyChart
+                        selectedMonthKeys={selectedKeys}
+                        admin={admin}
+                        selectedUserIds={selectedUserIds}
+                        chartType={chartType}
+                    />
+                </motion.div>
+            )}
+
+            {/* KPI Cards — solo mensual */}
+            {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     className="kpi-cards-grid"
                     style={{ display: "grid", gap: 14, marginBottom: 20 }}>
@@ -663,8 +712,8 @@ function UserAnalyticsContent({ admin }) {
                 </motion.div>
             )}
 
-            {/* Charts */}
-            {monthsData.length > 0 && !loadingData && (
+            {/* Charts — solo en modo mensual */}
+            {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 

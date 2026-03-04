@@ -11,7 +11,6 @@ const pool = mysql.createPool({
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
     connectTimeout: 10000,      // 10s para establecer conexión
-    acquireTimeout: 15000,      // 15s máximo para obtener conexión del pool
     // Ensure timestamps from DB are parsed as UTC so our manual UTC-5
     // offset in SQL queries (DATE_SUB 5 HOUR) works correctly.
     timezone: '+00:00',

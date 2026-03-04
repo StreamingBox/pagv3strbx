@@ -207,7 +207,24 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
 
         await conn.commit();
 
-        // 8) Mensaje WhatsApp
+        // 8) Notificación Telegram (fire-and-forget, no bloquea)
+        const sellerInfo = await pool.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1", [userId]
+        ).then(([r]) => r[0]).catch(() => null);
+
+        const { notifySale } = require("./telegramBot");
+        notifySale({
+            seller: sellerInfo?.name || sellerInfo?.email || `ID ${userId}`,
+            platforms: plans.map(p => p.platform_name),
+            total,
+            currency,
+            discount: total,          // lo que se descontó del wallet
+            profit: profitToAdd,     // ganancia registrada
+            newBalance,
+            orderCode,
+        }).catch(e => console.error("[TelegramBot] notifySale error:", e?.message));
+
+        // 9) Mensaje WhatsApp
         const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
         const message = buildWhatsappMessage({ orderCode, results, baseUrl });
 
@@ -233,7 +250,7 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
             },
         };
     } catch (err) {
-        try { await conn.rollback(); } catch {}
+        try { await conn.rollback(); } catch { }
         throw err;
     } finally {
         conn.release();

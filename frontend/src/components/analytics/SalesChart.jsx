@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
     ResponsiveContainer,
     AreaChart,
@@ -26,14 +27,23 @@ export const MONTH_COLORS = [
     "#06b6d4", // teal
 ];
 
-function isLight() {
-    return document.documentElement.getAttribute("data-theme") === "light";
+function useIsLight() {
+    const [light, setLight] = useState(
+        () => document.documentElement.getAttribute("data-theme") === "light"
+    );
+    useEffect(() => {
+        const observer = new MutationObserver(() => {
+            setLight(document.documentElement.getAttribute("data-theme") === "light");
+        });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+        return () => observer.disconnect();
+    }, []);
+    return light;
 }
 
 /** Tooltip custom multi-mes */
-function CustomTooltip({ active, payload, label, monthMeta }) {
+function CustomTooltip({ active, payload, label, monthMeta, light }) {
     if (!active || !payload?.length) return null;
-    const light = isLight();
     return (
         <div style={{
             background: light ? "rgba(255,255,255,0.97)" : "rgba(10,15,30,0.96)",
@@ -103,8 +113,8 @@ export default function SalesChart({ months = [], chartType = "area" }) {
             return row;
         });
 
-    const light = isLight();
-    const axisColor = light ? "rgba(11,16,32,0.50)" : "rgba(220,238,255,0.45)";
+    const light = useIsLight();
+    const axisColor = light ? "rgba(11,16,32,0.65)" : "rgba(220,238,255,0.45)";
     const gridColor = light ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)";
 
     const tickFormatter = (val) => {
@@ -125,7 +135,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
     const grid = <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />;
     const tooltipEl = (
         <Tooltip
-            content={<CustomTooltip monthMeta={months} />}
+            content={<CustomTooltip monthMeta={months} light={light} />}
             cursor={{ stroke: light ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.07)", strokeWidth: 1, strokeDasharray: "4 3" }}
         />
     );

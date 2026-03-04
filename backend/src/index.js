@@ -34,6 +34,7 @@ const adminBrandingRoutes = require("./routes/admin.branding");
 const authRoutes = require("./routes/auth");
 const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
+const { initBot } = require("./services/telegramBot");
 
 const app = express();
 
@@ -196,4 +197,8 @@ app.use("/api", adminDurations);
 app.use("/api", analyticsRoutes);
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`API running on :${port}`));
+app.listen(port, () => {
+    console.log(`API running on :${port}`);
+    initBot(); // ← Telegram bot
+});
+

@@ -13,10 +13,15 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
     try {
         const { userId, year, month } = req.query;
 
-        // Current month reference
-        const now = new Date();
+        // Current month reference — use Colombia time (UTC-5)
+        const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1); // 1-12
+
+        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+            targetMonth < 1 || targetMonth > 12) {
+            return res.status(400).json({ error: "Parámetros year/month inválidos" });
+        }
 
         // Previous month
         let prevYear = targetYear;
@@ -24,37 +29,44 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
         if (prevMonth === 0) { prevMonth = 12; prevYear--; }
 
         const userFilter = userId ? "AND u.id = ?" : "";
-        const params = userId ? [userId] : [];
+        // Parámetros en orden: year, month, [userId]
+        const curParams = userId ? [targetYear, targetMonth, userId] : [targetYear, targetMonth];
+        const prevParams = userId ? [prevYear, prevMonth, userId] : [prevYear, prevMonth];
 
-        // Current month daily totals (count of purchases)
+        // Current month daily totals — grouped in Colombia time (UTC-5)
         const curQuery = `
             SELECT
-                DAY(o.created_at) as day,
+                DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) as day,
                 COUNT(o.id) as orders,
                 SUM(o.total) as revenue
             FROM orders o
             JOIN users u ON o.user_id = u.id
-            WHERE YEAR(o.created_at) = ${targetYear} AND MONTH(o.created_at) = ${targetMonth}
+            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
             ${userFilter}
-            GROUP BY DAY(o.created_at)
+            GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
-        const [curRows] = await pool.query(curQuery, params);
-
-        // Previous month daily totals
+        // Previous month daily totals — grouped in Colombia time (UTC-5)
         const prevQuery = `
             SELECT
-                DAY(o.created_at) as day,
+                DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) as day,
                 COUNT(o.id) as orders,
                 SUM(o.total) as revenue
             FROM orders o
             JOIN users u ON o.user_id = u.id
-            WHERE YEAR(o.created_at) = ${prevYear} AND MONTH(o.created_at) = ${prevMonth}
+            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
             ${userFilter}
-            GROUP BY DAY(o.created_at)
+            GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
-        const [prevRows] = await pool.query(prevQuery, params);
+
+        // ✅ Paralelo: curRows y prevRows al mismo tiempo
+        const [[curRows], [prevRows]] = await Promise.all([
+            pool.query(curQuery, curParams),
+            pool.query(prevQuery, prevParams),
+        ]);
 
         // Summary totals
         const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
@@ -80,36 +92,39 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         const userId = req.user.id;
         const { year, month } = req.query;
 
-        const now = new Date();
+        // Use Colombia time (UTC-5) as reference
+        const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1);
+
+        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+            targetMonth < 1 || targetMonth > 12) {
+            return res.status(400).json({ error: "Parámetros year/month inválidos" });
+        }
 
         let prevYear = targetYear;
         let prevMonth = targetMonth - 1;
         if (prevMonth === 0) { prevMonth = 12; prevYear--; }
 
         const curQuery = `
-            SELECT DAY(created_at) as day, COUNT(id) as orders, SUM(total) as revenue
+            SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
             FROM orders
-            WHERE user_id = ? AND YEAR(created_at) = ${targetYear} AND MONTH(created_at) = ${targetMonth}
-            GROUP BY DAY(created_at)
+            WHERE user_id = ?
+              AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+            GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
-        const [curRows] = await pool.query(curQuery, [userId]);
 
         const prevQuery = `
-            SELECT DAY(created_at) as day, COUNT(id) as orders, SUM(total) as revenue
+            SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
             FROM orders
-            WHERE user_id = ? AND YEAR(created_at) = ${prevYear} AND MONTH(created_at) = ${prevMonth}
-            GROUP BY DAY(created_at)
+            WHERE user_id = ?
+              AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+            GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
-        const [prevRows] = await pool.query(prevQuery, [userId]);
-
-        const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
-        const prevTotal = prevRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
-        const curOrders = curRows.reduce((s, r) => s + Number(r.orders || 0), 0);
-        const prevOrders = prevRows.reduce((s, r) => s + Number(r.orders || 0), 0);
 
         // Distribución por plataforma (mes actual)
         const curDistQuery = `
@@ -117,11 +132,19 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN platforms p ON p.id = oi.platform_id
-            WHERE o.user_id = ? AND YEAR(o.created_at) = ${targetYear} AND MONTH(o.created_at) = ${targetMonth}
+            WHERE o.user_id = ?
+              AND YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
             GROUP BY p.id, p.name
             ORDER BY value DESC
         `;
-        const [curDistRows] = await pool.query(curDistQuery, [userId]);
+
+        // ✅ Paralelo: las 3 queries al mismo tiempo
+        const [[curRows], [prevRows], [curDistRows]] = await Promise.all([
+            pool.query(curQuery, [userId, targetYear, targetMonth]),
+            pool.query(prevQuery, [userId, prevYear, prevMonth]),
+            pool.query(curDistQuery, [userId, targetYear, targetMonth]),
+        ]);
 
         return res.json({
             current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders, distribution: curDistRows },
@@ -142,15 +165,23 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const { year } = req.query;
-        const yearFilter = year ? `AND YEAR(created_at) = ${parseInt(year, 10)}` : "";
+        const parsedYear = year ? parseInt(year, 10) : null;
+        const yearFilter = parsedYear && Number.isFinite(parsedYear)
+            ? "AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?"
+            : "";
+        const params = parsedYear && Number.isFinite(parsedYear)
+            ? [userId, parsedYear]
+            : [userId];
 
         const [rows] = await pool.query(`
-            SELECT YEAR(created_at) as year, MONTH(created_at) as month, SUM(total) as total, COUNT(id) as orders
+            SELECT YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) as year,
+                   MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) as month,
+                   SUM(total) as total, COUNT(id) as orders
             FROM orders
             WHERE user_id = ? ${yearFilter}
-            GROUP BY YEAR(created_at), MONTH(created_at)
+            GROUP BY YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)), MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY year DESC, month DESC
-        `, [userId]);
+        `, params);
 
         return res.json({ months: rows });
     } catch (err) {
@@ -160,12 +191,25 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
 });
 
 /**
- * Comparación multi-mes: GET /analytics/sales/multi?months=2026-01,2026-02,2026-03
+ * Comparación multi-mes: GET /analytics/sales/multi?months=2026-01...,2026-02&userIds=1,2,3
  * Devuelve datos diarios para cada mes solicitado.
  */
 router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const actingUser = req.user;
+        const isAdmin = actingUser.role === 'admin';
+
+        let targetUserIds = [actingUser.id];
+        let isGlobalAdmin = false;
+
+        if (isAdmin) {
+            if (req.query.userIds) {
+                targetUserIds = req.query.userIds.split(",").map(id => Number(id.trim())).filter(id => id > 0);
+            } else {
+                isGlobalAdmin = true; // No filter = ALL USERS
+            }
+        }
+
         const { months } = req.query;
         if (!months) return res.status(400).json({ error: "Parámetro months requerido" });
 
@@ -175,26 +219,39 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
         }).filter(m => m.year && m.month);
 
         const results = await Promise.all(monthList.map(async ({ year, month }) => {
-            const [daily] = await pool.query(`
-                SELECT DAY(created_at) as day, COUNT(id) as orders, SUM(total) as revenue
+            let dailyQ = `
+                SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
                 FROM orders
-                WHERE user_id = ? AND YEAR(created_at) = ? AND MONTH(created_at) = ?
-                GROUP BY DAY(created_at)
-                ORDER BY day ASC
-            `, [userId, year, month]);
-
-            const total = daily.reduce((s, r) => s + Number(r.revenue || 0), 0);
-            const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
-
-            const [dist] = await pool.query(`
+                WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+            `;
+            let distQ = `
                 SELECT p.name as name, SUM(oi.price) as value
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 JOIN platforms p ON p.id = oi.platform_id
-                WHERE o.user_id = ? AND YEAR(o.created_at) = ? AND MONTH(o.created_at) = ?
-                GROUP BY p.id, p.name
-                ORDER BY value DESC
-            `, [userId, year, month]);
+                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+            `;
+
+            let dailyParams = [year, month];
+            let distParams = [year, month];
+
+            // If it is NOT a global admin, we filter by targetUserIds
+            if (!isGlobalAdmin) {
+                const placeholders = targetUserIds.map(() => '?').join(',');
+                dailyQ += ` AND user_id IN (${placeholders})`;
+                distQ += ` AND o.user_id IN (${placeholders})`;
+                dailyParams.push(...targetUserIds);
+                distParams.push(...targetUserIds);
+            }
+
+            dailyQ += ` GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) ORDER BY day ASC`;
+            distQ += ` GROUP BY p.id, p.name ORDER BY value DESC`;
+
+            const [daily] = await pool.query(dailyQ, dailyParams);
+            const total = daily.reduce((s, r) => s + Number(r.revenue || 0), 0);
+            const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
+
+            const [dist] = await pool.query(distQ, distParams);
 
             return { year, month, daily, total, orders, distribution: dist };
         }));

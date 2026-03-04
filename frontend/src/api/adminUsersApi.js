@@ -93,3 +93,5 @@ export async function fetchAdminGlobalTransactions(query = {}) {
         method: "GET",
     });
 }
+
+

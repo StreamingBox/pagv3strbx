@@ -4,6 +4,9 @@ import { apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import UserAnalytics from "../components/analytics/UserAnalytics";
 
+import "../styles/dashboard.css";
+import "../styles/dashboard-stitch.css";
+
 export default function UserAnalyticsPage() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();

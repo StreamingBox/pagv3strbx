@@ -6,6 +6,7 @@ function requireAuth(req, res, next) {
     const auth = req.headers.authorization || "";
     const headerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
+    // ✅ No se acepta token por query param: queda en logs de Nginx/browser
     const token = cookieToken || headerToken;
     if (!token) return res.status(401).json({ message: "No autorizado." });
 

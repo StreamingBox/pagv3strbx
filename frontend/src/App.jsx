@@ -1,34 +1,33 @@
+import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import Login from "./pages/Login.jsx";
-import Admin from "./pages/Admin.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
-import Orders from "./pages/Orders.jsx";
-import AdminCategories from "./pages/AdminCategories.jsx";
-
-import ProtectedRoute from "./routes/ProtectedRoute.jsx";
-
-import AdminUsers from "./pages/AdminUsers.jsx";
-import AdminTransactions from "./pages/AdminTransactions.jsx";
-import AdminPlatforms from "./pages/AdminPlatforms.jsx";
-import AdminAccounts from "./pages/AdminAccounts.jsx";
-import AdminOrders from "./pages/AdminOrders.jsx";
-import AdminPrices from "./pages/AdminPrices.jsx";
-import AdminInventory from "./pages/AdminInventory.jsx";
-import AdminDurations from "./pages/AdminDurations.jsx";
-import AdminAnalytics from "./pages/AdminAnalytics.jsx";
-
-import Codes from "./pages/Codes.jsx";
-import AdminCodeLogs from "./pages/AdminCodeLogs.jsx";
-
 import { useAuth } from "./context/AuthContext.jsx";
-import AdminSupport from "./pages/AdminSupport.jsx";
-import Wallet from "./pages/Wallet.jsx";
+import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 import CredentialRedirect from "./pages/CredentialRedirect.jsx";
-import UserAnalyticsPage from "./pages/UserAnalyticsPage.jsx";
-import AdminRenewals from "./pages/AdminRenewals.jsx";
-import UserExpirations from "./pages/UserExpirations.jsx";
-import AdminExpirations from "./pages/AdminExpirations.jsx";
+
+// ─── Lazy imports (admin + menos frecuentes) ───────────────────────────
+const Admin = lazy(() => import("./pages/Admin.jsx"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers.jsx"));
+const AdminTransactions = lazy(() => import("./pages/AdminTransactions.jsx"));
+const AdminPlatforms = lazy(() => import("./pages/AdminPlatforms.jsx"));
+const AdminAccounts = lazy(() => import("./pages/AdminAccounts.jsx"));
+const AdminOrders = lazy(() => import("./pages/AdminOrders.jsx"));
+const AdminPrices = lazy(() => import("./pages/AdminPrices.jsx"));
+const AdminInventory = lazy(() => import("./pages/AdminInventory.jsx"));
+const AdminDurations = lazy(() => import("./pages/AdminDurations.jsx"));
+const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics.jsx"));
+const AdminCategories = lazy(() => import("./pages/AdminCategories.jsx"));
+const AdminCodeLogs = lazy(() => import("./pages/AdminCodeLogs.jsx"));
+const AdminSupport = lazy(() => import("./pages/AdminSupport.jsx"));
+const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
+const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
+const Codes = lazy(() => import("./pages/Codes.jsx"));
+const Orders = lazy(() => import("./pages/Orders.jsx"));
+const Wallet = lazy(() => import("./pages/Wallet.jsx"));
+const UserAnalyticsPage = lazy(() => import("./pages/UserAnalyticsPage.jsx"));
+const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
 
 /* ==========================================
    Redirección automática por rol
@@ -50,211 +49,214 @@ function RedirectByRole() {
 ========================================== */
 export default function App() {
     return (
-        <Routes>
-            {/* ================= Login ================= */}
-            <Route path="/" element={<Login />} />
+        <Suspense fallback={null}>
+            <Routes>
+                {/* ================= Login ================= */}
+                <Route path="/" element={<Login />} />
 
-            {/* ================= Dashboard ================= */}
-            <Route
-                path="/dashboard"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <Dashboard />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Dashboard ================= */}
+                <Route
+                    path="/dashboard"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Dashboard />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Wallet ================= */}
-            <Route
-                path="/wallet"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <Wallet />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Wallet ================= */}
+                <Route
+                    path="/wallet"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Wallet />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Orders ================= */}
-            <Route
-                path="/orders"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <Orders />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Orders ================= */}
+                <Route
+                    path="/orders"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Orders />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= User Analytics ================= */}
-            <Route
-                path="/analytics"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <UserAnalyticsPage />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= User Analytics ================= */}
+                <Route
+                    path="/analytics"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <UserAnalyticsPage />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Codes ================= */}
-            <Route
-                path="/codes"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <Codes />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Codes ================= */}
+                <Route
+                    path="/codes"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Codes />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Admin Home ================= */}
-            <Route
-                path="/admin"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <Admin />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Admin Home ================= */}
+                <Route
+                    path="/admin"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <Admin />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Admin Sections ================= */}
-            <Route
-                path="/admin/users"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminUsers />
-                    </ProtectedRoute>
-                }
-            />
+                {/* ================= Admin Sections ================= */}
+                <Route
+                    path="/admin/users"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminUsers />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/renewals"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminRenewals />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/renewals"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminRenewals />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/analytics"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminAnalytics />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/analytics"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminAnalytics />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/transactions"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminTransactions />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/transactions"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminTransactions />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/platforms"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminPlatforms />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/platforms"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminPlatforms />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/categories"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminCategories />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/categories"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminCategories />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/accounts"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminAccounts />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/accounts"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminAccounts />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/orders"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminOrders />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/orders"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminOrders />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/prices"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminPrices />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/prices"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminPrices />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/inventory"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminInventory />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/inventory"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminInventory />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/durations"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminDurations />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/durations"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminDurations />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/code-logs"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminCodeLogs />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/code-logs"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminCodeLogs />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/expirations"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminExpirations />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/expirations"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminExpirations />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/admin/support"
-                element={
-                    <ProtectedRoute roles={["admin"]}>
-                        <AdminSupport />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/admin/support"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminSupport />
+                        </ProtectedRoute>
+                    }
+                />
 
-            <Route
-                path="/expirations"
-                element={
-                    <ProtectedRoute roles={["admin", "user"]}>
-                        <UserExpirations />
-                    </ProtectedRoute>
-                }
-            />
+                <Route
+                    path="/expirations"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <UserExpirations />
+                        </ProtectedRoute>
+                    }
+                />
 
-            {/* ================= Shared Credentials (Redirección al Backend) ================= */}
-            <Route path="/s/:token" element={<CredentialRedirect />} />
+                {/* ================= Shared Credentials (Redirección al Backend) ================= */}
+                <Route path="/s/:token" element={<CredentialRedirect />} />
 
-            {/* ================= Catch-all (SIEMPRE al final) ================= */}
-            <Route path="*" element={<RedirectByRole />} />
-        </Routes>
+                {/* ================= Catch-all (SIEMPRE al final) ================= */}
+                <Route path="*" element={<RedirectByRole />} />
+            </Routes>
+        </Suspense>
     );
 }
+

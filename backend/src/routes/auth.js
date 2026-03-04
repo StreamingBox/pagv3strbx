@@ -34,7 +34,7 @@ function cookieOpts(req, maxAgeMs, path = "/") {
  * Inserta refresh token en BD con defensa contra colisión de uq_refresh_token_hash.
  * Reintenta 1 vez si pasa ER_DUP_ENTRY.
  */
-async function insertRefreshTokenSafe(userId, role) {
+async function insertRefreshTokenSafe(userId, role, db = pool) {
     const refreshDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || "30", 10);
     const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
 
@@ -43,7 +43,7 @@ async function insertRefreshTokenSafe(userId, role) {
         const refreshHash = sha256(refreshToken);
 
         try {
-            await pool.query(
+            await db.query(
                 "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
                 [userId, refreshHash, expiresAt]
             );
@@ -104,7 +104,7 @@ router.post("/login", async (req, res) => {
         });
     } catch (err) {
         console.error("LOGIN ERROR DETAILS:", err);
-        return res.status(500).json({ message: "Error interno.", error: err.message });
+        return res.status(500).json({ message: "Error interno." });
     }
 });
 
@@ -180,31 +180,8 @@ router.post("/refresh", async (req, res) => {
         // Emite nuevos tokens
         const newAccessToken = signAccessToken({ sub: user.id, role: user.role });
 
-        const refreshDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || "30", 10);
-        const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
-
-        // Inserta nuevo refresh token (con defensa contra colisión)
-        let newRefreshToken = null;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const candidate = signRefreshToken({ sub: user.id, role: user.role });
-            const candidateHash = sha256(candidate);
-
-            try {
-                await conn.query(
-                    "INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)",
-                    [user.id, candidateHash, expiresAt]
-                );
-                newRefreshToken = candidate;
-                break;
-            } catch (err) {
-                if (err?.code === "ER_DUP_ENTRY" && attempt === 0) continue;
-                throw err;
-            }
-        }
-
-        if (!newRefreshToken) {
-            throw new Error("No se pudo emitir refresh token.");
-        }
+        // Emite nuevo refresh token (reutiliza lógica con defensa anti-colisión)
+        const { refreshToken: newRefreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role, conn);
 
         await conn.commit();
         conn.release();

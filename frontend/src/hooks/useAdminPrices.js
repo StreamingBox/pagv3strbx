@@ -1,4 +1,3 @@
-// pagv2strbx-web/src/hooks/useAdminPrices.js
 
 import { useCallback, useEffect, useState } from "react";
 import {

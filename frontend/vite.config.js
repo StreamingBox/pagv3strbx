@@ -20,9 +20,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Rutas de autenticación
+      // ── Todo lo que comience con /api va al Node backend (cubre auth, admin, upload, branding...) ──
+      '/api': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
+
+      // ── Rutas sin prefijo /api (legacy, mantenidas por compatibilidad) ──
       '/auth': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      // Rutas de API de datos
       '/catalog': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
       '/wallet': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
       '/orders': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
@@ -31,20 +33,6 @@ export default defineConfig({
       '/support': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
       // Links de credenciales compartidas
       '/s/': { target: backendTarget, changeOrigin: true },
-      // Rutas de admin (solo API, no UI)
-      '/admin/users': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/orders': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/platforms': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/accounts': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/analytics': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/transactions': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/inventory': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/renewals': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/expirations': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/code-logs': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/prices': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/categories': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
-      '/admin/durations': { target: backendTarget, changeOrigin: true, bypass: apiOnly },
     }
   }
 })

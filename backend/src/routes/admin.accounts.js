@@ -2,54 +2,24 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { parseDateOnly } = require("../utils/date");
+const {
+    normalizeOptionalValue,
+    normalizeProfileForAccount,
+    normalizeProfileForIdentity,
+} = require("../utils/normalize");
 
 const router = express.Router();
 
-/**
- * Helpers
- */
+// Helper CSV local (solo usado en este archivo para el endpoint de export)
 function escapeCsv(value) {
     if (value === null || value === undefined) return "";
     const s = String(value);
-    // Escapar comillas y envolver si tiene coma o salto
     const needsQuotes = s.includes(",") || s.includes("\n") || s.includes('"');
     const escaped = s.replace(/"/g, '""');
     return needsQuotes ? `"${escaped}"` : escaped;
 }
 
-function parseDateOnly(value) {
-    // admite YYYY-MM-DD
-    if (!value) return null;
-    const s = String(value).trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-    return s;
-}
-
-// ✅ Convierte valores vacíos/placeholders a null
-function normalizeOptionalValue(v) {
-    if (v === null || v === undefined) return null;
-    const s = String(v).trim();
-    if (!s) return null;
-    const low = s.toLowerCase();
-    if (low === "-" || low === "null" || low === "undefined" || low === "n/a") return null;
-    return s;
-}
-
-// ✅ Perfil para platform_accounts: null si viene vacío
-function normalizeProfileForAccount(v) {
-    const s = normalizeOptionalValue(v);
-    if (s === null) return null;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : null;
-}
-
-// ✅ Perfil para account_identities: si viene vacío => 1 (por compatibilidad)
-function normalizeProfileForIdentity(v) {
-    const s = normalizeOptionalValue(v);
-    if (s === null) return 1;
-    const n = Number(s);
-    return Number.isFinite(n) ? n : 1;
-}
 
 /**
  * POST /admin/accounts
@@ -324,254 +294,6 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
         return res.status(500).json({ message: "Error en carga masiva." });
     } finally {
         conn.release();
-    }
-});
-
-/**
- * GET /admin/inventory
- * Listado de inventario con filtros:
- *  - platformId
- *  - status: available | assigned | sold  (sold se mapea a assigned/sold)
- *  - q: búsqueda por email o plataforma
- *  - expiresFrom: YYYY-MM-DD
- *  - expiresTo: YYYY-MM-DD
- *  - limit
- */
-router.get("/admin/inventory", requireAuth, requireRole("admin"), async (req, res) => {
-    try {
-        const { platformId, status, q, limit, expiresFrom, expiresTo } = req.query;
-
-        const where = [];
-        const params = [];
-
-        if (platformId) {
-            where.push("pa.platform_id = ?");
-            params.push(Number(platformId));
-        }
-
-        if (status) {
-            if (status === "sold") {
-                where.push("pa.status IN ('assigned','sold')");
-            } else if (["assigned", "available", "inactive", "down"].includes(status)) {
-                where.push("pa.status = ?");
-                params.push(status);
-            } else {
-                // ignorar
-            }
-        }
-
-        if (q) {
-            where.push("(pa.email LIKE ? OR pa.platform_name LIKE ? OR p.name LIKE ? OR u.email LIKE ?)");
-            params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
-        }
-
-        const from = parseDateOnly(expiresFrom);
-        const to = parseDateOnly(expiresTo);
-
-        if (from) {
-            where.push("DATE(pa.expires_at) >= ?");
-            params.push(from);
-        }
-        if (to) {
-            where.push("DATE(pa.expires_at) <= ?");
-            params.push(to);
-        }
-
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-        const lim = Math.min(Math.max(parseInt(limit || "200", 10), 1), 2000);
-
-        const [rows] = await pool.query(
-            `SELECT
-        pa.id,
-        pa.platform_id,
-        p.name AS platform_name_ref,
-        pa.platform_name AS platform_name_raw,
-        pa.email,
-        pa.password,
-        pa.pin,
-        pa.profile_number,
-        pa.status,
-        pa.assigned_to_user_id,
-        u.email AS assigned_user_email,
-        u.name  AS assigned_user_name,
-        pa.assigned_at,
-        pa.expires_at,
-        pa.created_at,
-        pa.updated_at
-      FROM platform_accounts pa
-      LEFT JOIN platforms p ON p.id = pa.platform_id
-      LEFT JOIN users u ON u.id = pa.assigned_to_user_id
-      ${whereSql}
-      ORDER BY pa.expires_at DESC, pa.id DESC
-      LIMIT ${lim}`,
-            params
-        );
-
-        const mapped = rows.map((r) => ({
-            ...r,
-            platform_name: r.platform_name_ref || r.platform_name_raw || "",
-            sold_like: ["assigned", "sold"].includes(String(r.status || "")),
-        }));
-
-        return res.json(mapped);
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Error interno." });
-    }
-});
-
-/**
- * GET /admin/inventory/export
- * Export CSV del inventario usando los mismos filtros de /admin/inventory
- * Query:
- *  - platformId, status, q, expiresFrom, expiresTo
- */
-router.get("/admin/inventory/export", requireAuth, requireRole("admin"), async (req, res) => {
-    try {
-        const { platformId, status, q, expiresFrom, expiresTo } = req.query;
-
-        const where = [];
-        const params = [];
-
-        if (platformId) {
-            where.push("pa.platform_id = ?");
-            params.push(Number(platformId));
-        }
-
-        if (status) {
-            if (status === "sold") {
-                where.push("pa.status IN ('assigned','sold')");
-            } else if (["assigned", "available", "inactive", "down"].includes(status)) {
-                where.push("pa.status = ?");
-                params.push(status);
-            }
-        }
-
-        if (q) {
-            where.push("(pa.email LIKE ? OR pa.platform_name LIKE ? OR p.name LIKE ? OR u.email LIKE ?)");
-            params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
-        }
-
-        const from = parseDateOnly(expiresFrom);
-        const to = parseDateOnly(expiresTo);
-
-        if (from) {
-            where.push("DATE(pa.expires_at) >= ?");
-            params.push(from);
-        }
-        if (to) {
-            where.push("DATE(pa.expires_at) <= ?");
-            params.push(to);
-        }
-
-        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-
-        const [rows] = await pool.query(
-            `SELECT
-        pa.id,
-        COALESCE(p.name, pa.platform_name) AS platform_name,
-        pa.email,
-        pa.password,
-        pa.pin,
-        pa.profile_number,
-        pa.status,
-        u.email AS assigned_user_email,
-        pa.expires_at
-      FROM platform_accounts pa
-      LEFT JOIN platforms p ON p.id = pa.platform_id
-      LEFT JOIN users u ON u.id = pa.assigned_to_user_id
-      ${whereSql}
-      ORDER BY pa.expires_at DESC, pa.id DESC`,
-            params
-        );
-
-        res.setHeader("Content-Type", "text/csv; charset=utf-8");
-        res.setHeader("Content-Disposition", `attachment; filename="inventario.csv"`);
-
-        const header = [
-            "id",
-            "platform",
-            "email",
-            "password",
-            "pin",
-            "profile_number",
-            "status",
-            "assigned_to",
-            "expires_at",
-        ].join(",");
-
-        const lines = rows.map((r) =>
-            [
-                escapeCsv(r.id),
-                escapeCsv(r.platform_name),
-                escapeCsv(r.email),
-                escapeCsv(r.password),
-                escapeCsv(r.pin),
-                escapeCsv(r.profile_number),
-                escapeCsv(r.status),
-                escapeCsv(r.assigned_user_email || ""),
-                escapeCsv(r.expires_at ? String(r.expires_at).slice(0, 10) : ""),
-            ].join(",")
-        );
-
-        return res.send([header, ...lines].join("\n"));
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Error exportando CSV." });
-    }
-});
-
-/**
- * PATCH /admin/inventory/:id
- * Permite:
- *  - cambiar status (available/assigned/sold)
- *  - actualizar email/password/pin/profile_number/expires_at
- *  - (opcional) resetear asignación
- */
-router.patch("/admin/inventory/:id", requireAuth, requireRole("admin"), async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status, email, password, pin, profile_number, reset_assign, expires_at, expiresAt } = req.body || {};
-
-        if (reset_assign) {
-            await pool.query(
-                `UPDATE platform_accounts
-         SET assigned_to_user_id = NULL,
-             assigned_at = NULL,
-             expires_at = NULL,
-             status = 'available'
-         WHERE id = ?`,
-                [id]
-            );
-            return res.json({ ok: true, reset: true });
-        }
-
-        const exp = parseDateOnly(expiresAt) || parseDateOnly(expires_at);
-
-        await pool.query(
-            `UPDATE platform_accounts
-       SET status         = COALESCE(?, status),
-           email          = COALESCE(?, email),
-           password       = COALESCE(?, password),
-           pin            = COALESCE(?, pin),
-           profile_number = COALESCE(?, profile_number),
-           expires_at     = COALESCE(?, expires_at)
-       WHERE id = ?`,
-            [
-                status ?? null,
-                email ?? null,
-                password ?? null,
-                pin ?? null,
-                profile_number ?? null,
-                exp ? `${exp} 00:00:00` : null,
-                id,
-            ]
-        );
-
-        return res.json({ ok: true });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ message: "Error interno." });
     }
 });
 

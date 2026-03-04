@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
-const LOGO_URL = "/logo.png";
+const LOGO_URL = "/api/branding/logo";
 
 function getInitialTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }

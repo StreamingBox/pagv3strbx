@@ -3,18 +3,18 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import AdminKpiCards from "../components/admin/AdminKpiCards.jsx";
-import { apiLogout } from "../api/api";
+import { apiLogout, apiFetch } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import "../styles/special-effects.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
-const LOGO_URL = "/logo.png";
+const LOGO_URL = "/api/branding/logo";
 
 export default function Admin() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
     const fileRef = useRef(null);
     const [logoOk, setLogoOk] = useState(true);
+    const [logoTs, setLogoTs] = useState(Date.now());
     const [uploadingLogo, setUploadingLogo] = useState(false);
 
     async function logout() {
@@ -42,16 +42,17 @@ export default function Admin() {
                 r.onerror = reject;
                 r.readAsDataURL(file);
             });
-            const res = await fetch(`${API_BASE}/admin/branding/logo`, {
-                method: "POST", credentials: "include",
-                headers: { "Content-Type": "application/json" },
+            // apiFetch usa buildUrl() que agrega /api correctamente
+            const { ok, data } = await apiFetch("/admin/branding/logo", {
+                method: "POST",
                 body: JSON.stringify({ dataUrl }),
             });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.message || "No se pudo subir el logo.");
+            if (!ok) throw new Error(data?.message || "No se pudo subir el logo.");
             setLogoOk(true);
+            setLogoTs(Date.now()); // fuerza recarga del <img> con nueva URL
             alert("Logo actualizado ✅");
         } catch (err) {
+            console.error("[Logo upload error]", err);
             alert(err?.message || "Error subiendo logo.");
         } finally {
             setUploadingLogo(false);
@@ -68,7 +69,7 @@ export default function Admin() {
             <div className="page-inner">
                 <AdminSidebar
                     user={user}
-                    logoSrc={`${LOGO_URL}?t=${Date.now()}`}
+                    logoSrc={`${LOGO_URL}?t=${logoTs}`}
                     logoOk={logoOk}
                     setLogoOk={setLogoOk}
                     uploadingLogo={uploadingLogo}
@@ -87,10 +88,10 @@ export default function Admin() {
 
                 <main className="main">
                     <motion.div
+                        className="admin-page-header"
                         initial={{ opacity: 0, y: -14 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-                        style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}
                     >
                         <div>
                             <h1 className="title">Panel Administrador</h1>
@@ -106,6 +107,7 @@ export default function Admin() {
                                 className="stitch-beam-content"
                                 onClick={() => navigate("/dashboard")}
                                 style={{ fontSize: 13, border: "none" }}
+                                aria-label="Ir al dashboard de usuario"
                             >
                                 Ir a Dashboard
                             </button>

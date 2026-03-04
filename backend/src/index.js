@@ -33,6 +33,7 @@ const adminBrandingRoutes = require("./routes/admin.branding");
 
 const authRoutes = require("./routes/auth");
 const analyticsRoutes = require("./routes/analytics");
+const adminUploads = require("./routes/admin.upload");
 
 const app = express();
 
@@ -146,7 +147,6 @@ app.get("/api/health", (_, res) => res.json({ ok: true }));
 // Auth — con rate limit específico en login
 app.use("/api/auth", loginRateLimit);
 app.use("/api/auth", authRoutes);
-app.use("/auth", authRoutes); // compat backwards
 
 // Codes — con rate limit de 500/hr
 app.use("/api/codes", codesRateLimit, codesRoutes);
@@ -164,6 +164,9 @@ app.use("/api", adminCategories);
 // Branding
 app.use("/api", brandingRoutes);
 app.use("/api", adminBrandingRoutes);
+
+// Uploads
+app.use("/api", adminUploads);
 
 // Users
 app.use("/api/users", usersRoutes);

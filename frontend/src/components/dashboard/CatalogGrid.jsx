@@ -1,26 +1,28 @@
 import { motion } from "framer-motion";
 import { getPlatformLogo, getInitials } from "../../utils/platform.js";
 
-// Colores de fondo para el área de logo por plataforma
+// Colores de fondo para mezclar con el fondo sólido de las imágenes PNG
 const PLATFORM_COLORS = {
-    netflix: { bg: "#141414", accent: "#E50914" },
-    disney: { bg: "#0C233F", accent: "#fff" },
-    max: { bg: "#002BE7", accent: "#fff" },
-    hbo: { bg: "#2B2B2B", accent: "#fff" },
-    prime: { bg: "#00A8E1", accent: "#fff" },
-    amazon: { bg: "#232F3E", accent: "#FF9900" },
-    spotify: { bg: "#191414", accent: "#1DB954" },
-    youtube: { bg: "#212121", accent: "#FF0000" },
-    crunchyroll: { bg: "#F47521", accent: "#fff" },
-    vix: { bg: "#1A1A2E", accent: "#8B5CF6" },
-    gpt: { bg: "#10A37F", accent: "#fff" },
-    chatgpt: { bg: "#10A37F", accent: "#fff" },
-    gemini: { bg: "#1C2A3A", accent: "#4285F4" },
-    adobe: { bg: "#1C1C1C", accent: "#FF0000" },
-    microsoft: { bg: "#0078D4", accent: "#fff" },
-    office: { bg: "#D83B01", accent: "#fff" },
-    paramount: { bg: "#0064FF", accent: "#fff" },
-    default: { bg: "#0A1628", accent: "#0da6f2" },
+    netflix: { bg: "#000000", accent: "#E50914" },
+    disney: { bg: "#000000", accent: "#fff" },
+    max: { bg: "#000000", accent: "#fff" },
+    hbo: { bg: "#000000", accent: "#fff" },
+    prime: { bg: "#000000", accent: "#fff" },
+    amazon: { bg: "#000000", accent: "#fff" },
+    spotify: { bg: "#000000", accent: "#1DB954" },
+    youtube: { bg: "#000000", accent: "#FF0000" },
+    crunchyroll: { bg: "#000000", accent: "#fff" },
+    vix: { bg: "#000000", accent: "#8B5CF6" },
+    gpt: { bg: "#000000", accent: "#fff" },
+    chatgpt: { bg: "#000000", accent: "#fff" },
+    gemini: { bg: "#000000", accent: "#4285F4" },
+    adobe: { bg: "#000000", accent: "#FF0000" },
+    microsoft: { bg: "#000000", accent: "#fff" },
+    office: { bg: "#000000", accent: "#D83B01" },
+    paramount: { bg: "#000000", accent: "#fff" },
+    apple: { bg: "#000000", accent: "#fff" },
+    sportv: { bg: "#000000", accent: "#0da6f2" },
+    default: { bg: "#000000", accent: "#0da6f2" },
 };
 
 function getPlatformColor(slug, name) {

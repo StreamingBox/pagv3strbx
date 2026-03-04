@@ -36,72 +36,108 @@ const itemVariants = {
 };
 
 export default function AdminKpiCards({ onNavigate }) {
-    const sections = [
-        { icon: "📊", tone: "blue", title: "Estadísticas", hint: "Ventas: mes actual vs anterior.", path: "/admin/analytics" },
-        { icon: "🔄", tone: "emerald", title: "Renovaciones", hint: "Renovar pedidos y descontar saldo.", path: "/admin/renewals" },
-        { icon: "👤", tone: "violet", title: "Usuarios", hint: "Crear, bloquear, cambiar contraseña.", path: "/admin/users" },
-        { icon: "💲", tone: "amber", title: "Transacciones / Saldo", hint: "Global y por usuario.", path: "/admin/transactions" },
-        { icon: "💳", tone: "pink", title: "Planes / Precios", hint: "Plataforma + duración + precio.", path: "/admin/prices" },
-        { icon: "📦", tone: "cyan", title: "Inventario", hint: "Cuentas disponibles / vendidas.", path: "/admin/inventory" },
-        { icon: "🧩", tone: "orange", title: "Plataformas / Productos", hint: "Crear plataformas y productos.", path: "/admin/platforms" },
-        { icon: "🏷️", tone: "lime", title: "Categorías", hint: "Video, IA, Música, etc.", path: "/admin/categories" },
-        { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Subir cuentas a vender.", path: "/admin/accounts" },
-        { icon: "🧾", tone: "indigo", title: "Historial de Compras", hint: "Órdenes y detalles.", path: "/admin/orders" },
-        { icon: "⏱️", tone: "fuchsia", title: "Duraciones", hint: "Mensual, trimestral, etc.", path: "/admin/durations" },
-        { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de solicitudes de pines.", path: "/admin/code-logs" },
-        { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
-        { icon: "🛠️", tone: "teal", title: "Soporte", hint: "Reemplazar cuentas caídas.", path: "/admin/support" },
+    const groups = [
+        {
+            groupName: "Ventas & Finanzas",
+            items: [
+                { icon: "📊", tone: "blue", title: "Estadísticas", hint: "Ventas: mes actual vs anterior.", path: "/admin/analytics" },
+                { icon: "💲", tone: "amber", title: "Transacciones / Saldo", hint: "Global y por usuario.", path: "/admin/transactions" },
+                { icon: "🧾", tone: "indigo", title: "Historial de Compras", hint: "Órdenes y detalles.", path: "/admin/orders" },
+                { icon: "🔄", tone: "emerald", title: "Renovaciones", hint: "Renovar pedidos.", path: "/admin/renewals" },
+            ]
+        },
+        {
+            groupName: "Cuentas & Inventario",
+            items: [
+                { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
+                { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
+                { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
+                { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de pines generados.", path: "/admin/code-logs" },
+            ]
+        },
+        {
+            groupName: "Catálogo & Oferta",
+            items: [
+                { icon: "🏷️", tone: "lime", title: "Categorías", hint: "Streaming, IA, Música, etc.", path: "/admin/categories" },
+                { icon: "🧩", tone: "orange", title: "Plataformas", hint: "Gestión de plataformas.", path: "/admin/platforms" },
+                { icon: "💳", tone: "pink", title: "Planes y Precios", hint: "Configuración de precios.", path: "/admin/prices" },
+                { icon: "⏱️", tone: "fuchsia", title: "Duraciones", hint: "Mensualidades, trimestres, etc.", path: "/admin/durations" },
+            ]
+        },
+        {
+            groupName: "Usuarios & Atención",
+            items: [
+                { icon: "👤", tone: "violet", title: "Usuarios", hint: "Gestión de clientes/vendedores.", path: "/admin/users" },
+                { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
+            ]
+        }
     ];
 
     return (
         <motion.div
-            className="admin-cards-grid"
             variants={containerVariants}
             initial="hidden"
             animate="show"
+            style={{ display: "flex", flexDirection: "column", gap: 28, marginTop: -2 }}
         >
-            {sections.map((s) => {
-                const { border, glow } = TONE_COLORS[s.tone] || TONE_COLORS.blue;
-                return (
-                    <motion.div
-                        key={s.path}
-                        variants={itemVariants}
-                        className="stitch-beam-container"
-                        whileHover={{ scale: 1.02, y: -4 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => onNavigate(s.path)}
-                        style={{
-                            "--beam-color": border,
-                            cursor: "pointer",
-                            display: "flex",
-                            height: "100%"
-                        }}
-                    >
-                        <div
-                            className="stitch-beam-content"
-                            style={{
-                                padding: 16,
-                                display: "flex",
-                                gap: 14,
-                                alignItems: "center",
-                                justifyContent: "flex-start",
-                                background: "#060912",
-                                border: `1px solid rgba(255,255,255,0.03)`,
-                            }}
-                        >
-                            <IconBadge icon={s.icon} tone={s.tone} />
-                            <div>
-                                <div style={{ fontWeight: 800, fontSize: 13, color: "#fff" }}>
-                                    {s.title}
-                                </div>
-                                <div style={{ marginTop: 4, color: "rgba(255,255,255,0.5)", fontSize: 11, lineHeight: 1.4 }}>
-                                    {s.hint}
-                                </div>
-                            </div>
-                        </div>
-                    </motion.div>
-                );
-            })}
+            {groups.map((group, idx) => (
+                <div key={idx}>
+                    <div style={{
+                        fontSize: 14, fontWeight: 800, color: "var(--muted)",
+                        textTransform: "uppercase", letterSpacing: 0.8,
+                        marginBottom: 12, borderBottom: "1px solid var(--stroke2)",
+                        paddingBottom: 6
+                    }}>
+                        {group.groupName}
+                    </div>
+
+                    <div className="admin-cards-grid" style={{ marginTop: 0 }}>
+                        {group.items.map((s) => {
+                            const { border, glow } = TONE_COLORS[s.tone] || TONE_COLORS.blue;
+                            return (
+                                <motion.div
+                                    key={s.path}
+                                    variants={itemVariants}
+                                    className="stitch-beam-container"
+                                    whileHover={{ scale: 1.02, y: -4 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    onClick={() => onNavigate(s.path)}
+                                    style={{
+                                        "--beam-color": border,
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        height: "100%"
+                                    }}
+                                >
+                                    <div
+                                        className="stitch-beam-content"
+                                        style={{
+                                            padding: 16,
+                                            display: "flex",
+                                            gap: 14,
+                                            alignItems: "center",
+                                            justifyContent: "flex-start",
+                                            border: `1px solid var(--stroke2)`,
+                                            width: "100%"
+                                            // Removing hardcoded background to let special-effects.css handle Light/Dark mode!
+                                        }}
+                                    >
+                                        <IconBadge icon={s.icon} tone={s.tone} />
+                                        <div>
+                                            <div style={{ fontWeight: 800, fontSize: 13, color: "var(--text)" }}>
+                                                {s.title}
+                                            </div>
+                                            <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>
+                                                {s.hint}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
         </motion.div>
     );
 }

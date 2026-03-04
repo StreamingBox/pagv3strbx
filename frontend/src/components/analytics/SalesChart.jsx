@@ -139,7 +139,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
     };
 
     return (
-        <div style={{ width: "100%", height: "100%", minHeight: 300 }}>
+        <div style={{ width: "100%", height: 320 }}>
             {chartType === "bar" ? (
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart {...commonProps}>

@@ -15,20 +15,18 @@ export function useDashboardData() {
             // ✅ NO Authorization header, todo por cookies HttpOnly
             const [wRes, cRes] = await Promise.all([
                 apiGet("/wallet"),
-                apiGet(`/catalog?_t=${Date.now()}`),
+                apiGet("/catalog"),
             ]);
 
             if (!wRes.ok) throw new Error(wRes.data?.message || "Error cargando wallet.");
             if (!cRes.ok) throw new Error(cRes.data?.message || "Error cargando catálogo.");
 
-            console.log("PURO JSON API CATALOG:", cRes.data?.[0]);
 
-            const user = JSON.parse(localStorage.getItem("user") || "{}");
 
             setWallet({
                 balance: Number(wRes.data?.balance ?? 0),
                 profit_total: Number(wRes.data?.profit_total ?? 0),
-                currency: wRes.data?.currency || user?.currency || "COP",
+                currency: wRes.data?.currency || "COP",
             });
 
             setCatalog(Array.isArray(cRes.data) ? cRes.data : []);

@@ -46,43 +46,9 @@ func main() {
 		return c.JSON(fiber.Map{"status": "Gateway OK"})
 	})
 
-	// -----------------------------------------------------
-	// Route Proxies: Forward requests to internal microservices
-	// -----------------------------------------------------
-
-	// Explicit Endpoint to upload platform logos (bound to root to avoid group conflicts)
-	app.Post("/api/upload/platform-logo", func(c *fiber.Ctx) error {
-		form, err := c.MultipartForm()
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Failed to parse form"})
-		}
-		slugs := form.Value["slug"]
-		if len(slugs) == 0 || slugs[0] == "" {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing platform slug"})
-		}
-		slug := slugs[0]
-
-		files := form.File["logo"]
-		if len(files) == 0 {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing logo file"})
-		}
-		file := files[0]
-
-		saveDir := "../../frontend/public/platform-logos"
-		os.MkdirAll(saveDir, 0755)
-		filename := slug + ".png"
-		savePath := saveDir + "/" + filename
-
-		if err := c.SaveFile(file, savePath); err != nil {
-			log.Printf("Failed to save logo for %s: %v", slug, err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save file"})
-		}
-		return c.JSON(fiber.Map{"ok": true, "message": "Logo uploaded successfully", "filename": filename})
-	})
-
-	app.Get("/api/upload/test", func(c *fiber.Ctx) error {
-		return c.SendString("Upload route is active")
-	})
+	// NOTE: /api/upload/platform-logo is handled by Node.js backend (admin.upload.js)
+	// which has requireAuth + requireRole("admin") + multer validation.
+	// The fallback proxy below will forward it correctly.
 
 	api := app.Group("/api")
 

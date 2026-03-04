@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "../ThemeToggle.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
-const LOGO_URL = "/logo.png";
+const LOGO_URL = "/api/branding/logo";
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 
 // Obtiene las iniciales del nombre/email del usuario
@@ -31,6 +31,15 @@ export default function Sidebar({
     const [collapsed, setCollapsed] = useState(isMobile());
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
     const activePath = window.location.pathname;
+
+    // React automatically to window resizes (desktop <-> mobile switch)
+    useEffect(() => {
+        const handleResize = () => {
+            setCollapsed(typeof window !== "undefined" && window.innerWidth <= 900);
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     function nav(fn) {
         if (isMobile()) setCollapsed(true);

@@ -2,6 +2,8 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { insertCredentialLinkWithRetry } = require("../utils/tokens");
+const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 
 const router = express.Router();
 
@@ -271,7 +273,7 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
                 [finalAccountId]
             );
 
-            // Get newest token or create one
+            // Get newest token or create one using the shared util
             const [tokRows] = await conn.query(
                 "SELECT token FROM credential_links WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
                 [orderId]
@@ -279,17 +281,15 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
 
             let token = tokRows.length > 0 ? tokRows[0].token : null;
             if (!token) {
-                const crypto = require("crypto");
-                token = crypto.randomBytes(24).toString("base64url").slice(0, 10);
-                await pool.query( // Using pool outside the transaction since it's committed
-                    "INSERT IGNORE INTO credential_links (subscription_id, token, created_by_user_id) VALUES (?, ?, ?)",
-                    [orderId, req.user.id, token]
-                );
+                // ✅ Usa insertCredentialLinkWithRetry para consistencia y anti-colisión
+                token = await insertCredentialLinkWithRetry(pool, {
+                    subscriptionId: orderId,
+                    createdByUserId: req.user.id,
+                    showWhatsapp: false,
+                });
             }
 
             if (accRows.length > 0) {
-                const { buildWhatsappMessage } = require("../utils/whatsappMessage");
-
                 const resultObj = {
                     subscriptionId: orderId,
                     plan: { platform_name: sub.platform_name },
@@ -298,13 +298,7 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
                     token: token
                 };
 
-                // Fetch the actual order code or fallback to string
-                const [orderRows] = await conn.query(
-                    "SELECT id as orderId FROM subscriptions WHERE id = ?", [orderId]
-                );
-                const orderCodeStr = orderRows.length > 0 && orderRows[0].codigo
-                    ? orderRows[0].codigo
-                    : `ORD-${String(orderId).padStart(6, "0")}`;
+                const orderCodeStr = `ORD-${String(orderId).padStart(6, "0")}`;
 
                 whatsappText = buildWhatsappMessage({
                     orderCode: orderCodeStr,
@@ -403,6 +397,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                p.name AS platform_name,
                p.slug AS platform_slug,
                acc.email AS account_email,
+               acc.password AS account_password,
                acc.profile_number
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id

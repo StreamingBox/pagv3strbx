@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/dashboard.css";
 import "../styles/dashboard-stitch.css";
@@ -66,7 +66,6 @@ export default function Dashboard() {
         ]);
     }
 
-    // categorías únicas (salen del catalog)
     const categories = useMemo(() => {
         const map = new Map();
 
@@ -78,12 +77,28 @@ export default function Dashboard() {
                     id: item.categoryId,
                     name: item.categoryName || "Sin nombre",
                     slug: item.categorySlug || "",
+                    sortOrder: item.categorySortOrder ?? 9999,
+                    totalStock: 0,
                 });
             }
+
+            map.get(item.categoryId).totalStock += (Number(item.stock) || 0);
         }
 
-        return Array.from(map.values()).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        return Array.from(map.values())
+            .filter(c => c.totalStock > 0)
+            .sort((a, b) => {
+                const diff = (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999);
+                return diff !== 0 ? diff : String(a.name).localeCompare(String(b.name));
+            });
     }, [catalog]);
+
+    // reset category filter if the active category just went out of stock
+    useEffect(() => {
+        if (categoryFilter !== "all" && !categories.some(c => String(c.id) === String(categoryFilter))) {
+            setCategoryFilter("all");
+        }
+    }, [categories, categoryFilter]);
 
     // ✅ catálogo filtrado por categoría + texto
     const filteredCatalog = useMemo(() => {

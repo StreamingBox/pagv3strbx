@@ -7,11 +7,11 @@ const router = express.Router();
 
 /**
  * POST /codes/:platformSlug/request
- * Body: { orderNumber }
+ * Body: { orderNumber, action }
  */
 router.post("/:platformSlug/request", requireAuth, async (req, res) => {
     const { platformSlug } = req.params;
-    const { orderNumber } = req.body || {};
+    const { orderNumber, action } = req.body || {};
 
     // logger depende de orderNumber; si falta, igual crea el logger con NaN (y loguea error)
     const { saveLog, isAdmin, requestedByUserId } = createCodeLogger({
@@ -30,6 +30,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
             orderNumber,
             platformSlug,
             user: req.user,
+            action, // "code" | "approve"
         });
 
         // 👉 log según resultado (mantiene tu misma info)
@@ -71,7 +72,8 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
     } catch (err) {
         await saveLog({ status: "error", message: err.message || "Error interno" });
         console.error(err);
-        return res.status(500).json({ ok: false, message: "Error interno", detail: err.message });
+        const detail = process.env.NODE_ENV !== "production" ? err.message : undefined;
+        return res.status(500).json({ ok: false, message: "Error interno", ...(detail ? { detail } : {}) });
     }
 });
 

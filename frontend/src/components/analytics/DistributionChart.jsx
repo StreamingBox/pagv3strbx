@@ -11,10 +11,12 @@ const COLORS = [
     "#f43f5e", "#ec4899", "#3b82f6", "#06b6d4",
 ];
 
-/** Tooltip custom para modo claro/oscuro */
-function CustomTooltip({ active, payload }) {
+/** Tooltip custom para modo claro/oscuro (mostrando % en vez de dinero) */
+function CustomTooltip({ active, payload, total }) {
     if (!active || !payload?.length) return null;
     const { name, value } = payload[0].payload;
+    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : "0";
+
     return (
         <div style={{
             background: "var(--card)",
@@ -25,7 +27,7 @@ function CustomTooltip({ active, payload }) {
         }}>
             <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)", marginBottom: 4 }}>{name}</div>
             <div style={{ fontWeight: 900, fontSize: 16, color: "var(--accent)" }}>
-                ${Number(value).toLocaleString("es-CO")}
+                {pct}%
             </div>
         </div>
     );
@@ -56,69 +58,78 @@ export default function DistributionChart({ data }) {
         );
     }
 
-    const total = data.reduce((sum, d) => sum + Number(d.value), 0);
+    // Convertir a número para que Recharts no falle al renderizar el Pie
+    const parsedData = data.map(d => ({ ...d, value: Number(d.value) }));
+    const total = parsedData.reduce((sum, d) => sum + d.value, 0);
 
     return (
-        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
             {/* Donut chart */}
             <div style={{ flex: "0 0 200px", height: 200, position: "relative" }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
-                            data={data}
+                            data={parsedData}
                             dataKey="value"
                             nameKey="name"
                             cx="50%"
                             cy="50%"
-                            innerRadius={60}
-                            outerRadius={90}
+                            innerRadius={65}
+                            outerRadius={95}
                             paddingAngle={4}
                             stroke="none"
                             cornerRadius={4}
                         >
-                            {data.map((entry, index) => (
+                            {parsedData.map((entry, index) => (
                                 <Cell
                                     key={`cell-${index}`}
                                     fill={COLORS[index % COLORS.length]}
                                 />
                             ))}
                         </Pie>
-                        <Tooltip content={<CustomTooltip />} />
+                        <Tooltip content={<CustomTooltip total={total} />} />
                     </PieChart>
                 </ResponsiveContainer>
-                {/* Texto central del donut */}
+
+                {/* Ícono o porcentaje en el centro del anillo en vez de monto */}
                 <div style={{
                     position: "absolute",
                     top: "50%", left: "50%",
                     transform: "translate(-50%, -50%)",
                     textAlign: "center", pointerEvents: "none",
                 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.4px" }}>
-                        Total
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                        Cuota
                     </div>
-                    <div style={{ fontSize: 14, fontWeight: 900, color: "var(--text)" }}>
-                        ${(total / 1000).toFixed(0)}k
+                    <div style={{ fontSize: 20, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
+                        100%
                     </div>
                 </div>
             </div>
 
             {/* Leyenda lateral */}
-            <div style={{ flex: 1, minWidth: 120, display: "flex", flexDirection: "column", gap: 8 }}>
-                {data.slice(0, 8).map((entry, index) => {
-                    const pct = total > 0 ? ((Number(entry.value) / total) * 100).toFixed(1) : "0";
+            <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 10 }}>
+                {parsedData.slice(0, 8).map((entry, index) => {
+                    const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : "0";
                     return (
-                        <div key={index} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div key={index} style={{
+                            display: "flex", alignItems: "center", gap: 10,
+                            background: "var(--card)", border: "1px solid var(--stroke)",
+                            padding: "8px 12px", borderRadius: 8,
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                        }}>
                             <span style={{
-                                width: 10, height: 10, borderRadius: 3, flexShrink: 0,
+                                width: 12, height: 12, borderRadius: 4, flexShrink: 0,
                                 background: COLORS[index % COLORS.length],
+                                boxShadow: `0 0 8px ${COLORS[index % COLORS.length]}40`
                             }} />
                             <span style={{
-                                fontSize: 12, color: "var(--text)", fontWeight: 600,
+                                fontSize: 13, color: "var(--text)", fontWeight: 600,
                                 flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                             }}>
                                 {entry.name}
                             </span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", flexShrink: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--accent)", flexShrink: 0 }}>
                                 {pct}%
                             </span>
                         </div>

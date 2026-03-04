@@ -38,6 +38,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         c.id AS categoryId,
         c.name AS categoryName,
         c.slug AS categorySlug,
+        c.sort_order AS categorySortOrder,
 
         d.id AS durationId,
         d.name AS durationName,
@@ -78,6 +79,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
       [userCurrency, userCurrency]
     );
 
+    res.set("Cache-Control", "private, max-age=30"); // cacheable 30s por usuario
     return res.json(rows);
   } catch (err) {
     console.error("GET /catalog error:", err);

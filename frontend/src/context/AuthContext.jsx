@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { apiGet } from "../api/api";
 
 // Context
@@ -10,7 +10,7 @@ export function AuthProvider({ children }) {
     const [authLoading, setAuthLoading] = useState(true);
 
     // Cargar sesión desde cookies (HttpOnly)
-    async function loadMe() {
+    const loadMe = useCallback(async () => {
         try {
             const res = await apiGet("/auth/me");
             if (res.ok && res.data?.user) {
@@ -23,12 +23,11 @@ export function AuthProvider({ children }) {
         } finally {
             setAuthLoading(false);
         }
-    }
+    }, []);
 
     useEffect(() => {
         loadMe();
-        // eslint-disable-next-line
-    }, []);
+    }, [loadMe]);
 
     return (
         <AuthContext.Provider value={{ user, setUser, authLoading }}>

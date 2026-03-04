@@ -102,12 +102,12 @@ router.post("/admin/wallet/adjust-profit", requireAuth, requireRole("admin"), as
     }
 });
 
-// Obtener todas las transacciones gobales (con filtro de usuario y tipo)
+// Obtener todas las transacciones globales (con filtro de usuario, tipo, búsqueda y fechas)
 router.get("/admin/wallet/transactions", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const { page = 1, limit = 10, type, userId } = req.query;
+        const { page = 1, limit = 10, type, userId, q, dateFrom, dateTo } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-        const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200);
         const offset = (pageNum - 1) * limitNum;
 
         let whereClauses = [];
@@ -123,30 +123,74 @@ router.get("/admin/wallet/transactions", requireAuth, requireRole("admin"), asyn
             queryParams.push(userId);
         }
 
+        // Búsqueda general: email, nota, o ID de referencia
+        if (q) {
+            const qLike = `%${String(q).trim()}%`;
+            whereClauses.push("(u.email LIKE ? OR t.note LIKE ? OR CAST(t.reference_id AS CHAR) LIKE ?)");
+            queryParams.push(qLike, qLike, qLike);
+        }
+
+        // Filtro de fechas — Colombia (UTC-5): inicio del día desde / fin del día hasta
+        if (dateFrom) {
+            // dateFrom = "YYYY-MM-DD" en hora Colombia → convertir a UTC sumando 5h
+            whereClauses.push("t.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)");
+            queryParams.push(`${dateFrom} 00:00:00`);
+        }
+        if (dateTo) {
+            // dateTo = "YYYY-MM-DD" en hora Colombia → fin del día 23:59:59 + 5h offset
+            whereClauses.push("t.created_at <= DATE_ADD(?, INTERVAL 5 HOUR)");
+            queryParams.push(`${dateTo} 23:59:59`);
+        }
+
         const whereStr = whereClauses.length > 0 ? "WHERE " + whereClauses.join(" AND ") : "";
 
         const countQuery = `
             SELECT COUNT(*) as total 
             FROM wallet_transactions t
             JOIN wallets w ON t.wallet_id = w.id
+            JOIN users u ON w.user_id = u.id
             ${whereStr}
         `;
         const [countRows] = await pool.query(countQuery, queryParams);
         const total = countRows[0].total;
 
+        // JOIN correcto: transacciones de tipo 'order' apuntan a orders.id
         const dataQuery = `
             SELECT 
                 t.*,
                 w.user_id, 
-                u.email as user_email
+                u.email AS user_email,
+                (
+                    SELECT p.name 
+                    FROM order_items oi
+                    JOIN platforms p ON p.id = oi.platform_id
+                    WHERE oi.order_id = t.reference_id
+                      AND t.reference_type = 'order'
+                    LIMIT 1
+                ) AS product_name,
+                (
+                    SELECT d.name 
+                    FROM order_items oi
+                    JOIN platform_prices pp ON pp.id = oi.platform_price_id
+                    JOIN durations d ON d.id = pp.duration_id
+                    WHERE oi.order_id = t.reference_id
+                      AND t.reference_type = 'order'
+                    LIMIT 1
+                ) AS duration_name,
+                (
+                    SELECT COUNT(*) 
+                    FROM order_items oi2
+                    WHERE oi2.order_id = t.reference_id
+                      AND t.reference_type = 'order'
+                ) AS item_count
             FROM wallet_transactions t
             JOIN wallets w ON t.wallet_id = w.id
             JOIN users u ON w.user_id = u.id
             ${whereStr}
             ORDER BY t.created_at DESC, t.id DESC
-            LIMIT ${limitNum} OFFSET ${offset}
+            LIMIT ? OFFSET ?
         `;
-        const [rows] = await pool.query(dataQuery, queryParams);
+        const [rows] = await pool.query(dataQuery, [...queryParams, limitNum, offset]);
 
         return res.json({
             items: rows,
@@ -161,12 +205,15 @@ router.get("/admin/wallet/transactions", requireAuth, requireRole("admin"), asyn
     }
 });
 
+
+
+
 router.get("/admin/wallet/transactions/:userId", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const userId = req.params.userId;
         const { page = 1, limit = 10, type } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-        const limitNum = Math.max(parseInt(limit, 10) || 10, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 200); // ✅ cota máxima
         const offset = (pageNum - 1) * limitNum;
 
         const [wRows] = await pool.query("SELECT id FROM wallets WHERE user_id = ? LIMIT 1", [userId]);
@@ -191,8 +238,8 @@ router.get("/admin/wallet/transactions/:userId", requireAuth, requireRole("admin
              FROM wallet_transactions 
              ${whereClause} 
              ORDER BY created_at DESC, id DESC
-             LIMIT ${limitNum} OFFSET ${offset}`,
-            queryParams
+             LIMIT ? OFFSET ?`,
+            [...queryParams, limitNum, offset] // ✅ parámetros en lugar de interpolación
         );
 
         return res.json({

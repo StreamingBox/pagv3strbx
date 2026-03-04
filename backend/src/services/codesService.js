@@ -1,6 +1,7 @@
 // BACKEND: pagv2strbx/src/services/codesService.js
 
 const { fetchCodeFromGmail } = require("./gmailCodeService");
+const { fetchNetflixFlow } = require("./netflixFlowService");
 const { credFingerprint } = require("../utils/credFingerprint");
 const {
     getCodePlatformBySlug,
@@ -15,8 +16,6 @@ function normalizeSlug(slug) {
 }
 
 function pickPlatformIdentityFromSub(sub) {
-    // ✅ "slug" preferido, pero si viene vacío o raro, usamos name como fallback
-    // Esto evita que falle si tu query no trae platforms.slug o lo trae con otro alias
     const raw =
         sub?.platformSlug ||
         sub?.platform_slug ||
@@ -28,14 +27,10 @@ function pickPlatformIdentityFromSub(sub) {
     return String(raw || "");
 }
 
-async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
-    // ✅ Normaliza el slug que llega por URL / request
+async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "code" }) {
     const requestedSlug = toCodeSlug(platformSlug);
 
-    // 1) Config plataforma
     let plat;
-
-    // ✅ OVERRIDE SOLO PARA CHATGPT
     if (requestedSlug === "chatgpt") {
         plat = {
             slug: "chatgpt",
@@ -52,7 +47,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
         return { http: 404, body: { ok: false, message: "Plataforma no disponible" } };
     }
 
-    // 2) pedido + cuenta vendida
     const sub = await getSubscriptionWithAccount(orderNumber);
     if (!sub) {
         return {
@@ -79,10 +73,9 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
 
     const fingerprint = credFingerprint(sub.accountPassword, sub.accountPin);
 
-    // 3) permisos
     const role = user?.role || "user";
     const isAdmin = String(role).toLowerCase() === "admin";
-    const requestedByUserId = user?.id ?? user?.sub ?? null; // ✅ por si tu auth usa sub
+    const requestedByUserId = user?.id ?? user?.sub ?? null;
 
     if (!isAdmin && Number(sub.userId) !== Number(requestedByUserId)) {
         return {
@@ -92,9 +85,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
         };
     }
 
-    // 4) plataforma del pedido (BLINDADA)
-    // ✅ Antes dependías solo de sub.platformSlug; si viene mal, falla.
-    // ✅ Ahora usamos slug/name y lo normalizamos con toCodeSlug.
     const rawFromSub = pickPlatformIdentityFromSub(sub);
     const expectedCodeSlug = toCodeSlug(rawFromSub);
 
@@ -116,7 +106,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
         };
     }
 
-    // 5) activo y no vencido
     const isActive = String(sub.status || "").toLowerCase() === "active";
     const notExpired = !sub.expires_at || new Date(sub.expires_at).getTime() > Date.now();
     if (!isActive || !notExpired) {
@@ -127,7 +116,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
         };
     }
 
-    // 6) regla 1 por pedido salvo cambio
     const last = await getLastDelivered(orderNumber, requestedSlug);
     if (last && String(last.credential_fingerprint || "") === String(fingerprint)) {
         return {
@@ -142,37 +130,55 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user }) {
         };
     }
 
-    // 7) gmail
-    const gmailResult = await fetchCodeFromGmail({
-        toEmail: soldAccountEmail,
-        gmailFromContains: plat.gmail_from,
-        codeRegex: plat.code_regex,
-        maxAgeMinutes: Number(plat.max_age_minutes) || 15,
-    });
+    // 7) Extraer código de gmail o netflix flow
+    let fetchingResult;
 
-    if (!gmailResult.ok) {
+    if (requestedSlug === "netflix") {
+        fetchingResult = await fetchNetflixFlow({
+            toEmail: soldAccountEmail,
+            maxAgeMinutes: Number(plat.max_age_minutes) || 15,
+            action,
+        });
+    } else {
+        fetchingResult = await fetchCodeFromGmail({
+            toEmail: soldAccountEmail,
+            gmailFromContains: plat.gmail_from,
+            codeRegex: plat.code_regex,
+            maxAgeMinutes: Number(plat.max_age_minutes) || 15,
+        });
+    }
+
+    if (!fetchingResult.ok) {
         return {
             http: 404,
             body: {
                 ok: false,
-                status: gmailResult.status || "not_found",
-                message: gmailResult.message || "No se encontró código",
+                status: fetchingResult.status || "not_found",
+                message: fetchingResult.message || "No se encontró código",
             },
-            meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult },
+            meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult: fetchingResult },
         };
     }
 
-    // 8) ok
+    // 8) ok (puede ser código puro o aprobación)
+    const responseBody = {
+        ok: true,
+        orderNumber: Number(orderNumber),
+        platform: requestedSlug,
+        email: soldAccountEmail,
+        type: fetchingResult.type || "code",
+    };
+
+    if (fetchingResult.type === "approval") {
+        responseBody.deviceName = fetchingResult.deviceName;
+    } else {
+        responseBody.code = fetchingResult.code;
+    }
+
     return {
         http: 200,
-        body: {
-            ok: true,
-            orderNumber: Number(orderNumber),
-            platform: requestedSlug,
-            email: soldAccountEmail,
-            code: gmailResult.code,
-        },
-        meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult },
+        body: responseBody,
+        meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult: fetchingResult },
     };
 }
 

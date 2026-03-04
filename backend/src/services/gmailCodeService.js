@@ -1,36 +1,13 @@
 // BACKEND: pagv2strbx/src/services/gmailCodeService.js
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
-
-function getImapConfig() {
-    const user = process.env.GMAIL_EMAIL;
-    const password = process.env.GMAIL_IMAP_PASS;
-
-    if (!user || !password) return null;
-
-    return {
-        imap: {
-            user,
-            password,
-            host: "imap.gmail.com",
-            port: 993,
-            tls: true,
-            authTimeout: 10000,
-            tlsOptions: { rejectUnauthorized: false },
-        },
-    };
-}
+const { getImapConfig, safeToDate } = require("../utils/imapConfig");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
     const ms = (Number(maxAgeMinutes) || 15) * 60 * 1000;
     const d = new Date(Date.now() - ms);
     // SINCE filtra por día (no minutos exactos)
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function safeToDate(v) {
-    const d = v instanceof Date ? v : new Date(v);
-    return isNaN(d.getTime()) ? null : d;
 }
 
 /**
@@ -178,7 +155,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
         if (conn) {
             try {
                 await conn.end();
-            } catch (_) {}
+            } catch (_) { }
         }
     }
 }

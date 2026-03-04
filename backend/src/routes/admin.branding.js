@@ -28,11 +28,20 @@ router.post("/admin/branding/logo", requireAuth, requireRole("admin"), async (re
 
         const buf = Buffer.from(b64, "base64");
 
-// límite: 3 MB
+        // límite: 3 MB
         if (buf.length > 3_000_000) {
             return res.status(400).json({ message: "Logo muy pesado. Máx 3MB." });
         }
 
+        // Crear tabla si no existe (auto-migración)
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS branding_assets (
+                asset_key VARCHAR(64) PRIMARY KEY,
+                mime_type VARCHAR(64) NOT NULL,
+                data MEDIUMBLOB NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            )
+        `);
 
         await pool.query(
             `INSERT INTO branding_assets (asset_key, mime_type, data)
@@ -43,8 +52,10 @@ router.post("/admin/branding/logo", requireAuth, requireRole("admin"), async (re
 
         return res.json({ ok: true });
     } catch (e) {
-        return res.status(500).json({ message: "Error guardando logo." });
+        console.error("[admin.branding] Error guardando logo:", e);
+        return res.status(500).json({ message: "Error guardando logo: " + (e?.message || "desconocido") });
     }
 });
+
 
 module.exports = router;

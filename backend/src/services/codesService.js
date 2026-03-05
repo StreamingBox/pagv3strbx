@@ -43,6 +43,11 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         plat = await getCodePlatformBySlug(requestedSlug);
     }
 
+    // ✅ Fallback hardcoded para Netflix si no existe en BD
+    if (!plat && requestedSlug === "netflix") {
+        plat = { slug: "netflix", gmail_from: "netflix.com", is_active: 1, max_age_minutes: 15 };
+    }
+
     if (!plat || Number(plat.is_active) !== 1) {
         console.error(`[requestCode] Plataforma no encontrada o inactiva: ${requestedSlug}`);
         return { http: 404, body: { ok: false, message: `Plataforma '${requestedSlug}' no disponible` } };

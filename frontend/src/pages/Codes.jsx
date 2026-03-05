@@ -208,7 +208,7 @@ export default function Codes() {
                                 {/* Anillo decorativo */}
                                 <div style={{ position: "absolute", inset: -5, borderRadius: "50%", border: "1px solid rgba(13,166,242,0.12)", boxShadow: "0 0 12px rgba(13,166,242,0.08)" }} />
                             </div>
-                            <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>Códigos</h1>
+                            <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>Códigos (V3)</h1>
                             <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>Obtén credenciales de acceso de tu pedido</p>
                         </div>
 

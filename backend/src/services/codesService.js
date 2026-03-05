@@ -44,14 +44,16 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     }
 
     if (!plat || Number(plat.is_active) !== 1) {
-        return { http: 404, body: { ok: false, message: "Plataforma no disponible" } };
+        console.error(`[requestCode] Plataforma no encontrada o inactiva: ${requestedSlug}`);
+        return { http: 404, body: { ok: false, message: `Plataforma '${requestedSlug}' no disponible` } };
     }
 
     const sub = await getSubscriptionWithAccount(orderNumber);
     if (!sub) {
+        console.error(`[requestCode] Pedido no encontrado: ${orderNumber}`);
         return {
             http: 404,
-            body: { ok: false, message: "Pedido no encontrado" },
+            body: { ok: false, message: `Pedido #${orderNumber} no encontrado` },
             meta: { sub: null, plat },
         };
     }

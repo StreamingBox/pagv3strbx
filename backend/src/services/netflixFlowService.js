@@ -96,13 +96,13 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             criteria.push(["TO", String(toEmail).trim()]);
         }
 
-        let messages = await conn.search(criteria, { bodies: [""], markSeen: false });
+        let messages = await conn.search(criteria, { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false });
 
-        if (!messages?.length) {
-            messages = await conn.search([["SINCE", sinceDate]], { bodies: [""], markSeen: false });
+        if (!messages || messages.length === 0) {
+            messages = await conn.search([["SINCE", sinceDate]], { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false });
         }
 
-        if (!messages?.length) {
+        if (!messages || messages.length === 0) {
             return { ok: false, status: "not_found", message: "No hay correos recientes en la bandeja." };
         }
 
@@ -122,51 +122,92 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             const ageMin = (Date.now() - msgDate.getTime()) / 1000 / 60;
 
-            const envFrom = (msg?.attributes?.envelope?.from || [])
-                .map((f) => `${f.mailbox || ""}@${f.host || ""}`.toLowerCase())
-                .join(" ") || "";
+            // Buscar el header
+            const headerPart = msg?.parts?.find(p => p.which.includes("HEADER"));
+            const headers = headerPart?.body || {};
 
-            if (!envFrom.includes(fromNeedle)) continue;
+            const fromField = (headers.from && headers.from[0]) ? String(headers.from[0]).toLowerCase() : "";
+
+            if (!fromField.includes(fromNeedle)) continue;
 
             if (ageMin > maxAgeMinutes) {
                 sawExpiredMatch = true;
-                continue;
+                continue; // Está vencido, pero no detenemos, tal vez haya otro
             }
 
-            const raw = msg?.parts?.find((p) => p.which === "");
+            const subject = (headers.subject && headers.subject[0]) ? String(headers.subject[0]).toLowerCase() : "";
+
+            // ¿Coincide el subject con lo que buscamos?
+            let isTarget = false;
+            // Aceptar "código de acceso temporal" o "código para iniciar sesión" u "código", e incluso correos de "hogar"
+            if (action === "code" && (subject.includes("código") || subject.includes("codigo") || subject.includes("iniciar sesión") || subject.includes("hogar") || subject.includes("actualizaci"))) isTarget = true;
+            if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud") || subject.includes("hogar"))) isTarget = true;
+
+            if (!isTarget) continue;
+
+            // ¡Encontramos el correo correcto! Ahora sí pedimos el cuerpo completo
+            const fetchFull = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
+            if (!fetchFull || !fetchFull[0]) continue;
+
+            const raw = fetchFull[0].parts?.find(p => p.which === "");
             if (!raw?.body) continue;
 
             const parsed = await simpleParser(raw.body);
-            const subject = String(parsed.subject || "").toLowerCase();
             const html = String(parsed.html || "");
             const text = String(parsed.text || "");
 
             // 1. FLUJO: CÓDIGO TEMPORAL
-            if (action === "code" && subject.includes("código de acceso temporal")) {
+            if (action === "code") {
                 const $ = cheerio.load(html);
                 const buttonLink = $("a").filter((i, el) => {
                     return $(el).text().toLowerCase().includes("obtener") || $(el).attr("href")?.includes("netflix.com/account/travel/verify");
                 }).attr("href");
 
-                if (!buttonLink) continue; // Prueba el siguiente correo
+                if (buttonLink) {
+                    const result = await scrapeTemporalCode(buttonLink);
+                    if (result.ok || result.status === "expired") {
+                        return { ...result, emailDate: msgDate };
+                    }
+                } else {
+                    let extractedCode = null;
 
-                const result = await scrapeTemporalCode(buttonLink);
-                if (result.ok || result.status === "expired") {
-                    return { ...result, emailDate: msgDate };
+                    // 1. Buscar en HTML con Cheerio dentro de cualquier etiqueta
+                    $('*').each((i, el) => {
+                        const t = $(el).text().trim();
+                        if (/^([0-9]\s*){4,6}$/.test(t)) {
+                            extractedCode = t.replace(/\s/g, '');
+                        }
+                    });
+
+                    // 2. Fallback: buscarlo en texto plano
+                    if (!extractedCode) {
+                        const plainMatches = text.match(/\b(?:[0-9]\s*){4,6}\b/g);
+                        if (plainMatches) {
+                            for (let mt of plainMatches) {
+                                let rm = mt.replace(/\s/g, '');
+                                if (rm.length >= 4 && rm !== "2023" && rm !== "2024" && rm !== "2025" && rm !== "2026") {
+                                    extractedCode = rm;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (extractedCode) {
+                        return { ok: true, type: "code", code: extractedCode, emailDate: msgDate };
+                    }
                 }
             }
 
             // 2. FLUJO: APROBAR DISPOSITIVO
-            if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud"))) {
+            if (action === "approve") {
                 const $ = cheerio.load(html);
                 const buttonLink = $("a").filter((i, el) => {
                     return $(el).text().toLowerCase().includes("aprobar") || $(el).attr("href")?.includes("netflix.com/account/approve");
                 }).attr("href");
 
-                if (!buttonLink) continue; // Prueba el siguiente correo
+                if (!buttonLink) continue;
 
-                // Intentar extraer el nombre del dispositivo
-                // "Solicitud de Profile One desde: Samsung - Smart TV"
                 let deviceName = "Tu Dispositivo";
                 const matchDevice = text.match(/desde:\s*([^\n]+)/i);
                 if (matchDevice && matchDevice[1]) {

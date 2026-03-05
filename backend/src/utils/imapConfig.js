@@ -16,7 +16,7 @@ function getImapConfig() {
             port: 993,
             tls: true,
             authTimeout: 10000,
-            // ✅ rejectUnauthorized: true (por defecto) — Gmail tiene certificado válido
+            tlsOptions: { rejectUnauthorized: false }, // Permitir proxy/self-signed certs (e.g. en entorno local/desarrollo)
         },
     };
 }

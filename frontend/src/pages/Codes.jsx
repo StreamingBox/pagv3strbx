@@ -140,7 +140,8 @@ export default function Codes() {
             const r = await apiPost(`/api/codes/${slug}/request`, body);
             if (r.status === 401) { navigate("/login"); return; }
             if (!r.ok) {
-                setData({ ok: false, status: r.data?.status || "error", message: r.data?.message || "Error solicitando código" });
+                const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
+                setData({ ok: false, status: r.data?.status || "error", message: r.data?.message || fallbackMessage });
                 return;
             }
             setData(r.data);
@@ -148,6 +149,17 @@ export default function Codes() {
             setError(e?.message || "Error de conexión");
         } finally {
             setLoadingSlug(null);
+        }
+    }
+
+    function handlePlatformClick(slug) {
+        if (!canSearch) return;
+        if (slug !== "netflix") {
+            requestCode(slug, "code");
+        } else {
+            setError("");
+            setData(null);
+            setActivePlatform(slug);
         }
     }
 
@@ -186,7 +198,7 @@ export default function Codes() {
 
                     {/* ════ IZQUIERDA: Formulario ════ */}
                     <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }}
-                        style={{ ...S.card, flex: "0 0 370px", overflow: "hidden" }}>
+                        style={{ ...S.card, flex: "0 0 450px", overflow: "hidden" }}>
 
                         {/* ── Header con glow ── */}
                         <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid var(--stroke)", textAlign: "center" }}>
@@ -230,24 +242,6 @@ export default function Codes() {
                                                 onBlur={e => { e.target.style.borderColor = "var(--stroke)"; e.target.style.boxShadow = "none"; }}
                                             />
                                         </div>
-                                        {activePlatform !== "netflix" && (
-                                            <motion.button
-                                                whileHover={{ scale: 1.03, boxShadow: "0 0 20px rgba(13,166,242,0.35)" }}
-                                                whileTap={{ scale: 0.97 }}
-                                                disabled={!canSearch}
-                                                onClick={() => activePlatform && requestCode(activePlatform)}
-                                                style={{
-                                                    height: 40, padding: "0 16px", borderRadius: 10, fontSize: 12, fontWeight: 800,
-                                                    background: canSearch ? "linear-gradient(135deg,var(--accent),#6333ff)" : "var(--input-bg)",
-                                                    border: canSearch ? "none" : "1px solid var(--stroke)", color: canSearch ? "#fff" : "var(--muted)",
-                                                    cursor: canSearch ? "pointer" : "default", fontFamily: "var(--font)", flexShrink: 0,
-                                                    boxShadow: canSearch ? "0 4px 16px rgba(13,166,242,0.3)" : "none",
-                                                    transition: "all 0.2s",
-                                                }}
-                                            >
-                                                Buscar
-                                            </motion.button>
-                                        )}
                                     </div>
 
                                     {activePlatform === "netflix" && (
@@ -304,7 +298,7 @@ export default function Codes() {
                                                 whileHover={canSearch ? { scale: 1.03, boxShadow: `0 0 20px ${p.accent}40`, borderColor: p.accent } : {}}
                                                 whileTap={{ scale: canSearch ? 0.97 : 1 }}
                                                 disabled={!canSearch}
-                                                onClick={() => requestCode(p.slug)}
+                                                onClick={() => handlePlatformClick(p.slug)}
                                                 style={{
                                                     display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
                                                     padding: "16px 8px", borderRadius: 14,

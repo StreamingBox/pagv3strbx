@@ -56,14 +56,16 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             criteria.push(["TO", String(toEmail).trim()]);
         }
 
-        let messages = await conn.search(criteria, fetchOptions);
+        const headerOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false };
+
+        let messages = await conn.search(criteria, headerOptions);
 
         // 2) Fallback SINCE solo
-        if (!messages?.length) {
-            messages = await conn.search([["SINCE", sinceDate]], fetchOptions);
+        if (!messages || messages.length === 0) {
+            messages = await conn.search([["SINCE", sinceDate]], headerOptions);
         }
 
-        if (!messages?.length) {
+        if (!messages || messages.length === 0) {
             return {
                 ok: false,
                 status: "not_found",
@@ -87,28 +89,31 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
 
             const ageMin = (Date.now() - msgDate.getTime()) / 1000 / 60;
 
-            // envelope from (rápido)
-            const envFrom =
-                (msg?.attributes?.envelope?.from || [])
-                    .map((f) => `${f.mailbox || ""}@${f.host || ""}`.toLowerCase())
-                    .join(" ") || "";
+            // Revisar header
+            const headerPart = msg?.parts?.find(p => p.which.includes("HEADER"));
+            const headers = headerPart?.body || {};
 
-            const fromLooksOkByEnvelope = !fromNeedle || envFrom.includes(fromNeedle);
+            const fromField = (headers.from && headers.from[0]) ? String(headers.from[0]).toLowerCase() : "";
+
+            const fromLooksOkByHeader = !fromNeedle || fromField.includes(fromNeedle);
 
             if (ageMin > maxMin) {
-                if (fromLooksOkByEnvelope) sawExpiredFromMatch = true;
+                if (fromLooksOkByHeader) sawExpiredFromMatch = true;
                 continue;
             }
 
-            const raw = msg?.parts?.find((p) => p.which === "");
+            if (!fromLooksOkByHeader) continue;
+
+            sawAnyFromMatch = true;
+
+            // Encontrado: descargar cuerpo
+            const fetchFull = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
+            if (!fetchFull || !fetchFull[0]) continue;
+
+            const raw = fetchFull[0].parts?.find(p => p.which === "");
             if (!raw?.body) continue;
 
             const parsed = await simpleParser(raw.body);
-
-            const fromText = (parsed.from?.text || "").toLowerCase();
-            if (fromNeedle && !fromText.includes(fromNeedle)) continue;
-
-            sawAnyFromMatch = true;
 
             // ✅ Buscamos en subject + text + html
             const subject = String(parsed.subject || "").replace(/\u00A0/g, " ");

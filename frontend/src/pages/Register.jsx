@@ -16,6 +16,7 @@ export default function Register() {
 
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
+    const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -31,7 +32,7 @@ export default function Register() {
         try { localStorage.setItem("sb-theme", theme); } catch { }
     }, [theme]);
 
-    const canSubmit = name.trim().length > 1 && email.trim().length > 3 && password.length >= 8 && !loading;
+    const canSubmit = name.trim().length > 1 && email.trim().length > 3 && phone.trim().length > 5 && password.length >= 8 && !loading;
 
     async function handleSubmit(e) {
         e.preventDefault();
@@ -51,7 +52,7 @@ export default function Register() {
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, phone: phone.trim() }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "No se pudo crear la cuenta.");
@@ -211,6 +212,18 @@ export default function Register() {
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
                                         autoComplete="email"
+                                    />
+                                </label>
+
+                                <label className="label">
+                                    WhatsApp (con indicativo, ej: +57315...)
+                                    <input
+                                        className="input"
+                                        type="text"
+                                        placeholder="+573000000000"
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                        autoComplete="tel"
                                     />
                                 </label>
 

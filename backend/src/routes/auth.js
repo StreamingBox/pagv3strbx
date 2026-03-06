@@ -60,6 +60,45 @@ async function insertRefreshTokenSafe(userId, role, db = pool) {
     throw new Error("No se pudo insertar refresh token (colisión repetida).");
 }
 
+router.post("/register", async (req, res) => {
+    try {
+        const { name, email, password } = req.body || {};
+
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: "Nombre, email y contraseña son obligatorios." });
+        }
+        if (password.length < 8) {
+            return res.status(400).json({ message: "La contraseña debe tener al menos 8 caracteres." });
+        }
+
+        const emailClean = email.trim().toLowerCase();
+
+        // Check for existing email
+        const [existing] = await pool.query(
+            "SELECT id FROM users WHERE email = ? LIMIT 1",
+            [emailClean]
+        );
+        if (existing.length) {
+            return res.status(409).json({ message: "Este email ya está registrado." });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 12);
+
+        await pool.query(
+            "INSERT INTO users (name, email, password_hash, role, status, currency) VALUES (?, ?, ?, 'user', 'pending', 'COP')",
+            [name.trim(), emailClean, passwordHash]
+        );
+
+        return res.status(201).json({
+            ok: true,
+            message: "Cuenta creada. Contacta al administrador para activarla.",
+        });
+    } catch (err) {
+        console.error("REGISTER ERROR:", err.message);
+        return res.status(500).json({ message: "Error interno." });
+    }
+});
+
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body || {};

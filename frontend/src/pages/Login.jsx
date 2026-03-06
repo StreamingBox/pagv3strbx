@@ -202,8 +202,11 @@ export default function Login() {
                         </motion.button>
                     </div>
 
-                    <div style={{ fontSize: '11px', opacity: 0.5, marginTop: '10px', lineHeight: '1.4' }}>
-                        * Usuario creado por admin. Si no tienes acceso, contacta al administrador.
+                    <div style={{ textAlign: "center", marginTop: "14px", fontSize: 13, color: "var(--muted)" }}>
+                        ¿No tienes cuenta?{" "}
+                        <a href="/register" style={{ color: "var(--accent)", fontWeight: 700, textDecoration: "none" }}>
+                            Regístrate aquí
+                        </a>
                     </div>
                 </form>
 

@@ -27,6 +27,22 @@ export default function Register() {
     const [logoOk, setLogoOk] = useState(true);
     const [theme, setTheme] = useState(getInitialTheme);
 
+    const [country, setCountry] = useState({ code: "+57", flag: "🇨🇴", name: "Colombia" });
+    const [showCountries, setShowCountries] = useState(false);
+
+    const countries = [
+        { code: "+57", flag: "🇨🇴", name: "Colombia" },
+        { code: "+58", flag: "🇻🇪", name: "Venezuela" },
+        { code: "+52", flag: "🇲🇽", name: "México" },
+        { code: "+593", flag: "🇪🇨", name: "Ecuador" },
+        { code: "+51", flag: "🇵🇪", name: "Perú" },
+        { code: "+56", flag: "🇨🇱", name: "Chile" },
+        { code: "+54", flag: "🇦🇷", name: "Argentina" },
+        { code: "+507", flag: "🇵🇦", name: "Panamá" },
+        { code: "+34", flag: "🇪🇸", name: "España" },
+        { code: "+1", flag: "🇺🇸", name: "USA" },
+    ];
+
     useEffect(() => {
         document.documentElement.setAttribute("data-theme", theme);
         try { localStorage.setItem("sb-theme", theme); } catch { }
@@ -49,10 +65,11 @@ export default function Register() {
 
         setLoading(true);
         try {
+            const fullPhone = `${country.code}${phone.replace(/\D/g, "")}`;
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, phone: phone.trim() }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, phone: fullPhone }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "No se pudo crear la cuenta.");
@@ -216,15 +233,56 @@ export default function Register() {
                                 </label>
 
                                 <label className="label">
-                                    WhatsApp (con indicativo, ej: +57315...)
-                                    <input
-                                        className="input"
-                                        type="text"
-                                        placeholder="+573000000000"
-                                        value={phone}
-                                        onChange={(e) => setPhone(e.target.value)}
-                                        autoComplete="tel"
-                                    />
+                                    WhatsApp
+                                    <div style={{ display: "flex", gap: "8px", position: "relative" }}>
+                                        <div 
+                                            onClick={() => setShowCountries(!showCountries)}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: "6px",
+                                                background: "var(--input-bg)", border: "1px solid var(--stroke)",
+                                                borderRadius: "12px", padding: "0 12px", cursor: "pointer",
+                                                height: "44px", minWidth: "85px", fontSize: "14px"
+                                            }}
+                                        >
+                                            <span style={{ fontSize: "18px" }}>{country.flag}</span>
+                                            <span>{country.code}</span>
+                                        </div>
+
+                                        {showCountries && (
+                                            <div style={{
+                                                position: "absolute", top: "100%", left: 0, zIndex: 100,
+                                                background: "var(--bg0)", border: "1px solid var(--stroke)",
+                                                borderRadius: "12px", width: "100%", maxHeight: "200px",
+                                                overflowY: "auto", marginTop: "4px", boxShadow: "0 10px 30px rgba(0,0,0,0.3)"
+                                            }}>
+                                                {countries.map(c => (
+                                                    <div 
+                                                        key={c.code}
+                                                        onClick={() => { setCountry(c); setShowCountries(false); }}
+                                                        style={{
+                                                            padding: "10px 14px", display: "flex", alignItems: "center",
+                                                            gap: "10px", cursor: "pointer", borderBottom: "1px solid var(--stroke-light)"
+                                                        }}
+                                                        className="country-item-hover"
+                                                    >
+                                                        <span style={{ fontSize: "18px" }}>{c.flag}</span>
+                                                        <span style={{ color: "var(--text)", fontSize: "14px" }}>{c.name}</span>
+                                                        <span style={{ marginLeft: "auto", color: "var(--muted)", fontSize: "12px" }}>{c.code}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <input
+                                            className="input"
+                                            type="text"
+                                            placeholder="Número (ej: 315...)"
+                                            value={phone}
+                                            onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+                                            autoComplete="tel"
+                                            style={{ flex: 1 }}
+                                        />
+                                    </div>
                                 </label>
 
                                 <label className="label">

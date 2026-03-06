@@ -348,3 +348,13 @@
     max-width: 100%;
     box-sizing: border-box;
 }
+
+.country-item-hover {
+    transition: background 0.2s ease;
+}
+.country-item-hover:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+:root[data-theme="light"] .country-item-hover:hover {
+    background: rgba(0, 0, 0, 0.05);
+}

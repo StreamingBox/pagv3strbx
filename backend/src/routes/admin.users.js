@@ -8,9 +8,9 @@ const router = express.Router();
 
 router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const { page = 1, limit = 5 } = req.query;
+        const { page = 1, limit = 50 } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
-        const limitNum = Math.max(parseInt(limit, 10) || 5, 1);
+        const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 1000);
         const offset = (pageNum - 1) * limitNum;
 
         // COUNT
@@ -38,7 +38,8 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
         FROM users u
         LEFT JOIN wallets w ON w.user_id = u.id
         ORDER BY u.id DESC
-        LIMIT ${limitNum} OFFSET ${offset}`
+        LIMIT ? OFFSET ?`,
+            [limitNum, offset]
         );
 
 
@@ -50,7 +51,7 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
             totalPages: Math.ceil(total / limitNum)
         });
     } catch (err) {
-        console.error(err);
+        console.error("API Error at " + req.originalUrl + ":", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });
@@ -62,7 +63,7 @@ router.get("/admin/users/stats", requireAuth, requireRole("admin"), async (req, 
         );
         return res.json(rows);
     } catch (err) {
-        console.error(err);
+        console.error("API Error at " + req.originalUrl + ":", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });
@@ -103,7 +104,7 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
             user: { id: result.insertId, name, email: normalizedEmail, role: finalRole, status: "active" },
         });
     } catch (err) {
-        console.error(err);
+        console.error("API Error at " + req.originalUrl + ":", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });
@@ -158,7 +159,7 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
         return res.json({ ok: true });
     } catch (err) {
         try { await conn.rollback(); } catch { }
-        console.error(err);
+        console.error("PATCH /admin/users/:id Error:", err.message);
         return res.status(500).json({ message: "Error interno." });
     } finally {
         conn.release();
@@ -171,8 +172,8 @@ router.patch("/admin/users/:id/password", requireAuth, requireRole("admin"), asy
     try {
         const { id } = req.params;
         const { password } = req.body || {};
-        if (!password || String(password).length < 4) {
-            return res.status(400).json({ message: "password es obligatorio (min 4)." });
+        if (!password || String(password).length < 8) {
+            return res.status(400).json({ message: "password es obligatorio (min 8)." });
         }
 
         const password_hash = await bcrypt.hash(String(password), 12);

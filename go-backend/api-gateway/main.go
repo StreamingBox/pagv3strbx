@@ -25,10 +25,19 @@ func main() {
 	// Middleware
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "https://strbx.com.co, https://www.strbx.com.co, http://localhost:5173, http://127.0.0.1:5173, http://localhost:54549",
+		AllowOrigins:     "https://strbx.com.co, https://www.strbx.com.co",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowCredentials: true,
 	}))
+
+	// Local development origins (only if not in production or for local testing)
+	if os.Getenv("GO_ENV") != "production" {
+		app.Use(cors.New(cors.Config{
+			AllowOrigins:     "http://localhost:5173, http://127.0.0.1:5173, http://localhost:54549, http://localhost:5174",
+			AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+			AllowCredentials: true,
+		}))
+	}
 
 	// Microservices URLs
 	codesServiceURL := os.Getenv("CODES_SERVICE_URL")
@@ -86,7 +95,13 @@ func main() {
 			targetUrl += "?" + queryString
 		}
 		log.Printf("[Gateway] Proxying unhandled route to Node: %s", targetUrl)
-		return proxy.Do(c, targetUrl)
+		if err := proxy.Do(c, targetUrl); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Backend service unreachable"})
+		}
+		// Strip internal headers
+		c.Response().Header.Del(fiber.HeaderServer)
+		c.Response().Header.Del("X-Powered-By")
+		return nil
 	})
 
 	port := os.Getenv("PORT")

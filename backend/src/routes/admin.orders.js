@@ -396,8 +396,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                u.email AS user_email,
                p.name AS platform_name,
                p.slug AS platform_slug,
-               acc.email AS account_email,
-               acc.password AS account_password,
+                acc.email AS account_email,
                acc.profile_number
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id
@@ -426,8 +425,12 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
 // ✅ Toggle is_attended
 router.post("/admin/orders/:id/attend", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const orderId = req.params.id;
+        const orderId = Number(req.params.id);
         const { is_attended } = req.body;
+
+        if (!Number.isInteger(orderId) || orderId <= 0) {
+            return res.status(400).json({ message: "ID de pedido inválido." });
+        }
 
         await pool.query("UPDATE subscriptions SET is_attended = ? WHERE id = ?", [is_attended ? 1 : 0, orderId]);
 

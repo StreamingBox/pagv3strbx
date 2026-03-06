@@ -23,7 +23,7 @@ function cookieOpts(req, maxAgeMs, path = "/") {
     return {
         httpOnly: true,
         secure: isProd,   // 🔥 SOLO secure en producción real
-        sameSite: "lax",
+        sameSite: "strict",
         path,
         maxAge: maxAgeMs,
     };
@@ -103,7 +103,7 @@ router.post("/login", async (req, res) => {
             user: { id: user.id, name: user.name, email: user.email, role: user.role, currency: user.currency },
         });
     } catch (err) {
-        console.error("LOGIN ERROR DETAILS:", err);
+        console.error("LOGIN ERROR DETAILS:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });
@@ -200,7 +200,7 @@ router.post("/refresh", async (req, res) => {
             await conn.rollback();
         } catch { }
         conn.release();
-        console.error(err);
+        console.error("Refresh Token Error:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });
@@ -226,7 +226,7 @@ router.post("/logout", async (req, res) => {
         const common = {
             httpOnly: true,
             secure: !!isProd,
-            sameSite: "lax",
+            sameSite: "strict",
         };
 
         res.clearCookie("accessToken", { ...common, path: "/" });

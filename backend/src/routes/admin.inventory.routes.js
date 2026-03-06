@@ -8,6 +8,8 @@ const {
     patchInventory,
 } = require("../services/inventory.service");
 
+const { sellAccountFromInventory } = require("../services/sellAccount.service");
+
 const router = express.Router();
 
 router.get("/admin/inventory", requireAuth, requireRole("admin"), async (req, res) => {
@@ -37,6 +39,28 @@ router.patch("/admin/inventory/:id", requireAuth, requireRole("admin"), async (r
     } catch (e) {
         const status = e.status || 500;
         return res.status(status).json({ message: e.message || "Error interno." });
+    }
+});
+
+// ✅ Vender cuenta específica desde inventario
+router.post("/admin/inventory/:id/sell", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const adminUserId = req.user.id;
+        const accountId = Number(req.params.id);
+        const payload = {
+            ...req.body,
+            adminUserId,
+            accountId
+        };
+
+        const data = await sellAccountFromInventory(payload);
+        return res.status(201).json(data);
+    } catch (e) {
+        const status = e.status || 500;
+        return res.status(status).json({ 
+            message: e.message || "Error interno vendiendo cuenta.",
+            ...(e.payload || {})
+        });
     }
 });
 

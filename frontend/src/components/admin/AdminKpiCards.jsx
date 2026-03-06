@@ -83,10 +83,10 @@ export default function AdminKpiCards({ onNavigate }) {
             {groups.map((group, idx) => (
                 <div key={idx}>
                     <div style={{
-                        fontSize: 14, fontWeight: 800, color: "var(--muted)",
-                        textTransform: "uppercase", letterSpacing: 0.8,
-                        marginBottom: 12, borderBottom: "1px solid var(--stroke2)",
-                        paddingBottom: 6
+                        fontSize: 14, fontWeight: 900, color: "#FFFFFF",
+                        textTransform: "uppercase", letterSpacing: 1.2,
+                        marginBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.1)",
+                        paddingBottom: 8
                     }}>
                         {group.groupName}
                     </div>
@@ -112,22 +112,35 @@ export default function AdminKpiCards({ onNavigate }) {
                                     <div
                                         className="stitch-beam-content"
                                         style={{
-                                            padding: 16,
+                                            padding: "20px 18px",
                                             display: "flex",
-                                            gap: 14,
+                                            gap: "16px",
                                             alignItems: "center",
                                             justifyContent: "flex-start",
-                                            border: `1px solid var(--stroke2)`,
-                                            width: "100%"
-                                            // Removing hardcoded background to let special-effects.css handle Light/Dark mode!
+                                            border: `1px solid rgba(255,255,255,0.1)`,
+                                            width: "100%",
+                                            background: "rgba(30, 41, 59, 0.6)", // Fondo mas solido para legibilidad extrema
+                                            backdropFilter: "blur(18px)",
+                                            borderRadius: "inherit"
                                         }}
                                     >
                                         <IconBadge icon={s.icon} tone={s.tone} />
-                                        <div>
-                                            <div style={{ fontWeight: 800, fontSize: 13, color: "var(--text)" }}>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ 
+                                                fontWeight: 800, 
+                                                fontSize: "14.5px", 
+                                                color: "#FFFFFF",
+                                                letterSpacing: "-0.2px"
+                                            }}>
                                                 {s.title}
                                             </div>
-                                            <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>
+                                            <div style={{ 
+                                                marginTop: 4, 
+                                                color: "var(--muted)", 
+                                                fontSize: "12px", 
+                                                lineHeight: 1.4,
+                                                fontWeight: 500
+                                            }}>
                                                 {s.hint}
                                             </div>
                                         </div>

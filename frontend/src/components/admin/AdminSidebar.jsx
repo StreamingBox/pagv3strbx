@@ -101,7 +101,16 @@ export default function AdminSidebar({
 
             <aside
                 className={`sidebar${effectiveCollapsed ? " sidebar--collapsed" : ""}`}
-                style={{ padding: "0", display: "flex", flexDirection: "column", background: "var(--card)", borderRight: "1px solid var(--stroke)", overflowY: "auto", overflowX: "hidden", zIndex: 999 }}
+                style={{ 
+                    padding: "0", 
+                    display: "flex", 
+                    flexDirection: "column", 
+                    background: "var(--card)", 
+                    borderRight: "1px solid var(--stroke)", 
+                    overflowY: "auto", 
+                    overflowX: "hidden", 
+                    zIndex: 999
+                }}
                 onMouseEnter={() => !isMobile && setIsHovered(true)}
                 onMouseLeave={() => !isMobile && setIsHovered(false)}
             >
@@ -164,13 +173,15 @@ export default function AdminSidebar({
                                             title={effectiveCollapsed ? link.label : ""}
                                             style={{
                                                 display: "flex", alignItems: "center", gap: 12,
-                                                padding: effectiveCollapsed ? "12px" : "10px 12px",
+                                                padding: effectiveCollapsed ? "12px" : "12px 14px",
                                                 justifyContent: effectiveCollapsed ? "center" : "flex-start",
-                                                borderRadius: 10, cursor: "pointer", transition: "all 0.2s",
-                                                background: isActive ? "rgba(13,166,242,0.1)" : "transparent",
-                                                color: isActive ? "#0da6f2" : "var(--text)",
-                                                border: isActive ? "1px solid rgba(13,166,242,0.2)" : "1px solid transparent",
-                                                boxShadow: isActive ? "0 4px 12px rgba(13,166,242,0.1) inset" : "none"
+                                                borderRadius: 14, cursor: "pointer", transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                                                background: isActive ? "linear-gradient(135deg, rgba(13,166,242,0.15), rgba(99,51,255,0.08))" : "transparent",
+                                                color: isActive ? "#0ca5e9" : "var(--muted)",
+                                                border: isActive ? "1px solid rgba(13,166,242,0.25)" : "1px solid transparent",
+                                                boxShadow: isActive ? "0 8px 16px rgba(0, 0, 0, 0.2)" : "none",
+                                                position: "relative",
+                                                overflow: "hidden"
                                             }}
                                             onMouseEnter={e => {
                                                 if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.03)";
@@ -179,7 +190,7 @@ export default function AdminSidebar({
                                                 if (!isActive) e.currentTarget.style.background = "transparent";
                                             }}
                                         >
-                                            <span style={{ fontSize: 18, opacity: isActive ? 1 : 0.6, filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                            <span style={{ fontSize: 18, opacity: isActive ? 1 : 0.8, filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                                                 {link.icon}
                                             </span>
                                             {!effectiveCollapsed && (

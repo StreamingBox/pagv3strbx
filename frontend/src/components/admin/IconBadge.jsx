@@ -1,21 +1,25 @@
 export default function IconBadge({ icon, tone = "accent" }) {
-    const toneColor =
-        tone === "green"
-            ? "rgba(34,197,94,.18)"
-            : tone === "blue"
-                ? "rgba(59,130,246,.18)"
-                : tone === "orange"
-                    ? "rgba(245,158,11,.18)"
-                    : "rgba(124,92,255,.18)";
+    const TONES = {
+        blue: "#3b82f6",
+        emerald: "#10b981",
+        violet: "#8b5cf6",
+        amber: "#f59e0b",
+        pink: "#ec4899",
+        cyan: "#06b6d4",
+        orange: "#f97316",
+        lime: "#84cc16",
+        red: "#ef4444",
+        indigo: "#6366f1",
+        fuchsia: "#d946ef",
+        sky: "#0ea5e9",
+        rose: "#f43f5e",
+        teal: "#14b8a6",
+        green: "#22c55e",
+    };
 
-    const border =
-        tone === "green"
-            ? "rgba(34,197,94,.28)"
-            : tone === "blue"
-                ? "rgba(59,130,246,.28)"
-                : tone === "orange"
-                    ? "rgba(245,158,11,.28)"
-                    : "rgba(124,92,255,.28)";
+    const color = TONES[tone] || "#7c3aed";
+    const toneColor = `${color}25`; // 15% opacity
+    const border = `${color}45`;    // 27% opacity
 
     return (
         <div

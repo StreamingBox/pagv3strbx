@@ -305,8 +305,8 @@
 
 /* Card base */
 .catalog-card {
-    background: var(--card, rgba(13, 22, 45, 0.95));
-    border: 1px solid var(--stroke, rgba(255, 255, 255, 0.08));
+    background: rgba(11, 18, 38, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 18px;
     padding: 16px;
     display: flex;
@@ -315,12 +315,14 @@
     position: relative;
     cursor: pointer;
     overflow: hidden;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, .4);
-    transition: border-color .2s ease, box-shadow .2s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    transition: border-color .2s ease, box-shadow .25s ease, transform .2s ease;
 }
 
 .catalog-card:hover {
-    border-color: rgba(13, 166, 242, 0.4);
+    border-color: rgba(13, 166, 242, 0.35);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 16px rgba(13, 166, 242, 0.08);
+    transform: translateY(-2px);
 }
 
 .catalog-card--out {

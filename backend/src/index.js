@@ -122,6 +122,15 @@ const codesRateLimit = rateLimit({
     legacyHeaders: false,
 });
 
+// Rate limit para links compartidos: 30 req/min
+const shareRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, message: "Demasiadas solicitudes al link compartido." },
+});
+
 /* =======================
    BODY PARSERS
    ======================= */
@@ -176,6 +185,8 @@ app.use("/api/users", usersRoutes);
 app.use("/api", storeRoutes);
 
 // Short links /s/:token
+app.use("/api/s", shareRateLimit);
+app.use("/s", shareRateLimit);
 app.use("/api", shareRoutes);
 app.use(shareRoutes); // acceso directo sin /api para Nginx SPA catch-all
 

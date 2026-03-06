@@ -8,77 +8,81 @@
    Stitch Design: cyan #0da6f2 accent, deep navy bg
    ========================= */
 :root {
-    --radius: 16px;
-    --radius2: 20px;
+    --radius: 12px;
+    --radius2: 24px;
 
     --font: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
         "Apple Color Emoji", "Segoe UI Emoji";
 
-    /* DARK — Deep Navy/Black (Stitch) */
-    --bg0: #050811;
-    --bg1: #08112A;
+    /* DARK — Navy vibrante y profundo */
+    --bg0: #0A0F29;
+    --bg1: #0F172A;
 
-    /* Glassmorphism cards */
-    --card: rgba(10, 18, 42, 0.82);
-    --card2: rgba(10, 18, 42, 0.60);
+    /* Cards con cristal y desenfoque */
+    --card: rgba(13, 19, 44, 0.75);
+    --card2: rgba(10, 15, 35, 0.70);
 
-    --stroke: rgba(13, 166, 242, .20);
-    --stroke2: rgba(255, 255, 255, .07);
+    --stroke: rgba(59, 130, 246, 0.22);
+    --stroke2: rgba(255, 255, 255, .05);
 
-    --text: #EAF4FF;
-    --muted: rgba(220, 238, 255, .65);
-    --muted2: rgba(220, 238, 255, .42);
+    --text: #FFFFFF;
+    --muted: #E2E8F0; /* Mucho más claro y sólido */
+    --muted2: #CBD5E1;
+    --card: rgba(15, 23, 42, 0.85); /* Fondo de tarjeta más definido */
 
-    --shadow: 0 24px 80px rgba(0, 0, 0, .65);
+    --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.7);
 
-    /* Accents — Cyan primary (Stitch #0da6f2) */
-    --accent: #0da6f2;
-    --accent-dark: #0888c9;
-    --accent2: #22C55E;
-    --accent-glow: rgba(13, 166, 242, .35);
+    /* Accents vibrantes */
+    --accent: #3B82F6;
+    --accent-dark: #2563EB;
+    --accent2: #8B5CF6;
+    --accent-glow: rgba(59, 130, 246, 0.30);
     --danger: #EF4444;
 
     /* inputs */
-    --input-bg: rgba(13, 166, 242, .05);
+    --input-bg: rgba(0, 0, 0, 0.25);
+    --input-color: #FFFFFF;
     --input-stroke: rgba(255, 255, 255, .10);
 
     /* background FX */
-    --fx1: rgba(13, 166, 242, .18);
-    --fx2: rgba(99, 51, 255, .14);
+    --fx1: rgba(37, 99, 235, 0.18);
+    --fx2: rgba(139, 92, 246, 0.14);
+    --accent-gradient: linear-gradient(180deg, #3B82F6, #2563EB);
 }
 
 :root[data-theme="light"] {
-    /* Fondos más grises y sedosos en vez de F0F6FC (Demasiado blanco brillante) */
-    --bg0: #e2e8f0;
-    --bg1: #cbd5e1;
+    /* LIGHT — Pure Pearl (Limpio y profesional) */
+    --bg0: #ffffff;
+    --bg1: #f3f4f6;
 
-    /* Tarjetas mantienen contraste alto pero no blanco hiriente */
-    --card: rgba(248, 250, 252, 0.96);
-    --card2: rgba(241, 245, 249, 0.88);
+    --card: rgba(255, 255, 255, 0.9);
+    --card2: rgba(249, 250, 251, 0.8);
 
-    /* Bordes y acentos reajustados para verse orgánicos */
-    --stroke: rgba(13, 166, 242, 0.25);
-    --stroke2: rgba(15, 23, 42, 0.12);
+    --stroke: rgba(0, 0, 0, 0.06);
+    --stroke2: rgba(0, 0, 0, 0.03);
 
-    /* Textos color pizarra en lugar de negro puro */
-    --text: #1e293b;
-    --muted: #475569;
-    --muted2: #64748b;
+    --text: #0f172a;
+    --muted: #64748b;
+    --muted2: #94a3b8;
 
-    --shadow: 0 16px 40px rgba(0, 0, 0, 0.08);
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
 
-    --input-bg: rgba(255, 255, 255, 0.6);
-    --input-stroke: rgba(15, 23, 42, 0.12);
+    --input-bg: #f9fafb;
+    --input-color: #0f172a;
+    --input-stroke: rgba(0, 0, 0, 0.08);
 
-    --fx1: rgba(13, 166, 242, 0.15);
-    --fx2: rgba(99, 51, 255, 0.12);
+    --fx1: rgba(59, 130, 246, 0.05);
+    --fx2: rgba(139, 92, 246, 0.04);
 }
 
-/* Oscurecer un poco la cuadricula de fondo en modo claro para que se aprecie el detalle sin saturar */
+/* En modo claro la bg-grid es invisible */
 :root[data-theme="light"] .bg-grid {
-    background-image:
-        linear-gradient(to right, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(0, 0, 0, 0.035) 1px, transparent 1px) !important;
+    opacity: 0 !important;
+}
+
+/* Orbes muy sutiles en claro */
+:root[data-theme="light"] .bg-orb {
+    opacity: 0.04 !important;
 }
 
 /* =========================
@@ -101,9 +105,9 @@ body {
 .page-shell {
     min-height: 100vh;
     color: var(--text);
-    background:
-        radial-gradient(1200px 600px at 15% 10%, var(--fx1), transparent 60%),
-        radial-gradient(900px 500px at 85% 20%, var(--fx2), transparent 55%),
+    background: 
+        radial-gradient(1200px 900px at 20% 10%, var(--fx1), transparent 50%),
+        radial-gradient(1000px 800px at 90% 70%, var(--fx2), transparent 50%),
         linear-gradient(180deg, var(--bg0), var(--bg1));
     position: relative;
     overflow: hidden;
@@ -156,11 +160,11 @@ body {
 .sidebar,
 .main,
 .kpi {
-    background: linear-gradient(180deg, var(--card), var(--card2));
+    background: linear-gradient(135deg, var(--card) 0%, var(--card2) 100%);
     border: 1px solid var(--stroke);
     border-radius: var(--radius2);
     box-shadow: var(--shadow);
-    backdrop-filter: blur(14px);
+    backdrop-filter: blur(16px);
 }
 
 /* =========================
@@ -206,7 +210,6 @@ body {
     color: var(--muted);
 }
 
-/* Logo (fallback) */
 .logo {
     width: 52px;
     height: 52px;
@@ -294,20 +297,20 @@ select,
 textarea {
     width: 100%;
     height: 44px;
-    border-radius: 14px;
+    border-radius: 8px;
     border: 1px solid var(--input-stroke);
     background: var(--input-bg);
-    color: var(--text);
-    padding: 0 12px;
+    color: var(--input-color);
+    padding: 0 16px;
     outline: none;
-    transition: .15s ease;
+    transition: all .2s ease;
+    font-size: 14px;
 }
 
-.input:focus,
-select:focus,
-textarea:focus {
-    border-color: rgba(13, 166, 242, .55);
-    box-shadow: 0 0 0 3px rgba(13, 166, 242, .15), 0 0 16px rgba(13, 166, 242, .08);
+.input:focus {
+    border-color: var(--accent);
+    background: var(--input-bg);
+    filter: brightness(1.1);
 }
 
 /* Select compacto para barras de filtros (ancho automático, no full-width) */
@@ -331,9 +334,9 @@ select.select-inline:focus {
 
 .btn {
     height: 48px;
-    border-radius: var(--radius);
+    border-radius: 12px;
     border: 0;
-    background: linear-gradient(135deg, var(--accent) 0%, #0888c9 50%, #3b52f0 100%);
+    background: var(--accent-gradient);
     color: white;
     font-weight: 700;
     font-family: var(--font);
@@ -343,20 +346,12 @@ select.select-inline:focus {
     position: relative;
     overflow: hidden;
     transition: transform .15s ease, box-shadow .15s ease;
-    box-shadow: 0 4px 24px rgba(13, 166, 242, .30);
-}
-
-.btn::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, .08), transparent);
-    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(13, 166, 242, .25);
 }
 
 .btn:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 8px 36px rgba(13, 166, 242, .50);
+    box-shadow: 0 8px 32px rgba(13, 166, 242, .45);
 }
 
 .btn:active:not(:disabled) {

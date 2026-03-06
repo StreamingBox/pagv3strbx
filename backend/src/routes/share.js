@@ -76,12 +76,12 @@ router.get("/s/:token", async (req, res) => {
     const waMsg = encodeURIComponent(
       `Hola, necesito ayuda con mi cuenta.\nPedido: ${r.order_id}\nPlataforma: ${r.platform_name}`
     );
-    const waLink = showWA ? `https://wa.me/${waNumber}?text=${waMsg}` : "";
+    const waLink = showWA ? `https://wa.me/${encodeURIComponent(waNumber)}?text=${waMsg}` : "";
 
     const waButtonHtml = showWA
       ? `
         <div class="wa">
-          <a href="${waLink}" target="_blank" rel="noopener noreferrer">
+          <a href="${escapeHtml(waLink)}" target="_blank" rel="noopener noreferrer">
             <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M19.11 17.31c-.25-.12-1.48-.73-1.71-.81-.23-.09-.4-.12-.57.12-.17.25-.66.81-.81.98-.15.17-.3.19-.56.06-.25-.12-1.06-.39-2.02-1.24-.75-.67-1.26-1.49-1.41-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.3.38-.45.13-.15.17-.25.25-.42.09-.17.04-.32-.02-.45-.06-.12-.57-1.37-.78-1.88-.21-.5-.42-.43-.57-.43h-.49c-.17 0-.45.06-.68.32-.23.25-.89.87-.89 2.12 0 1.24.91 2.45 1.04 2.62.12.17 1.79 2.74 4.33 3.84.61.26 1.08.42 1.44.54.61.19 1.16.16 1.6.1.49-.07 1.48-.6 1.69-1.18.21-.57.21-1.06.15-1.18-.06-.11-.23-.17-.48-.3Z" fill="white"/>
               <path fill-rule="evenodd" clip-rule="evenodd" d="M16 3C8.82 3 3 8.82 3 16c0 2.3.6 4.46 1.65 6.33L3 29l6.83-1.59A12.95 12.95 0 0 0 16 29c7.18 0 13-5.82 13-13S23.18 3 16 3Zm0 23.63c-2.03 0-3.92-.6-5.52-1.63l-.4-.25-4.05.94.96-3.95-.26-.41A10.59 10.59 0 0 1 5.38 16C5.38 10.17 10.17 5.38 16 5.38S26.62 10.17 26.62 16 21.83 26.62 16 26.62Z" fill="white"/>

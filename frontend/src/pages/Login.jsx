@@ -88,38 +88,29 @@ export default function Login() {
                 title={theme === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro"}
                 aria-label="Toggle tema"
             >
-                <AnimatePresence mode="wait" initial={false}>
-                    <motion.span
-                        key={theme}
-                        initial={{ opacity: 0, rotate: -90, scale: 0.5 }}
-                        animate={{ opacity: 1, rotate: 0, scale: 1 }}
-                        exit={{ opacity: 0, rotate: 90, scale: 0.5 }}
-                        transition={{ duration: 0.2 }}
-                    >
-                        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                    </motion.span>
-                </AnimatePresence>
+                {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
             </motion.button>
-
-            <motion.div
+            <motion.div 
                 className="card"
-                initial={{ opacity: 0, y: 28, scale: 0.97 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
             >
                 <div className="brand">
                     {logoOk ? (
-                        <img
+                        <motion.img 
+                            src={LOGO_URL} 
+                            alt="Logo" 
                             className="brand-logo-img"
-                            src={LOGO_URL}
-                            alt="Logo"
                             onError={() => setLogoOk(false)}
+                            animate={{ y: [0, -4, 0] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                         />
                     ) : (
                         <div className="logo">
-                            <div className="logo-core" />
-                            <div className="logo-ring" />
-                            <div className="logo-ring ring-2" />
+                            <div className="logo-ring"></div>
+                            <div className="logo-ring ring-2"></div>
+                            <div className="logo-core"></div>
                         </div>
                     )}
                     <div>
@@ -131,47 +122,46 @@ export default function Login() {
                 <form onSubmit={handleSubmit} className="form">
                     <label className="label">
                         Email
-                        <motion.input
+                        <input
                             className="input"
                             type="email"
-                            autoComplete="email"
                             placeholder="Pon tu correo"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
-                            whileFocus={{ scale: 1.01 }}
-                            transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         />
                     </label>
 
                     <label className="label">
                         Contraseña
                         <div style={{ position: "relative" }}>
-                            <motion.input
+                            <input
                                 className="input"
                                 type={showPassword ? "text" : "password"}
-                                autoComplete="current-password"
                                 placeholder="Pon tu contraseña"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                style={{ paddingRight: "44px" }}
-                                whileFocus={{ scale: 1.01 }}
-                                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                style={{ paddingRight: "46px" }}
                             />
-                            <motion.button
+                            <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                whileHover={{ scale: 1.15 }}
-                                whileTap={{ scale: 0.85 }}
                                 style={{
-                                    position: "absolute", right: "13px", top: "50%",
+                                    position: "absolute",
+                                    right: "12px",
+                                    top: "50%",
                                     transform: "translateY(-50%)",
-                                    background: "none", border: "none",
-                                    color: "var(--muted)", cursor: "pointer",
-                                    display: "flex", alignItems: "center", padding: "0"
+                                    background: "none",
+                                    border: "none",
+                                    color: "var(--muted)",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "4px"
                                 }}
                             >
                                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </motion.button>
+                            </button>
                         </div>
                     </label>
 
@@ -189,26 +179,30 @@ export default function Login() {
                         )}
                     </AnimatePresence>
 
-                    <motion.button
-                        className="btn"
-                        disabled={!canSubmit}
-                        whileHover={canSubmit ? { scale: 1.02, y: -2 } : {}}
-                        whileTap={canSubmit ? { scale: 0.97, y: 0 } : {}}
-                        transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                    >
-                        {loading ? (
-                            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                                <motion.span
-                                    animate={{ rotate: 360 }}
-                                    transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
-                                    style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "white", borderRadius: "50%" }}
-                                />
-                                Ingresando...
-                            </span>
-                        ) : "Iniciar sesión"}
-                    </motion.button>
+                    <div style={{ marginTop: '10px' }}>
+                        <motion.button
+                            className="btn"
+                            type="submit"
+                            style={{ width: '100%' }}
+                            disabled={!canSubmit}
+                            whileHover={canSubmit ? { scale: 1.02, y: -2 } : {}}
+                            whileTap={canSubmit ? { scale: 0.97, y: 0 } : {}}
+                            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                        >
+                            {loading ? (
+                                <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                    <motion.span
+                                        animate={{ rotate: 360 }}
+                                        transition={{ repeat: Infinity, duration: 0.8, ease: "linear" }}
+                                        style={{ display: "inline-block", width: 16, height: 16, border: "2px solid rgba(255,255,255,.3)", borderTopColor: "white", borderRadius: "50%" }}
+                                    />
+                                    Cargando...
+                                </span>
+                            ) : "Iniciar sesión"}
+                        </motion.button>
+                    </div>
 
-                    <div className="hint">
+                    <div style={{ fontSize: '11px', opacity: 0.5, marginTop: '10px', lineHeight: '1.4' }}>
                         * Usuario creado por admin. Si no tienes acceso, contacta al administrador.
                     </div>
                 </form>

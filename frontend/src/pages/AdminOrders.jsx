@@ -47,7 +47,7 @@ export default function AdminOrders() {
 
     // meta paginación
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(50);
+    const [limit, setLimit] = useState(10);
     const [total, setTotal] = useState(0);
     const pages = useMemo(() => Math.max(Math.ceil(total / limit), 1), [total, limit]);
 
@@ -300,13 +300,13 @@ export default function AdminOrders() {
                                         style={{ width: 38, height: 38, borderRadius: 10, border: "1px solid var(--stroke)", background: "var(--bg0)", color: "var(--text)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
                                         onClick={() => {
                                             setQ(""); setStatus(""); setPlatformId(""); setCurrency(""); setDateFrom(""); setDateTo("");
-                                            setPage(1); setLimit(50);
+                                            setPage(1); setLimit(10);
                                             setLoading(true);
-                                            apiFetch(`/admin/orders?page=1&limit=50`).then(data => {
+                                            apiFetch(`/admin/orders?page=1&limit=10`).then(data => {
                                                 if (data) {
                                                     setOrders(Array.isArray(data.items) ? data.items : []);
                                                     setPage(Number(data.page || 1));
-                                                    setLimit(Number(data.limit || 50));
+                                                    setLimit(Number(data.limit || 10));
                                                     setTotal(Number(data.total || 0));
                                                 }
                                                 setLoading(false);
@@ -421,6 +421,7 @@ export default function AdminOrders() {
                                             value={limit}
                                             onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); load(1); }}
                                         >
+                                            <option value="10">10 / pág</option>
                                             <option value="25">25 / pág</option>
                                             <option value="50">50 / pág</option>
                                             <option value="100">100 / pág</option>

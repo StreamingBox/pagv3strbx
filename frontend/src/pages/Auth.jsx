@@ -33,6 +33,13 @@ export default function Auth() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState(false);
     const [logoOk, setLogoOk] = useState(true);
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobile(window.innerWidth <= 800);
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
 
     // Form
     const [name, setName] = useState("");
@@ -168,7 +175,9 @@ export default function Auth() {
             filter: "blur(80px)", opacity: dark ? .35 : .1, pointerEvents: "none",
         },
         container: {
-            width: 900, maxWidth: "95vw", height: 600,
+            width: isMobile ? "95%" : 900,
+            maxWidth: isMobile ? 420 : "95vw",
+            height: isMobile ? "auto" : 600,
             position: "relative", overflow: "hidden",
             borderRadius: 28,
             boxShadow: dark
@@ -177,7 +186,13 @@ export default function Auth() {
             background: C.cardBg,
             zIndex: 10,
         },
-        formSide: (active) => ({
+        formSide: (active) => isMobile ? {
+            width: "100%", height: "auto",
+            display: active ? "none" : "flex",
+            flexDirection: "column", justifyContent: "center",
+            padding: "40px 24px",
+            background: C.cardBg,
+        } : {
             width: "50%", height: "100%",
             display: "flex", flexDirection: "column", justifyContent: "center",
             padding: "0 52px",
@@ -188,8 +203,14 @@ export default function Auth() {
             position: "absolute", top: 0, left: 0,
             zIndex: active ? 1 : 2,
             background: C.cardBg,
-        }),
-        regSide: (active) => ({
+        },
+        regSide: (active) => isMobile ? {
+            width: "100%", height: "auto",
+            display: active ? "flex" : "none",
+            flexDirection: "column", justifyContent: "flex-start",
+            padding: "40px 24px",
+            background: C.cardBg,
+        } : {
             width: "50%", height: "100%",
             display: "flex", flexDirection: "column", justifyContent: "flex-start",
             padding: "36px 52px", overflowY: "auto",
@@ -200,15 +221,16 @@ export default function Auth() {
             position: "absolute", top: 0, left: 0,
             zIndex: active ? 2 : 1,
             background: C.cardBg,
-        }),
+        },
         overlay: (active) => ({
+            display: isMobile ? "none" : "flex",
             position: "absolute", top: 0, right: 0,
             width: "50%", height: "100%",
             background: "linear-gradient(145deg, #06b6d4 0%, #0284c7 50%, #1d4ed8 100%)",
             transition: "transform .65s cubic-bezier(.77,0,.175,1)",
             transform: active ? "translateX(-100%)" : "translateX(0)",
             zIndex: 100,
-            display: "flex", alignItems: "center", justifyContent: "center",
+            alignItems: "center", justifyContent: "center",
             flexDirection: "column", padding: "0 48px", textAlign: "center",
         }),
         themeBtn: {
@@ -386,6 +408,12 @@ export default function Auth() {
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
                             {loading ? "Cargando..." : "Ingresar"}
                         </motion.button>
+                        {isMobile && (
+                            <div style={{ marginTop: 20, textAlign: "center", fontSize: 13, color: C.muted }}>
+                                ¿No tienes cuenta?{" "}
+                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>Regístrate</span>
+                            </div>
+                        )}
                     </form>
                 </div>
 
@@ -454,6 +482,12 @@ export default function Auth() {
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
                             {loading ? "Creando cuenta..." : "Registrarse"}
                         </motion.button>
+                        {isMobile && (
+                            <div style={{ marginTop: 20, textAlign: "center", fontSize: 13, color: C.muted }}>
+                                ¿Ya tienes cuenta?{" "}
+                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>Inicia Sesión</span>
+                            </div>
+                        )}
                     </form>
                 </div>
 

@@ -244,24 +244,25 @@ export default function Auth() {
             transition: "all .2s", boxShadow: dark ? "none" : "0 2px 8px rgba(37,99,235,.15)",
         },
         heading: {
-            fontSize: 28, fontWeight: 800, letterSpacing: -0.5,
-            marginBottom: 24, color: C.text,
+            fontSize: isMobile ? 24 : 28, fontWeight: 800, letterSpacing: -0.5,
+            marginBottom: isMobile ? 18 : 24, color: C.text,
         },
         label: {
             fontSize: 13, color: C.muted,
-            display: "flex", flexDirection: "column", gap: 6, marginBottom: 14,
+            display: "flex", flexDirection: "column", gap: 6, marginBottom: isMobile ? 12 : 14,
         },
         input: {
-            height: 44, borderRadius: 12,
+            height: 50, borderRadius: 14,
             border: `1px solid ${C.inputBdr}`,
             background: C.inputBg, color: C.text,
             padding: "0 16px", outline: "none",
-            fontSize: 14, transition: "all .2s",
+            fontSize: 15, transition: "all .2s",
+            boxSizing: "border-box",
         },
         btn: {
-            height: 48, borderRadius: 14, border: "none",
+            height: 50, borderRadius: 14, border: "none",
             background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-            color: "#fff", fontWeight: 700, fontSize: 15,
+            color: "#fff", fontWeight: 700, fontSize: 16,
             cursor: "pointer", width: "100%", marginTop: 6,
             transition: "all .2s",
             boxShadow: "0 4px 14px rgba(37,99,235,.35)",
@@ -278,17 +279,24 @@ export default function Auth() {
             cursor: "pointer", display: "flex", alignItems: "center",
         },
         countryTrigger: {
-            display: "flex", alignItems: "center", gap: 6,
-            height: 44, borderRadius: 12, border: `1px solid ${C.inputBdr}`,
-            background: C.inputBg, color: C.text,
-            padding: "0 14px", cursor: "pointer", minWidth: 95,
-            fontSize: 14, transition: "all .2s", whiteSpace: "nowrap",
+            display: "flex", alignItems: "center", gap: 8,
+            height: "100%", border: "none",
+            background: "transparent", color: C.text,
+            padding: "0 14px", cursor: "pointer", minWidth: 90,
+            fontSize: 15, transition: "all .2s", whiteSpace: "nowrap",
+            borderRight: `1px solid ${C.inputBdr}`,
         },
         phoneInput: {
-            flex: 1, height: 44, borderRadius: 12,
+            flex: 1, height: "100%", border: "none",
+            background: "transparent", color: C.text,
+            padding: "0 16px", outline: "none", fontSize: 15,
+        },
+        unifiedInput: {
+            display: "flex", alignItems: "center",
+            height: 50, borderRadius: 14,
             border: `1px solid ${C.inputBdr}`,
-            background: C.inputBg, color: C.text,
-            padding: "0 16px", outline: "none", fontSize: 14,
+            background: C.inputBg, overflow: "hidden",
+            boxSizing: "border-box", transition: "all .2s",
         },
         dropdown: {
             position: "absolute", bottom: "calc(100% + 6px)", left: 0,
@@ -431,12 +439,14 @@ export default function Auth() {
                         </label>
                         <label style={S.label}>
                             WhatsApp
-                            <div style={{ display: "flex", gap: 10, position: "relative" }} ref={countryRef}>
-                                <button type="button" style={S.countryTrigger} onClick={() => { setShowCountries(v => !v); setCountrySearch(""); }}>
-                                    <img src={flagUrl(country.flag)} alt="" style={{ width: 20, height: 15, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
-                                    <span style={{ fontSize: 13 }}>{country.code}</span>
-                                </button>
-                                <input style={S.phoneInput} type="text" placeholder="Número (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
+                            <div style={{ position: "relative" }} ref={countryRef}>
+                                <div style={S.unifiedInput} className="unified-input">
+                                    <button type="button" style={S.countryTrigger} onClick={() => { setShowCountries(v => !v); setCountrySearch(""); }}>
+                                        <img src={flagUrl(country.flag)} alt="" style={{ width: 22, height: 16, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
+                                        <span style={{ fontSize: 14 }}>{country.code}</span>
+                                    </button>
+                                    <input style={S.phoneInput} type="text" placeholder="Número (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.parentElement.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.parentElement.style.boxShadow = "none")} required />
+                                </div>
 
                                 <AnimatePresence>
                                     {showCountries && (

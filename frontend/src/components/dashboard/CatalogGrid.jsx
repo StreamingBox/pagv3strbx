@@ -33,7 +33,7 @@ function getPlatformColor(slug, name) {
     return PLATFORM_COLORS.default;
 }
 
-export default function CatalogGrid({ catalog, buyLoading, onAddToCart }) {
+export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe }) {
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
         const aUnlim = a.platformType === 'correo';
@@ -148,22 +148,44 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart }) {
                                 </span>
                             </div>
 
-                            <motion.button
-                                className="catalog-card__btn"
-                                disabled={buyLoading || outOfStock}
-                                onClick={() => onAddToCart(item)}
-                                whileHover={!outOfStock ? { scale: 1.08 } : {}}
-                                whileTap={!outOfStock ? { scale: 0.92 } : {}}
-                                transition={{ type: "spring", stiffness: 500, damping: 20 }}
-                            >
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                                    stroke="currentColor" strokeWidth="2.5"
-                                    strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
-                                    <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                                </svg>
-                                {outOfStock ? "Agotado" : "Agregar"}
-                            </motion.button>
+                            {outOfStock ? (
+                                <motion.button
+                                    onClick={() => onNotifyMe && onNotifyMe(item)}
+                                    className="catalog-card__btn catalog-card__btn--notify"
+                                    style={{
+                                        background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                                        color: "#fff",
+                                        fontWeight: "800",
+                                        textShadow: "0 1px 2px rgba(0,0,0,0.25)",
+                                        border: "1px solid rgba(255,255,255,0.2)",
+                                        justifyContent: "center",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "6px"
+                                    }}
+                                    whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(245, 158, 11, 0.4)" }}
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    🔔 Avísame
+                                </motion.button>
+                            ) : (
+                                <motion.button
+                                    className="catalog-card__btn"
+                                    disabled={buyLoading}
+                                    onClick={() => onAddToCart(item)}
+                                    whileHover={{ scale: 1.08 }}
+                                    whileTap={{ scale: 0.92 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                                >
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" strokeWidth="2.5"
+                                        strokeLinecap="round" strokeLinejoin="round">
+                                        <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
+                                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                                    </svg>
+                                    Agregar
+                                </motion.button>
+                            )}
                         </div>
                     </motion.div>
                 );

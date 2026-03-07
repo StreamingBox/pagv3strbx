@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "../ThemeToggle.jsx";
+import UserNotifications from "./UserNotifications.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = "/api/branding/logo";
@@ -116,7 +117,8 @@ export default function Sidebar({
                     )}
 
                     {!collapsed && (
-                        <div style={{ marginLeft: "auto", flexShrink: 0 }}>
+                        <div style={{ marginLeft: "auto", flexShrink: 0, display: "flex", gap: "8px", alignItems: "center" }}>
+                            <UserNotifications />
                             <ThemeToggle compact />
                         </div>
                     )}

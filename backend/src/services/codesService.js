@@ -123,18 +123,21 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    const last = await getLastDelivered(orderNumber, requestedSlug);
-    if (last && String(last.credential_fingerprint || "") === String(fingerprint)) {
-        return {
-            http: 409,
-            body: {
-                ok: false,
-                status: "blocked",
-                message:
-                    "Solo se puede solicitar 1 código por pedido. Si cambias la clave/pin podrás solicitar nuevamente.",
-            },
-            meta: { sub, plat, fingerprint, soldAccountEmail },
-        };
+    // ChatGPT permite solicitudes ilimitadas (no tiene bloqueo por pedido)
+    if (requestedSlug !== "chatgpt") {
+        const last = await getLastDelivered(orderNumber, requestedSlug);
+        if (last && String(last.credential_fingerprint || "") === String(fingerprint)) {
+            return {
+                http: 409,
+                body: {
+                    ok: false,
+                    status: "blocked",
+                    message:
+                        "Solo se puede solicitar 1 código por pedido. Si cambias la clave/pin podrás solicitar nuevamente.",
+                },
+                meta: { sub, plat, fingerprint, soldAccountEmail },
+            };
+        }
     }
 
     // 7) Extraer código de gmail o netflix flow

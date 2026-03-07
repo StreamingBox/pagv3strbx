@@ -14,6 +14,7 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
             userId,
             status,
             platformId,
+            platformName,
             currency,
             q,
             dateFrom,
@@ -40,16 +41,28 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
             where.push("s.platform_id = ?");
             params.push(Number(platformId));
         }
+        if (platformName) {
+            where.push("p.name LIKE ?");
+            params.push(`%${String(platformName).trim()}%`);
+        }
         if (currency) {
             where.push("s.currency = ?");
             params.push(String(currency));
         }
 
-        // búsqueda general
+        // búsqueda general: usuario, plataforma, ID de pedido, correo de cuenta vendida
         if (q) {
-            const qq = `%${String(q).trim()}%`;
-            where.push("(u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ?)");
-            params.push(qq, qq, qq);
+            const qTrim = String(q).trim();
+            const qq = `%${qTrim}%`;
+            // Si parece un número busca también por ID exacto de pedido
+            const isNumeric = /^\d+$/.test(qTrim);
+            if (isNumeric) {
+                where.push("(s.id = ? OR u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ?)");
+                params.push(Number(qTrim), qq, qq, qq, qq);
+            } else {
+                where.push("(u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ? OR CAST(s.id AS CHAR) LIKE ?)");
+                params.push(qq, qq, qq, qq, qq);
+            }
         }
 
         // rango de fechas (por created_at)
@@ -96,6 +109,7 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
         u.name AS userName,
         p.id AS platformId,
         p.name AS platformName,
+        p.slug AS platformSlug,
         d.id AS durationId,
         d.name AS durationName,
         d.days,

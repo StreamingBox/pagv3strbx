@@ -12,6 +12,9 @@ const ALIASES = {
     netflix: "netflix",
     spotify: "spotify",
     chatgpt: "chatgpt",
+    "chatgptbusiness": "chatgpt",
+    "chatgpt business": "chatgpt",
+    "chatgpt-business": "chatgpt",
     prime: "prime",
 };
 

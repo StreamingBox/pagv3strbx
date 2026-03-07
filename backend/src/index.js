@@ -19,6 +19,7 @@ const walletRoutes = require("./routes/wallet");
 const catalogRoutes = require("./routes/catalog");
 
 const adminUsers = require("./routes/admin.users");
+const userNotifications = require("./routes/user.notifications");
 const adminWallet = require("./routes/admin.wallet");
 const adminPlatforms = require("./routes/admin.platforms");
 const adminOrders = require("./routes/admin.orders");
@@ -196,6 +197,7 @@ app.use("/api", catalogRoutes);
 
 // Admin
 app.use("/api", adminUsers);
+app.use("/api", userNotifications);
 app.use("/api", adminWallet);
 app.use("/api", adminPlatforms);
 app.use("/api", adminAccountsRoutes);

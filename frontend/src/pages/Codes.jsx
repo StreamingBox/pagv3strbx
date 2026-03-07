@@ -9,6 +9,7 @@ import { slugifyLogo } from "../utils/platform.js";
 /* ─── Plataformas con colores de marca y nombres de archivo correctos ─── */
 const PLATFORMS = [
     { slug: "chatgpt", logoSlug: "chatgpt", label: "ChatGPT", icon: "🤖", accent: "#10a37f", bg: "rgba(16,163,127,0.12)", border: "rgba(16,163,127,0.3)" },
+    { slug: "chatgpt-business", logoSlug: "chatgpt", label: "ChatGPT Business", icon: "💼", accent: "#10a37f", bg: "rgba(16,163,127,0.10)", border: "rgba(16,163,127,0.3)" },
     { slug: "spotify", logoSlug: "spotify-3-meses", label: "Spotify", icon: "🎵", accent: "#1db954", bg: "rgba(29,185,84,0.12)", border: "rgba(29,185,84,0.3)" },
     { slug: "netflix", logoSlug: "netflix", label: "Netflix", icon: "🎬", accent: "#e50914", bg: "rgba(229,9,20,0.12)", border: "rgba(229,9,20,0.3)" },
     { slug: "prime", logoSlug: "prime-video", label: "Prime Video", icon: "📦", accent: "#00a8e1", bg: "rgba(0,168,225,0.12)", border: "rgba(0,168,225,0.3)" },

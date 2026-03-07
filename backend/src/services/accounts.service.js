@@ -62,7 +62,46 @@ async function insertAccount(conn, { identityId, pid, pname, emailNorm, password
      VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?)`,
         [identityId, pid, pname || "", emailNorm, password, pin, accountProf, exp]
     );
+    
+    // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
+    await resolveStockAlerts(conn, pid, pname);
+    
     return ins.insertId;
+}
+
+/**
+ * Cuando entra stock de una plataforma, busca a todos los usuarios
+ * que pidieron aviso y les crea una notificación interna.
+ */
+async function resolveStockAlerts(conn, pid, pname) {
+    if (!pid) return;
+
+    // 1. Encontrar a quiénes notificar (solo usuarios buscando esta plataforma)
+    // Utilizamos un subquery o un JOIN para conectar con los IDs de precio asociados al platform
+    const [subs] = await conn.query(`
+        SELECT ss.id as sub_id, ss.user_id, pp.duration_id
+        FROM stock_subscriptions ss
+        JOIN platform_prices pp ON pp.id = ss.platform_price_id
+        WHERE pp.platform_id = ? AND ss.is_notified = FALSE
+    `, [pid]);
+
+    if (!subs.length) return;
+
+    const notifyPromises = subs.map(async (sub) => {
+        // 2. Crear notificación para el usuario
+        const msg = `¡Ya hay stock disponible de ${pname}! Ingresa al catálogo para comprar.`;
+        await conn.query(`
+            INSERT INTO user_notifications (user_id, message)
+            VALUES (?, ?)
+        `, [sub.user_id, msg]);
+        
+        // 3. Marcar la suscripción como notificada/resuelta
+        await conn.query(`
+            UPDATE stock_subscriptions SET is_notified = TRUE WHERE id = ?
+        `, [sub.sub_id]);
+    });
+
+    await Promise.all(notifyPromises);
 }
 
 async function propagatePassword(conn, { pid, emailNorm, password, newId }) {

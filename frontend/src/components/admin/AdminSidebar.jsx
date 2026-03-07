@@ -24,7 +24,9 @@ const NAV_GROUPS = [
             { path: "/admin/accounts", label: "Inventario de Cuentas", icon: "🔐" },
             { path: "/admin/inventory", label: "Inventario General", icon: "📦" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
+            { path: "/admin/code-requests", label: "Pedidos de Códigos", icon: "🎟️" },
             { path: "/admin/code-logs", label: "Logs de Códigos", icon: "🎫" },
+            { path: "/admin/stock-notify", label: "Alertas de Stock", icon: "🔔" },
         ]
     },
     {
@@ -54,11 +56,28 @@ export default function AdminSidebar({
     onOpenLogoPicker,
     onLogout,
 }) {
-    const [collapsed, setCollapsed] = useState(false); // By default, sidebar is expanded/fixed
+    const [collapsed, setCollapsed] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
+    const [stockCount, setStockCount] = useState(0);
     const navigate = useNavigate();
     const location = useLocation();
+
+    // Poll stock notification count every 30s
+    useEffect(() => {
+        async function fetchStockCount() {
+            try {
+                const res = await fetch("/api/admin/stock-subscriptions", { credentials: "include" });
+                if (res.ok) {
+                    const data = await res.json();
+                    setStockCount(Array.isArray(data) ? data.length : 0);
+                }
+            } catch { /* silently ignore */ }
+        }
+        fetchStockCount();
+        const timer = setInterval(fetchStockCount, 30000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const handleResize = () => {
@@ -184,7 +203,7 @@ export default function AdminSidebar({
                                                 overflow: "hidden"
                                             }}
                                             onMouseEnter={e => {
-                                                if (!isActive) e.currentTarget.style.background = "rgba(255,255,255,0.03)";
+                                                if (!isActive) e.currentTarget.style.background = "var(--line)";
                                             }}
                                             onMouseLeave={e => {
                                                 if (!isActive) e.currentTarget.style.background = "transparent";
@@ -194,8 +213,27 @@ export default function AdminSidebar({
                                                 {link.icon}
                                             </span>
                                             {!effectiveCollapsed && (
-                                                <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
                                                     {link.label}
+                                                </span>
+                                            )}
+                                            {/* Badge para alertas de stock */}
+                                            {link.path === "/admin/stock-notify" && stockCount > 0 && (
+                                                <span style={{
+                                                    background: "#f59e0b",
+                                                    color: "#000",
+                                                    borderRadius: 99,
+                                                    fontSize: 10,
+                                                    fontWeight: 800,
+                                                    padding: "2px 7px",
+                                                    minWidth: 20,
+                                                    textAlign: "center",
+                                                    lineHeight: "16px",
+                                                    flexShrink: 0,
+                                                    boxShadow: "0 0 8px rgba(245,158,11,.5)",
+                                                    animation: "pulse 1.8s infinite"
+                                                }}>
+                                                    {stockCount}
                                                 </span>
                                             )}
                                         </div>

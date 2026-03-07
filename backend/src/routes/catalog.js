@@ -121,4 +121,29 @@ router.get("/debug-catalog", async (req, res) => {
   }
 });
 
+/**
+ * POST /catalog/:platformPriceId/notify
+ * Registra a un usuario para recibir notificación cuando haya stock.
+ */
+router.post("/catalog/:platformPriceId/notify", requireAuth, async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?.sub;
+    const { platformPriceId } = req.params;
+
+    if (!platformPriceId) {
+      return res.status(400).json({ message: "Invalid ID." });
+    }
+
+    await pool.query(
+      `INSERT IGNORE INTO stock_subscriptions (user_id, platform_price_id) VALUES (?, ?)`,
+      [userId, platformPriceId]
+    );
+
+    return res.json({ ok: true, message: "¡Suscrito! Te avisaremos cuando haya stock." });
+  } catch (err) {
+    console.error("POST /catalog/notify error:", err);
+    return res.status(500).json({ message: "Error interno al suscribirte." });
+  }
+});
+
 module.exports = router;

@@ -20,9 +20,11 @@ const AdminDurations = lazy(() => import("./pages/AdminDurations.jsx"));
 const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics.jsx"));
 const AdminCategories = lazy(() => import("./pages/AdminCategories.jsx"));
 const AdminCodeLogs = lazy(() => import("./pages/AdminCodeLogs.jsx"));
+const AdminCodeRequests = lazy(() => import("./pages/AdminCodeRequests.jsx"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport.jsx"));
 const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
 const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
+const AdminStockNotify = lazy(() => import("./pages/AdminStockNotify.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
 const Wallet = lazy(() => import("./pages/Wallet.jsx"));
@@ -189,6 +191,15 @@ export default function App() {
                 />
 
                 <Route
+                    path="/admin/code-requests"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminCodeRequests />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
                     path="/admin/prices"
                     element={
                         <ProtectedRoute roles={["admin"]}>
@@ -238,6 +249,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminSupport />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/stock-notify"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminStockNotify />
                         </ProtectedRoute>
                     }
                 />

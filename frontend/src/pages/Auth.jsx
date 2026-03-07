@@ -13,6 +13,15 @@ function getTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
 }
 
+// Convierte emoji de bandera en URL de imagen (Windows no renderiza emoji de banderas)
+function flagUrl(flagEmoji) {
+    try {
+        const pts = [...flagEmoji].map(c => c.codePointAt(0));
+        const iso = pts.map(cp => String.fromCharCode(cp - 0x1F1E6 + 97)).join("");
+        return `https://flagcdn.com/20x15/${iso}.png`;
+    } catch { return ""; }
+}
+
 export default function Auth() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -111,15 +120,32 @@ export default function Auth() {
 
     const waLink = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Hola! Me registré en Streaming Box con el correo ${email} y quiero activar mi cuenta.`)}`;
 
-    // ── CSS-in-JS styles (critical layout, independent of auth.css) ──
+    // ── Theme-aware color tokens ──
+    const dark = theme === "dark";
+    const C = {
+        bg:        dark ? "#070e28"              : "#f0f4ff",
+        cardBg:    dark ? "#070e28"              : "#ffffff",
+        text:      dark ? "#ffffff"              : "#0f172a",
+        muted:     dark ? "rgba(200,215,245,.65)" : "#64748b",
+        inputBg:   dark ? "rgba(0,0,0,.3)"       : "rgba(15,23,42,.05)",
+        inputBdr:  dark ? "rgba(59,130,246,.25)" : "rgba(37,99,235,.3)",
+        dropBg:    dark ? "#0c1438"              : "#f8faff",
+        dropBdr:   dark ? "rgba(59,130,246,.2)"  : "rgba(37,99,235,.2)",
+        srchBg:    dark ? "rgba(255,255,255,.07)" : "rgba(15,23,42,.05)",
+        shell:     dark
+            ? `radial-gradient(900px 700px at 15% 10%, rgba(37,99,235,.18), transparent 55%),
+               radial-gradient(900px 700px at 90% 80%, rgba(139,92,246,.14), transparent 55%),
+               linear-gradient(180deg, #050816, #0A0F29)`
+            : `radial-gradient(900px 700px at 15% 10%, rgba(191,219,254,.5), transparent 55%),
+               radial-gradient(900px 700px at 90% 80%, rgba(196,181,253,.3), transparent 55%),
+               linear-gradient(180deg, #e8f0fe, #f0f4ff)`,
+    };
+
+    // ── CSS-in-JS styles ──
     const S = {
         shell: {
             minHeight: "100vh",
-            background: `
-                radial-gradient(900px 700px at 15% 10%, rgba(37,99,235,.18), transparent 55%),
-                radial-gradient(900px 700px at 90% 80%, rgba(139,92,246,.14), transparent 55%),
-                linear-gradient(180deg, #050816, #0A0F29)
-            `,
+            background: C.shell,
             display: "flex", alignItems: "center", justifyContent: "center",
             position: "relative", overflow: "hidden",
             fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
@@ -127,30 +153,30 @@ export default function Auth() {
         gridBg: {
             position: "absolute", inset: 0, pointerEvents: "none",
             backgroundImage: "linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px)",
-            backgroundSize: "48px 48px", opacity: .4,
+            backgroundSize: "48px 48px", opacity: dark ? .4 : .15,
         },
         orb1: {
             position: "absolute", width: 600, height: 600, borderRadius: "50%",
             left: -200, top: -150,
             background: "radial-gradient(circle, rgba(37,99,235,.4), transparent 70%)",
-            filter: "blur(80px)", opacity: .4, pointerEvents: "none",
+            filter: "blur(80px)", opacity: dark ? .4 : .12, pointerEvents: "none",
         },
         orb2: {
             position: "absolute", width: 600, height: 600, borderRadius: "50%",
             right: -200, bottom: -200,
             background: "radial-gradient(circle, rgba(139,92,246,.3), transparent 70%)",
-            filter: "blur(80px)", opacity: .35, pointerEvents: "none",
+            filter: "blur(80px)", opacity: dark ? .35 : .1, pointerEvents: "none",
         },
         container: {
-            width: 900, maxWidth: "95vw", height: 560,
+            width: 900, maxWidth: "95vw", height: 600,
             position: "relative", overflow: "hidden",
             borderRadius: 28,
-            boxShadow: "0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.07) inset",
-            background: "#070e28",
+            boxShadow: dark
+                ? "0 30px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.07) inset"
+                : "0 20px 60px rgba(37,99,235,.15), 0 0 0 1px rgba(37,99,235,.1) inset",
+            background: C.cardBg,
             zIndex: 10,
-            display: "flex",
         },
-        // The form half (left side, 50%)
         formSide: (active) => ({
             width: "50%", height: "100%",
             display: "flex", flexDirection: "column", justifyContent: "center",
@@ -161,20 +187,20 @@ export default function Auth() {
             pointerEvents: active ? "none" : "all",
             position: "absolute", top: 0, left: 0,
             zIndex: active ? 1 : 2,
+            background: C.cardBg,
         }),
-        // Register side sits underneath, slides in from right
         regSide: (active) => ({
             width: "50%", height: "100%",
-            display: "flex", flexDirection: "column", justifyContent: "center",
-            padding: "0 52px", overflowY: "auto",
+            display: "flex", flexDirection: "column", justifyContent: "flex-start",
+            padding: "36px 52px", overflowY: "auto",
             transition: "all .65s cubic-bezier(.77,0,.175,1)",
             transform: active ? "translateX(100%)" : "translateX(200%)",
             opacity: active ? 1 : 0,
             pointerEvents: active ? "all" : "none",
             position: "absolute", top: 0, left: 0,
             zIndex: active ? 2 : 1,
+            background: C.cardBg,
         }),
-        // Sliding welcome panel (right half, overlays)
         overlay: (active) => ({
             position: "absolute", top: 0, right: 0,
             width: "50%", height: "100%",
@@ -188,92 +214,93 @@ export default function Auth() {
         themeBtn: {
             position: "fixed", top: 20, right: 20,
             width: 44, height: 44, borderRadius: 12,
-            background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)",
-            color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+            background: dark ? "rgba(255,255,255,.06)" : "rgba(255,255,255,.8)",
+            border: dark ? "1px solid rgba(255,255,255,.12)" : "1px solid rgba(37,99,235,.2)",
+            color: dark ? "#fff" : "#1d4ed8",
+            display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", zIndex: 9999, backdropFilter: "blur(8px)",
-            transition: "all .2s",
+            transition: "all .2s", boxShadow: dark ? "none" : "0 2px 8px rgba(37,99,235,.15)",
         },
         heading: {
-            fontSize: 30, fontWeight: 800, letterSpacing: -0.5,
-            marginBottom: 32, color: "#fff",
+            fontSize: 28, fontWeight: 800, letterSpacing: -0.5,
+            marginBottom: 24, color: C.text,
         },
         label: {
-            fontSize: 13, color: "rgba(200,215,245,.7)",
-            display: "flex", flexDirection: "column", gap: 7, marginBottom: 18,
+            fontSize: 13, color: C.muted,
+            display: "flex", flexDirection: "column", gap: 6, marginBottom: 14,
         },
         input: {
-            height: 46, borderRadius: 12,
-            border: "1px solid rgba(59,130,246,.25)",
-            background: "rgba(0,0,0,.3)", color: "#fff",
+            height: 44, borderRadius: 12,
+            border: `1px solid ${C.inputBdr}`,
+            background: C.inputBg, color: C.text,
             padding: "0 16px", outline: "none",
-            fontSize: 15, transition: "all .2s",
+            fontSize: 14, transition: "all .2s",
         },
         btn: {
-            height: 50, borderRadius: 14, border: "none",
+            height: 48, borderRadius: 14, border: "none",
             background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-            color: "#fff", fontWeight: 700, fontSize: 16,
-            cursor: "pointer", width: "100%", marginTop: 8,
+            color: "#fff", fontWeight: 700, fontSize: 15,
+            cursor: "pointer", width: "100%", marginTop: 6,
             transition: "all .2s",
             boxShadow: "0 4px 14px rgba(37,99,235,.35)",
         },
         err: {
             background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.25)",
-            color: "#fca5a5", padding: "10px 14px", borderRadius: 12,
-            fontSize: 13, marginBottom: 12,
+            color: "#fca5a5", padding: "9px 14px", borderRadius: 12,
+            fontSize: 13, marginBottom: 10,
         },
         relativeWrap: { position: "relative" },
         eyeBtn: {
             position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-            background: "none", border: "none", color: "rgba(200,215,245,.5)",
+            background: "none", border: "none", color: C.muted,
             cursor: "pointer", display: "flex", alignItems: "center",
         },
         countryTrigger: {
             display: "flex", alignItems: "center", gap: 6,
-            height: 46, borderRadius: 12, border: "1px solid rgba(59,130,246,.25)",
-            background: "rgba(0,0,0,.3)", color: "#fff",
-            padding: "0 14px", cursor: "pointer", minWidth: 100,
+            height: 44, borderRadius: 12, border: `1px solid ${C.inputBdr}`,
+            background: C.inputBg, color: C.text,
+            padding: "0 14px", cursor: "pointer", minWidth: 95,
             fontSize: 14, transition: "all .2s", whiteSpace: "nowrap",
         },
         phoneInput: {
-            flex: 1, height: 46, borderRadius: 12,
-            border: "1px solid rgba(59,130,246,.25)",
-            background: "rgba(0,0,0,.3)", color: "#fff",
-            padding: "0 16px", outline: "none", fontSize: 15,
+            flex: 1, height: 44, borderRadius: 12,
+            border: `1px solid ${C.inputBdr}`,
+            background: C.inputBg, color: C.text,
+            padding: "0 16px", outline: "none", fontSize: 14,
         },
         dropdown: {
             position: "absolute", bottom: "calc(100% + 6px)", left: 0,
-            width: 280, maxHeight: 230, overflowY: "auto",
-            background: "#0c1438", border: "1px solid rgba(59,130,246,.25)",
+            width: 280, maxHeight: 220, overflowY: "auto",
+            background: C.dropBg, border: `1px solid ${C.dropBdr}`,
             borderRadius: 14, zIndex: 500,
-            boxShadow: "0 -10px 30px rgba(0,0,0,.6)",
+            boxShadow: "0 -10px 30px rgba(0,0,0,.4)",
         },
         searchRow: {
             padding: "10px 12px", position: "sticky", top: 0,
-            background: "#0c1438", borderBottom: "1px solid rgba(59,130,246,.15)",
+            background: C.dropBg, borderBottom: `1px solid ${C.dropBdr}`,
         },
         searchInput: {
-            width: "100%", background: "rgba(255,255,255,.07)",
-            border: "1px solid rgba(59,130,246,.2)", borderRadius: 10,
-            padding: "7px 12px", color: "#fff", fontSize: 13, outline: "none",
+            width: "100%", background: C.srchBg,
+            border: `1px solid ${C.dropBdr}`, borderRadius: 10,
+            padding: "7px 12px", color: C.text, fontSize: 13, outline: "none",
         },
         countryRow: (hovered) => ({
             display: "flex", alignItems: "center", gap: 10,
-            padding: "10px 16px", cursor: "pointer", fontSize: 14,
-            background: hovered ? "rgba(6,182,212,.15)" : "transparent",
+            padding: "9px 16px", cursor: "pointer", fontSize: 13,
+            background: hovered ? "rgba(6,182,212,.12)" : "transparent",
             transition: "background .15s",
         }),
-        // Welcome overlay content
         overlayTitle: {
-            fontSize: 38, fontWeight: 800, color: "#fff", marginBottom: 18,
+            fontSize: 36, fontWeight: 800, color: "#fff", marginBottom: 16,
             letterSpacing: -1, lineHeight: 1.1,
         },
         overlayText: {
-            fontSize: 15, color: "rgba(255,255,255,.85)", lineHeight: 1.7, marginBottom: 36,
+            fontSize: 14, color: "rgba(255,255,255,.85)", lineHeight: 1.7, marginBottom: 32,
         },
         overlayBtn: {
             background: "rgba(255,255,255,.12)", backdropFilter: "blur(12px)",
             border: "2px solid rgba(255,255,255,.5)", color: "#fff",
-            padding: "13px 52px", borderRadius: 50, fontWeight: 700, fontSize: 15,
+            padding: "12px 48px", borderRadius: 50, fontWeight: 700, fontSize: 15,
             cursor: "pointer", transition: "all .3s", letterSpacing: 0.3,
         },
     };
@@ -289,16 +316,26 @@ export default function Auth() {
             <div style={{ textAlign: "center", zIndex: 10, maxWidth: 440, background: "rgba(7,14,40,.85)", padding: "48px 40px", borderRadius: 28, border: "1px solid rgba(255,255,255,.07)", backdropFilter: "blur(24px)" }}>
                 <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
                 <h2 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 14 }}>¡Cuenta creada con éxito!</h2>
-                <p style={{ color: "rgba(200,215,245,.7)", lineHeight: 1.7, marginBottom: 32, fontSize: 15 }}>
+                <p style={{ color: "rgba(200,215,245,.7)", lineHeight: 1.7, marginBottom: 20, fontSize: 15 }}>
                     Tu cuenta está <strong style={{ color: "#06b6d4" }}>pendiente de aprobación</strong>.<br />
                     Escríbenos por WhatsApp para activarla.
                 </p>
-                <motion.a href={waLink} target="_blank" rel="noreferrer" whileHover={{ scale: 1.03, y: -2 }}
+
+                {/* Número de WhatsApp visible */}
+                <div style={{ background: "rgba(37,211,102,.08)", border: "1px solid rgba(37,211,102,.25)", borderRadius: 14, padding: "12px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>📱</span>
+                    <div style={{ textAlign: "left" }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#25d366", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 2 }}>Número de WhatsApp</div>
+                        <div style={{ fontSize: 16, fontWeight: 900, color: "#fff", letterSpacing: 1 }}>+57 315 248 5340</div>
+                    </div>
+                </div>
+                <motion.a href={`https://wa.me/${WA_NUMBER}?text=Hola%2C%20acabo%20de%20registrarme%20y%20necesito%20activar%20mi%20cuenta.`} target="_blank" rel="noreferrer" whileHover={{ scale: 1.03, y: -2 }}
                     style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "linear-gradient(135deg,#25d366,#128c7e)", color: "#fff", padding: "14px 28px", borderRadius: 16, textDecoration: "none", fontWeight: 700, fontSize: 16, marginBottom: 16, boxShadow: "0 6px 24px rgba(37,211,102,.3)" }}>
                     <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12.004 2C6.477 2 2 6.478 2 12.004c0 1.944.526 3.764 1.44 5.321L2 22l4.802-1.414A9.959 9.959 0 0012.004 22C17.523 22 22 17.522 22 11.996 22 6.478 17.523 2 12.004 2zm0 18.155a9.13 9.13 0 01-4.854-1.39l-.348-.207-3.585 1.057 1.001-3.522-.227-.36A9.13 9.13 0 012.845 12c0-5.06 4.1-9.155 9.159-9.155 5.055 0 9.151 4.095 9.151 9.155 0 5.055-4.096 9.155-9.151 9.155z"/></svg>
                     Contactar por WhatsApp
                 </motion.a>
-                <button onClick={() => navigate("/")} style={{ background: "none", border: "none", color: "rgba(200,215,245,.5)", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}>
+                <button onClick={() => { setSuccess(false); setIsRegister(false); navigate("/"); }}
+                    style={{ background: "none", border: "none", color: "rgba(200,215,245,.5)", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}>
                     Volver al inicio de sesión
                 </button>
             </div>
@@ -320,13 +357,13 @@ export default function Auth() {
                 {/* ── LOGIN FORM ── */}
                 <div style={S.formSide(isRegister)}>
                     {/* Logo */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 36 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
                         {logoOk
                             ? <img src={LOGO_URL} alt="Logo" onError={() => setLogoOk(false)} style={{ width: 46, height: 46, objectFit: "contain" }} />
-                            : <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#2563eb,#06b6d4)" }} />}
+                            : <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#2563eb,#06b6d4)", flexShrink: 0 }} />}
                         <div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: "#fff" }}>Streaming Box</div>
-                            <div style={{ fontSize: 13, color: "rgba(200,215,245,.6)" }}>Bienvenido de nuevo</div>
+                            <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Streaming Box</div>
+                            <div style={{ fontSize: 13, color: C.muted }}>Bienvenido de nuevo</div>
                         </div>
                     </div>
 
@@ -347,7 +384,7 @@ export default function Auth() {
                         </label>
                         {error && !isRegister && <div style={S.err}>{error}</div>}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
-                            {loading ? "Cargando..." : "Sign In"}
+                            {loading ? "Cargando..." : "Ingresar"}
                         </motion.button>
                     </form>
                 </div>
@@ -368,8 +405,8 @@ export default function Auth() {
                             WhatsApp
                             <div style={{ display: "flex", gap: 10, position: "relative" }} ref={countryRef}>
                                 <button type="button" style={S.countryTrigger} onClick={() => { setShowCountries(v => !v); setCountrySearch(""); }}>
-                                    <span style={{ fontSize: 20 }}>{country.flag}</span>
-                                    <span style={{ fontSize: 13, opacity: .9 }}>{country.code}</span>
+                                    <img src={flagUrl(country.flag)} alt="" style={{ width: 20, height: 15, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
+                                    <span style={{ fontSize: 13 }}>{country.code}</span>
                                 </button>
                                 <input style={S.phoneInput} type="text" placeholder="Número (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
 
@@ -385,9 +422,9 @@ export default function Auth() {
                                                     onMouseEnter={() => setHoveredCountry(c.name)}
                                                     onMouseLeave={() => setHoveredCountry(null)}
                                                     onClick={() => { setCountry(c); setShowCountries(false); }}>
-                                                    <span style={{ fontSize: 20 }}>{c.flag}</span>
-                                                    <span style={{ flex: 1, color: "#fff" }}>{c.name}</span>
-                                                    <span style={{ fontSize: 12, color: "rgba(200,215,245,.4)" }}>{c.code}</span>
+                                                    <img src={flagUrl(c.flag)} alt="" style={{ width: 20, height: 15, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
+                                                    <span style={{ flex: 1, color: C.text }}>{c.name}</span>
+                                                    <span style={{ fontSize: 12, color: C.muted }}>{c.code}</span>
                                                 </div>
                                             ))}
                                         </motion.div>
@@ -415,7 +452,7 @@ export default function Auth() {
                         </label>
                         {error && isRegister && <div style={S.err}>{error}</div>}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
-                            {loading ? "Creando cuenta..." : "Sign Up"}
+                            {loading ? "Creando cuenta..." : "Registrarse"}
                         </motion.button>
                     </form>
                 </div>
@@ -427,22 +464,22 @@ export default function Auth() {
                     <div style={{ position: "relative", zIndex: 1 }}>
                         {!isRegister ? (
                             <>
-                                <div style={S.overlayTitle}>WELCOME!</div>
+                                <div style={S.overlayTitle}>¡BIENVENIDO!</div>
                                 <p style={S.overlayText}>
                                     ¿No tienes cuenta?<br />Regístrate y comienza a disfrutar de Streaming Box.
                                 </p>
                                 <motion.button style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
-                                    Sign Up
+                                    Regístrate
                                 </motion.button>
                             </>
                         ) : (
                             <>
-                                <div style={S.overlayTitle}>WELCOME<br />BACK!</div>
+                                <div style={S.overlayTitle}>¡DE VUELTA!</div>
                                 <p style={S.overlayText}>
                                     ¿Ya tienes cuenta?<br />Inicia sesión para continuar con tu experiencia.
                                 </p>
                                 <motion.button style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
-                                    Sign In
+                                    Ingresar
                                 </motion.button>
                             </>
                         )}
@@ -451,7 +488,7 @@ export default function Auth() {
 
             </div>
 
-            <div style={{ position: "absolute", bottom: 16, color: "rgba(200,215,245,.35)", fontSize: 12, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+            <div style={{ position: "absolute", bottom: 16, color: C.muted, fontSize: 12, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#06b6d4", boxShadow: "0 0 10px rgba(6,182,212,.7)" }} />
                 © Streaming Box 2026
             </div>

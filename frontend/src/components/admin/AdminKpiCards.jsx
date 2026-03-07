@@ -83,10 +83,10 @@ export default function AdminKpiCards({ onNavigate }) {
             {groups.map((group, idx) => (
                 <div key={idx}>
                     <div style={{
-                        fontSize: 14, fontWeight: 900, color: "#FFFFFF",
+                        fontSize: 14, fontWeight: 900, color: "var(--text)",
                         textTransform: "uppercase", letterSpacing: 1.2,
-                        marginBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.1)",
-                        paddingBottom: 8
+                        marginBottom: 14, borderBottom: "1px solid var(--line)",
+                        paddingBottom: 8, opacity: 0.8
                     }}>
                         {group.groupName}
                     </div>
@@ -117,9 +117,9 @@ export default function AdminKpiCards({ onNavigate }) {
                                             gap: "16px",
                                             alignItems: "center",
                                             justifyContent: "flex-start",
-                                            border: `1px solid rgba(255,255,255,0.1)`,
+                                            border: `1px solid var(--line)`,
                                             width: "100%",
-                                            background: "rgba(30, 41, 59, 0.6)", // Fondo mas solido para legibilidad extrema
+                                            background: "var(--card)", 
                                             backdropFilter: "blur(18px)",
                                             borderRadius: "inherit"
                                         }}
@@ -129,7 +129,7 @@ export default function AdminKpiCards({ onNavigate }) {
                                             <div style={{ 
                                                 fontWeight: 800, 
                                                 fontSize: "14.5px", 
-                                                color: "#FFFFFF",
+                                                color: "var(--text)",
                                                 letterSpacing: "-0.2px"
                                             }}>
                                                 {s.title}

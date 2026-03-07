@@ -57,6 +57,23 @@ export default function AdminUsers() {
         doResetInvestment, doAdjustInvested,
     } = useAdminUsers();
 
+    const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+
+    async function updateUserStatus(userId, newStatus) {
+        const action = newStatus === "active" ? "aprobar" : "rechazar";
+        if (!window.confirm(`¿Estás seguro de que deseas ${action} a este usuario?`)) return;
+        try {
+            const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+                method: "PATCH",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (res.ok) loadUsers(page, limit);
+            else alert(`Error al ${action} usuario`);
+        } catch { alert("Error de conexión"); }
+    }
+
     async function logout() {
         try { await apiLogout(); } catch { }
         setUser(null);
@@ -77,6 +94,7 @@ export default function AdminUsers() {
                 String(u.id).includes(q)
             );
         }
+        if (roleFilter === "pending") return list.filter(u => u.status === "pending");
         if (roleFilter !== "all") list = list.filter(u => u.role === roleFilter);
         return list;
     }, [users, search, roleFilter]);
@@ -183,6 +201,7 @@ export default function AdminUsers() {
                                                     <option value="all">Todos los roles</option>
                                                     <option value="admin">Admin</option>
                                                     <option value="user">User</option>
+                                                    <option value="pending">⏳ Pendientes</option>
                                                 </select>
                                                 <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                             </div>
@@ -284,10 +303,36 @@ export default function AdminUsers() {
                                                                 </div>
                                                             </td>
                                                             <td style={{ padding: "13px 16px" }}>
-                                                                <button onClick={() => setHistoryUser(u)}
-                                                                    style={{ background: "rgba(13,166,242,0.08)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
-                                                                    Ver historial
-                                                                </button>
+                                                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                                                    {u.status === "pending" && (
+                                                                        <>
+                                                                            <button
+                                                                                onClick={() => updateUserStatus(u.id, "active")}
+                                                                                style={{ background: "rgba(16,185,129,.12)", color: "#10b981", border: "1px solid rgba(16,185,129,.3)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
+                                                                                ✅ Aprobar
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => updateUserStatus(u.id, "rejected")}
+                                                                                style={{ background: "rgba(239,68,68,.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
+                                                                                ❌ Rechazar
+                                                                            </button>
+                                                                        </>
+                                                                    )}
+                                                                    {u.status === "pending" && (
+                                                                        <span style={{ background: "rgba(245,158,11,.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,.3)", borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700 }}>
+                                                                            ⏳ Pendiente
+                                                                        </span>
+                                                                    )}
+                                                                    {u.status === "rejected" && (
+                                                                        <span style={{ background: "rgba(239,68,68,.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)", borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700 }}>
+                                                                            🚫 Rechazado
+                                                                        </span>
+                                                                    )}
+                                                                    <button onClick={() => setHistoryUser(u)}
+                                                                        style={{ background: "rgba(13,166,242,0.08)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
+                                                                        Ver historial
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     );

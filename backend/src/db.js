@@ -21,4 +21,29 @@ pool.query('ALTER TABLE wallet_transactions MODIFY COLUMN type VARCHAR(50) NOT N
 pool.query('UPDATE wallet_transactions SET type="invest_adj" WHERE reference_type="admin_invest_adj" AND type=""').catch(() => { });
 pool.query('UPDATE wallet_transactions SET type="profit_adj" WHERE reference_type="admin_profit_adj" AND type=""').catch(() => { });
 
+// Notificaciones de stock
+pool.query(`
+    CREATE TABLE IF NOT EXISTS stock_subscriptions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        platform_price_id INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_notified BOOLEAN DEFAULT FALSE,
+        UNIQUE KEY unique_subs (user_id, platform_price_id)
+    )
+`)
+    .catch(() => { });
+
+// Notificaciones internas de usuario
+pool.query(`
+    CREATE TABLE IF NOT EXISTS user_notifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        message TEXT NOT NULL,
+        is_read BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_user_unread (user_id, is_read)
+    )
+`).catch(() => { });
+
 module.exports = pool;

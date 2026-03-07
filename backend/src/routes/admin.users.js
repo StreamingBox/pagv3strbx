@@ -176,13 +176,69 @@ router.patch("/admin/users/:id/password", requireAuth, requireRole("admin"), asy
             return res.status(400).json({ message: "password es obligatorio (min 8)." });
         }
 
-        const password_hash = await bcrypt.hash(String(password), 12);
-        await pool.query("UPDATE users SET password_hash = ? WHERE id = ?", [password_hash, id]);
-
         return res.json({ ok: true });
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+// ✅ Admin ver suscripciones a notificaciones de stock
+router.get("/admin/stock-subscriptions", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT
+                s.id,
+                u.email AS user_email,
+                u.name AS user_name,
+                p.name AS platform_name,
+                d.name AS duration_name,
+                s.created_at,
+                s.is_notified
+             FROM stock_subscriptions s
+             JOIN users u ON u.id = s.user_id
+             JOIN platform_prices pp ON pp.id = s.platform_price_id
+             JOIN platforms p ON p.id = pp.platform_id
+             JOIN durations d ON d.id = pp.duration_id
+             ORDER BY s.created_at DESC`
+        );
+        return res.json(rows);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Error al cargar notificaciones de stock." });
+    }
+});
+
+// ✅ Admin marcar como resuelto: notifica al usuario y elimina la suscripción
+router.delete("/admin/stock-subscriptions/:id", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const subId = req.params.id;
+
+        // 1. Obtener datos de la suscripción antes de borrarla
+        const [subs] = await pool.query(
+            `SELECT ss.user_id, p.name AS platform_name
+             FROM stock_subscriptions ss
+             JOIN platform_prices pp ON pp.id = ss.platform_price_id
+             JOIN platforms p ON p.id = pp.platform_id
+             WHERE ss.id = ?`,
+            [subId]
+        );
+
+        if (subs.length > 0) {
+            const { user_id, platform_name } = subs[0];
+            // 2. Insertar notificación interna para el usuario
+            await pool.query(
+                "INSERT INTO user_notifications (user_id, message) VALUES (?, ?)",
+                [user_id, `¡Ya hay stock disponible de ${platform_name}! Ingresa al catálogo para comprar.`]
+            );
+        }
+
+        // 3. Eliminar la suscripción
+        await pool.query("DELETE FROM stock_subscriptions WHERE id = ?", [subId]);
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Error al resolver la alerta." });
     }
 });
 

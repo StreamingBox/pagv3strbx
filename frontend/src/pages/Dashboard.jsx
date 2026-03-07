@@ -8,7 +8,7 @@ import CatalogGrid from "../components/dashboard/CatalogGrid.jsx";
 import CartDrawer from "../components/dashboard/CartDrawer.jsx";
 import { useDashboardData } from "../hooks/useDashboardData.js";
 import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
-import { apiLogout } from "../api/api";
+import { apiLogout, apiFetch } from "../api/api";
 
 import { useAuth } from "../context/AuthContext.jsx";
 
@@ -64,6 +64,18 @@ export default function Dashboard() {
                 platformSlug: item.platformSlug,
             },
         ]);
+    }
+
+    async function handleNotifyMe(item) {
+        if (!item.platformPriceId) return;
+        try {
+            const r = await apiFetch(`/catalog/${item.platformPriceId}/notify`, { method: "POST" });
+            if (r) {
+                alert(`¡Listo! Te notificaremos internamente cuando tengamos stock de ${item.platformName}.`);
+            }
+        } catch (e) {
+            alert(e.message || "No se pudo registrar la solicitud.");
+        }
     }
 
     const categories = useMemo(() => {
@@ -253,7 +265,7 @@ export default function Dashboard() {
                     ) : null}
 
                     {/* Grid */}
-                    <CatalogGrid catalog={filteredCatalog} buyLoading={false} onAddToCart={addToCart} />
+                    <CatalogGrid catalog={filteredCatalog} buyLoading={false} onAddToCart={addToCart} onNotifyMe={handleNotifyMe} />
                 </main>
             </div>
 

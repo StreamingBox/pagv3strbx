@@ -440,11 +440,11 @@ export default function AdminAccounts() {
                     {/* ── MANUAL ENTRY CARD ── */}
                     <motion.div
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-                        style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px 28px", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}
+                        style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "clamp(16px, 4vw, 24px) clamp(20px, 5vw, 28px)", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}
                     >
                         <h3 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 800, color: "var(--text)" }}>Carga Manual (1x1)</h3>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Plataforma *
@@ -525,7 +525,7 @@ export default function AdminAccounts() {
                         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24, paddingTop: 20, borderTop: "1px solid var(--stroke2)" }}>
                             <button
                                 className="btn"
-                                style={{ width: 220, fontSize: 14, fontWeight: 800 }}
+                                style={{ width: "100%", maxWidth: 320, fontSize: 14, fontWeight: 800, height: 48 }}
                                 onClick={createAccount}
                                 disabled={saving || !platformId || !email || !password}
                             >

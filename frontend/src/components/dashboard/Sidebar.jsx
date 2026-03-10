@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
+import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = "/api/branding/logo";
@@ -30,6 +31,7 @@ export default function Sidebar({
 }) {
     const [logoOk, setLogoOk] = useState(true);
     const [collapsed, setCollapsed] = useState(isMobile());
+    const [expirationsCount, setExpirationsCount] = useState(0);
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
     const activePath = window.location.pathname;
 
@@ -41,6 +43,27 @@ export default function Sidebar({
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
+
+    // Poll expirations count every 3 minutes
+    useEffect(() => {
+        async function fetchExpirations() {
+            // Hide badge while on the expirations page
+            if (activePath === "/expirations") {
+                setExpirationsCount(0);
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/orders/expiring-count`, { credentials: "include" });
+                if (res.ok) {
+                    const data = await res.json();
+                    setExpirationsCount(Number(data.count) || 0);
+                }
+            } catch { /* silently ignore */ }
+        }
+        fetchExpirations();
+        const timer = setInterval(fetchExpirations, 180000);
+        return () => clearInterval(timer);
+    }, [activePath]);
 
     function nav(fn) {
         if (isMobile()) setCollapsed(true);
@@ -89,20 +112,11 @@ export default function Sidebar({
             )}
 
             <aside className={`sidebar sb-new${collapsed ? " sidebar--collapsed" : ""}`}>
-                {/* Header: Avatar + Info */}
+                {/* Header: Logo + Info */}
                 <div className="sb-header">
-                    {/* Avatar circular */}
+                    {/* Logo circular */}
                     <div className="sb-avatar">
-                        {logoOk ? (
-                            <img
-                                src={LOGO_URL}
-                                alt="Logo"
-                                className="sb-avatar__img"
-                                onError={() => setLogoOk(false)}
-                            />
-                        ) : (
-                            <span className="sb-avatar__initials">{getAvatarInitials(user)}</span>
-                        )}
+                        <StreamingBoxLogo size={46} showText={false} onDark={true} />
                     </div>
 
                     {!collapsed && (
@@ -224,6 +238,27 @@ export default function Sidebar({
                                     >
                                         <span className="sb-nav-icon">{item.icon}</span>
                                         <span className="sb-nav-label">{item.label}</span>
+
+                                        {/* Badge para vencimientos del usuario */}
+                                        {item.key === "expirations" && expirationsCount > 0 && !collapsed && (
+                                            <span style={{
+                                                background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                                                color: "#fff",
+                                                borderRadius: 99,
+                                                fontSize: 10,
+                                                fontWeight: 800,
+                                                padding: "2px 7px",
+                                                marginLeft: "auto",
+                                                minWidth: 20,
+                                                textAlign: "center",
+                                                lineHeight: "16px",
+                                                boxShadow: "0 0 12px rgba(239,68,68,0.3)",
+                                                animation: "pulse 1.8s infinite"
+                                            }}>
+                                                {expirationsCount}
+                                            </span>
+                                        )}
+
                                         {isActive && (
                                             <motion.span
                                                 className="sb-nav-active-dot"

@@ -3,7 +3,7 @@ const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 
-async function checkoutService({ userId, includeWhatsapp, items, recordProfit, profitAmount }) {
+async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, recordProfit, profitAmount }) {
     const platformPriceIds = items
         .map((x) => Number(x?.platformPriceId))
         .filter((n) => Number.isFinite(n) && n > 0);
@@ -154,8 +154,8 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
           (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
-           status, expires_at, price, currency)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+           status, expires_at, price, currency, whatsapp_phone)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
                 [
                     userId,
                     plan.platform_id,
@@ -165,6 +165,7 @@ async function checkoutService({ userId, includeWhatsapp, items, recordProfit, p
                     expiresAt,
                     Number(plan.price),
                     currency,
+                    whatsappPhone ? String(whatsappPhone).trim() : null,
                 ]
             );
 

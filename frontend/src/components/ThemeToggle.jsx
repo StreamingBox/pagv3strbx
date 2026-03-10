@@ -19,9 +19,9 @@ export default function ThemeToggle() {
             title="Cambiar tema"
         >
             <span style={{ fontSize: 16 }}>{isDark ? "🌙" : "☀️"}</span>
-            <span style={{ fontWeight: 900, fontSize: 13 }}>
-        {isDark ? "Oscuro" : "Claro"}
-      </span>
+            <span style={{ fontWeight: 900, fontSize: 13, color: "var(--text)" }}>
+                {isDark ? "Oscuro" : "Claro"}
+            </span>
         </button>
     );
 }

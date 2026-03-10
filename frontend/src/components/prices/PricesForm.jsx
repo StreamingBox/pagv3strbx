@@ -175,7 +175,7 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
             </div>
 
             {/* Row 1: Platform + Duration */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 14 }}>
                 <div>
                     <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Plataforma *</label>
                     <CustomSelect
@@ -197,14 +197,14 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
             </div>
 
             {/* Row 2: Prices */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 14, marginBottom: 14 }}>
                 {[
-                    { label: "🇨🇴 Precio COP", value: priceCOP, set: setPriceCOP, placeholder: "0" },
-                    { label: "🇲🇽 Precio MXN", value: priceMXN, set: setPriceMXN, placeholder: "0" },
-                    { label: "🇺🇸 Precio USD", value: priceUSD, set: setPriceUSD, placeholder: "0.00" },
+                    { label: "co Precio COP", value: priceCOP, set: setPriceCOP, placeholder: "0" },
+                    { label: "mx Precio MXN", value: priceMXN, set: setPriceMXN, placeholder: "0" },
+                    { label: "us Precio USD", value: priceUSD, set: setPriceUSD, placeholder: "0.00" },
                 ].map(f => (
                     <div key={f.label}>
-                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>{f.label}</label>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.label}</label>
                         <input
                             style={inputStyle} type="number" min="0" placeholder={f.placeholder}
                             value={f.value} onChange={e => f.set(e.target.value)}
@@ -215,7 +215,7 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
             </div>
 
             {/* Row 3: Renewable + Save */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}
                     onClick={() => setIsRenewable(v => !v)}>
                     <div style={{
@@ -232,16 +232,15 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
                         }} />
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>¿Es Renovable?</span>
-                    {isRenewable && <span style={{ fontSize: 11, color: "#0da6f2", fontWeight: 700 }}>Sí</span>}
                 </label>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                        Llenar 1, 2 ó 3 monedas — backend hace <b style={{ color: "var(--text)" }}>upsert</b>.
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", flex: 1, justifyContent: "flex-end" }}>
+                    <span style={{ fontSize: 11, color: "var(--muted)", textAlign: "right" }}>
+                        Multi-moneda (backend <b style={{ color: "var(--text)" }}>upsert</b>)
                     </span>
                     <button className="btn" onClick={handleSave} disabled={saving || !canSave}
-                        style={{ height: 42, padding: "0 24px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
-                        {saving ? "Guardando..." : "💾 Guardar Precios"}
+                        style={{ height: 42, padding: "0 24px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap", flex: "1 1 auto", maxWidth: 200 }}>
+                        {saving ? "..." : "💾 Guardar Precios"}
                     </button>
                 </div>
             </div>

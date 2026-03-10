@@ -16,8 +16,10 @@
 
 const TelegramBot = require("node-telegram-bot-api");
 const pool = require("../db");
+const { createAccountOne } = require("./accounts.service");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const BOT_ENABLED = String(process.env.TELEGRAM_BOT_ENABLED || "true").toLowerCase() !== "false";
 const RAW_IDS = process.env.TELEGRAM_CHAT_IDS || "";
 // Conjunto de chat IDs autorizados (números)
 const AUTHORIZED = new Set(
@@ -25,7 +27,9 @@ const AUTHORIZED = new Set(
 );
 
 const buySessions = new Map();
+const stockSessions = new Map();
 let bot = null;
+let botDisabledByConflict = false;
 
 /* ─── Formateo ────────────────────────────────────────────────── */
 function money(n) {
@@ -348,28 +352,164 @@ async function handleBuyCallback(query) {
 }
 
 /* ─── Registrar comandos ──────────────────────────────────────── */
+async function cmdAddStockStart(msg) {
+    stockSessions.set(msg.chat.id, { step: "ASK_PLATFORM" });
+
+    const [plats] = await pool.query(
+        `SELECT id, name
+         FROM platforms
+         WHERE is_active = 1
+         ORDER BY name ASC
+         LIMIT 100`
+    );
+
+    if (!plats.length) {
+        return bot.sendMessage(msg.chat.id, "No hay plataformas activas.");
+    }
+
+    const kb = [];
+    for (let i = 0; i < plats.length; i += 2) {
+        kb.push(
+            plats.slice(i, i + 2).map((p) => ({
+                text: p.name,
+                callback_data: `stock_p_${p.id}`,
+            }))
+        );
+    }
+
+    await bot.sendMessage(
+        msg.chat.id,
+        "Agregar Stock\n\nSelecciona la plataforma:",
+        { reply_markup: { inline_keyboard: kb } }
+    );
+}
+
+async function handleStockMessage(msg) {
+    const s = stockSessions.get(msg.chat.id);
+    if (!s || msg.text?.startsWith("/")) return;
+
+    const txt = String(msg.text || "").trim();
+
+    if (s.step === "ASK_EMAIL") {
+        if (!txt.includes("@")) return bot.sendMessage(msg.chat.id, "Email invalido. Intenta de nuevo:");
+        s.email = txt.toLowerCase();
+        s.step = "ASK_PASSWORD";
+        stockSessions.set(msg.chat.id, s);
+        return bot.sendMessage(msg.chat.id, "Ahora escribe la password:");
+    }
+
+    if (s.step === "ASK_PASSWORD") {
+        if (txt.length < 3) return bot.sendMessage(msg.chat.id, "Password demasiado corta. Intenta de nuevo:");
+        s.password = txt;
+        s.step = "ASK_PROFILE";
+        stockSessions.set(msg.chat.id, s);
+        return bot.sendMessage(msg.chat.id, "Perfil (1-5) o '-' para omitir:");
+    }
+
+    if (s.step === "ASK_PROFILE") {
+        s.profileNumber = txt === "-" ? null : txt;
+        s.step = "ASK_PIN";
+        stockSessions.set(msg.chat.id, s);
+        return bot.sendMessage(msg.chat.id, "PIN o '-' para omitir:");
+    }
+
+    if (s.step === "ASK_PIN") {
+        s.pin = txt === "-" ? null : txt;
+        s.step = "ASK_EXPIRES";
+        stockSessions.set(msg.chat.id, s);
+        return bot.sendMessage(msg.chat.id, "Fecha expiracion YYYY-MM-DD o '-' para omitir:");
+    }
+
+    if (s.step === "ASK_EXPIRES") {
+        const expiresAt = txt === "-" ? null : txt;
+        if (expiresAt && !/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+            return bot.sendMessage(msg.chat.id, "Formato invalido. Usa YYYY-MM-DD o '-':");
+        }
+
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const out = await createAccountOne(conn, {
+                platformId: s.platformId,
+                email: s.email,
+                password: s.password,
+                pin: s.pin,
+                profileNumber: s.profileNumber,
+                expiresAt: expiresAt || null,
+            });
+            await conn.commit();
+            await bot.sendMessage(
+                msg.chat.id,
+                `Stock agregado\nPlataforma ID: ${out.platformId}\nCuenta ID: ${out.id}\nEmail: ${s.email}`
+            );
+        } catch (e) {
+            await conn.rollback();
+            await bot.sendMessage(msg.chat.id, `Error agregando stock: ${e?.message || "desconocido"}`);
+        } finally {
+            conn.release();
+            stockSessions.delete(msg.chat.id);
+        }
+    }
+}
+
+async function handleStockCallback(query) {
+    const data = String(query.data || "");
+    if (!data.startsWith("stock_p_")) return false;
+
+    const chatId = query.message.chat.id;
+    const platformId = Number(data.replace("stock_p_", ""));
+    if (!Number.isFinite(platformId) || platformId <= 0) {
+        await bot.answerCallbackQuery(query.id, { text: "Plataforma invalida" });
+        return true;
+    }
+
+    const [rows] = await pool.query("SELECT id, name FROM platforms WHERE id = ? LIMIT 1", [platformId]);
+    if (!rows.length) {
+        await bot.answerCallbackQuery(query.id, { text: "Plataforma no encontrada" });
+        return true;
+    }
+
+    const s = stockSessions.get(chatId) || {};
+    s.platformId = platformId;
+    s.platformName = rows[0].name;
+    s.step = "ASK_EMAIL";
+    stockSessions.set(chatId, s);
+
+    await bot.editMessageText(
+        `Plataforma: ${rows[0].name}\n\nEscribe el email de la cuenta:`,
+        {
+            chat_id: chatId,
+            message_id: query.message.message_id,
+        }
+    );
+    return true;
+}
+
 function setupCommands() {
     bot.setMyCommands([
         { command: "start", description: "Menú principal" },
         { command: "comprar", description: "Asistente de compra" },
+        { command: "addstock", description: "Agregar stock manual" },
         { command: "stock", description: "Ver stock disponible" },
         { command: "ventas", description: "Últimas ventas" },
         { command: "saldo", description: "Consultar un saldo" }
     ]).catch(err => console.error("[TelegramBot] Error setting commands:", err));
 
-    bot.onText(/^\/start$/, guard(cmdStart));
-    bot.onText(/^\/stock$/, guard(cmdStock));
-    bot.onText(/^\/ventas(?:\s+(\d+))?$/, guard(cmdVentas));
-    bot.onText(/^\/saldo(?:\s+(.+))?$/, guard(cmdSaldo));
-    bot.onText(/^\/comprar/, guard(cmdComprarStart));
+    bot.onText(/^\/start$/i, guard(cmdStart));
+    bot.onText(/^\/stock$/i, guard(cmdStock));
+    bot.onText(/^\/ventas(?:\s+(\d+))?$/i, guard(cmdVentas));
+    bot.onText(/^\/saldo(?:\s+(.+))?$/i, guard(cmdSaldo));
+    bot.onText(/^\/comprar/i, guard(cmdComprarStart));
+    bot.onText(/^\/addstock/i, guard(cmdAddStockStart));
 
     // Procesar respuestas del flujo interactivo o comandos desconocidos
     bot.on("message", guard(async (msg) => {
         if (!msg.text?.startsWith("/")) {
+            await handleStockMessage(msg);
             await handleBuyMessage(msg);
         } else {
-            const knownCmds = ["/start", "/stock", "/ventas", "/saldo", "/comprar"];
-            const cmd = msg.text.split(" ")[0].split("@")[0];
+            const knownCmds = ["/start", "/stock", "/ventas", "/saldo", "/comprar", "/addstock"];
+            const cmd = msg.text.split(" ")[0].split("@")[0].toLowerCase().trim();
             if (!knownCmds.includes(cmd)) {
                 bot.sendMessage(msg.chat.id, `❓ Comando desconocido. Usa /start para ver los disponibles.`).catch(() => { });
             }
@@ -391,7 +531,14 @@ function setupCommands() {
                 await cmdSaldo(mockMsg, []);
             } else if (data === "cmd_comprar") {
                 await cmdComprarStart(mockMsg, []);
+            } else if (data === "cmd_addstock") {
+                await cmdAddStockStart(mockMsg, []);
             } else {
+                const handledStock = await handleStockCallback(query);
+                if (handledStock) {
+                    bot.answerCallbackQuery(query.id).catch(() => { });
+                    return;
+                }
                 await handleBuyCallback(query);
             }
             bot.answerCallbackQuery(query.id).catch(() => { });
@@ -402,7 +549,15 @@ function setupCommands() {
 
     // Errores de polling
     bot.on("polling_error", (err) => {
-        console.error("[TelegramBot] Polling error:", err?.message || err);
+        const msg = String(err?.message || err || "");
+        const isConflict = err?.code === "ETELEGRAM" && /409|another getUpdates request|terminated by other getUpdates/i.test(msg);
+        if (isConflict) {
+            console.warn("[TelegramBot] Polling disabled by 409 conflict (another instance is active).");
+            botDisabledByConflict = true;
+            bot.stopPolling().catch(() => { });
+            return;
+        }
+        console.error("[TelegramBot] Polling error:", msg);
     });
     bot.on("error", (err) => {
         console.error("[TelegramBot] Error:", err?.message || err);
@@ -442,6 +597,10 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
 
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
+    if (!BOT_ENABLED) {
+        console.warn("[TelegramBot] TELEGRAM_BOT_ENABLED=false - bot disabled.");
+        return;
+    }
     if (!TOKEN) {
         console.warn("[TelegramBot] TELEGRAM_BOT_TOKEN no definido — bot deshabilitado.");
         return;

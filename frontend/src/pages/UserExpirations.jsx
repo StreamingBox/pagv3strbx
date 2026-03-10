@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar";
@@ -48,6 +50,12 @@ export default function UserExpirations() {
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const limit = 20;
+
+    const [remindModalOpen, setRemindModalOpen] = useState(false);
+    const [remindItem, setRemindItem] = useState(null);
+    const [remindPhone, setRemindPhone] = useState("");
+    const [reminding, setReminding] = useState(false);
+    const [remindMsg, setRemindMsg] = useState({ type: "", text: "" });
 
     useEffect(() => {
         let mounted = true;
@@ -106,6 +114,45 @@ export default function UserExpirations() {
         if (days === 0) return <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>Vence hoy</span>;
         if (days <= 3) return <span style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{days} días</span>;
         return <span style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>{days} días</span>;
+    }
+
+    function openRemindModal(item) {
+        if (item.reminder_sent) {
+            return alert("Ya se le ha enviado un recordatorio a esta cuenta. No se permite reenviar para evitar spam.");
+        }
+        setRemindItem(item);
+        setRemindPhone(item.whatsapp_phone || "");
+        setRemindMsg({ type: "", text: "" });
+        setRemindModalOpen(true);
+    }
+
+    async function confirmRemind() {
+        if (!remindPhone.trim()) {
+            setRemindMsg({ type: "error", text: "El número es obligatorio" });
+            return;
+        }
+        setReminding(true);
+        setRemindMsg({ type: "", text: "" });
+
+        const finalPhone = remindPhone.trim();
+
+        try {
+            const res = await apiFetch(`/orders/${remindItem.id}/remind-whatsapp`, { 
+                method: "POST",
+                body: JSON.stringify({ whatsappPhone: finalPhone }) 
+            });
+            if (res && res.ok) {
+                setRemindMsg({ type: "success", text: "✅ Recordatorio enviado exitosamente a WhatsApp." });
+                setItems(prev => prev.map(o => o.id === remindItem.id ? { ...o, reminder_sent: 1, whatsapp_phone: finalPhone } : o));
+                setTimeout(() => {
+                    setRemindModalOpen(false);
+                }, 1500);
+            }
+        } catch (e) {
+            setRemindMsg({ type: "error", text: "❌ " + (e.message || "Error enviando recordatorio.") });
+        } finally {
+            setReminding(false);
+        }
     }
 
     return (
@@ -182,13 +229,14 @@ export default function UserExpirations() {
                                         <th style={{ padding: "12px 8px", fontWeight: 600 }}>Cuenta Asignada</th>
                                         <th style={{ padding: "12px 8px", fontWeight: 600 }}>Vence</th>
                                         <th style={{ padding: "12px 8px", fontWeight: 600 }}>Estado</th>
+                                        <th style={{ padding: "12px 8px", fontWeight: 600, textAlign: "right" }}>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={5} style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>Cargando vencimientos...</td></tr>
+                                        <tr><td colSpan={6} style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>Cargando vencimientos...</td></tr>
                                     ) : items.length === 0 ? (
-                                        <tr><td colSpan={5} style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>No tienes cuentas próximas a vencer en este momento.</td></tr>
+                                        <tr><td colSpan={6} style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>No tienes cuentas próximas a vencer en este momento.</td></tr>
                                     ) : (
                                         items.map((item) => {
                                             const daysLeft = getDaysLeft(item.expires_at);
@@ -209,6 +257,24 @@ export default function UserExpirations() {
                                                     </td>
                                                     <td style={{ padding: "12px 8px" }}>
                                                         {renderDaysBadge(daysLeft)}
+                                                    </td>
+                                                    <td style={{ padding: "12px 8px", textAlign: "right" }}>
+                                                        <button
+                                                            className="btn-ghost"
+                                                            title={item.reminder_sent ? "Recordatorio ya enviado" : (item.whatsapp_phone ? `Enviar recordatorio por WA a ${item.whatsapp_phone}` : "No hay número guardado, haz clic para ingresarlo")}
+                                                            disabled={item.reminder_sent}
+                                                            style={{
+                                                                padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 8,
+                                                                color: item.reminder_sent ? "var(--muted)" : "#10b981",
+                                                                background: item.reminder_sent ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.1)",
+                                                                border: `1px solid ${item.reminder_sent ? "var(--stroke)" : "rgba(16,185,129,0.3)"}`,
+                                                                cursor: item.reminder_sent ? "not-allowed" : "pointer",
+                                                                opacity: item.reminder_sent ? 0.6 : 1
+                                                            }}
+                                                            onClick={() => !item.reminder_sent && openRemindModal(item)}
+                                                        >
+                                                            {item.reminder_sent ? "🔕" : "🔔 Enviar"}
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             );
@@ -247,6 +313,95 @@ export default function UserExpirations() {
                     </div>
                 </main>
             </div>
+
+            {/* Modal Recordatorio WA */}
+            <AnimatePresence>
+                {remindModalOpen && remindItem && (
+                    <div style={{
+                        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                        backgroundColor: "rgba(0,0,0,0.6)",
+                        backdropFilter: "blur(4px)",
+                        zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
+                        padding: 20
+                    }}>
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            style={{
+                                background: "var(--card-bg)",
+                                border: "1px solid var(--stroke)",
+                                borderRadius: 16,
+                                padding: 24,
+                                width: "100%", maxWidth: 400,
+                                position: "relative"
+                            }}
+                        >
+                            <button
+                                onClick={() => setRemindModalOpen(false)}
+                                style={{
+                                    position: "absolute", top: 16, right: 16,
+                                    background: "transparent", border: "none", color: "var(--muted)",
+                                    cursor: "pointer"
+                                }}
+                            >
+                                <X size={20} />
+                            </button>
+
+                            <h3 style={{ margin: "0 0 16px", fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 24 }}>🔔</span>
+                                Enviar Recordatorio
+                            </h3>
+
+                            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 16 }}>
+                                Vas a enviar un mensaje de WhatsApp al cliente recordando el vencimiento de la cuenta <b style={{color: "var(--fg)"}}>{remindItem.platform_name}</b>.
+                            </p>
+
+                            <div style={{ marginBottom: 16 }}>
+                                <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 6, fontWeight: 600 }}>Número de WhatsApp</label>
+                                <input
+                                    className="input"
+                                    type="text"
+                                    placeholder="+57300..."
+                                    value={remindPhone}
+                                    onChange={(e) => setRemindPhone(e.target.value)}
+                                    style={{ width: "100%" }}
+                                />
+                            </div>
+
+                            {remindMsg.text && (
+                                <div style={{
+                                    padding: 10, borderRadius: 8, fontSize: 13, marginBottom: 16,
+                                    background: remindMsg.type === "success" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
+                                    color: remindMsg.type === "success" ? "#10b981" : "#ef4444",
+                                    border: `1px solid ${remindMsg.type === "success" ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`
+                                }}>
+                                    {remindMsg.text}
+                                </div>
+                            )}
+
+                            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                                <button
+                                    className="btn-ghost"
+                                    onClick={() => setRemindModalOpen(false)}
+                                    disabled={reminding}
+                                    style={{ padding: "8px 16px", fontSize: 13 }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn"
+                                    onClick={confirmRemind}
+                                    disabled={reminding}
+                                    style={{ padding: "8px 16px", fontSize: 13 }}
+                                >
+                                    {reminding ? "Enviando..." : "Enviar Recordatorio"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

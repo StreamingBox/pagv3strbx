@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import ThemeToggle from "../ThemeToggle.jsx";
+import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
+import useTheme from "../../hooks/useTheme";
 
 const NAV_GROUPS = [
     {
@@ -44,6 +46,13 @@ const NAV_GROUPS = [
             { path: "/admin/users", label: "Usuarios", icon: "👥" },
             { path: "/admin/support", label: "Soporte Técnico", icon: "🎧" },
         ]
+    },
+    {
+        title: "Configuración",
+        links: [
+            { path: "/admin/whatsapp", label: "WhatsApp API", icon: "💬" },
+            { path: "/admin/whatsapp-trace", label: "Traza de WhatsApp", icon: "📡" },
+        ]
     }
 ];
 
@@ -60,10 +69,13 @@ export default function AdminSidebar({
     const [isHovered, setIsHovered] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
     const [stockCount, setStockCount] = useState(0);
+    const [expirationsCount, setExpirationsCount] = useState(0);
+    const { theme } = useTheme();
+    const isDark = theme === "dark";
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Poll stock notification count every 30s
+    // Poll stock notification count every 3 minutes
     useEffect(() => {
         async function fetchStockCount() {
             try {
@@ -75,9 +87,30 @@ export default function AdminSidebar({
             } catch { /* silently ignore */ }
         }
         fetchStockCount();
-        const timer = setInterval(fetchStockCount, 30000);
+        const timer = setInterval(fetchStockCount, 180000);
         return () => clearInterval(timer);
     }, []);
+
+    // Poll expirations count
+    useEffect(() => {
+        async function fetchExpirations() {
+            // Hide badge while on the expirations page
+            if (location.pathname === "/admin/expirations") {
+                setExpirationsCount(0);
+                return;
+            }
+            try {
+                const res = await fetch("/api/admin/orders-expiring-count", { credentials: "include" });
+                if (res.ok) {
+                    const data = await res.json();
+                    setExpirationsCount(Number(data.count) || 0);
+                }
+            } catch { /* silently ignore */ }
+        }
+        fetchExpirations();
+        const timer = setInterval(fetchExpirations, 180000);
+        return () => clearInterval(timer);
+    }, [location.pathname]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -136,22 +169,10 @@ export default function AdminSidebar({
                 {/* Cabecera Sidebar */}
                 <div style={{ padding: effectiveCollapsed ? "24px 8px" : "24px 20px", transition: "padding 0.2s" }}>
                     <div className="brand-row" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: effectiveCollapsed ? 0 : 12, cursor: "pointer", justifyContent: effectiveCollapsed ? "center" : "flex-start" }} onClick={() => navigate("/admin")}>
-                        {logoOk ? (
-                            <img
-                                src={logoSrc}
-                                alt="Logo"
-                                onError={() => setLogoOk(false)}
-                                style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", flexShrink: 0 }}
-                            />
+                        {effectiveCollapsed ? (
+                            <StreamingBoxLogo size={36} showText={false} />
                         ) : (
-                            <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(13,166,242,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#0da6f2", fontWeight: 800, flexShrink: 0 }}>SB</div>
-                        )}
-
-                        {!effectiveCollapsed && (
-                            <div style={{ minWidth: 0, overflow: "hidden" }}>
-                                <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text)", whiteSpace: "nowrap" }}>Streaming Box</div>
-                                <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Admin Panel</div>
-                            </div>
+                            <StreamingBoxLogo size={36} showText={true} subtitle="Admin Panel" />
                         )}
                     </div>
 
@@ -161,7 +182,10 @@ export default function AdminSidebar({
                                 className="btn-ghost"
                                 onClick={onOpenLogoPicker}
                                 disabled={uploadingLogo}
-                                style={{ flex: 1, height: 32, fontSize: 11, padding: "0", borderRadius: 8, minHeight: 0 }}
+                                style={{ 
+                                    flex: 1, height: 32, fontSize: 11, padding: "0", borderRadius: 8, minHeight: 0,
+                                    borderColor: "var(--stroke)", color: "var(--text)"
+                                }}
                             >
                                 {uploadingLogo ? "Subiendo..." : "Cambiar logo"}
                             </button>
@@ -175,7 +199,16 @@ export default function AdminSidebar({
                     {NAV_GROUPS.map((group, idx) => (
                         <div key={idx}>
                             {!effectiveCollapsed && (
-                                <div style={{ padding: "0 12px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8, whiteSpace: "nowrap" }}>
+                                <div style={{ 
+                                    padding: "0 12px", 
+                                    fontSize: 10, 
+                                    fontWeight: 700, 
+                                    color: "var(--muted)", 
+                                    textTransform: "uppercase", 
+                                    letterSpacing: "1px", 
+                                    marginBottom: 8, 
+                                    whiteSpace: "nowrap" 
+                                }}>
                                     {group.title}
                                 </div>
                             )}
@@ -198,18 +231,24 @@ export default function AdminSidebar({
                                                 background: isActive ? "linear-gradient(135deg, rgba(13,166,242,0.15), rgba(99,51,255,0.08))" : "transparent",
                                                 color: isActive ? "#0ca5e9" : "var(--muted)",
                                                 border: isActive ? "1px solid rgba(13,166,242,0.25)" : "1px solid transparent",
-                                                boxShadow: isActive ? "0 8px 16px rgba(0, 0, 0, 0.2)" : "none",
+                                                boxShadow: isActive ? "0 8px 16px rgba(0, 0, 0, 0.15)" : "none",
                                                 position: "relative",
                                                 overflow: "hidden"
                                             }}
                                             onMouseEnter={e => {
-                                                if (!isActive) e.currentTarget.style.background = "var(--line)";
+                                                if (!isActive) e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
                                             }}
                                             onMouseLeave={e => {
                                                 if (!isActive) e.currentTarget.style.background = "transparent";
                                             }}
                                         >
-                                            <span style={{ fontSize: 18, opacity: isActive ? 1 : 0.8, filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                            <span style={{ 
+                                                fontSize: 18, 
+                                                opacity: isActive ? 1 : 0.7, 
+                                                color: isActive ? "#0ca5e9" : "inherit",
+                                                filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none", 
+                                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 
+                                            }}>
                                                 {link.icon}
                                             </span>
                                             {!effectiveCollapsed && (
@@ -234,6 +273,26 @@ export default function AdminSidebar({
                                                     animation: "pulse 1.8s infinite"
                                                 }}>
                                                     {stockCount}
+                                                </span>
+                                            )}
+
+                                            {/* Badge para vencimientos del día */}
+                                            {link.path === "/admin/expirations" && expirationsCount > 0 && (
+                                                <span style={{
+                                                    background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                                                    color: "#fff",
+                                                    borderRadius: 99,
+                                                    fontSize: 10,
+                                                    fontWeight: 800,
+                                                    padding: "2px 7px",
+                                                    minWidth: 20,
+                                                    textAlign: "center",
+                                                    lineHeight: "16px",
+                                                    flexShrink: 0,
+                                                    boxShadow: "0 0 12px rgba(239,68,68,0.4)",
+                                                    animation: "pulse 1.8s infinite"
+                                                }}>
+                                                    {expirationsCount}
                                                 </span>
                                             )}
                                         </div>

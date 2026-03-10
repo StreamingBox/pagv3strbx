@@ -5,7 +5,7 @@ export default function useTheme() {
 
     useEffect(() => {
         // 1) Preferencia guardada
-        const saved = localStorage.getItem("theme");
+        const saved = localStorage.getItem("sb-theme");
         if (saved === "light" || saved === "dark") {
             setTheme(saved);
             document.documentElement.setAttribute("data-theme", saved);
@@ -21,7 +21,7 @@ export default function useTheme() {
 
     function setThemeAndPersist(next) {
         setTheme(next);
-        localStorage.setItem("theme", next);
+        localStorage.setItem("sb-theme", next);
         document.documentElement.setAttribute("data-theme", next);
     }
 

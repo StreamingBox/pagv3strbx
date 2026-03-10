@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import SalesChart, { MONTH_COLORS } from "./SalesChart";
 import DistributionChart from "./DistributionChart";
@@ -57,12 +57,12 @@ function InsightChip({ emoji, label, value, color = "var(--accent)" }) {
             display: "flex", alignItems: "center", gap: 10,
             padding: "10px 14px",
             background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 14,
-            flex: "1 1 auto", minWidth: 130,
+            flex: "1 1 auto", minWidth: 120,
         }}>
-            <span style={{ fontSize: 18, lineHeight: 1 }}>{emoji}</span>
+            <span style={{ fontSize: 16, lineHeight: 1 }}>{emoji}</span>
             <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", whiteSpace: "nowrap" }}>{label}</div>
-                <div style={{ fontSize: 15, fontWeight: 900, color, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+                <div style={{ fontSize: 9, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", whiteSpace: "nowrap" }}>{label}</div>
+                <div style={{ fontSize: 13, fontWeight: 900, color, lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
             </div>
         </div>
     );
@@ -336,6 +336,7 @@ function KpiCard({ label, total, orders, topPlatform, color, idx }) {
                 borderTop: `3px solid ${color}`,
                 boxShadow: `0 8px 30px rgba(0,0,0,0.08), 0 0 0 1px ${color}1a`,
                 position: "relative", overflow: "hidden",
+                minWidth: 0, // Prevent flex blowup
             }}
         >
             {/* Glow bg */}
@@ -345,16 +346,16 @@ function KpiCard({ label, total, orders, topPlatform, color, idx }) {
                 background: `${color}18`, filter: "blur(20px)",
                 pointerEvents: "none",
             }} />
-            <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.2px", color, marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.2px", color, marginBottom: 10 }}>
                 {label}
             </div>
-            <div style={{ fontSize: 28, fontWeight: 900, color: "var(--text)", lineHeight: 1, letterSpacing: "-0.5px" }}>
-                <span style={{ fontSize: 16, color: "var(--muted)", marginRight: 2 }}>$</span>
+            <div style={{ fontSize: "calc(1.2rem + 0.8vw)", fontWeight: 900, color: "var(--text)", lineHeight: 1, letterSpacing: "-0.5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontSize: "0.6em", color: "var(--muted)", marginRight: 2 }}>$</span>
                 {Number(total).toLocaleString("es-CO")}
             </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <span>📦 {orders} órdenes</span>
-                {topPlatform && <span>🏆 {topPlatform}</span>}
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ whiteSpace: "nowrap" }}>📦 {orders} órd.</span>
+                {topPlatform && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🏆 {topPlatform}</span>}
             </div>
         </motion.div>
     );
@@ -792,14 +793,16 @@ function UserAnalyticsContent({ admin }) {
                                                 {idx + 1}
                                             </div>
                                             <span style={{
-                                                fontWeight: 700, fontSize: 13, color: "var(--text)",
+                                                fontWeight: 700, fontSize: 12, color: "var(--text)",
                                                 flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                                minWidth: 0,
                                             }}>
                                                 {item.name}
                                             </span>
                                             <span style={{
-                                                fontWeight: 900, fontSize: 14, color: "var(--accent)", flexShrink: 0,
+                                                fontWeight: 900, fontSize: 12, color: "var(--accent)", flexShrink: 0,
                                                 background: "rgba(13,166,242,0.08)", padding: "3px 8px", borderRadius: 8,
+                                                marginLeft: 4
                                             }}>
                                                 ${Number(item.value).toLocaleString("es-CO")}
                                             </span>

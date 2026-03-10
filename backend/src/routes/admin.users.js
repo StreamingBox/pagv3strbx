@@ -19,7 +19,7 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
 
         // DATA
         const [rows] = await pool.query(
-            `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+            `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at, u.whatsapp,
                COALESCE(w.balance, 0) AS balance, 
                COALESCE(w.profit_total, 0) AS profit_total,
                COALESCE(w.currency, 'COP') AS currency,
@@ -71,7 +71,7 @@ router.get("/admin/users/stats", requireAuth, requireRole("admin"), async (req, 
 // ✅ Admin crea usuario
 router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const { name, email, password, role, currency } = req.body || {};
+        const { name, email, password, role, currency, whatsapp } = req.body || {};
         const finalCurrency = (currency || "COP").toString().toUpperCase();
         if (!["COP", "USD", "MXN"].includes(finalCurrency)) {
             return res.status(400).json({ message: "currency inválida. Usa COP, USD o MXN." });
@@ -90,9 +90,9 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
         const password_hash = await bcrypt.hash(String(password), 12);
 
         const [result] = await pool.query(
-            `INSERT INTO users (name, email, password_hash, role, status, currency)
-             VALUES (?, ?, ?, ?, 'active', ?)`,
-            [name, normalizedEmail, password_hash, finalRole, finalCurrency]
+            `INSERT INTO users (name, email, password_hash, role, status, currency, whatsapp)
+             VALUES (?, ?, ?, ?, 'active', ?, ?)`,
+            [name, normalizedEmail, password_hash, finalRole, finalCurrency, whatsapp || null]
         );
         await pool.query(
             "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
@@ -101,7 +101,7 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
 
 
         return res.status(201).json({
-            user: { id: result.insertId, name, email: normalizedEmail, role: finalRole, status: "active" },
+            user: { id: result.insertId, name, email: normalizedEmail, role: finalRole, status: "active", whatsapp: whatsapp || null },
         });
     } catch (err) {
         console.error("API Error at " + req.originalUrl + ":", err.message);
@@ -115,7 +115,7 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
     const conn = await pool.getConnection();
     try {
         const { id } = req.params;
-        const { role, status, name, currency } = req.body || {};
+        const { role, status, name, currency, whatsapp } = req.body || {};
 
         await conn.beginTransaction();
 
@@ -150,9 +150,10 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
             `UPDATE users
        SET name = COALESCE(?, name),
            role = COALESCE(?, role),
-           status = COALESCE(?, status)
+           status = COALESCE(?, status),
+           whatsapp = COALESCE(?, whatsapp)
        WHERE id = ?`,
-            [name ?? null, role ?? null, status ?? null, id]
+            [name ?? null, role ?? null, status ?? null, whatsapp !== undefined ? whatsapp : null, id]
         );
 
         await conn.commit();

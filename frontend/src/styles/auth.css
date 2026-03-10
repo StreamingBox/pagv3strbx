@@ -14,21 +14,21 @@
     --font: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
         "Apple Color Emoji", "Segoe UI Emoji";
 
-    /* DARK — Navy vibrante y profundo */
-    --bg0: #0A0F29;
-    --bg1: #0F172A;
+    /* DARK — Navy vibrante y profundo (Aclarado según solicitud) */
+    --bg0: #141b33;
+    --bg1: #1a2342;
 
     /* Cards con cristal y desenfoque */
-    --card: rgba(13, 19, 44, 0.75);
-    --card2: rgba(10, 15, 35, 0.70);
+    --card: rgba(26, 35, 71, 0.85);
+    --card2: rgba(22, 30, 62, 0.80);
 
     --stroke: rgba(59, 130, 246, 0.22);
     --stroke2: rgba(255, 255, 255, .05);
 
-    --text: #FFFFFF;
-    --muted: #E2E8F0; /* Mucho más claro y sólido */
-    --muted2: #CBD5E1;
-    --card: rgba(15, 23, 42, 0.85); /* Fondo de tarjeta más definido */
+    --text: #ffffff; /* Blanco puro para títulos */
+    --muted: #f1f5f9; /* Casi blanco para etiquetas de stock, duración, etc. */
+    --muted2: #e2e8f0; /* Gris muy claro para info terciaria */
+    --card: rgba(30, 41, 75, 0.9); /* Fondo de tarjeta más definido y claro */
 
     --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.7);
 

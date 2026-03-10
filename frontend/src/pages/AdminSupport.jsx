@@ -1,8 +1,18 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
+
+function useIsMobile() {
+    const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
+    useEffect(() => {
+        const h = () => setIsMobile(window.innerWidth <= 800);
+        window.addEventListener("resize", h);
+        return () => window.removeEventListener("resize", h);
+    }, []);
+    return isMobile;
+}
 
 const PUBLIC_BASE =
     import.meta.env.VITE_PUBLIC_BASE_URL ||
@@ -153,6 +163,7 @@ function shortDate(d) { return d ? String(d).slice(0, 10) : "—"; }
 export default function AdminSupport() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
+    const isMobile = useIsMobile();
 
     const [subscriptionId, setSubscriptionId] = useState("");
     const [loading, setLoading] = useState(false);
@@ -235,7 +246,11 @@ export default function AdminSupport() {
                 <div style={S.card}>
                     <div style={S.cardTitle}>🔍 Buscar Subscription</div>
                     <form onSubmit={onSearch}>
-                        <div style={S.searchRow}>
+                        <div style={{
+                            ...S.searchRow,
+                            gridTemplateColumns: isMobile ? "1fr" : "1fr auto auto",
+                            gap: 12
+                        }}>
                             <input
                                 style={S.input}
                                 placeholder="ID de subscription (ej: 148)"
@@ -245,25 +260,27 @@ export default function AdminSupport() {
                                 onFocus={e => { e.target.style.borderColor = "rgba(13,166,242,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(13,166,242,0.1)"; }}
                                 onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.1)"; e.target.style.boxShadow = "none"; }}
                             />
-                            <button
-                                type="submit"
-                                style={{ ...S.btnBlue, opacity: loading ? 0.6 : 1 }}
-                                disabled={loading}
-                                onMouseEnter={e => { if (!loading) { e.currentTarget.style.background = "rgba(13,166,242,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(13,166,242,0.3)"; } }}
-                                onMouseLeave={e => { e.currentTarget.style.background = "rgba(13,166,242,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
-                            >
-                                {loading ? "⏳ Buscando..." : "🔍 Buscar"}
-                            </button>
-                            <button
-                                type="button"
-                                style={{ ...S.btnGreen, opacity: canReplace ? 1 : 0.4, cursor: canReplace ? "pointer" : "not-allowed" }}
-                                onClick={onReplace}
-                                disabled={!canReplace}
-                                onMouseEnter={e => { if (canReplace) { e.currentTarget.style.background = "rgba(16,185,129,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(16,185,129,0.3)"; } }}
-                                onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
-                            >
-                                🔄 Reemplazar cuenta
-                            </button>
+                            <div style={{ display: "flex", gap: 10, width: "100%" }}>
+                                <button
+                                    type="submit"
+                                    style={{ ...S.btnBlue, opacity: loading ? 0.6 : 1, flex: 1, justifyContent: "center" }}
+                                    disabled={loading}
+                                    onMouseEnter={e => { if (!loading) { e.currentTarget.style.background = "rgba(13,166,242,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(13,166,242,0.3)"; } }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(13,166,242,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
+                                >
+                                    {loading ? "⏳..." : "🔍 Buscar"}
+                                </button>
+                                <button
+                                    type="button"
+                                    style={{ ...S.btnGreen, opacity: canReplace ? 1 : 0.4, cursor: canReplace ? "pointer" : "not-allowed", flex: 1, justifyContent: "center" }}
+                                    onClick={onReplace}
+                                    disabled={!canReplace}
+                                    onMouseEnter={e => { if (canReplace) { e.currentTarget.style.background = "rgba(16,185,129,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(16,185,129,0.3)"; } }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
+                                >
+                                    🔄 Reemplazar
+                                </button>
+                            </div>
                         </div>
                     </form>
 
@@ -335,20 +352,20 @@ export default function AdminSupport() {
                         </div>
 
                         {/* Grid: credenciales + mensaje */}
-                        <div style={S.twoCol}>
+                        <div style={{
+                            ...S.twoCol,
+                            gridTemplateColumns: isMobile ? "1fr" : "1.1fr 0.9fr"
+                        }}>
                             {/* Credenciales */}
                             <div style={S.card}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>🔐 Credenciales actuales</div>
-                                    <button style={S.btnGhost} onClick={() => copy(info.account?.email || "", "Correo")}
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                                    <div style={{ fontWeight: 700, fontSize: 15 }}>🔐 Credenciales</div>
+                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.account?.email || "", "Correo")}
                                         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
                                         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
                                     >
                                         Copiar correo
                                     </button>
-                                </div>
-                                <div style={{ fontSize: 12, color: "rgba(234,241,255,0.4)", marginBottom: 8 }}>
-                                    Estas serán las que muestre el link /s/ luego del reemplazo.
                                 </div>
                                 <div style={S.fieldGrid}>
                                     <Field label="Correo" value={info.account?.email || "—"} mono />
@@ -356,42 +373,32 @@ export default function AdminSupport() {
                                     <Field label="Perfil" value={String(info.account?.profile_number ?? "").trim() ? info.account?.profile_number : "—"} />
                                     <Field label="Pin" value={String(info.account?.pin ?? "").trim() ? info.account?.pin : "—"} />
                                     <Field label="Expira" value={shortDate(info.expiresAt)} />
-                                    <Field label="Link /s/" value={fullLink || (info.token ? `/s/${info.token}` : "—")} mono />
+                                    <Field label="Link" value={fullLink || "—"} mono />
                                 </div>
                                 <div style={S.warnBox}>
-                                    ⚠️ Si no hay stock disponible, el sistema mostrará: <b>"Sin stock: no podemos completar la acción"</b>.
+                                    ⚠️ Si no hay stock, el sistema dirá: <b>"Sin stock"</b>.
                                 </div>
                             </div>
 
                             {/* Mensaje WhatsApp */}
                             <div style={S.card}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                                     <div style={{ fontWeight: 700, fontSize: 15 }}>💬 Mensaje WhatsApp</div>
-                                    <button style={S.btnGhost} onClick={() => copy(info.message || "", "Mensaje WhatsApp")}
+                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.message || "", "Mensaje WhatsApp")}
                                         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
                                         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
                                     >
                                         Copiar
                                     </button>
                                 </div>
-                                <div style={{ fontSize: 12, color: "rgba(234,241,255,0.4)", marginBottom: 4 }}>
-                                    Mismo formato que el mensaje de checkout.
-                                </div>
                                 <textarea
-                                    style={S.textarea}
+                                    style={{ ...S.textarea, minHeight: isMobile ? 300 : 380 }}
                                     value={info.message || ""}
                                     readOnly
-                                    rows={22}
+                                    rows={isMobile ? 12 : 22}
                                 />
                             </div>
                         </div>
-
-                        {/* Responsive */}
-                        <style>{`
-                            @media (max-width: 1000px) {
-                                .support-two-col { grid-template-columns: 1fr !important; }
-                            }
-                        `}</style>
                     </>
                 )}
             </main>

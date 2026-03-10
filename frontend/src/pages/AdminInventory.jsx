@@ -312,16 +312,16 @@ export default function AdminInventory() {
                                 </div>
                             </div>
 
-                            <div style={{ display: "grid", gridColumn: "1 / -1", gridTemplateColumns: "1fr auto", gap: 16, alignItems: "center", marginTop: 8 }}>
-                                <div style={{ fontSize: 13, color: "var(--muted)", display: "flex", gap: 12 }}>
-                                    <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)" }}>
-                                        Plataforma activa: <b style={{ color: "var(--text)" }}>{selectedPlatform?.name || "Todas"}</b>
+                            <div style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 16, marginTop: 12, gridColumn: "1 / -1" }}>
+                                <div style={{ fontSize: 13, color: "var(--muted)", display: "flex", gap: 8, flexWrap: "wrap", flex: "1 1 auto" }}>
+                                    <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                                        Plataforma: <b style={{ color: "var(--text)" }}>{selectedPlatform?.name || "Todas"}</b>
                                     </div>
-                                    <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)" }}>
+                                    <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
                                         Registros: <b style={{ color: "var(--text)" }}>{total}</b>
                                     </div>
                                 </div>
-                                <button type="submit" disabled={loading} style={{ height: 44, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)" }}>
+                                <button type="submit" disabled={loading} style={{ height: 44, padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", flex: "1 1 auto", minWidth: 200 }}>
                                     Filtrar Inventario
                                 </button>
                             </div>

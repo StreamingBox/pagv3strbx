@@ -1,4 +1,6 @@
 require("dotenv").config();
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -35,7 +37,40 @@ const adminBrandingRoutes = require("./routes/admin.branding");
 const authRoutes = require("./routes/auth");
 const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
+const whatsappRoutes = require("./routes/whatsapp");
 const { initBot } = require("./services/telegramBot");
+
+let instanceLockPath = null;
+const lockEnabled = String(process.env.BACKEND_SINGLE_INSTANCE || "true").toLowerCase() !== "false";
+if (lockEnabled) {
+    try {
+        const runtimeDir = path.join(__dirname, "..", ".runtime");
+        fs.mkdirSync(runtimeDir, { recursive: true });
+        instanceLockPath = path.join(runtimeDir, "backend.lock");
+
+        if (fs.existsSync(instanceLockPath)) {
+            const existingPid = Number(fs.readFileSync(instanceLockPath, "utf8").trim());
+            let alive = false;
+            if (Number.isFinite(existingPid) && existingPid > 0) {
+                try {
+                    process.kill(existingPid, 0);
+                    alive = true;
+                } catch {
+                    alive = false;
+                }
+            }
+            if (alive) {
+                console.error("[boot] Otra instancia backend ya esta corriendo. Abortando para proteger la DB.");
+                process.exit(1);
+            }
+        }
+
+        fs.writeFileSync(instanceLockPath, String(process.pid), "utf8");
+    } catch (e) {
+        console.error("[boot] Error inicializando lock de instancia:", e?.message || e);
+        process.exit(1);
+    }
+}
 
 const app = express();
 
@@ -53,11 +88,12 @@ const allowedOrigins = new Set([
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 ]);
+const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
 const corsOptions = {
     origin: (origin, cb) => {
         if (!origin) return cb(null, true); // curl/postman
-        if (allowedOrigins.has(origin)) return cb(null, true);
+        if (allowedOrigins.has(origin) || localDevOrigin.test(origin)) return cb(null, true);
         return cb(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
@@ -97,8 +133,8 @@ app.use(
 
 // Rate limit global: 120 req/min por IP
 const globalRateLimit = rateLimit({
-    windowMs: 60 * 1000,
-    max: 120,
+    windowMs: 60 * 60 * 1000,
+    max: 450,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiadas solicitudes. Intenta de nuevo en un minuto." },
@@ -108,7 +144,7 @@ app.use(globalRateLimit);
 // Rate limit para auth/login: 10 intentos/min por IP (anti fuerza bruta)
 const loginRateLimit = rateLimit({
     windowMs: 60 * 1000,
-    max: 10,
+    max: 8,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiados intentos de inicio de sesión. Intenta de nuevo en un minuto." },
@@ -117,7 +153,7 @@ const loginRateLimit = rateLimit({
 // Rate limit para códigos: 500 por hora
 const codesRateLimit = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 500,
+    max: 400,
     message: { ok: false, message: "Límite de solicitudes de código excedido (máximo 500 por hora)." },
     standardHeaders: true,
     legacyHeaders: false,
@@ -126,7 +162,7 @@ const codesRateLimit = rateLimit({
 // Rate limit para links compartidos: 30 req/min
 const shareRateLimit = rateLimit({
     windowMs: 60 * 1000,
-    max: 30,
+    max: 8,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiadas solicitudes al link compartido." },
@@ -209,9 +245,22 @@ app.use("/api", adminDurations);
 // Analytics
 app.use("/api", analyticsRoutes);
 
+// WhatsApp (WaSender)
+app.use("/api", whatsappRoutes);
+
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`API running on :${port}`);
-    initBot(); // ← Telegram bot
+    initBot();
 });
 
+
+function releaseLock() {
+    if (instanceLockPath) {
+        try { fs.unlinkSync(instanceLockPath); } catch { }
+        instanceLockPath = null;
+    }
+}
+process.on('SIGINT', () => { releaseLock(); server.close(() => process.exit(0)); });
+process.on('SIGTERM', () => { releaseLock(); server.close(() => process.exit(0)); });
+process.on('exit', releaseLock);

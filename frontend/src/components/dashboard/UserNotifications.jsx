@@ -12,8 +12,8 @@ export default function UserNotifications() {
     // Fetch initial notifications
     useEffect(() => {
         fetchNotifications();
-        // Poll every 30 seconds
-        const timer = setInterval(fetchNotifications, 30000);
+        // Poll every 3 minutes
+        const timer = setInterval(fetchNotifications, 180000);
         return () => clearInterval(timer);
     }, []);
 

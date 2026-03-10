@@ -31,6 +31,7 @@ export default function CreateUserCard({ saving, onCreate }) {
     const [password, setPassword] = useState("");
     const [role, setRole] = useState("user");
     const [currency, setCurrency] = useState("COP");
+    const [whatsapp, setWhatsapp] = useState("");
     const [show, setShow] = useState(false);
     const [success, setSuccess] = useState("");
     const [err, setErr] = useState("");
@@ -38,8 +39,8 @@ export default function CreateUserCard({ saving, onCreate }) {
     async function handleCreate() {
         setErr("");
         try {
-            await onCreate({ name, email, password, role, currency });
-            setName(""); setEmail(""); setPassword(""); setRole("user"); setCurrency("COP");
+            await onCreate({ name, email, password, role, currency, whatsapp });
+            setName(""); setEmail(""); setPassword(""); setRole("user"); setCurrency("COP"); setWhatsapp("");
             setSuccess("✅ Usuario creado correctamente.");
             setTimeout(() => setSuccess(""), 4000);
         } catch (e) {
@@ -59,8 +60,8 @@ export default function CreateUserCard({ saving, onCreate }) {
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Crear Nuevo Usuario</h3>
             </div>
 
-            {/* Row 1: Nombre + Email */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+            {/* Row 1: Nombre + Email + WhatsApp */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div>
                     <span style={lbl}>Nombre</span>
                     <input style={inp} placeholder="Juan Pérez" value={name} onChange={e => setName(e.target.value)} onFocus={focus} onBlur={blur} />
@@ -68,6 +69,10 @@ export default function CreateUserCard({ saving, onCreate }) {
                 <div>
                     <span style={lbl}>Email *</span>
                     <input style={inp} type="email" placeholder="usuario@email.com" value={email} onChange={e => setEmail(e.target.value)} onFocus={focus} onBlur={blur} />
+                </div>
+                <div>
+                    <span style={lbl}>WA Vendedor</span>
+                    <input style={inp} type="text" placeholder="+57300..." value={whatsapp} onChange={e => setWhatsapp(e.target.value)} onFocus={focus} onBlur={blur} />
                 </div>
             </div>
 

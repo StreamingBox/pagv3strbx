@@ -380,8 +380,15 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
             whereCols.push("s.is_attended = ?");
             params.push(Number(attended) === 1 ? 1 : 0);
         } else if (attended === undefined || attended === "0") {
-            // By default, showing pending ones
             whereCols.push("s.is_attended = 0");
+        }
+
+        // New: Filter by expiry status (vencidos, hoy)
+        const expiryFilter = req.query.expiryFilter; // 'vencidos', 'hoy', 'all'
+        if (expiryFilter === "vencidos") {
+            whereCols.push("DATE(s.expires_at) < DATE(NOW())");
+        } else if (expiryFilter === "hoy") {
+            whereCols.push("DATE(s.expires_at) = DATE(NOW())");
         }
 
         const whereSql = "WHERE " + whereCols.join(" AND ");
@@ -407,17 +414,29 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                s.price,
                s.currency,
                s.is_attended,
+               s.whatsapp_phone,
+               s.reminder_sent,
                u.email AS user_email,
+               u.whatsapp AS vendor_phone,
                p.name AS platform_name,
                p.slug AS platform_slug,
-                acc.email AS account_email,
+               acc.email AS account_email,
+               acc.password AS account_password,
                acc.profile_number
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
-             ORDER BY s.expires_at ASC
+             ORDER BY
+               (SELECT MIN(ex.expires_at)
+                FROM subscriptions ex
+                WHERE ex.platform_account_id = s.platform_account_id
+                  AND ex.status != 'cancelled'
+                  AND ex.platform_account_id IS NOT NULL
+               ) ASC,
+               COALESCE(acc.email, '') ASC,
+               s.expires_at ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
         );
@@ -447,11 +466,27 @@ router.post("/admin/orders/:id/attend", requireAuth, requireRole("admin"), async
         }
 
         await pool.query("UPDATE subscriptions SET is_attended = ? WHERE id = ?", [is_attended ? 1 : 0, orderId]);
-
         return res.json({ ok: true });
     } catch (err) {
+        console.error("Error en POST /admin/orders/:id/attend:", err);
+        return res.status(500).json({ message: "Error actualizando estado." });
+    }
+});
+
+// ✅ Count pending expirations (Admin)
+router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT COUNT(*) as count
+             FROM subscriptions
+             WHERE status != 'cancelled'
+               AND is_attended = 0
+               AND DATE(expires_at) <= DATE(NOW())`
+        );
+        return res.json({ count: rows[0].count });
+    } catch (err) {
         console.error(err);
-        return res.status(500).json({ message: "Error actualizando estado de atención." });
+        return res.status(500).json({ message: "Error contando vencimientos." });
     }
 });
 

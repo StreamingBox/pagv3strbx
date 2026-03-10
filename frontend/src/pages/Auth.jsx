@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Sun, Moon } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { countries } from "../utils/countries";
+import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
 const LOGO_URL = "/api/branding/logo";
@@ -388,13 +389,13 @@ export default function Auth() {
                 <div style={S.formSide(isRegister)}>
                     {/* Logo */}
                     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-                        {logoOk
-                            ? <img src={LOGO_URL} alt="Logo" onError={() => setLogoOk(false)} style={{ width: 46, height: 46, objectFit: "contain" }} />
-                            : <div style={{ width: 46, height: 46, borderRadius: 12, background: "linear-gradient(135deg,#2563eb,#06b6d4)", flexShrink: 0 }} />}
-                        <div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: C.text }}>Streaming Box</div>
-                            <div style={{ fontSize: 13, color: C.muted }}>Bienvenido de nuevo</div>
-                        </div>
+                        <StreamingBoxLogo
+                            size={40}
+                            showText={true}
+                            onDark={dark}
+                            textColor={C.text}
+                            subtitle="Bienvenido de nuevo"
+                        />
                     </div>
 
                     <h2 style={S.heading}>Iniciar Sesión</h2>
@@ -505,7 +506,18 @@ export default function Auth() {
                 <div style={S.overlay(isRegister)}>
                     {/* Overlay glow */}
                     <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 50%, rgba(255,255,255,.12), transparent 70%)", pointerEvents: "none" }} />
-                    <div style={{ position: "relative", zIndex: 1 }}>
+                    <div style={{ position: "relative", zIndex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        {/* Logo en el panel azul convertido en "marca" principal */}
+                        <StreamingBoxLogo
+                            size={120}
+                            showText={false}
+                            onDark={true}
+                            style={{ 
+                                marginBottom: 40,
+                                filter: "drop-shadow(0 20px 30px rgba(0,0,0,0.3))" 
+                            }}
+                        />
+
                         {!isRegister ? (
                             <>
                                 <div style={S.overlayTitle}>¡BIENVENIDO!</div>

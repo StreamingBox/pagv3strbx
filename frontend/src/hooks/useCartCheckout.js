@@ -25,7 +25,7 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
     const [error, setError] = useState("");
     const [whatsappMessage, setWhatsappMessage] = useState("");
 
-    async function checkout({ includeWhatsapp, recordProfit, profitAmount }) {
+    async function checkout({ includeWhatsapp, whatsappPhone, recordProfit, profitAmount }) {
         if (!cart?.length) return;
 
         setBuyLoading(true);
@@ -38,6 +38,7 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
             const res = await apiPost("/checkout", {
                 items: cart.map((c) => ({ platformPriceId: c.platformPriceId })),
                 includeWhatsapp,
+                whatsappPhone,
                 recordProfit,
                 profitAmount: recordProfit ? Number(profitAmount || 0) : 0,
             });

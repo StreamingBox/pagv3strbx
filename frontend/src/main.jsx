@@ -15,7 +15,7 @@ try {
 } catch { }
 
 // Aplica el tema lo antes posible (evita "flash") — DARK por defecto siempre
-const savedTheme = localStorage.getItem("theme");
+const savedTheme = localStorage.getItem("sb-theme");
 const initialTheme = (savedTheme === "light" || savedTheme === "dark") ? savedTheme : "dark";
 document.documentElement.setAttribute("data-theme", initialTheme);
 

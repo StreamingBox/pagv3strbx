@@ -75,7 +75,8 @@ async function cmdStart(msg) {
                     { text: "📊 Últimas Ventas", callback_data: "cmd_ventas" }
                 ],
                 [
-                    { text: "💳 Consultar mi saldo", callback_data: "cmd_saldo" }
+                    { text: "💳 Consultar mi saldo", callback_data: "cmd_saldo" },
+                    { text: "➕ Agregar Stock", callback_data: "cmd_addstock" }
                 ]
             ]
         }
@@ -353,6 +354,7 @@ async function handleBuyCallback(query) {
 
 /* ─── Registrar comandos ──────────────────────────────────────── */
 async function cmdAddStockStart(msg) {
+    buySessions.delete(msg.chat.id);
     stockSessions.set(msg.chat.id, { step: "ASK_PLATFORM" });
 
     const [plats] = await pool.query(

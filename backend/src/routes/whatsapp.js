@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { requestCodeForOrder } = require("../services/codesService");
 const {
     createTrace,
     updateTraceResult,
@@ -25,6 +26,9 @@ function normalizePhone(input) {
     const clean = String(input || "").replace(/\s+/g, "");
     if (!clean) return "";
     return clean.startsWith("+") ? clean : `+${clean}`;
+}
+function normalizeDigits(input) {
+    return String(input || "").replace(/\D/g, "");
 }
 
 function readSendResult(data) {
@@ -53,6 +57,183 @@ function readWebhookUpdate(body) {
         errorMessage,
         providerData: body,
     };
+}
+
+function readIncomingMessage(body) {
+    const eventName = String(body?.event || body?.type || "").trim().toLowerCase();
+    const allowedEvents = new Set(["messages.received", "messages-personal.received"]);
+    if (!allowedEvents.has(eventName)) return null;
+
+    const rawMessages = body?.data?.messages;
+    const message = Array.isArray(rawMessages) ? rawMessages[0] : rawMessages;
+    if (!message || typeof message !== "object") return null;
+
+    const key = message?.key || {};
+    const allowFromMe = String(process.env.WHATSAPP_ALLOW_FROM_ME_TEST || "false").toLowerCase() === "true";
+    if (!allowFromMe && key?.fromMe === true) return null;
+
+    const remoteJid = String(key?.remoteJid || "");
+    if (remoteJid.endsWith("@g.us")) return null; // ignorar grupos
+
+    const from =
+        key?.cleanedSenderPn ||
+        key?.senderPn ||
+        (remoteJid.includes("@") ? remoteJid.split("@")[0] : remoteJid);
+
+    const text = String(
+        message?.messageBody ||
+        message?.message?.conversation ||
+        message?.message?.extendedTextMessage?.text ||
+        message?.message?.imageMessage?.caption ||
+        message?.message?.videoMessage?.caption ||
+        message?.message?.buttonsResponseMessage?.selectedDisplayText ||
+        message?.message?.listResponseMessage?.title ||
+        ""
+    ).trim();
+
+    if (!from) return null;
+    return { from: normalizePhone(from), text };
+}
+
+async function readWaToken() {
+    await ensureSettingsTable();
+    const [[row]] = await pool.query(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
+    );
+    return String(row?.setting_value || "").trim();
+}
+
+async function sendWaText({ token, to, text }) {
+    const response = await fetch("https://www.wasenderapi.com/api/send-message", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ to: normalizePhone(to), text }),
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok: response.ok && data?.success !== false, status: response.status, data };
+}
+
+async function findUserByWhatsapp(phone) {
+    const digits = normalizeDigits(phone);
+    if (!digits) return null;
+
+    const [rows] = await pool.query(
+        "SELECT id, role, status, whatsapp FROM users WHERE whatsapp IS NOT NULL AND whatsapp <> ''"
+    );
+
+    const match = rows.find((r) => {
+        const wd = normalizeDigits(r.whatsapp);
+        if (!wd) return false;
+        return wd === digits || wd.endsWith(digits) || digits.endsWith(wd);
+    });
+
+    return match || null;
+}
+
+function parseCodeCommand(text) {
+    const t = String(text || "").trim();
+    if (!t) return { type: "empty" };
+
+    if (/^(ayuda|help|menu)$/i.test(t)) {
+        return { type: "help" };
+    }
+
+    // Formato OBLIGATORIO:
+    // SOLICITUD CODIGO <pedido> <plataforma>
+    // Ej: SOLICITUD CODIGO 1234 netflix
+    const m = t.match(/^solicitud\s+c[oó]digo\s+(\d+)\s+([a-z0-9._-]+)$/i);
+    if (!m) return { type: "unknown" };
+
+    return {
+        type: "code",
+        orderNumber: Number(m[1]),
+        platformSlug: String(m[2] || "").toLowerCase(),
+    };
+}
+
+function helpText() {
+    return [
+        "Estas son mis únicas opciones:",
+        "",
+        "1) SOLICITUD CODIGO <pedido> <plataforma>",
+        "Ejemplo: SOLICITUD CODIGO 1234 netflix",
+        "",
+        "Nota: ese formato es obligatorio para procesar tu solicitud.",
+    ].join("\n");
+}
+
+function renderCodeReply(result) {
+    if (!result) return "No se pudo procesar tu solicitud.";
+    if (result.http !== 200 || !result.body?.ok) {
+        return result.body?.message || "No se encontró código para esa solicitud.";
+    }
+
+    if (result.body?.type === "approval") {
+        return [
+            "Aprobación encontrada.",
+            `Pedido: ${result.body.orderNumber}`,
+            `Plataforma: ${result.body.platform}`,
+            `Dispositivo: ${result.body.deviceName || "N/A"}`,
+        ].join("\n");
+    }
+
+    return [
+        "Código encontrado.",
+        `Pedido: ${result.body.orderNumber}`,
+        `Plataforma: ${result.body.platform}`,
+        `Email: ${result.body.email || "N/A"}`,
+        `Código: ${result.body.code || "N/A"}`,
+    ].join("\n");
+}
+
+async function tryHandleIncomingCodeRequest(body) {
+    const incoming = readIncomingMessage(body);
+    if (!incoming) return { handled: false };
+
+    const token = await readWaToken();
+    if (!token) return { handled: true, sent: false, reason: "missing_token" };
+
+    const cmd = parseCodeCommand(incoming.text);
+    if (cmd.type === "empty") {
+        const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
+        return { handled: true, sent: sent.ok, reason: "empty" };
+    }
+
+    if (cmd.type === "help" || cmd.type === "unknown") {
+        const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
+        return { handled: true, sent: sent.ok, reason: cmd.type };
+    }
+
+    const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
+
+    let user = null;
+    if (!allowAnyWhatsapp) {
+        user = await findUserByWhatsapp(incoming.from);
+        if (!user || String(user.status || "").toLowerCase() !== "active") {
+            const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: "Tu WhatsApp no está vinculado a una cuenta activa. Escribe a soporte para activarlo.",
+            });
+            return { handled: true, sent: sent.ok, reason: "user_not_active" };
+        }
+    }
+
+    const result = await requestCodeForOrder({
+        orderNumber: cmd.orderNumber,
+        platformSlug: cmd.platformSlug,
+        user: allowAnyWhatsapp
+            ? { id: 0, role: "admin" }
+            : { id: user.id, role: user.role },
+        action: "code",
+    });
+
+    const reply = renderCodeReply(result);
+    const sent = await sendWaText({ token, to: incoming.from, text: reply });
+    return { handled: true, sent: sent.ok, reason: "code_query" };
 }
 
 // GET /admin/whatsapp/token
@@ -106,7 +287,6 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
     let traceId = null;
     try {
         await ensureSettingsTable();
-
         const { to, text } = req.body || {};
         if (!to || !text) {
             return res.status(400).json({
@@ -125,10 +305,7 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
             createdByRole: req.user?.role || null,
         });
 
-        const [[row]] = await pool.query(
-            "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
-        );
-        const token = row?.setting_value || "";
+        const token = await readWaToken();
         if (!token) {
             await updateTraceResult({
                 traceId,
@@ -142,20 +319,12 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
             });
         }
 
-        const response = await fetch("https://www.wasenderapi.com/api/send-message", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
-            },
-            body: JSON.stringify({ to: phone, text }),
-        });
-
-        const data = await response.json().catch(() => ({}));
-        const ok = response.ok && data?.success !== false;
+        const wa = await sendWaText({ token, to: phone, text });
+        const data = wa.data;
+        const ok = wa.ok;
 
         if (!ok) {
-            const msg = data?.message || data?.error || `Error WaSender (${response.status})`;
+            const msg = data?.message || data?.error || `Error WaSender (${wa.status})`;
             await updateTraceResult({
                 traceId,
                 ok: false,
@@ -207,18 +376,41 @@ router.post("/whatsapp/webhook", async (req, res) => {
     try {
         const configuredSecret = String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
         const receivedSignature = String(req.get("X-Webhook-Signature") || "").trim();
+        const skipSignature = String(process.env.WASENDER_SKIP_SIGNATURE || "false").toLowerCase() === "true";
 
-        if (configuredSecret && receivedSignature !== configuredSecret) {
+        if (!skipSignature && configuredSecret && receivedSignature !== configuredSecret) {
+            console.warn("[whatsapp.webhook] signature_invalid", {
+                hasConfiguredSecret: !!configuredSecret,
+                hasReceivedSignature: !!receivedSignature,
+            });
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }
 
+        const incomingResult = await tryHandleIncomingCodeRequest(req.body || {});
         const update = readWebhookUpdate(req.body || {});
+        console.log("[whatsapp.webhook] event_received", {
+            event: req.body?.event || req.body?.type || null,
+            hasMsgId: !!update.msgId,
+            incomingHandled: !!incomingResult?.handled,
+            incomingReason: incomingResult?.reason || null,
+        });
+
         if (!update.msgId) {
-            return res.json({ ok: true, updated: 0, ignored: true, reason: "missing_msg_id" });
+            return res.json({
+                ok: true,
+                updated: 0,
+                ignored: true,
+                reason: "missing_msg_id",
+                incomingHandled: !!incomingResult?.handled,
+            });
         }
 
         const result = await updateTraceByMsgId(update.msgId, update);
-        return res.json({ ok: true, updated: result.affectedRows || 0 });
+        return res.json({
+            ok: true,
+            updated: result.affectedRows || 0,
+            incomingHandled: !!incomingResult?.handled,
+        });
     } catch (e) {
         console.error("[whatsapp.webhook] Error:", e);
         return res.status(500).json({ ok: false, message: "Error procesando webhook." });

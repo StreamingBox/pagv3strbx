@@ -139,7 +139,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             if (ageMin > maxAgeMinutes) {
                 sawExpiredMatch = true;
-                // Omitimos el continue; para no bloquear correos recientes debido al timezone
+                continue; // Está vencido, pero no detenemos, tal vez haya otro
             }
 
             const subject = (headers.subject && headers.subject[0]) ? String(headers.subject[0]).toLowerCase() : "";

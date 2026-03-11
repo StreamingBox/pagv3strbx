@@ -627,7 +627,7 @@ router.post("/whatsapp/webhook", async (req, res) => {
 
         const update = readWebhookUpdate(req.body || {});
         let isDuplicate = false;
-        const msgIdToTrack = update.msgId || req.body?.data?.messages?.[0]?.key?.id;
+        const msgIdToTrack = update.msgId || req.body?.data?.messages?.key?.id || req.body?.data?.messages?.[0]?.key?.id || req.body?.data?.key?.id;
 
         if (msgIdToTrack) {
             if (processedWebhooks.has(msgIdToTrack)) {

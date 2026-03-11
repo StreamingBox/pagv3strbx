@@ -4,10 +4,8 @@ const { simpleParser } = require("mailparser");
 const { getImapConfig, safeToDate } = require("../utils/imapConfig");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
-    const ms = (Number(maxAgeMinutes) || 15) * 60 * 1000;
-    const d = new Date(Date.now() - ms);
-    // SINCE filtra por día (no minutos exactos)
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
+    return new Date(Date.now() - 24 * 60 * 60 * 1000);
 }
 
 /**

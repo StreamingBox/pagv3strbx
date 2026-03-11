@@ -84,7 +84,8 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
     if (!config) return { ok: false, status: "config_error", message: "Faltan variables GMAIL." };
 
     const ms = maxAgeMinutes * 60 * 1000;
-    const sinceDate = new Date(new Date(Date.now() - ms).setHours(0, 0, 0, 0));
+    // Retrocedemos 24 horas para garantizar que cubrimos los últimos mensajes sin problemas de zona horaria
+    const sinceDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     let conn;
     try {
@@ -127,6 +128,12 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             const headers = headerPart?.body || {};
 
             const fromField = (headers.from && headers.from[0]) ? String(headers.from[0]).toLowerCase() : "";
+            const toField = (headers.to && headers.to[0]) ? String(headers.to[0]).toLowerCase() : "";
+            
+            // Verificamos explícitamente el 'toEmail' por seguridad (en caso del fallback sin búsqueda estricta 'TO' en IMAP)
+            if (toEmail && !toField.includes(String(toEmail).trim().toLowerCase())) {
+                continue;
+            }
 
             if (!fromField.includes(fromNeedle)) continue;
 
@@ -139,9 +146,9 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             // ¿Coincide el subject con lo que buscamos?
             let isTarget = false;
-            // Aceptar "código de acceso temporal" o "código para iniciar sesión" u "código", e incluso correos de "hogar"
-            if (action === "code" && (subject.includes("código") || subject.includes("codigo") || subject.includes("iniciar sesión") || subject.includes("hogar") || subject.includes("actualizaci"))) isTarget = true;
-            if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud") || subject.includes("hogar"))) isTarget = true;
+            // Aceptar "código de acceso temporal" o "código para iniciar sesión" u "código", e incluso correos de "hogar" y variaciones en inglés
+            if (action === "code" && (subject.includes("código") || subject.includes("codigo") || subject.includes("iniciar sesión") || subject.includes("hogar") || subject.includes("actualizaci") || subject.includes("code"))) isTarget = true;
+            if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud") || subject.includes("hogar") || subject.includes("approve") || subject.includes("request"))) isTarget = true;
 
             if (!isTarget) continue;
 

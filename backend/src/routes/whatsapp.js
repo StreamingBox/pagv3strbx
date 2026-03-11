@@ -13,7 +13,6 @@ const { getSubscriptionWithAccount } = require("../services/codeQueries");
 const { toCodeSlug } = require("../utils/platformSlugMap");
 
 const router = express.Router();
-const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
 const processedWebhooks = new Set(); // Para deduplicación
 const FLOW_TTL_MS = 15 * 60 * 1000;
@@ -612,7 +611,7 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
     }
 });
 
-const processedWebhooks = new Set(); // In-memory set for deduplication
+
 
 // POST /whatsapp/webhook
 router.post("/whatsapp/webhook", async (req, res) => {

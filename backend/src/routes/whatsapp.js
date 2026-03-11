@@ -320,11 +320,11 @@ function setSession(phone, patch) {
 
 function helpText() {
     return [
-        "\u2728 Menu Streaming Box",
-        "\uD83E\uDDE9 Unica opcion disponible:",
-        "\uD83D\uDC49 SOLICITUD CODIGO",
+        "✨ *Menu Streaming Box*",
+        "🧩 Unica opcion disponible:",
+        "👉 Marca *1* para SOLICITUD CODIGO",
         "",
-        "Escribela exactamente para iniciar.",
+        "Escribe el numero 1 para iniciar.",
     ].join("\n");
 }
 
@@ -336,19 +336,19 @@ function renderCodeReply(result) {
 
     if (result.body?.type === "approval") {
         return [
-            "Aprobación encontrada.",
-            `Pedido: ${result.body.orderNumber}`,
-            `Plataforma: ${result.body.platform}`,
-            `Dispositivo: ${result.body.deviceName || "N/A"}`,
+            "✅ *Aprobación encontrada*",
+            `📦 *Pedido:* ${result.body.orderNumber}`,
+            `📺 *Plataforma:* ${result.body.platform}`,
+            `📱 *Dispositivo:* ${result.body.deviceName || "N/A"}`,
         ].join("\n");
     }
 
     return [
-        "Código encontrado.",
-        `Pedido: ${result.body.orderNumber}`,
-        `Plataforma: ${result.body.platform}`,
-        `Email: ${result.body.email || "N/A"}`,
-        `Código: ${result.body.code || "N/A"}`,
+        "✅ *Código encontrado*",
+        `📦 *Pedido:* ${result.body.orderNumber}`,
+        `📺 *Plataforma:* ${result.body.platform}`,
+        `✉️ *Email:* ${result.body.email || "N/A"}`,
+        `🔑 *Código:* ${result.body.code || "N/A"}`,
     ].join("\n");
 }
 

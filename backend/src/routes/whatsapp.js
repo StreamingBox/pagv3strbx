@@ -9,6 +9,8 @@ const {
     updateTraceByMsgId,
     mapWaStatus,
 } = require("../services/whatsappQueue");
+const { getSubscriptionWithAccount } = require("../services/codeQueries");
+const { toCodeSlug } = require("../utils/platformSlugMap");
 
 const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
@@ -403,52 +405,40 @@ async function tryHandleIncomingCodeRequest(body) {
             return { handled: true, sent: sent.ok, reason: "invalid_order" };
         }
 
-        const platforms = await getAvailableCodePlatforms();
-        if (!platforms.length) {
+        const orderNumber = Number(raw);
+        flowSessions.delete(incoming.from); // Limpiar sesión, procederemos de inmediato
+
+        const sub = await getSubscriptionWithAccount(orderNumber);
+        
+        if (!sub) {
             const sent = await sendWaText({
                 token,
                 to: incoming.from,
-                text: "No hay plataformas disponibles para solicitud de codigo en este momento.",
+                text: "No se encontró ningún pedido con ese número. Verifica y vuelve a escribir SOLICITUD CODIGO.",
             });
-            return { handled: true, sent: sent.ok, reason: "no_code_platforms" };
+            return { handled: true, sent: sent.ok, reason: "order_not_found" };
         }
 
-        setSession(incoming.from, {
-            step: "await_platform",
-            orderNumber: Number(raw),
-            platforms,
-        });
+        const platformNameOrSlug = sub.platformSlug || sub.platform_slug || sub.platformName || sub.platform_name || sub.name || "";
+        const platformSlug = toCodeSlug(platformNameOrSlug);
 
-        const sent = await sendWaText({
-            token,
-            to: incoming.from,
-            text: formatPlatformsMenu(platforms),
-        });
-        return { handled: true, sent: sent.ok, reason: "await_platform_menu" };
+        if (!platformSlug) {
+             const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: "Error al identificar la plataforma de tu pedido. Contacta a soporte.",
+            });
+            return { handled: true, sent: sent.ok, reason: "platform_not_identified" };
+        }
+
+        return executeCodeRequest({ token, to: incoming.from, orderNumber, platformSlug });
     }
 
+    // El bloque de await_platform ya no es estrictamente necesario, pero se puede dejar por precaucion / retrocompatibilidad
     if (activeSession?.step === "await_platform") {
-        const text = String(incoming.text || "").trim().toLowerCase();
-        if (text === "cancelar" || text === "salir") {
-            flowSessions.delete(incoming.from);
-            const sent = await sendWaText({ token, to: incoming.from, text: "Solicitud cancelada." });
-            return { handled: true, sent: sent.ok, reason: "flow_cancelled" };
-        }
-
-        const idx = Number.parseInt(text, 10);
-        if (!Number.isFinite(idx) || idx < 1 || idx > activeSession.platforms.length) {
-            const sent = await sendWaText({
-                token,
-                to: incoming.from,
-                text: `Opcion invalida.\n\n${formatPlatformsMenu(activeSession.platforms)}`,
-            });
-            return { handled: true, sent: sent.ok, reason: "invalid_platform_option" };
-        }
-
-        const platformSlug = activeSession.platforms[idx - 1];
-        const orderNumber = activeSession.orderNumber;
         flowSessions.delete(incoming.from);
-        return executeCodeRequest({ token, to: incoming.from, orderNumber, platformSlug });
+        const sent = await sendWaText({ token, to: incoming.from, text: "Flujo expirado o cambiado. Escribe: SOLICITUD CODIGO" });
+        return { handled: true, sent: sent.ok, reason: "flow_deprecated" };
     }
 
     const cmd = parseCodeCommand(incoming.text);

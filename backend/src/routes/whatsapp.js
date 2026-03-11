@@ -414,33 +414,17 @@ async function tryHandleIncomingCodeRequest(body) {
         }
 
         setSession(incoming.from, {
-            step: "await_poll_selection",
+            step: "await_platform",
             orderNumber: Number(raw),
             platforms,
-            pollOptions: platforms.map((slug) => ({
-                slug,
-                label: toPrettyPlatformLabel(slug),
-            })),
         });
 
-        const poll = await sendWaPoll({
-            token,
-            to: incoming.from,
-            question: "\u2728 Elige tu plataforma para solicitar codigo",
-            options: platforms.map((p) => toPrettyPlatformLabel(p)),
-        });
-
-        if (poll.ok) {
-            return { handled: true, sent: true, reason: "await_poll_selection" };
-        }
-
-        setSession(incoming.from, { step: "await_platform" });
         const sent = await sendWaText({
             token,
             to: incoming.from,
             text: formatPlatformsMenu(platforms),
         });
-        return { handled: true, sent: sent.ok, reason: "await_platform_fallback_text" };
+        return { handled: true, sent: sent.ok, reason: "await_platform_menu" };
     }
 
     if (activeSession?.step === "await_platform") {
@@ -496,56 +480,9 @@ async function tryHandleIncomingCodeRequest(body) {
     });
 }
 
-async function tryHandleIncomingPollSelection(body) {
-    const incomingPoll = readIncomingPollResult(body);
-    if (!incomingPoll) return { handled: false };
-
-    const token = await readWaToken();
-    if (!token) return { handled: true, sent: false, reason: "missing_token" };
-
-    const session = getActiveSession(incomingPoll.from);
-    if (!session || session.step !== "await_poll_selection") {
-        const sent = await sendWaText({
-            token,
-            to: incomingPoll.from,
-            text: "No hay una solicitud activa. Escribe: SOLICITUD CODIGO",
-        });
-        return { handled: true, sent: sent.ok, reason: "no_active_poll_session" };
-    }
-
-    const first = String(incomingPoll.selected[0] || "").trim().toLowerCase();
-    let platformSlug = "";
-
-    const idx = Number.parseInt(first, 10);
-    if (Number.isFinite(idx) && idx >= 1 && idx <= session.platforms.length) {
-        platformSlug = session.platforms[idx - 1];
-    } else {
-        const pollOptions = Array.isArray(session.pollOptions) ? session.pollOptions : [];
-        const byExactLabel = pollOptions.find((o) => String(o.label || "").toLowerCase() === first);
-        if (byExactLabel?.slug) {
-            platformSlug = byExactLabel.slug;
-        } else {
-            const normalized = first.replace(/[^a-z0-9._-]+/g, " ").trim();
-            platformSlug = session.platforms.find((p) => normalized.includes(String(p).toLowerCase())) || "";
-        }
-    }
-
-    if (!platformSlug) {
-        const sent = await sendWaText({
-            token,
-            to: incomingPoll.from,
-            text: "No pude identificar la plataforma seleccionada. Escribe: SOLICITUD CODIGO",
-        });
-        return { handled: true, sent: sent.ok, reason: "invalid_poll_selection" };
-    }
-
-    flowSessions.delete(incomingPoll.from);
-    return executeCodeRequest({
-        token,
-        to: incomingPoll.from,
-        orderNumber: session.orderNumber,
-        platformSlug,
-    });
+// Poll handling disabled — se usa menú de texto numerado en su lugar
+async function tryHandleIncomingPollSelection(_body) {
+    return { handled: false };
 }
 
 // GET /admin/whatsapp/token
@@ -698,10 +635,7 @@ router.post("/whatsapp/webhook", async (req, res) => {
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }
 
-        const pollResult = await tryHandleIncomingPollSelection(req.body || {});
-        const incomingResult = pollResult?.handled
-            ? pollResult
-            : await tryHandleIncomingCodeRequest(req.body || {});
+        const incomingResult = await tryHandleIncomingCodeRequest(req.body || {});
         const update = readWebhookUpdate(req.body || {});
         console.log("[whatsapp.webhook] event_received", {
             event: req.body?.event || req.body?.type || null,

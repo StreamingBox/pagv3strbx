@@ -11,6 +11,8 @@ const {
 } = require("../services/whatsappQueue");
 
 const router = express.Router();
+const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
+const FLOW_TTL_MS = 15 * 60 * 1000;
 
 async function ensureSettingsTable() {
     await pool.query(`
@@ -23,9 +25,10 @@ async function ensureSettingsTable() {
 }
 
 function normalizePhone(input) {
-    const clean = String(input || "").replace(/\s+/g, "");
-    if (!clean) return "";
-    return clean.startsWith("+") ? clean : `+${clean}`;
+    // Normaliza cualquier formato/jid a E.164 simple (+<digitos>)
+    const digits = String(input || "").replace(/\D/g, "");
+    if (!digits) return "";
+    return `+${digits}`;
 }
 function normalizeDigits(input) {
     return String(input || "").replace(/\D/g, "");
@@ -113,7 +116,15 @@ async function sendWaText({ token, to, text }) {
         body: JSON.stringify({ to: normalizePhone(to), text }),
     });
     const data = await response.json().catch(() => ({}));
-    return { ok: response.ok && data?.success !== false, status: response.status, data };
+    const ok = response.ok && data?.success !== false;
+    if (!ok) {
+        console.warn("[whatsapp.send] failed", {
+            to: normalizePhone(to),
+            status: response.status,
+            providerMessage: data?.message || data?.error || null,
+        });
+    }
+    return { ok, status: response.status, data };
 }
 
 async function findUserByWhatsapp(phone) {
@@ -141,6 +152,10 @@ function parseCodeCommand(text) {
         return { type: "help" };
     }
 
+    if (/^(solicitud\s+c[oÃ³]digo|codigo|c[oÃ³]digo|1)$/i.test(t)) {
+        return { type: "start_flow" };
+    }
+
     // Formato OBLIGATORIO:
     // SOLICITUD CODIGO <pedido> <plataforma>
     // Ej: SOLICITUD CODIGO 1234 netflix
@@ -154,11 +169,54 @@ function parseCodeCommand(text) {
     };
 }
 
+async function getAvailableCodePlatforms() {
+    const [rows] = await pool.query(
+        `SELECT LOWER(slug) AS slug
+         FROM code_platforms
+         WHERE is_active = 1
+         ORDER BY slug ASC`
+    );
+
+    const set = new Set(rows.map((r) => String(r.slug || "").trim().toLowerCase()).filter(Boolean));
+    return Array.from(set);
+}
+
+function formatPlatformsMenu(platforms) {
+    const list = platforms.map((p, i) => `${i + 1}) ${p}`).join("\n");
+    return [
+        "Selecciona una plataforma (responde solo el número):",
+        list,
+    ].join("\n");
+}
+
+function getActiveSession(phone) {
+    const session = flowSessions.get(phone);
+    if (!session) return null;
+    if (Date.now() - Number(session.updatedAt || 0) > FLOW_TTL_MS) {
+        flowSessions.delete(phone);
+        return null;
+    }
+    return session;
+}
+
+function setSession(phone, patch) {
+    const current = getActiveSession(phone) || {};
+    flowSessions.set(phone, {
+        ...current,
+        ...patch,
+        updatedAt: Date.now(),
+    });
+}
+
 function helpText() {
     return [
         "Estas son mis únicas opciones:",
         "",
-        "1) SOLICITUD CODIGO <pedido> <plataforma>",
+        "1) SOLICITUD CODIGO",
+        "Te guÃ­o paso a paso para pedir el cÃ³digo.",
+        "",
+        "Opcional (modo directo):",
+        "SOLICITUD CODIGO <pedido> <plataforma>",
         "Ejemplo: SOLICITUD CODIGO 1234 netflix",
         "",
         "Nota: ese formato es obligatorio para procesar tu solicitud.",
@@ -196,18 +254,116 @@ async function tryHandleIncomingCodeRequest(body) {
     const token = await readWaToken();
     if (!token) return { handled: true, sent: false, reason: "missing_token" };
 
+    const activeSession = getActiveSession(incoming.from);
+    const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
+
+    if (activeSession?.step === "await_order") {
+        const raw = String(incoming.text || "").trim();
+        if (!/^\d+$/.test(raw)) {
+            const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: "Pedido inválido. Responde solo el número del pedido. Ejemplo: 1234",
+            });
+            return { handled: true, sent: sent.ok, reason: "invalid_order" };
+        }
+
+        const platforms = await getAvailableCodePlatforms();
+        if (!platforms.length) {
+            const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: "No hay plataformas disponibles para solicitud de código en este momento.",
+            });
+            return { handled: true, sent: sent.ok, reason: "no_code_platforms" };
+        }
+        setSession(incoming.from, {
+            step: "await_platform",
+            orderNumber: Number(raw),
+            platforms,
+        });
+
+        const sent = await sendWaText({
+            token,
+            to: incoming.from,
+            text: formatPlatformsMenu(platforms),
+        });
+        return { handled: true, sent: sent.ok, reason: "await_platform" };
+    }
+
+    if (activeSession?.step === "await_platform") {
+        const text = String(incoming.text || "").trim().toLowerCase();
+        if (text === "cancelar" || text === "salir") {
+            flowSessions.delete(incoming.from);
+            const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: "Solicitud cancelada.",
+            });
+            return { handled: true, sent: sent.ok, reason: "flow_cancelled" };
+        }
+
+        const idx = Number.parseInt(text, 10);
+        if (!Number.isFinite(idx) || idx < 1 || idx > activeSession.platforms.length) {
+            const sent = await sendWaText({
+                token,
+                to: incoming.from,
+                text: `Opción inválida.\n\n${formatPlatformsMenu(activeSession.platforms)}`,
+            });
+            return { handled: true, sent: sent.ok, reason: "invalid_platform_option" };
+        }
+
+        const platformSlug = activeSession.platforms[idx - 1];
+        const orderNumber = activeSession.orderNumber;
+        flowSessions.delete(incoming.from);
+
+        let user = null;
+        if (!allowAnyWhatsapp) {
+            user = await findUserByWhatsapp(incoming.from);
+            if (!user || String(user.status || "").toLowerCase() !== "active") {
+                const sent = await sendWaText({
+                    token,
+                    to: incoming.from,
+                    text: "Tu WhatsApp no está vinculado a una cuenta activa. Escribe a soporte para activarlo.",
+                });
+                return { handled: true, sent: sent.ok, reason: "user_not_active" };
+            }
+        }
+
+        const result = await requestCodeForOrder({
+            orderNumber,
+            platformSlug,
+            user: allowAnyWhatsapp
+                ? { id: 0, role: "admin" }
+                : { id: user.id, role: user.role },
+            action: "code",
+        });
+
+        const reply = renderCodeReply(result);
+        const sent = await sendWaText({ token, to: incoming.from, text: reply });
+        return { handled: true, sent: sent.ok, reason: "code_query_selected_platform" };
+    }
+
     const cmd = parseCodeCommand(incoming.text);
     if (cmd.type === "empty") {
         const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
         return { handled: true, sent: sent.ok, reason: "empty" };
     }
 
+    if (cmd.type === "start_flow") {
+        setSession(incoming.from, { step: "await_order" });
+        const sent = await sendWaText({
+            token,
+            to: incoming.from,
+            text: "Perfecto. Escribe el número de pedido. Ejemplo: 1234",
+        });
+        return { handled: true, sent: sent.ok, reason: "await_order" };
+    }
+
     if (cmd.type === "help" || cmd.type === "unknown") {
         const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
         return { handled: true, sent: sent.ok, reason: cmd.type };
     }
-
-    const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
 
     let user = null;
     if (!allowAnyWhatsapp) {

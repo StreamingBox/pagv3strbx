@@ -271,10 +271,27 @@ async function getAvailableCodePlatforms() {
     return Array.from(set);
 }
 
+function platformEmoji(slug) {
+    const s = String(slug || "").toLowerCase();
+    if (s.includes("netflix")) return "\uD83C\uDF7F";
+    if (s.includes("chatgpt")) return "\uD83E\uDD16";
+    if (s.includes("prime")) return "\uD83D\uDCE6";
+    if (s.includes("spotify")) return "\uD83C\uDFB5";
+    if (s.includes("disney")) return "\uD83C\uDFF0";
+    if (s.includes("max")) return "\uD83C\uDFAC";
+    if (s.includes("youtube")) return "\u25B6\uFE0F";
+    return "\uD83D\uDCFA";
+}
+
+function toPrettyPlatformLabel(slug) {
+    const clean = String(slug || "").trim().toLowerCase();
+    return `${platformEmoji(clean)} ${clean}`;
+}
+
 function formatPlatformsMenu(platforms) {
-    const list = platforms.map((p, i) => `${i + 1}) ${p}`).join("\n");
+    const list = platforms.map((p, i) => `${i + 1}) ${toPrettyPlatformLabel(p)}`).join("\n");
     return [
-        "Selecciona una plataforma (responde solo el número):",
+        "\uD83C\uDFAF Selecciona una plataforma (responde solo el numero):",
         list,
     ].join("\n");
 }
@@ -300,9 +317,9 @@ function setSession(phone, patch) {
 
 function helpText() {
     return [
-        "Menu",
-        "Unica opcion disponible:",
-        "SOLICITUD CODIGO",
+        "\u2728 Menu Streaming Box",
+        "\uD83E\uDDE9 Unica opcion disponible:",
+        "\uD83D\uDC49 SOLICITUD CODIGO",
         "",
         "Escribela exactamente para iniciar.",
     ].join("\n");
@@ -400,13 +417,17 @@ async function tryHandleIncomingCodeRequest(body) {
             step: "await_poll_selection",
             orderNumber: Number(raw),
             platforms,
+            pollOptions: platforms.map((slug) => ({
+                slug,
+                label: toPrettyPlatformLabel(slug),
+            })),
         });
 
         const poll = await sendWaPoll({
             token,
             to: incoming.from,
-            question: "Selecciona plataforma para solicitar codigo",
-            options: platforms,
+            question: "\u2728 Elige tu plataforma para solicitar codigo",
+            options: platforms.map((p) => toPrettyPlatformLabel(p)),
         });
 
         if (poll.ok) {
@@ -499,7 +520,14 @@ async function tryHandleIncomingPollSelection(body) {
     if (Number.isFinite(idx) && idx >= 1 && idx <= session.platforms.length) {
         platformSlug = session.platforms[idx - 1];
     } else {
-        platformSlug = session.platforms.find((p) => String(p).toLowerCase() === first) || "";
+        const pollOptions = Array.isArray(session.pollOptions) ? session.pollOptions : [];
+        const byExactLabel = pollOptions.find((o) => String(o.label || "").toLowerCase() === first);
+        if (byExactLabel?.slug) {
+            platformSlug = byExactLabel.slug;
+        } else {
+            const normalized = first.replace(/[^a-z0-9._-]+/g, " ").trim();
+            platformSlug = session.platforms.find((p) => normalized.includes(String(p).toLowerCase())) || "";
+        }
     }
 
     if (!platformSlug) {
@@ -773,6 +801,7 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
+
 
 
 

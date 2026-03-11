@@ -98,6 +98,70 @@ function readIncomingMessage(body) {
     return { from: normalizePhone(from), text };
 }
 
+function deepFindFirstString(node, wantedKeys) {
+    const stack = [node];
+    while (stack.length) {
+        const cur = stack.pop();
+        if (!cur || typeof cur !== "object") continue;
+        if (Array.isArray(cur)) {
+            for (const item of cur) stack.push(item);
+            continue;
+        }
+        for (const [k, v] of Object.entries(cur)) {
+            if (wantedKeys.has(k) && typeof v === "string" && v.trim()) return v.trim();
+            if (v && typeof v === "object") stack.push(v);
+        }
+    }
+    return null;
+}
+
+function deepCollectSelectedOptions(node) {
+    const out = [];
+    const stack = [node];
+    while (stack.length) {
+        const cur = stack.pop();
+        if (!cur || typeof cur !== "object") continue;
+        if (Array.isArray(cur)) {
+            for (const item of cur) stack.push(item);
+            continue;
+        }
+
+        for (const [k, v] of Object.entries(cur)) {
+            if (k === "selectedOptions" && Array.isArray(v)) {
+                for (const opt of v) {
+                    if (typeof opt === "string" && opt.trim()) out.push(opt.trim());
+                    if (opt && typeof opt === "object") {
+                        const txt = String(opt.name || opt.optionName || opt.option || "").trim();
+                        if (txt) out.push(txt);
+                    }
+                }
+            }
+            if (k === "votes" && Array.isArray(v)) {
+                for (const vote of v) {
+                    const txt = String(vote?.optionName || vote?.name || vote?.option || "").trim();
+                    if (txt) out.push(txt);
+                }
+            }
+            if (v && typeof v === "object") stack.push(v);
+        }
+    }
+    return out;
+}
+
+function readIncomingPollResult(body) {
+    const eventName = String(body?.event || body?.type || "").trim().toLowerCase();
+    if (eventName !== "poll.results") return null;
+
+    const fromRaw = deepFindFirstString(body, new Set(["cleanedSenderPn", "senderPn", "remoteJid", "participant"]));
+    const from = normalizePhone(fromRaw || "");
+    if (!from) return null;
+
+    const selected = deepCollectSelectedOptions(body);
+    if (!selected.length) return null;
+
+    return { from, selected };
+}
+
 async function readWaToken() {
     await ensureSettingsTable();
     const [[row]] = await pool.query(
@@ -119,6 +183,35 @@ async function sendWaText({ token, to, text }) {
     const ok = response.ok && data?.success !== false;
     if (!ok) {
         console.warn("[whatsapp.send] failed", {
+            to: normalizePhone(to),
+            status: response.status,
+            providerMessage: data?.message || data?.error || null,
+        });
+    }
+    return { ok, status: response.status, data };
+}
+
+async function sendWaPoll({ token, to, question, options }) {
+    const response = await fetch("https://www.wasenderapi.com/api/send-message", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+            to: normalizePhone(to),
+            poll: {
+                question,
+                options,
+                multiSelect: false,
+            },
+        }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    const ok = response.ok && data?.success !== false;
+    if (!ok) {
+        console.warn("[whatsapp.send.poll] failed", {
             to: normalizePhone(to),
             status: response.status,
             providerMessage: data?.message || data?.error || null,
@@ -152,14 +245,11 @@ function parseCodeCommand(text) {
         return { type: "help" };
     }
 
-    if (/^(solicitud\s+c[oÃ³]digo|codigo|c[oÃ³]digo|1)$/i.test(t)) {
+    if (/^(solicitud\s+codigo|codigo|1)$/i.test(t)) {
         return { type: "start_flow" };
     }
 
-    // Formato OBLIGATORIO:
-    // SOLICITUD CODIGO <pedido> <plataforma>
-    // Ej: SOLICITUD CODIGO 1234 netflix
-    const m = t.match(/^solicitud\s+c[oó]digo\s+(\d+)\s+([a-z0-9._-]+)$/i);
+    const m = t.match(/^solicitud\s+codigo\s+(\d+)\s+([a-z0-9._-]+)$/i);
     if (!m) return { type: "unknown" };
 
     return {
@@ -247,6 +337,40 @@ function renderCodeReply(result) {
     ].join("\n");
 }
 
+async function resolveRequestUser(phone) {
+    const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
+    if (allowAnyWhatsapp) return { ok: true, user: { id: 0, role: "admin" } };
+
+    const user = await findUserByWhatsapp(phone);
+    if (!user || String(user.status || "").toLowerCase() !== "active") {
+        return { ok: false, message: "Tu WhatsApp no está vinculado a una cuenta activa. Escribe a soporte para activarlo." };
+    }
+    return { ok: true, user: { id: user.id, role: user.role } };
+}
+
+async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
+    const userResolution = await resolveRequestUser(to);
+    if (!userResolution.ok) {
+        const sent = await sendWaText({
+            token,
+            to,
+            text: userResolution.message,
+        });
+        return { handled: true, sent: sent.ok, reason: "user_not_active" };
+    }
+
+    const result = await requestCodeForOrder({
+        orderNumber,
+        platformSlug,
+        user: userResolution.user,
+        action: "code",
+    });
+
+    const reply = renderCodeReply(result);
+    const sent = await sendWaText({ token, to, text: reply });
+    return { handled: true, sent: sent.ok, reason: "code_query" };
+}
+
 async function tryHandleIncomingCodeRequest(body) {
     const incoming = readIncomingMessage(body);
     if (!incoming) return { handled: false };
@@ -255,7 +379,6 @@ async function tryHandleIncomingCodeRequest(body) {
     if (!token) return { handled: true, sent: false, reason: "missing_token" };
 
     const activeSession = getActiveSession(incoming.from);
-    const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
 
     if (activeSession?.step === "await_order") {
         const raw = String(incoming.text || "").trim();
@@ -263,7 +386,7 @@ async function tryHandleIncomingCodeRequest(body) {
             const sent = await sendWaText({
                 token,
                 to: incoming.from,
-                text: "Pedido inválido. Responde solo el número del pedido. Ejemplo: 1234",
+                text: "Pedido invalido. Responde solo el numero del pedido. Ejemplo: 1234",
             });
             return { handled: true, sent: sent.ok, reason: "invalid_order" };
         }
@@ -273,33 +396,42 @@ async function tryHandleIncomingCodeRequest(body) {
             const sent = await sendWaText({
                 token,
                 to: incoming.from,
-                text: "No hay plataformas disponibles para solicitud de código en este momento.",
+                text: "No hay plataformas disponibles para solicitud de codigo en este momento.",
             });
             return { handled: true, sent: sent.ok, reason: "no_code_platforms" };
         }
+
         setSession(incoming.from, {
-            step: "await_platform",
+            step: "await_poll_selection",
             orderNumber: Number(raw),
             platforms,
         });
 
+        const poll = await sendWaPoll({
+            token,
+            to: incoming.from,
+            question: "Selecciona plataforma para solicitar codigo",
+            options: platforms,
+        });
+
+        if (poll.ok) {
+            return { handled: true, sent: true, reason: "await_poll_selection" };
+        }
+
+        setSession(incoming.from, { step: "await_platform" });
         const sent = await sendWaText({
             token,
             to: incoming.from,
             text: formatPlatformsMenu(platforms),
         });
-        return { handled: true, sent: sent.ok, reason: "await_platform" };
+        return { handled: true, sent: sent.ok, reason: "await_platform_fallback_text" };
     }
 
     if (activeSession?.step === "await_platform") {
         const text = String(incoming.text || "").trim().toLowerCase();
         if (text === "cancelar" || text === "salir") {
             flowSessions.delete(incoming.from);
-            const sent = await sendWaText({
-                token,
-                to: incoming.from,
-                text: "Solicitud cancelada.",
-            });
+            const sent = await sendWaText({ token, to: incoming.from, text: "Solicitud cancelada." });
             return { handled: true, sent: sent.ok, reason: "flow_cancelled" };
         }
 
@@ -308,7 +440,7 @@ async function tryHandleIncomingCodeRequest(body) {
             const sent = await sendWaText({
                 token,
                 to: incoming.from,
-                text: `Opción inválida.\n\n${formatPlatformsMenu(activeSession.platforms)}`,
+                text: `Opcion invalida.\n\n${formatPlatformsMenu(activeSession.platforms)}`,
             });
             return { handled: true, sent: sent.ok, reason: "invalid_platform_option" };
         }
@@ -316,32 +448,7 @@ async function tryHandleIncomingCodeRequest(body) {
         const platformSlug = activeSession.platforms[idx - 1];
         const orderNumber = activeSession.orderNumber;
         flowSessions.delete(incoming.from);
-
-        let user = null;
-        if (!allowAnyWhatsapp) {
-            user = await findUserByWhatsapp(incoming.from);
-            if (!user || String(user.status || "").toLowerCase() !== "active") {
-                const sent = await sendWaText({
-                    token,
-                    to: incoming.from,
-                    text: "Tu WhatsApp no está vinculado a una cuenta activa. Escribe a soporte para activarlo.",
-                });
-                return { handled: true, sent: sent.ok, reason: "user_not_active" };
-            }
-        }
-
-        const result = await requestCodeForOrder({
-            orderNumber,
-            platformSlug,
-            user: allowAnyWhatsapp
-                ? { id: 0, role: "admin" }
-                : { id: user.id, role: user.role },
-            action: "code",
-        });
-
-        const reply = renderCodeReply(result);
-        const sent = await sendWaText({ token, to: incoming.from, text: reply });
-        return { handled: true, sent: sent.ok, reason: "code_query_selected_platform" };
+        return executeCodeRequest({ token, to: incoming.from, orderNumber, platformSlug });
     }
 
     const cmd = parseCodeCommand(incoming.text);
@@ -355,7 +462,7 @@ async function tryHandleIncomingCodeRequest(body) {
         const sent = await sendWaText({
             token,
             to: incoming.from,
-            text: "Perfecto. Escribe el número de pedido. Ejemplo: 1234",
+            text: "Perfecto. Escribe el numero de pedido. Ejemplo: 1234",
         });
         return { handled: true, sent: sent.ok, reason: "await_order" };
     }
@@ -365,31 +472,57 @@ async function tryHandleIncomingCodeRequest(body) {
         return { handled: true, sent: sent.ok, reason: cmd.type };
     }
 
-    let user = null;
-    if (!allowAnyWhatsapp) {
-        user = await findUserByWhatsapp(incoming.from);
-        if (!user || String(user.status || "").toLowerCase() !== "active") {
-            const sent = await sendWaText({
-                token,
-                to: incoming.from,
-                text: "Tu WhatsApp no está vinculado a una cuenta activa. Escribe a soporte para activarlo.",
-            });
-            return { handled: true, sent: sent.ok, reason: "user_not_active" };
-        }
-    }
-
-    const result = await requestCodeForOrder({
+    return executeCodeRequest({
+        token,
+        to: incoming.from,
         orderNumber: cmd.orderNumber,
         platformSlug: cmd.platformSlug,
-        user: allowAnyWhatsapp
-            ? { id: 0, role: "admin" }
-            : { id: user.id, role: user.role },
-        action: "code",
     });
+}
 
-    const reply = renderCodeReply(result);
-    const sent = await sendWaText({ token, to: incoming.from, text: reply });
-    return { handled: true, sent: sent.ok, reason: "code_query" };
+async function tryHandleIncomingPollSelection(body) {
+    const incomingPoll = readIncomingPollResult(body);
+    if (!incomingPoll) return { handled: false };
+
+    const token = await readWaToken();
+    if (!token) return { handled: true, sent: false, reason: "missing_token" };
+
+    const session = getActiveSession(incomingPoll.from);
+    if (!session || session.step !== "await_poll_selection") {
+        const sent = await sendWaText({
+            token,
+            to: incomingPoll.from,
+            text: "No hay una solicitud activa. Escribe: SOLICITUD CODIGO",
+        });
+        return { handled: true, sent: sent.ok, reason: "no_active_poll_session" };
+    }
+
+    const first = String(incomingPoll.selected[0] || "").trim().toLowerCase();
+    let platformSlug = "";
+
+    const idx = Number.parseInt(first, 10);
+    if (Number.isFinite(idx) && idx >= 1 && idx <= session.platforms.length) {
+        platformSlug = session.platforms[idx - 1];
+    } else {
+        platformSlug = session.platforms.find((p) => String(p).toLowerCase() === first) || "";
+    }
+
+    if (!platformSlug) {
+        const sent = await sendWaText({
+            token,
+            to: incomingPoll.from,
+            text: "No pude identificar la plataforma seleccionada. Escribe: SOLICITUD CODIGO",
+        });
+        return { handled: true, sent: sent.ok, reason: "invalid_poll_selection" };
+    }
+
+    flowSessions.delete(incomingPoll.from);
+    return executeCodeRequest({
+        token,
+        to: incomingPoll.from,
+        orderNumber: session.orderNumber,
+        platformSlug,
+    });
 }
 
 // GET /admin/whatsapp/token
@@ -542,7 +675,10 @@ router.post("/whatsapp/webhook", async (req, res) => {
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }
 
-        const incomingResult = await tryHandleIncomingCodeRequest(req.body || {});
+        const pollResult = await tryHandleIncomingPollSelection(req.body || {});
+        const incomingResult = pollResult?.handled
+            ? pollResult
+            : await tryHandleIncomingCodeRequest(req.body || {});
         const update = readWebhookUpdate(req.body || {});
         console.log("[whatsapp.webhook] event_received", {
             event: req.body?.event || req.body?.type || null,
@@ -642,4 +778,6 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
+
+
 

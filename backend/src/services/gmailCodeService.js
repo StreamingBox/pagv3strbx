@@ -97,7 +97,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
 
             if (ageMin > maxMin) {
                 if (fromLooksOkByHeader) sawExpiredFromMatch = true;
-                continue;
+                // Omitimos el continue; para no bloquear correos buenos debido al desfase de zona horaria del VPS
             }
 
             if (!fromLooksOkByHeader) continue;

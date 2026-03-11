@@ -300,16 +300,11 @@ function setSession(phone, patch) {
 
 function helpText() {
     return [
-        "Estas son mis únicas opciones:",
+        "Menu",
+        "Unica opcion disponible:",
+        "SOLICITUD CODIGO",
         "",
-        "1) SOLICITUD CODIGO",
-        "Te guÃ­o paso a paso para pedir el cÃ³digo.",
-        "",
-        "Opcional (modo directo):",
-        "SOLICITUD CODIGO <pedido> <plataforma>",
-        "Ejemplo: SOLICITUD CODIGO 1234 netflix",
-        "",
-        "Nota: ese formato es obligatorio para procesar tu solicitud.",
+        "Escribela exactamente para iniciar.",
     ].join("\n");
 }
 
@@ -778,6 +773,7 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
+
 
 
 

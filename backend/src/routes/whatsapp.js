@@ -13,7 +13,9 @@ const { getSubscriptionWithAccount } = require("../services/codeQueries");
 const { toCodeSlug } = require("../utils/platformSlugMap");
 
 const router = express.Router();
+const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
+const processedWebhooks = new Set(); // Para deduplicación
 const FLOW_TTL_MS = 15 * 60 * 1000;
 
 async function ensureSettingsTable() {
@@ -610,6 +612,8 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
     }
 });
 
+const processedWebhooks = new Set(); // In-memory set for deduplication
+
 // POST /whatsapp/webhook
 router.post("/whatsapp/webhook", async (req, res) => {
     try {
@@ -618,20 +622,35 @@ router.post("/whatsapp/webhook", async (req, res) => {
         const skipSignature = String(process.env.WASENDER_SKIP_SIGNATURE || "false").toLowerCase() === "true";
 
         if (!skipSignature && configuredSecret && receivedSignature !== configuredSecret) {
-            console.warn("[whatsapp.webhook] signature_invalid", {
-                hasConfiguredSecret: !!configuredSecret,
-                hasReceivedSignature: !!receivedSignature,
-            });
+            console.warn("[whatsapp.webhook] signature_invalid");
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }
 
-        const incomingResult = await tryHandleIncomingCodeRequest(req.body || {});
         const update = readWebhookUpdate(req.body || {});
+        let isDuplicate = false;
+        const msgIdToTrack = update.msgId || req.body?.data?.messages?.[0]?.key?.id;
+
+        if (msgIdToTrack) {
+            if (processedWebhooks.has(msgIdToTrack)) {
+                isDuplicate = true;
+            } else {
+                processedWebhooks.add(msgIdToTrack);
+                setTimeout(() => processedWebhooks.delete(msgIdToTrack), 600000); // 10 mins retención
+            }
+        }
+
+        // Si no es un duplicado, procesarlo en BACKGROUND sin bloquear
+        if (!isDuplicate) {
+            tryHandleIncomingCodeRequest(req.body || {}).catch((e) => {
+                console.error("[whatsapp.webhook] Error en background handle:", e);
+            });
+        }
+
+        // Log the event, without waiting for incomingResult
         console.log("[whatsapp.webhook] event_received", {
             event: req.body?.event || req.body?.type || null,
             hasMsgId: !!update.msgId,
-            incomingHandled: !!incomingResult?.handled,
-            incomingReason: incomingResult?.reason || null,
+            isDuplicate,
         });
 
         if (!update.msgId) {
@@ -640,7 +659,6 @@ router.post("/whatsapp/webhook", async (req, res) => {
                 updated: 0,
                 ignored: true,
                 reason: "missing_msg_id",
-                incomingHandled: !!incomingResult?.handled,
             });
         }
 
@@ -648,7 +666,6 @@ router.post("/whatsapp/webhook", async (req, res) => {
         return res.json({
             ok: true,
             updated: result.affectedRows || 0,
-            incomingHandled: !!incomingResult?.handled,
         });
     } catch (e) {
         console.error("[whatsapp.webhook] Error:", e);

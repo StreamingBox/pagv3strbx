@@ -1,11 +1,12 @@
 import { useEffect } from "react";
 import { useParams } from "react-router-dom";
+import { getApiBase } from "../config/apiBase.js";
 
 export default function CredentialRedirect() {
     const { token } = useParams();
 
     useEffect(() => {
-        const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+        const API_BASE = getApiBase();
         // Eliminar posibles slashes finales
         let base = String(API_BASE).replace(/\/+$/, "");
         // Ya no cortamos /api. Redireccionamos a VITE_API_BASE/s/token directamente

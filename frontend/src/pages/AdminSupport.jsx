@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import { getApiBase } from "../config/apiBase.js";
 
 function useIsMobile() {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
@@ -17,9 +18,11 @@ function useIsMobile() {
 
 const PUBLIC_BASE =
     import.meta.env.VITE_PUBLIC_BASE_URL ||
-    (import.meta.env.VITE_API_BASE
-        ? String(import.meta.env.VITE_API_BASE).replace(/\/api\/?$/, "")
-        : "https://strbx.com.co");
+    (() => {
+        const b = getApiBase();
+        if (!b || b === "/api") return "https://strbx.com.co";
+        return String(b).replace(/\/api\/?$/, "") || "https://strbx.com.co";
+    })();
 
 /* ─── Estilos inline ─── */
 const S = {

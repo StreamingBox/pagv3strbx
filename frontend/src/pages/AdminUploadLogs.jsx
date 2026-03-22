@@ -6,7 +6,9 @@ import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+import { getApiBase } from "../config/apiBase.js";
+
+const API_BASE = getApiBase();
 
 function buildUrl(path) {
     const base = String(API_BASE).replace(/\/+$/, "");

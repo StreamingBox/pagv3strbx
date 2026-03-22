@@ -1,4 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+import { getApiBase } from "../config/apiBase.js";
+
+const API_BASE = getApiBase();
 
 /** Lee JSON de manera segura */
 async function safeJson(res) {

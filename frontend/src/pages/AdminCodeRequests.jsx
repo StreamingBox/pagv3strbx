@@ -6,7 +6,9 @@ import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "http://localhost:3000").replace(/\/$/, "");
+import { getApiBase } from "../config/apiBase.js";
+
+const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 
 // Mirrors backend toCodeSlug logic: verifica si una plataforma tiene soporte de código

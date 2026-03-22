@@ -5,8 +5,9 @@ import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { countries } from "../utils/countries";
 import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
+import { getApiBase } from "../config/apiBase.js";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 const WA_NUMBER = "573152485340";
 

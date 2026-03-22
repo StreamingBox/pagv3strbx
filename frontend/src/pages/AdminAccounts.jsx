@@ -7,7 +7,9 @@ import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
-const API_BASE = (import.meta.env.VITE_API_BASE || "http://localhost:3000").replace(/\/$/, "");
+import { getApiBase } from "../config/apiBase.js";
+
+const API_BASE = getApiBase();
 
 async function apiFetch(path, opts = {}) {
     const res = await fetch(`${API_BASE}${path}`, {

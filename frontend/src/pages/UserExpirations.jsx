@@ -6,7 +6,9 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+import { getApiBase } from "../config/apiBase.js";
+
+const API_BASE = getApiBase();
 function buildUrl(path) {
     const base = String(API_BASE).replace(/\/+$/, "");
     if (base.endsWith("/api") && path.startsWith("/api/")) path = path.slice(4);

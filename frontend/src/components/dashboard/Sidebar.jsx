@@ -4,7 +4,9 @@ import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+import { getApiBase } from "../../config/apiBase.js";
+
+const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 

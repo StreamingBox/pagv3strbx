@@ -12,6 +12,7 @@ import ChangePasswordCard from "../components/adminUsers/ChangePasswordCard";
 import ChangeCurrencyCard from "../components/adminUsers/ChangeCurrencyCard";
 import TransactionsList from "../components/wallet/TransactionsList";
 import "../styles/special-effects.css";
+import { getApiBase } from "../config/apiBase.js";
 
 const TABS = [
     { id: "list", icon: "📋", label: "Lista de Usuarios" },
@@ -57,7 +58,7 @@ export default function AdminUsers() {
         doResetInvestment, doAdjustInvested,
     } = useAdminUsers();
 
-    const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3000";
+    const API_BASE = getApiBase();
 
     async function updateUserStatus(userId, newStatus) {
         const action = newStatus === "active" ? "aprobar" : "rechazar";

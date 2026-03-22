@@ -149,13 +149,18 @@ const globalRateLimit = rateLimit({
 });
 app.use(globalRateLimit);
 
-// Rate limit para auth/login: 10 intentos/min por IP (anti fuerza bruta)
+// Solo POST /login y /register (no /me, /refresh, etc. — si no, 429 al cargar la app)
 const loginRateLimit = rateLimit({
     windowMs: 60 * 1000,
     max: 8,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiados intentos de inicio de sesión. Intenta de nuevo en un minuto." },
+    skip: (req) => {
+        if (req.method !== "POST") return true;
+        const p = req.path || "";
+        return !p.endsWith("/login") && !p.endsWith("/register");
+    },
 });
 
 // Rate limit para códigos: 500 por hora

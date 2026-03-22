@@ -29,6 +29,7 @@ const NAV_GROUPS = [
             { path: "/admin/code-requests", label: "Pedidos de Códigos", icon: "🎟️" },
             { path: "/admin/code-logs", label: "Logs de Códigos", icon: "🎫" },
             { path: "/admin/stock-notify", label: "Alertas de Stock", icon: "🔔" },
+            { path: "/admin/upload-logs", label: "Logs de Carga", icon: "📋" },
         ]
     },
     {
@@ -116,9 +117,13 @@ export default function AdminSidebar({
         const handleResize = () => {
             if (typeof window !== "undefined") {
                 const mobile = window.innerWidth <= 900;
-                setIsMobile(mobile);
-                // On resize, ensure mobile drawer is closed by default to prevent issues
+                
+                // Si cambiamos de desktop a mobile, colapsamos para no tapar el contenido
                 if (mobile && !isMobile) setCollapsed(true);
+                // Si volvemos a desktop, lo expandimos automáticamente si estaba colapsado por el cambio previo
+                if (!mobile && isMobile) setCollapsed(false);
+
+                setIsMobile(mobile);
             }
         };
         handleResize();
@@ -161,7 +166,7 @@ export default function AdminSidebar({
                     borderRight: "1px solid var(--stroke)", 
                     overflowY: "auto", 
                     overflowX: "hidden", 
-                    zIndex: 999
+                    zIndex: 999,
                 }}
                 onMouseEnter={() => !isMobile && setIsHovered(true)}
                 onMouseLeave={() => !isMobile && setIsHovered(false)}

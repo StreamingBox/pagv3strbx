@@ -318,7 +318,7 @@ export default function TransactionsList({ fetchFn, userId, users }) {
                 {kpis.map((k, i) => (
                     <motion.div key={i} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
                         style={{ padding: "16px 20px", borderRadius: 16, background: "var(--card)", border: "1px solid var(--stroke)", borderLeft: `3px solid ${k.color}`, position: "relative", overflow: "hidden" }}>
-                        <div style={{ position: "absolute", top: -12, right: -12, fontSize: 42, opacity: 0.07 }}>{k.icon}</div>
+                        <div style={{ position: "absolute", top: -12, right: -12, fontSize: 42, opacity: 0.18 }}>{k.icon}</div>
                         <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 6 }}>{k.label}</div>
                         <div style={{ fontSize: 22, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.value}</div>
                         <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>{k.sub}</div>

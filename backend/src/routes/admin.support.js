@@ -16,6 +16,34 @@ const router = express.Router();
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
 
+function buildReplacementWhatsappMessage({ platformName, account, expiresAt, token, baseUrl }) {
+    const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
+    const credentialUrl = token ? `${cleanBaseUrl}/s/${token}` : "";
+    const lines = [
+        "Tu cuenta ha sido cambiada por:",
+        "",
+        `Plataforma: ${platformName || "—"}`,
+    ];
+
+    if (account?.email) lines.push(`Correo: ${account.email}`);
+    if (account?.password) lines.push(`Contraseña: ${account.password}`);
+    if (account?.profile_number !== null && account?.profile_number !== undefined && String(account.profile_number).trim() !== "") {
+        lines.push(`Perfil: ${account.profile_number}`);
+    }
+    if (account?.pin !== null && account?.pin !== undefined && String(account.pin).trim() !== "") {
+        lines.push(`Pin: ${account.pin}`);
+    }
+    if (expiresAt) {
+        lines.push(`Expira: ${new Date(expiresAt).toISOString().slice(0, 10)}`);
+    }
+    if (credentialUrl) {
+        lines.push("");
+        lines.push(`Consulta tu acceso aquí: ${credentialUrl}`);
+    }
+
+    return lines.join("\n").trim();
+}
+
 async function getSubscriptionSupportInfo(conn, subscriptionId) {
     // subscription + order + platform + current account
     const [rows] = await conn.query(
@@ -32,6 +60,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         o.order_code,
         p.name AS platform_name,
         p.slug AS platform_slug,
+        u.whatsapp AS user_whatsapp,
         a.email,
         a.password,
         a.pin,
@@ -40,6 +69,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
      LEFT JOIN order_items oi ON oi.subscription_id = s.id
      LEFT JOIN orders o ON o.id = oi.order_id
      JOIN platforms p ON p.id = s.platform_id
+     JOIN users u ON u.id = s.user_id
      JOIN platform_accounts a ON a.id = s.platform_account_id
      WHERE s.id = ?
      LIMIT 1`,
@@ -106,6 +136,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
             profile_number: r.profile_number,
         },
         token,
+        whatsappPhone: r.user_whatsapp || null,
         message,
     };
 }
@@ -226,6 +257,20 @@ router.post(
 
             // Devolver info actualizada (incluye mensaje)
             const info = await getSubscriptionSupportInfo(conn, subscriptionId);
+            const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+            if (info) {
+                info.message = buildReplacementWhatsappMessage({
+                    platformName: info.platformName,
+                    account: info.account,
+                    expiresAt: info.expiresAt,
+                    token: info.token,
+                    baseUrl,
+                });
+                info.replaced = {
+                    oldAccountId: sub.platform_account_id,
+                    newAccountId: newAcc.id,
+                };
+            }
 
             return res.json({
                 ok: true,

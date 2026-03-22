@@ -341,6 +341,7 @@ export default function AdminOrders() {
                                     <tr style={{ background: "rgba(0,0,0,0.2)", borderBottom: "1px solid var(--stroke2)" }}>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>ID</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Usuario</th>
+                                        <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Correo Vendido</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Plataforma</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Plan</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Precio</th>
@@ -351,10 +352,10 @@ export default function AdminOrders() {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center" }}><div className="spinner" style={{ margin: "0 auto" }}></div></td></tr>
+                                        <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center" }}><div className="spinner" style={{ margin: "0 auto" }}></div></td></tr>
                                     ) : orders.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                            <td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                 <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
                                                 No hay registros de compras con estos filtros.
                                             </td>
@@ -379,6 +380,9 @@ export default function AdminOrders() {
                                                 </td>
                                                 <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 500, fontSize: 13, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.userEmail}>
                                                     {o.userEmail}
+                                                </td>
+                                                <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 500, fontSize: 13, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.accountEmail || "Sin asignar"}>
+                                                    {o.accountEmail || <span style={{ color: "var(--muted)" }}>Sin asignar</span>}
                                                 </td>
                                                 <td style={{ padding: "14px 16px" }}>
                                                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

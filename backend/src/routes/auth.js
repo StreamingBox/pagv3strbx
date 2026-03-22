@@ -1,9 +1,11 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const pool = require("../db");
 const { signAccessToken, signRefreshToken, sha256 } = require("../auth/tokens");
 const jwt = require("jsonwebtoken");
 const requireAuth = require("../middleware/requireAuth");
+const { sendPasswordResetEmail } = require("../services/mailService");
 const router = express.Router();
 
 /**
@@ -16,6 +18,7 @@ const router = express.Router();
  */
 const PUBLIC_API_PREFIX = (process.env.PUBLIC_API_PREFIX || "").trim();
 const REFRESH_COOKIE_PATH = `${PUBLIC_API_PREFIX}/auth`.replace(/\/+/g, "/");
+const PASSWORD_RESET_TOKEN_MINUTES = parseInt(process.env.PASSWORD_RESET_TOKEN_MINUTES || "30", 10);
 
 function cookieOpts(req, maxAgeMs, path = "/") {
     const isProd = process.env.NODE_ENV === "production";
@@ -60,6 +63,48 @@ async function insertRefreshTokenSafe(userId, role, db = pool) {
     throw new Error("No se pudo insertar refresh token (colisión repetida).");
 }
 
+function getFrontendBaseUrl(req) {
+    const envBase =
+        process.env.FRONTEND_URL ||
+        process.env.APP_URL ||
+        process.env.CLIENT_URL;
+    if (envBase) return String(envBase).replace(/\/+$/, "");
+
+    const origin = String(req.headers.origin || "").trim();
+    if (origin) return origin.replace(/\/+$/, "");
+
+    const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http");
+    const host = String(req.headers["x-forwarded-host"] || req.get("host") || "").trim();
+    if (host) return `${proto}://${host}`.replace(/\/+$/, "");
+
+    return "http://localhost:5173";
+}
+
+function buildForgotPasswordResponse() {
+    return {
+        ok: true,
+        message: "Si el correo existe, te enviamos un enlace para restablecer tu contraseña.",
+    };
+}
+
+async function getValidPasswordResetToken(rawToken, db = pool) {
+    const token = String(rawToken || "").trim();
+    if (!token) return null;
+
+    const [rows] = await db.query(
+        `SELECT prt.id, prt.user_id, u.email, u.name
+           FROM password_reset_tokens prt
+           JOIN users u ON u.id = prt.user_id
+          WHERE prt.token_hash = ?
+            AND prt.used_at IS NULL
+            AND prt.expires_at > UTC_TIMESTAMP()
+          LIMIT 1`,
+        [sha256(token)]
+    );
+
+    return rows[0] || null;
+}
+
 router.post("/register", async (req, res) => {
     try {
         const { name, email, password, phone } = req.body || {};
@@ -98,6 +143,135 @@ router.post("/register", async (req, res) => {
         });
     } catch (err) {
         console.error("REGISTER ERROR:", err.message);
+        return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.post("/forgot-password", async (req, res) => {
+    try {
+        const emailClean = String(req.body?.email || "").trim().toLowerCase();
+        if (!emailClean) {
+            return res.status(400).json({ message: "Ingresa un email válido." });
+        }
+
+        const [rows] = await pool.query(
+            "SELECT id, name, email FROM users WHERE email = ? LIMIT 1",
+            [emailClean]
+        );
+
+        if (!rows.length) {
+            return res.json(buildForgotPasswordResponse());
+        }
+
+        const user = rows[0];
+        const rawToken = crypto.randomBytes(32).toString("hex");
+        const tokenHash = sha256(rawToken);
+        const expiresAt = new Date(Date.now() + PASSWORD_RESET_TOKEN_MINUTES * 60 * 1000);
+
+        await pool.query(
+            "UPDATE password_reset_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE user_id = ? AND used_at IS NULL",
+            [user.id]
+        );
+        await pool.query(
+            "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, requested_ip) VALUES (?, ?, ?, ?)",
+            [user.id, tokenHash, expiresAt, req.ip || null]
+        );
+
+        const resetUrl = `${getFrontendBaseUrl(req)}/reset-password?token=${encodeURIComponent(rawToken)}`;
+        await sendPasswordResetEmail({
+            to: user.email,
+            name: user.name,
+            resetUrl,
+            expiresMinutes: PASSWORD_RESET_TOKEN_MINUTES,
+        });
+
+        return res.json(buildForgotPasswordResponse());
+    } catch (err) {
+        console.error("FORGOT PASSWORD ERROR:", err.message);
+        return res.status(500).json({ message: "No fue posible procesar la solicitud." });
+    }
+});
+
+router.get("/reset-password/validate", async (req, res) => {
+    try {
+        const token = String(req.query?.token || "").trim();
+        if (!token) {
+            return res.status(400).json({ message: "Token requerido." });
+        }
+
+        const row = await getValidPasswordResetToken(token);
+        if (!row) {
+            return res.status(400).json({ message: "El enlace de recuperación es inválido o expiró." });
+        }
+
+        return res.json({ ok: true });
+    } catch (err) {
+        console.error("RESET VALIDATE ERROR:", err.message);
+        return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.post("/reset-password", async (req, res) => {
+    const conn = await pool.getConnection();
+    try {
+        const token = String(req.body?.token || "").trim();
+        const password = String(req.body?.password || "");
+
+        if (!token || !password) {
+            conn.release();
+            return res.status(400).json({ message: "Token y contraseña son obligatorios." });
+        }
+        if (password.length < 8) {
+            conn.release();
+            return res.status(400).json({ message: "La contraseña debe tener al menos 8 caracteres." });
+        }
+
+        await conn.beginTransaction();
+
+        const [rows] = await conn.query(
+            `SELECT id, user_id
+               FROM password_reset_tokens
+              WHERE token_hash = ?
+                AND used_at IS NULL
+                AND expires_at > UTC_TIMESTAMP()
+              LIMIT 1
+              FOR UPDATE`,
+            [sha256(token)]
+        );
+
+        if (!rows.length) {
+            await conn.rollback();
+            conn.release();
+            return res.status(400).json({ message: "El enlace de recuperación es inválido o expiró." });
+        }
+
+        const resetRow = rows[0];
+        const passwordHash = await bcrypt.hash(password, 12);
+
+        await conn.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, resetRow.user_id]);
+        await conn.query("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE id = ?", [resetRow.id]);
+        await conn.query(
+            "UPDATE password_reset_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE user_id = ? AND id <> ? AND used_at IS NULL",
+            [resetRow.user_id, resetRow.id]
+        );
+        await conn.query(
+            "UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL",
+            [resetRow.user_id]
+        );
+
+        await conn.commit();
+        conn.release();
+
+        return res.json({
+            ok: true,
+            message: "Contraseña actualizada. Ya puedes iniciar sesión.",
+        });
+    } catch (err) {
+        try {
+            await conn.rollback();
+        } catch { }
+        conn.release();
+        console.error("RESET PASSWORD ERROR:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });

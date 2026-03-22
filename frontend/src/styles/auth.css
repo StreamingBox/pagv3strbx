@@ -50,10 +50,10 @@
     --accent-gradient: linear-gradient(180deg, #3B82F6, #2563EB);
 }
 
-:root[data-theme="light"] {
+html[data-theme="light"] {
     /* LIGHT — Pure Pearl (Limpio y profesional) */
-    --bg0: #ffffff;
-    --bg1: #f3f4f6;
+    --bg0: #f0f4ff;
+    --bg1: #e8edf8;
 
     --card: rgba(255, 255, 255, 0.9);
     --card2: rgba(249, 250, 251, 0.8);
@@ -76,12 +76,12 @@
 }
 
 /* En modo claro la bg-grid es invisible */
-:root[data-theme="light"] .bg-grid {
+html[data-theme="light"] .bg-grid {
     opacity: 0 !important;
 }
 
 /* Orbes muy sutiles en claro */
-:root[data-theme="light"] .bg-orb {
+html[data-theme="light"] .bg-orb {
     opacity: 0.04 !important;
 }
 
@@ -96,6 +96,8 @@ body {
     margin: 0;
     font-family: var(--font);
     color: var(--text);
+    background-color: var(--bg1);
+    transition: background-color 0.3s ease;
 }
 
 /* =========================
@@ -110,7 +112,6 @@ body {
         radial-gradient(1000px 800px at 90% 70%, var(--fx2), transparent 50%),
         linear-gradient(180deg, var(--bg0), var(--bg1));
     position: relative;
-    overflow: hidden;
 }
 
 .auth-shell {
@@ -443,20 +444,22 @@ select.select-inline:focus {
     margin: 0;
     padding: 18px;
     display: flex;
-    gap: 16px;
+    gap: 0;
     align-items: flex-start;
-    /* importante */
 }
 
-/* Sidebar ancho + evita overflow */
+/* Sidebar sticky — se queda pegado al hacer scroll */
 .sidebar {
     width: 320px;
     min-width: 320px;
     padding: 16px;
-    overflow: hidden;
+    overflow-y: auto;
     transition: width 0.25s ease, min-width 0.25s ease, padding 0.2s ease;
-    position: relative;
+    position: sticky;
+    top: 0;
+    height: 100vh;
     z-index: 100;
+    flex-shrink: 0;
 }
 
 /* Sidebar colapsado: solo muestra el logo */
@@ -752,12 +755,13 @@ tr {
         padding: 16px;
     }
 
-    /* Main ocupa todo el ancho */
+    /* Main ocupa todo el ancho en móvil (sin margen del sidebar) */
     .main {
         width: 100%;
         flex: 1;
         padding: 14px;
         padding-top: 64px;
+        margin-left: 0 !important;
         /* espacio para el botón hamburger */
     }
 

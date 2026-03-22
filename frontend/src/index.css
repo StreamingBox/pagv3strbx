@@ -17,19 +17,20 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  background-color: #141b33; /* mismo que --bg0 oscuro por defecto */
+  transition: background-color 0.3s ease;
+}
+
+html[data-theme="light"] {
+  background-color: #e8edf8;
+}
+
 body {
   margin: 0;
   font-family: var(--font-main);
-  background-color: #1a263a;
-  color: #e8f0fe;
+  min-height: 100%;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  min-height: 100vh;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-/* Tema claro: blanco puro */
-:root[data-theme="light"] body {
-  background-color: #ffffff;
-  color: #0f172a;
 }

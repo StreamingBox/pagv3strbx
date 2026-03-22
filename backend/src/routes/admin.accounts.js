@@ -129,6 +129,16 @@ router.post("/admin/accounts", requireAuth, requireRole("admin"), async (req, re
 
         await conn.commit();
 
+        // ── Registrar en logs ──
+        const adminEmail = req.user?.email || null;
+        const adminId    = req.user?.id    || null;
+        await pool.query(
+            `INSERT INTO account_upload_logs
+             (type, admin_id, admin_email, platform_id, platform_name, total_rows, inserted, skipped, errors, notes)
+             VALUES ('manual', ?, ?, ?, ?, 1, 1, 0, 0, ?)`,
+            [adminId, adminEmail, pid, pname, `Cuenta: ${emailNorm}`]
+        ).catch(() => {});
+
         return res.status(201).json({
             ok: true,
             id: newId,
@@ -151,7 +161,7 @@ router.post("/admin/accounts", requireAuth, requireRole("admin"), async (req, re
  * Luego propaga SOLO la password a cuentas active/assigned previas con mismo platform+email.
  */
 router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (req, res) => {
-    const { rows } = req.body || {};
+    const { rows, filename } = req.body || {};
     if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ message: "rows vacío." });
     }
@@ -177,6 +187,7 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
 
     // 2) Validación mínima
     const candidates = normalized.filter((r) => r.email && r.password && (r.platformId || r.platformName));
+    const skippedCount = normalized.length - candidates.length;
     if (candidates.length === 0) {
         return res.status(400).json({
             message: "❌ No hay filas válidas (requiere platformId o platformName, email, password).",
@@ -205,6 +216,7 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
         const ACTIVE_STATUSES = ["available", "assigned"];
 
         let inserted = 0;
+        let errorsCount = 0;
         const missingPlatforms = new Set();
 
         for (const r of candidates) {
@@ -218,6 +230,7 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
 
             if (!pid) {
                 missingPlatforms.add(r.platformName || "(vacío)");
+                errorsCount++;
                 continue;
             }
 
@@ -279,6 +292,34 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
 
         await conn.commit();
 
+        // ── Registrar en logs ──
+        const adminEmail = req.user?.email || null;
+        const adminId    = req.user?.id    || null;
+        // Determinar plataforma dominante del lote (la primera con pid resuelto)
+        let logPid = null; let logPname = null;
+        for (const r of candidates) {
+            let pid = r.platformId;
+            if (!pid) pid = mapByName.get(String(r.platformName || "").toLowerCase()) || null;
+            if (pid) { logPid = pid; logPname = r.platformName || null; break; }
+        }
+        await pool.query(
+            `INSERT INTO account_upload_logs
+             (type, admin_id, admin_email, platform_id, platform_name, total_rows, inserted, skipped, errors, source_filename, notes)
+             VALUES ('bulk', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                adminId, adminEmail,
+                logPid, logPname,
+                candidates.length,
+                inserted,
+                skippedCount,
+                errorsCount,
+                filename || null,
+                missingPlatforms.size > 0
+                    ? `Plataformas no encontradas: ${[...missingPlatforms].join(", ")}`
+                    : null
+            ]
+        ).catch(() => {});
+
         const missing = [...missingPlatforms].slice(0, 20);
         if (inserted === 0) {
             return res.status(400).json({
@@ -297,4 +338,74 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
     }
 });
 
+/**
+ * GET /admin/accounts/upload-logs
+ * Historial de cargas de cuentas con paginación y filtros
+ */
+router.get("/admin/accounts/upload-logs", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const page  = Math.max(1, parseInt(req.query.page  || "1"));
+        const limit = Math.min(100, Math.max(1, parseInt(req.query.limit || "20")));
+        const offset = (page - 1) * limit;
+        const type   = req.query.type || "";   // 'manual' | 'bulk' | ''
+        const search = req.query.search || ""; // busca por admin_email o platform_name
+
+        const conditions = [];
+        const params     = [];
+
+        if (type === "manual" || type === "bulk") {
+            conditions.push("type = ?");
+            params.push(type);
+        }
+        if (search.trim()) {
+            conditions.push("(admin_email LIKE ? OR platform_name LIKE ?)");
+            params.push(`%${search.trim()}%`, `%${search.trim()}%`);
+        }
+
+        const where = conditions.length ? "WHERE " + conditions.join(" AND ") : "";
+
+        const [[{ total }]] = await pool.query(
+            `SELECT COUNT(*) AS total FROM account_upload_logs ${where}`,
+            params
+        );
+
+        const [rows] = await pool.query(
+            `SELECT * FROM account_upload_logs ${where}
+             ORDER BY created_at DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
+        );
+
+        return res.json({
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            items: rows,
+        });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ message: "Error al obtener logs." });
+    }
+});
+
+/**
+ * DELETE /admin/accounts/upload-logs
+ * Limpiar logs más antiguos de N días (por defecto 30)
+ */
+router.delete("/admin/accounts/upload-logs", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const days = Math.max(1, parseInt(req.query.days || "30"));
+        const [result] = await pool.query(
+            `DELETE FROM account_upload_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+            [days]
+        );
+        return res.json({ ok: true, deleted: result.affectedRows });
+    } catch (e) {
+        console.error(e);
+        return res.status(500).json({ message: "Error al limpiar logs." });
+    }
+});
+
 module.exports = router;
+

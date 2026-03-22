@@ -29,6 +29,27 @@ pool.query('ALTER TABLE subscriptions ADD COLUMN reminder_sent TINYINT(1) DEFAUL
 pool.query('ALTER TABLE users ADD COLUMN whatsapp VARCHAR(50) DEFAULT NULL').catch(() => { });
 
 pool.query(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        token_hash CHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL DEFAULT NULL,
+        requested_ip VARCHAR(64) NULL DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_password_reset_token_hash (token_hash),
+        INDEX idx_password_reset_user_created (user_id, created_at),
+        INDEX idx_password_reset_expires (expires_at)
+    )
+`).catch(() => { });
+
+pool.query("ALTER TABLE password_reset_tokens ADD COLUMN used_at DATETIME NULL DEFAULT NULL").catch(() => { });
+pool.query("ALTER TABLE password_reset_tokens ADD COLUMN requested_ip VARCHAR(64) NULL DEFAULT NULL").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_password_reset_token_hash ON password_reset_tokens(token_hash)").catch(() => { });
+pool.query("CREATE INDEX idx_password_reset_user_created ON password_reset_tokens(user_id, created_at)").catch(() => { });
+pool.query("CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at)").catch(() => { });
+
+pool.query(`
     CREATE TABLE IF NOT EXISTS whatsapp_queue (
         id INT AUTO_INCREMENT PRIMARY KEY,
         phone VARCHAR(50) NOT NULL,
@@ -90,6 +111,36 @@ pool.query(`
         is_read BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_user_unread (user_id, is_read)
+    )
+`).catch(() => { });
+
+// Optimizaciones de Base de datos automáticas (Ignoran el error si ya existen o la tabla aún no existe al completo)
+pool.query("CREATE INDEX idx_orders_user_created ON orders(user_id, created_at)").catch(() => { });
+pool.query("CREATE INDEX idx_orders_created ON orders(created_at)").catch(() => { });
+pool.query("CREATE INDEX idx_order_items_order_platform ON order_items(order_id, platform_id)").catch(() => { });
+pool.query("CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_status_label, created_at)").catch(() => { });
+
+// ──────────────────────────────────────────────────────────────
+// Tabla de logs de carga de cuentas (manual y masiva)
+// ──────────────────────────────────────────────────────────────
+pool.query(`
+    CREATE TABLE IF NOT EXISTS account_upload_logs (
+        id          INT AUTO_INCREMENT PRIMARY KEY,
+        type        ENUM('manual','bulk') NOT NULL DEFAULT 'manual',
+        admin_id    INT NULL,
+        admin_email VARCHAR(120) NULL,
+        platform_id INT NULL,
+        platform_name VARCHAR(100) NULL,
+        total_rows  INT NOT NULL DEFAULT 1,
+        inserted    INT NOT NULL DEFAULT 0,
+        skipped     INT NOT NULL DEFAULT 0,
+        errors      INT NOT NULL DEFAULT 0,
+        source_filename VARCHAR(255) NULL,
+        notes       TEXT NULL,
+        created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_upload_logs_created (created_at),
+        INDEX idx_upload_logs_type (type),
+        INDEX idx_upload_logs_admin (admin_id)
     )
 `).catch(() => { });
 

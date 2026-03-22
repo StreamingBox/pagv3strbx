@@ -2,6 +2,8 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import Auth from "./pages/Auth.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
@@ -27,6 +29,7 @@ const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
 const AdminStockNotify = lazy(() => import("./pages/AdminStockNotify.jsx"));
 const AdminWhatsapp = lazy(() => import("./pages/AdminWhatsapp.jsx"));
 const AdminWhatsappTrace = lazy(() => import("./pages/AdminWhatsappTrace.jsx"));
+const AdminUploadLogs = lazy(() => import("./pages/AdminUploadLogs.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
 const Wallet = lazy(() => import("./pages/Wallet.jsx"));
@@ -58,6 +61,8 @@ export default function App() {
                 {/* ================= Login / Register ================= */}
                 <Route path="/" element={<Auth />} />
                 <Route path="/register" element={<Auth />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
 
                 {/* ================= Dashboard ================= */}
                 <Route
@@ -283,6 +288,15 @@ export default function App() {
                 />
 
                 <Route
+                    path="/admin/upload-logs"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminUploadLogs />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
                     path="/expirations"
                     element={
                         <ProtectedRoute roles={["admin", "user"]}>
@@ -300,4 +314,3 @@ export default function App() {
         </Suspense>
     );
 }
-

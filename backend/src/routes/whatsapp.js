@@ -118,52 +118,6 @@ function deepFindFirstString(node, wantedKeys) {
     return null;
 }
 
-function deepCollectSelectedOptions(node) {
-    const out = [];
-    const stack = [node];
-    while (stack.length) {
-        const cur = stack.pop();
-        if (!cur || typeof cur !== "object") continue;
-        if (Array.isArray(cur)) {
-            for (const item of cur) stack.push(item);
-            continue;
-        }
-
-        for (const [k, v] of Object.entries(cur)) {
-            if (k === "selectedOptions" && Array.isArray(v)) {
-                for (const opt of v) {
-                    if (typeof opt === "string" && opt.trim()) out.push(opt.trim());
-                    if (opt && typeof opt === "object") {
-                        const txt = String(opt.name || opt.optionName || opt.option || "").trim();
-                        if (txt) out.push(txt);
-                    }
-                }
-            }
-            if (k === "votes" && Array.isArray(v)) {
-                for (const vote of v) {
-                    const txt = String(vote?.optionName || vote?.name || vote?.option || "").trim();
-                    if (txt) out.push(txt);
-                }
-            }
-            if (v && typeof v === "object") stack.push(v);
-        }
-    }
-    return out;
-}
-
-function readIncomingPollResult(body) {
-    const eventName = String(body?.event || body?.type || "").trim().toLowerCase();
-    if (eventName !== "poll.results") return null;
-
-    const fromRaw = deepFindFirstString(body, new Set(["cleanedSenderPn", "senderPn", "remoteJid", "participant"]));
-    const from = normalizePhone(fromRaw || "");
-    if (!from) return null;
-
-    const selected = deepCollectSelectedOptions(body);
-    if (!selected.length) return null;
-
-    return { from, selected };
-}
 
 async function readWaToken() {
     await ensureSettingsTable();
@@ -194,34 +148,6 @@ async function sendWaText({ token, to, text }) {
     return { ok, status: response.status, data };
 }
 
-async function sendWaPoll({ token, to, question, options }) {
-    const response = await fetch("https://www.wasenderapi.com/api/send-message", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-            to: normalizePhone(to),
-            poll: {
-                question,
-                options,
-                multiSelect: false,
-            },
-        }),
-    });
-
-    const data = await response.json().catch(() => ({}));
-    const ok = response.ok && data?.success !== false;
-    if (!ok) {
-        console.warn("[whatsapp.send.poll] failed", {
-            to: normalizePhone(to),
-            status: response.status,
-            providerMessage: data?.message || data?.error || null,
-        });
-    }
-    return { ok, status: response.status, data };
-}
 
 async function findUserByWhatsapp(phone) {
     const digits = normalizeDigits(phone);
@@ -262,42 +188,6 @@ function parseCodeCommand(text) {
     };
 }
 
-async function getAvailableCodePlatforms() {
-    const [rows] = await pool.query(
-        `SELECT LOWER(slug) AS slug
-         FROM code_platforms
-         WHERE is_active = 1
-         ORDER BY slug ASC`
-    );
-
-    const set = new Set(rows.map((r) => String(r.slug || "").trim().toLowerCase()).filter(Boolean));
-    return Array.from(set);
-}
-
-function platformEmoji(slug) {
-    const s = String(slug || "").toLowerCase();
-    if (s.includes("netflix")) return "\uD83C\uDF7F";
-    if (s.includes("chatgpt")) return "\uD83E\uDD16";
-    if (s.includes("prime")) return "\uD83D\uDCE6";
-    if (s.includes("spotify")) return "\uD83C\uDFB5";
-    if (s.includes("disney")) return "\uD83C\uDFF0";
-    if (s.includes("max")) return "\uD83C\uDFAC";
-    if (s.includes("youtube")) return "\u25B6\uFE0F";
-    return "\uD83D\uDCFA";
-}
-
-function toPrettyPlatformLabel(slug) {
-    const clean = String(slug || "").trim().toLowerCase();
-    return `${platformEmoji(clean)} ${clean}`;
-}
-
-function formatPlatformsMenu(platforms) {
-    const list = platforms.map((p, i) => `${i + 1}) ${toPrettyPlatformLabel(p)}`).join("\n");
-    return [
-        "\uD83C\uDFAF Selecciona una plataforma (responde solo el numero):",
-        list,
-    ].join("\n");
-}
 
 function getActiveSession(phone) {
     const session = flowSessions.get(phone);
@@ -483,10 +373,6 @@ async function tryHandleIncomingCodeRequest(body) {
     });
 }
 
-// Poll handling disabled — se usa menú de texto numerado en su lugar
-async function tryHandleIncomingPollSelection(_body) {
-    return { handled: false };
-}
 
 // GET /admin/whatsapp/token
 router.get("/admin/whatsapp/token", requireAuth, requireRole("admin"), async (_req, res) => {

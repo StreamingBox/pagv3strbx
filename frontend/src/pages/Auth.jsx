@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Eye, EyeOff, Sun, Moon } from "lucide-react";
+import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { countries } from "../utils/countries";
 import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
@@ -33,7 +33,7 @@ export default function Auth() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState(false);
-    const [logoOk, setLogoOk] = useState(true);
+    const [showTerms, setShowTerms] = useState(false);
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
 
     useEffect(() => {
@@ -48,6 +48,7 @@ export default function Auth() {
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [phone, setPhone] = useState("");
+    const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
 
@@ -112,6 +113,7 @@ export default function Auth() {
         setError("");
         if (password !== confirmPassword) return setError("Las contraseñas no coinciden.");
         if (password.length < 8) return setError("La contraseña debe tener mínimo 8 caracteres.");
+        if (!acceptedTerms) return setError("Debes aceptar los Términos y Condiciones.");
         setLoading(true);
         try {
             const fullPhone = `${country.code}${phone.replace(/\D/g, "")}`;
@@ -125,8 +127,6 @@ export default function Auth() {
         } catch (err) { setError(err.message); }
         finally { setLoading(false); }
     }
-
-    const waLink = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(`Hola! Me registré en Streaming Box con el correo ${email} y quiero activar mi cuenta.`)}`;
 
     // ── Theme-aware color tokens ──
     const dark = theme === "dark";
@@ -157,6 +157,8 @@ export default function Auth() {
             display: "flex", alignItems: "center", justifyContent: "center",
             position: "relative", overflow: "hidden",
             fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
+            padding: isMobile ? "72px 0 120px" : "40px 0 88px",
+            boxSizing: "border-box",
         },
         gridBg: {
             position: "absolute", inset: 0, pointerEvents: "none",
@@ -178,7 +180,7 @@ export default function Auth() {
         container: {
             width: isMobile ? "95%" : 900,
             maxWidth: isMobile ? 420 : "95vw",
-            height: isMobile ? "auto" : 600,
+            height: isMobile ? "auto" : 720,
             position: "relative", overflow: "hidden",
             borderRadius: 28,
             boxShadow: dark
@@ -214,7 +216,7 @@ export default function Auth() {
         } : {
             width: "50%", height: "100%",
             display: "flex", flexDirection: "column", justifyContent: "flex-start",
-            padding: "36px 52px", overflowY: "auto",
+            padding: "24px 52px", overflowY: "auto",
             transition: "all .65s cubic-bezier(.77,0,.175,1)",
             transform: active ? "translateX(100%)" : "translateX(200%)",
             opacity: active ? 1 : 0,
@@ -250,7 +252,7 @@ export default function Auth() {
         },
         label: {
             fontSize: 13, color: C.muted,
-            display: "flex", flexDirection: "column", gap: 6, marginBottom: isMobile ? 12 : 14,
+            display: "flex", flexDirection: "column", gap: 5, marginBottom: isMobile ? 10 : 12,
         },
         input: {
             height: 50, borderRadius: 14,
@@ -334,6 +336,69 @@ export default function Auth() {
             padding: "12px 48px", borderRadius: 50, fontWeight: 700, fontSize: 15,
             cursor: "pointer", transition: "all .3s", letterSpacing: 0.3,
         },
+        legalBar: {
+            position: "absolute",
+            bottom: isMobile ? 14 : 20,
+            left: "50%",
+            transform: "translateX(-50%)",
+            color: dark ? "rgba(255,255,255,.88)" : "#475569",
+            fontSize: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            zIndex: 120,
+            padding: "8px 14px",
+            borderRadius: 999,
+            background: dark ? "rgba(7,14,40,.42)" : "rgba(255,255,255,.82)",
+            border: dark ? "1px solid rgba(255,255,255,.08)" : "1px solid rgba(37,99,235,.14)",
+            backdropFilter: "blur(10px)",
+            boxShadow: dark ? "0 8px 24px rgba(0,0,0,.22)" : "0 8px 24px rgba(37,99,235,.12)",
+            whiteSpace: "nowrap",
+            maxWidth: "calc(100vw - 24px)",
+        },
+        legalLink: {
+            background: "none",
+            border: "none",
+            padding: 0,
+            color: dark ? "#7dd3fc" : "#1d4ed8",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+        },
+        forgotLink: {
+            background: "none",
+            border: "none",
+            padding: 0,
+            margin: "-2px 0 10px auto",
+            color: dark ? "#7dd3fc" : "#1d4ed8",
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            display: "block",
+        },
+        checkboxRow: {
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 10,
+            marginTop: 8,
+            marginBottom: 10,
+            color: C.muted,
+            fontSize: 13,
+            lineHeight: 1.5,
+        },
+        checkbox: {
+            width: 16,
+            height: 16,
+            marginTop: 2,
+            accentColor: "#2563eb",
+            cursor: "pointer",
+            flexShrink: 0,
+        },
+        checkboxText: {
+            color: C.muted,
+        },
     };
 
     const [hoveredCountry, setHoveredCountry] = useState(null);
@@ -352,7 +417,6 @@ export default function Auth() {
                     Escríbenos por WhatsApp para activarla.
                 </p>
 
-                {/* Número de WhatsApp visible */}
                 <div style={{ background: "rgba(37,211,102,.08)", border: "1px solid rgba(37,211,102,.25)", borderRadius: 14, padding: "12px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                     <span style={{ fontSize: 20 }}>📱</span>
                     <div style={{ textAlign: "left" }}>
@@ -413,6 +477,13 @@ export default function Auth() {
                                 </button>
                             </div>
                         </label>
+                        <button
+                            type="button"
+                            style={S.forgotLink}
+                            onClick={() => navigate(email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : "/forgot-password")}
+                        >
+                            Olvidé mi contraseña
+                        </button>
                         {error && !isRegister && <div style={S.err}>{error}</div>}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
                             {loading ? "Cargando..." : "Ingresar"}
@@ -427,7 +498,7 @@ export default function Auth() {
                 </div>
 
                 {/* ── REGISTER FORM ── */}
-                <div style={{ ...S.regSide(isRegister), padding: "30px 52px", overflowY: "auto" }}>
+                <div style={S.regSide(isRegister)}>
                     <h2 style={{ ...S.heading, marginBottom: 24 }}>Crear Cuenta</h2>
                     <form onSubmit={handleRegister}>
                         <label style={S.label}>
@@ -489,6 +560,20 @@ export default function Auth() {
                                 </button>
                             </div>
                         </label>
+                        <label style={S.checkboxRow}>
+                            <input
+                                style={S.checkbox}
+                                type="checkbox"
+                                checked={acceptedTerms}
+                                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                            />
+                            <span style={S.checkboxText}>
+                                Acepto los{" "}
+                                <button className="tos-link" style={S.legalLink} type="button" onClick={() => setShowTerms(true)}>
+                                    Términos y Condiciones
+                                </button>
+                            </span>
+                        </label>
                         {error && isRegister && <div style={S.err}>{error}</div>}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
                             {loading ? "Creando cuenta..." : "Registrarse"}
@@ -544,10 +629,71 @@ export default function Auth() {
 
             </div>
 
-            <div style={{ position: "absolute", bottom: 16, color: C.muted, fontSize: 12, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+            <div style={S.legalBar}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#06b6d4", boxShadow: "0 0 10px rgba(6,182,212,.7)" }} />
                 © Streaming Box 2026
+                <span className="tos-sep">·</span>
+                <button className="tos-link" style={S.legalLink} type="button" onClick={() => setShowTerms(true)}>
+                    Términos y Condiciones
+                </button>
             </div>
+            <AnimatePresence>
+                {showTerms && (
+                    <motion.div
+                        className="tos-overlay"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowTerms(false)}
+                    >
+                        <motion.div
+                            className="tos-modal"
+                            initial={{ opacity: 0, scale: 0.92, y: 24 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 16 }}
+                            transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="tos-header">
+                                <h2>Términos y Condiciones</h2>
+                                <motion.button
+                                    className="tos-close"
+                                    type="button"
+                                    onClick={() => setShowTerms(false)}
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.9 }}
+                                >
+                                    <X size={20} />
+                                </motion.button>
+                            </div>
+                            <div className="tos-body">
+                                <p><strong>1. Aceptación de los Términos</strong><br />
+                                    Al registrarte o usar Streaming Box aceptas estos Términos y Condiciones. Si no estás de acuerdo, no debes usar la plataforma.</p>
+                                <p><strong>2. Objeto del Servicio</strong><br />
+                                    Streaming Box es una plataforma privada para gestionar y comercializar accesos digitales, pedidos y saldos internos para usuarios autorizados.</p>
+                                <p><strong>3. Requisitos de Uso</strong><br />
+                                    Debes proporcionar información veraz, mantener tus datos actualizados y resguardar tus credenciales. Eres responsable de toda actividad realizada desde tu cuenta.</p>
+                                <p><strong>4. Uso Prohibido</strong><br />
+                                    Queda prohibido compartir accesos, revender sin autorización, automatizar consultas mediante scraping o bots, vulnerar la seguridad de la plataforma o usarla para fines ilícitos.</p>
+                                <p><strong>5. Pagos, Saldos y Reembolsos</strong><br />
+                                    Los saldos acreditados en wallet se consideran consumibles dentro de la plataforma. Salvo obligación legal o falla comprobable del servicio, las compras son finales y no reembolsables.</p>
+                                <p><strong>6. Disponibilidad y Servicios de Terceros</strong><br />
+                                    Algunas prestaciones dependen de proveedores externos. Streaming Box no garantiza continuidad absoluta ni responde por cambios, bloqueos o interrupciones causadas por terceros.</p>
+                                <p><strong>7. Suspensión o Cierre de Cuenta</strong><br />
+                                    Podemos limitar, suspender o cerrar cuentas por incumplimientos, actividad sospechosa, fraude o riesgos de seguridad, sin perjuicio de acciones adicionales que correspondan.</p>
+                                <p><strong>8. Limitación de Responsabilidad</strong><br />
+                                    En la máxima medida permitida por la ley, Streaming Box no será responsable por daños indirectos, incidentales o lucro cesante derivados del uso o imposibilidad de uso de la plataforma.</p>
+                                <p><strong>9. Privacidad y Datos Personales</strong><br />
+                                    Tratamos tus datos para operación, soporte, seguridad y cumplimiento. Al usar la plataforma aceptas este tratamiento conforme a la normativa aplicable.</p>
+                                <p><strong>10. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
+                                    Podemos actualizar estos términos en cualquier momento. La versión vigente será la publicada en la plataforma. Cualquier controversia se regirá por la ley aplicable y la jurisdicción competente del domicilio del operador.</p>
+                                <p className="tos-legal">Última actualización: 11 de marzo de 2026.<br />
+                                    © 2026 Streaming Box. Todos los derechos reservados. Plataforma desarrollada y operada de forma privada.</p>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -64,6 +64,9 @@ export default function AdminRenewals() {
     const [renewing, setRenewing] = useState(false);
     const [renewErr, setRenewErr] = useState("");
 
+    // WhatsApp
+    const [whatsappPhone, setWhatsappPhone] = useState("");
+
     // On mount, if orderId is passed via state, auto-fetch
     useEffect(() => {
         if (location.state?.orderId) {
@@ -90,6 +93,8 @@ export default function AdminRenewals() {
             setOrder(data);
             setOverridePrice(String(data.price || ""));
             setNote(`Renovación pedido #${id}`);
+            // Pre-llenar el teléfono si el usuario tiene uno registrado
+            if (data.user_phone) setWhatsappPhone(data.user_phone);
 
             // Load available accounts for that platform
             const acc = await apiFetch(`/admin/accounts?platformId=${data.platform_id}&available=1&limit=200`).catch(() => ({ items: [] }));
@@ -263,6 +268,46 @@ export default function AdminRenewals() {
                                             <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 8, fontWeight: 500 }}>
                                                 Notificación para el cliente (WhatsApp)
                                             </div>
+
+                                            {/* Campo de número WhatsApp */}
+                                            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                                                <input
+                                                    type="text"
+                                                    value={whatsappPhone}
+                                                    onChange={e => setWhatsappPhone(e.target.value)}
+                                                    placeholder="Número WhatsApp (ej: 573152485340)"
+                                                    style={{ ...inputStyle, flex: 1, height: 40, fontSize: 13 }}
+                                                />
+                                                <a
+                                                    href={whatsappPhone
+                                                        ? `https://wa.me/${whatsappPhone.replace(/\D/g, "")}?text=${encodeURIComponent(result.whatsappText)}`
+                                                        : undefined}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    onClick={e => !whatsappPhone && e.preventDefault()}
+                                                    style={{
+                                                        display: "flex", alignItems: "center", gap: 8,
+                                                        height: 40, padding: "0 18px", borderRadius: 12,
+                                                        background: whatsappPhone
+                                                            ? "linear-gradient(135deg,#25d366,#128c7e)"
+                                                            : "var(--stroke)",
+                                                        color: "#fff", fontWeight: 700, fontSize: 13,
+                                                        textDecoration: "none", whiteSpace: "nowrap",
+                                                        boxShadow: whatsappPhone ? "0 4px 14px rgba(37,211,102,.35)" : "none",
+                                                        opacity: whatsappPhone ? 1 : 0.45,
+                                                        cursor: whatsappPhone ? "pointer" : "not-allowed",
+                                                        transition: "all 0.2s",
+                                                        flexShrink: 0,
+                                                    }}
+                                                >
+                                                    <svg width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+                                                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/>
+                                                        <path d="M12.004 2C6.477 2 2 6.478 2 12.004c0 1.944.526 3.764 1.44 5.321L2 22l4.802-1.414A9.959 9.959 0 0012.004 22C17.523 22 22 17.522 22 11.996 22 6.478 17.523 2 12.004 2zm0 18.155a9.13 9.13 0 01-4.854-1.39l-.348-.207-3.585 1.057 1.001-3.522-.227-.36A9.13 9.13 0 012.845 12c0-5.06 4.1-9.155 9.159-9.155 5.055 0 9.151 4.095 9.151 9.155 0 5.055-4.096 9.155-9.151 9.155z"/>
+                                                    </svg>
+                                                    Enviar por WhatsApp
+                                                </a>
+                                            </div>
+
                                             <div style={{ position: "relative" }}>
                                                 <textarea
                                                     readOnly
@@ -332,6 +377,20 @@ export default function AdminRenewals() {
                                                 <input style={inputStyle} type="text"
                                                     value={note} onChange={e => setNote(e.target.value)}
                                                     placeholder="Detalles sobre la renovación..." />
+                                            </div>
+
+                                            {/* WhatsApp del usuario */}
+                                            <div style={{ gridColumn: "1 / -1" }}>
+                                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
+                                                    📱 WhatsApp del cliente (para notificar)
+                                                </label>
+                                                <input
+                                                    style={inputStyle}
+                                                    type="text"
+                                                    value={whatsappPhone}
+                                                    onChange={e => setWhatsappPhone(e.target.value)}
+                                                    placeholder="Ej: 573152485340 (con código de país, sin +)"
+                                                />
                                             </div>
                                         </div>
 

@@ -88,6 +88,14 @@ const allowedOrigins = new Set([
     "http://localhost:5174",
     "http://127.0.0.1:5174",
 ]);
+// Pruebas por IP / Elastic IP en EC2 (el navegador envía Origin: https://TU_IP)
+// En backend/.env: CORS_EXTRA_ORIGINS=https://18.x.x.x,http://18.x.x.x
+if (process.env.CORS_EXTRA_ORIGINS) {
+    for (const raw of String(process.env.CORS_EXTRA_ORIGINS).split(/[,;\s]+/)) {
+        const o = raw.trim().replace(/\/+$/, "");
+        if (o) allowedOrigins.add(o);
+    }
+}
 const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
 
 const corsOptions = {

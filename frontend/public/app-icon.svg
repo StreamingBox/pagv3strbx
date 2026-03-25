@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="sb-grad-app" x1="64" y1="48" x2="448" y2="464" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16d4ff" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="sb-play" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8fdcff" />
+      <stop offset="100%" stop-color="#2563eb" />
+    </linearGradient>
+  </defs>
+  <rect x="48" y="48" width="416" height="416" rx="108" fill="url(#sb-grad-app)" />
+  <polygon points="256,110 366,164 256,219 146,164" fill="#ffffff" fill-opacity="0.98" />
+  <polygon points="146,164 146,292 256,347 256,219" fill="#ffffff" fill-opacity="0.72" />
+  <polygon points="366,164 366,292 256,347 256,219" fill="#ffffff" fill-opacity="0.9" />
+  <polygon points="278,223 334,256 278,289" fill="url(#sb-play)" />
+</svg>

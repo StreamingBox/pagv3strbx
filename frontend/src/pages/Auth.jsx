@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+﻿import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
@@ -6,10 +6,18 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { countries } from "../utils/countries";
 import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
 import { getApiBase } from "../config/apiBase.js";
+import {
+    authenticateWithBiometrics,
+    enableBiometricForUser,
+    getBiometricAvailability,
+    isBiometricEnabledForUser,
+    isNativeAndroidApp,
+} from "../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 const WA_NUMBER = "573152485340";
+const APK_URL = "/downloads/streaming-box-android.apk";
 
 function getTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
@@ -54,7 +62,7 @@ export default function Auth() {
     const [showConfirm, setShowConfirm] = useState(false);
 
     // Country
-    const [country, setCountry] = useState({ code: "+57", flag: "🇨🇴", name: "Colombia" });
+    const [country, setCountry] = useState({ code: "+57", flag: "ðŸ‡¨ðŸ‡´", name: "Colombia" });
     const [showCountries, setShowCountries] = useState(false);
     const [countrySearch, setCountrySearch] = useState("");
     const countryRef = useRef(null);
@@ -92,6 +100,31 @@ export default function Auth() {
         navigate(next ? "/register" : "/");
     };
 
+    async function maybeEnableBiometricAccess(nextUser) {
+        if (!nextUser?.id || !isNativeAndroidApp() || isBiometricEnabledForUser(nextUser.id)) {
+            return;
+        }
+
+        const availability = await getBiometricAvailability();
+        if (!availability.available) return;
+
+        const confirmEnable = window.confirm("¿Quieres activar ingreso con huella en esta app Android?");
+        if (!confirmEnable) return;
+
+        const result = await authenticateWithBiometrics({
+            title: "Streaming Box",
+            subtitle: "Activar ingreso con huella",
+            reason: "Confirma tu identidad para habilitar el acceso biométrico en esta app",
+        });
+
+        if (result.ok) {
+            enableBiometricForUser(nextUser.id);
+            return;
+        }
+
+        throw new Error(result.message || "No se pudo activar el ingreso con huella.");
+    }
+
     async function handleLogin(e) {
         e.preventDefault();
         setError(""); setLoading(true);
@@ -102,8 +135,9 @@ export default function Auth() {
                 body: JSON.stringify({ email, password }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.message || "Error al iniciar sesión.");
+            if (!res.ok) throw new Error(data?.message || "Error al iniciar sesiÃ³n.");
             setUser(data?.user || null);
+            await maybeEnableBiometricAccess(data?.user || null);
             navigate(data?.user?.role === "admin" ? "/admin" : "/dashboard", { replace: true });
         } catch (err) { setError(err.message); }
         finally { setLoading(false); }
@@ -112,9 +146,9 @@ export default function Auth() {
     async function handleRegister(e) {
         e.preventDefault();
         setError("");
-        if (password !== confirmPassword) return setError("Las contraseñas no coinciden.");
-        if (password.length < 8) return setError("La contraseña debe tener mínimo 8 caracteres.");
-        if (!acceptedTerms) return setError("Debes aceptar los Términos y Condiciones.");
+        if (password !== confirmPassword) return setError("Las contraseÃ±as no coinciden.");
+        if (password.length < 8) return setError("La contraseÃ±a debe tener mÃ­nimo 8 caracteres.");
+        if (!acceptedTerms) return setError("Debes aceptar los TÃ©rminos y Condiciones.");
         setLoading(true);
         try {
             const fullPhone = `${country.code}${phone.replace(/\D/g, "")}`;
@@ -129,7 +163,7 @@ export default function Auth() {
         finally { setLoading(false); }
     }
 
-    // ── Theme-aware color tokens ──
+    // â”€â”€ Theme-aware color tokens â”€â”€
     const dark = theme === "dark";
     const C = {
         bg:        dark ? "#070e28"              : "#f0f4ff",
@@ -150,7 +184,7 @@ export default function Auth() {
                linear-gradient(180deg, #e8f0fe, #f0f4ff)`,
     };
 
-    // ── CSS-in-JS styles ──
+    // â”€â”€ CSS-in-JS styles â”€â”€
     const S = {
         shell: {
             minHeight: "100vh",
@@ -368,6 +402,93 @@ export default function Auth() {
             textDecoration: "underline",
             textUnderlineOffset: 3,
         },
+        appDownloadCard: {
+            position: "absolute",
+            right: isMobile ? 12 : 20,
+            bottom: isMobile ? 68 : 20,
+            width: isMobile ? "calc(100% - 24px)" : 320,
+            zIndex: 140,
+            padding: "16px 16px 18px",
+            borderRadius: 22,
+            background: dark
+                ? "linear-gradient(180deg, rgba(10,18,44,.94), rgba(15,28,63,.92))"
+                : "linear-gradient(180deg, rgba(255,255,255,.96), rgba(240,247,255,.94))",
+            border: dark ? "1px solid rgba(79, 142, 255, .22)" : "1px solid rgba(37,99,235,.18)",
+            backdropFilter: "blur(12px)",
+            boxShadow: dark ? "0 20px 44px rgba(0,0,0,.34)" : "0 20px 44px rgba(37,99,235,.16)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+        },
+        appDownloadTitle: {
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            fontSize: 16,
+            fontWeight: 800,
+            color: C.text,
+        },
+        appDownloadBadge: {
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            alignSelf: "flex-start",
+            padding: "6px 10px",
+            borderRadius: 999,
+            background: dark ? "rgba(34,211,238,.12)" : "rgba(37,99,235,.08)",
+            border: dark ? "1px solid rgba(34,211,238,.18)" : "1px solid rgba(37,99,235,.14)",
+            color: dark ? "#67e8f9" : "#1d4ed8",
+            fontSize: 11,
+            fontWeight: 800,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+        },
+        appDownloadText: {
+            fontSize: 12.5,
+            lineHeight: 1.6,
+            color: C.muted,
+        },
+        appDownloadMeta: {
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: 10,
+        },
+        appDownloadMetaCard: {
+            padding: "10px 12px",
+            borderRadius: 14,
+            background: dark ? "rgba(255,255,255,.04)" : "rgba(255,255,255,.72)",
+            border: dark ? "1px solid rgba(255,255,255,.06)" : "1px solid rgba(37,99,235,.08)",
+        },
+        appDownloadMetaLabel: {
+            fontSize: 10.5,
+            fontWeight: 800,
+            letterSpacing: 0.5,
+            textTransform: "uppercase",
+            color: dark ? "rgba(125,211,252,.9)" : "#2563eb",
+            marginBottom: 4,
+        },
+        appDownloadMetaValue: {
+            fontSize: 12.5,
+            lineHeight: 1.45,
+            color: C.text,
+            fontWeight: 600,
+        },
+        appDownloadBtn: {
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            height: 52,
+            borderRadius: 16,
+            border: "none",
+            background: "linear-gradient(135deg, #22d3ee 0%, #2563eb 58%, #1d4ed8 100%)",
+            color: "#fff",
+            fontWeight: 800,
+            fontSize: 15,
+            textDecoration: "none",
+            boxShadow: "0 14px 28px rgba(37,99,235,.34), inset 0 1px 0 rgba(255,255,255,.22)",
+            letterSpacing: 0.2,
+        },
         forgotLink: {
             background: "none",
             border: "none",
@@ -403,25 +524,26 @@ export default function Auth() {
     };
 
     const [hoveredCountry, setHoveredCountry] = useState(null);
+    const isAndroidDevice = /android/i.test(window.navigator.userAgent || "");
 
-    // ── SUCCESS state ──
+    // â”€â”€ SUCCESS state â”€â”€
     if (success) return (
         <div style={{ ...S.shell, flexDirection: "column", gap: 20 }}>
             <div style={{ ...S.orb1 }} />
             <div style={{ ...S.orb2 }} />
             <div style={{ ...S.gridBg }} />
             <div style={{ textAlign: "center", zIndex: 10, maxWidth: 440, background: "rgba(7,14,40,.85)", padding: "48px 40px", borderRadius: 28, border: "1px solid rgba(255,255,255,.07)", backdropFilter: "blur(24px)" }}>
-                <div style={{ fontSize: 64, marginBottom: 20 }}>✅</div>
-                <h2 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 14 }}>¡Cuenta creada con éxito!</h2>
+                <div style={{ fontSize: 64, marginBottom: 20 }}>âœ…</div>
+                <h2 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 14 }}>Â¡Cuenta creada con Ã©xito!</h2>
                 <p style={{ color: "rgba(200,215,245,.7)", lineHeight: 1.7, marginBottom: 20, fontSize: 15 }}>
-                    Tu cuenta está <strong style={{ color: "#06b6d4" }}>pendiente de aprobación</strong>.<br />
-                    Escríbenos por WhatsApp para activarla.
+                    Tu cuenta estÃ¡ <strong style={{ color: "#06b6d4" }}>pendiente de aprobaciÃ³n</strong>.<br />
+                    EscrÃ­benos por WhatsApp para activarla.
                 </p>
 
                 <div style={{ background: "rgba(37,211,102,.08)", border: "1px solid rgba(37,211,102,.25)", borderRadius: 14, padding: "12px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                    <span style={{ fontSize: 20 }}>📱</span>
+                    <span style={{ fontSize: 20 }}>ðŸ“±</span>
                     <div style={{ textAlign: "left" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#25d366", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 2 }}>Número de WhatsApp</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: "#25d366", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 2 }}>NÃºmero de WhatsApp</div>
                         <div style={{ fontSize: 16, fontWeight: 900, color: "#fff", letterSpacing: 1 }}>+57 315 248 5340</div>
                     </div>
                 </div>
@@ -432,7 +554,7 @@ export default function Auth() {
                 </motion.a>
                 <button onClick={() => { setSuccess(false); setIsRegister(false); navigate("/"); }}
                     style={{ background: "none", border: "none", color: "rgba(200,215,245,.5)", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}>
-                    Volver al inicio de sesión
+                    Volver al inicio de sesiÃ³n
                 </button>
             </div>
         </div>
@@ -450,7 +572,7 @@ export default function Auth() {
             {/* Main card */}
             <div style={S.container}>
 
-                {/* ── LOGIN FORM ── */}
+                {/* â”€â”€ LOGIN FORM â”€â”€ */}
                 <div style={S.formSide(isRegister)}>
                     {/* Logo */}
                     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
@@ -463,16 +585,16 @@ export default function Auth() {
                         />
                     </div>
 
-                    <h2 style={S.heading}>Iniciar Sesión</h2>
+                    <h2 style={S.heading}>Iniciar SesiÃ³n</h2>
                     <form onSubmit={handleLogin}>
                         <label style={S.label}>
                             Email
                             <input style={S.input} type="email" placeholder="tu@correo.com" value={email} onChange={e => setEmail(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
                         </label>
                         <label style={S.label}>
-                            Contraseña
+                            ContraseÃ±a
                             <div style={S.relativeWrap}>
-                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showPwd ? "text" : "password"} placeholder="Tu contraseña" value={password} onChange={e => setPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
+                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showPwd ? "text" : "password"} placeholder="Tu contraseÃ±a" value={password} onChange={e => setPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
                                 <button type="button" style={S.eyeBtn} onClick={() => setShowPwd(!showPwd)}>
                                     {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
@@ -483,7 +605,7 @@ export default function Auth() {
                             style={S.forgotLink}
                             onClick={() => navigate(email.trim() ? `/forgot-password?email=${encodeURIComponent(email.trim())}` : "/forgot-password")}
                         >
-                            Olvidé mi contraseña
+                            OlvidÃ© mi contraseÃ±a
                         </button>
                         {error && !isRegister && <div style={S.err}>{error}</div>}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
@@ -491,14 +613,14 @@ export default function Auth() {
                         </motion.button>
                         {isMobile && (
                             <div style={{ marginTop: 20, textAlign: "center", fontSize: 13, color: C.muted }}>
-                                ¿No tienes cuenta?{" "}
-                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>Regístrate</span>
+                                Â¿No tienes cuenta?{" "}
+                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>RegÃ­strate</span>
                             </div>
                         )}
                     </form>
                 </div>
 
-                {/* ── REGISTER FORM ── */}
+                {/* â”€â”€ REGISTER FORM â”€â”€ */}
                 <div style={S.regSide(isRegister)}>
                     <h2 style={{ ...S.heading, marginBottom: 24 }}>Crear Cuenta</h2>
                     <form onSubmit={handleRegister}>
@@ -518,14 +640,14 @@ export default function Auth() {
                                         <img src={flagUrl(country.flag)} alt="" style={{ width: 22, height: 16, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
                                         <span style={{ fontSize: 14 }}>{country.code}</span>
                                     </button>
-                                    <input style={S.phoneInput} type="text" placeholder="Número (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.parentElement.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.parentElement.style.boxShadow = "none")} required />
+                                    <input style={S.phoneInput} type="text" placeholder="NÃºmero (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.parentElement.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.parentElement.style.boxShadow = "none")} required />
                                 </div>
 
                                 <AnimatePresence>
                                     {showCountries && (
                                         <motion.div style={S.dropdown} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
                                             <div style={S.searchRow}>
-                                                <input style={S.searchInput} type="text" placeholder="🔍 Buscar país..." value={countrySearch} onChange={e => setCountrySearch(e.target.value)} autoFocus />
+                                                <input style={S.searchInput} type="text" placeholder="ðŸ” Buscar paÃ­s..." value={countrySearch} onChange={e => setCountrySearch(e.target.value)} autoFocus />
                                             </div>
                                             {filteredCountries.map(c => (
                                                 <div key={c.name + c.code}
@@ -544,18 +666,18 @@ export default function Auth() {
                             </div>
                         </label>
                         <label style={S.label}>
-                            Contraseña
+                            ContraseÃ±a
                             <div style={S.relativeWrap}>
-                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showPwd ? "text" : "password"} placeholder="Mínimo 8 caracteres" value={password} onChange={e => setPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
+                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showPwd ? "text" : "password"} placeholder="MÃ­nimo 8 caracteres" value={password} onChange={e => setPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
                                 <button type="button" style={S.eyeBtn} onClick={() => setShowPwd(!showPwd)}>
                                     {showPwd ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
                             </div>
                         </label>
                         <label style={S.label}>
-                            Confirmar Contraseña
+                            Confirmar ContraseÃ±a
                             <div style={S.relativeWrap}>
-                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showConfirm ? "text" : "password"} placeholder="Repite tu contraseña" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
+                                <input style={{ ...S.input, width: "100%", paddingRight: 44 }} type={showConfirm ? "text" : "password"} placeholder="Repite tu contraseÃ±a" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
                                 <button type="button" style={S.eyeBtn} onClick={() => setShowConfirm(!showConfirm)}>
                                     {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                                 </button>
@@ -571,7 +693,7 @@ export default function Auth() {
                             <span style={S.checkboxText}>
                                 Acepto los{" "}
                                 <button className="tos-link" style={S.legalLink} type="button" onClick={() => setShowTerms(true)}>
-                                    Términos y Condiciones
+                                    TÃ©rminos y Condiciones
                                 </button>
                             </span>
                         </label>
@@ -581,14 +703,14 @@ export default function Auth() {
                         </motion.button>
                         {isMobile && (
                             <div style={{ marginTop: 20, textAlign: "center", fontSize: 13, color: C.muted }}>
-                                ¿Ya tienes cuenta?{" "}
-                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>Inicia Sesión</span>
+                                Â¿Ya tienes cuenta?{" "}
+                                <span onClick={toggle} style={{ color: "#0ea5e9", fontWeight: 700, cursor: "pointer" }}>Inicia SesiÃ³n</span>
                             </div>
                         )}
                     </form>
                 </div>
 
-                {/* ── SLIDING OVERLAY PANEL ── */}
+                {/* â”€â”€ SLIDING OVERLAY PANEL â”€â”€ */}
                 <div style={S.overlay(isRegister)}>
                     {/* Overlay glow */}
                     <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 30% 50%, rgba(255,255,255,.12), transparent 70%)", pointerEvents: "none" }} />
@@ -606,19 +728,19 @@ export default function Auth() {
 
                         {!isRegister ? (
                             <>
-                                <div style={S.overlayTitle}>¡BIENVENIDO!</div>
+                                <div style={S.overlayTitle}>Â¡BIENVENIDO!</div>
                                 <p style={S.overlayText}>
-                                    ¿No tienes cuenta?<br />Regístrate y comienza a disfrutar de Streaming Box.
+                                    Â¿No tienes cuenta?<br />RegÃ­strate y comienza a disfrutar de Streaming Box.
                                 </p>
                                 <motion.button style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
-                                    Regístrate
+                                    RegÃ­strate
                                 </motion.button>
                             </>
                         ) : (
                             <>
-                                <div style={S.overlayTitle}>¡DE VUELTA!</div>
+                                <div style={S.overlayTitle}>Â¡DE VUELTA!</div>
                                 <p style={S.overlayText}>
-                                    ¿Ya tienes cuenta?<br />Inicia sesión para continuar con tu experiencia.
+                                    Â¿Ya tienes cuenta?<br />Inicia sesiÃ³n para continuar con tu experiencia.
                                 </p>
                                 <motion.button style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
                                     Ingresar
@@ -630,12 +752,44 @@ export default function Auth() {
 
             </div>
 
+            {isAndroidDevice ? (
+                <div style={S.appDownloadCard}>
+                    <div style={S.appDownloadBadge}>Solo Android</div>
+                    <div style={S.appDownloadTitle}>
+                        <StreamingBoxLogo size={28} showText={false} textColor={C.text} />
+                        App Android
+                    </div>
+                    <div style={S.appDownloadText}>
+                        Descarga la APK oficial de Streaming Box y entra desde una app propia en tu celular Android.
+                    </div>
+                    <div style={S.appDownloadMeta}>
+                        <div style={S.appDownloadMetaCard}>
+                            <div style={S.appDownloadMetaLabel}>Lo que bajas</div>
+                            <div style={S.appDownloadMetaValue}>APK oficial para instalar la app en Android.</div>
+                        </div>
+                        <div style={S.appDownloadMetaCard}>
+                            <div style={S.appDownloadMetaLabel}>Incluye</div>
+                            <div style={S.appDownloadMetaValue}>Acceso rápido, icono propio y experiencia de app.</div>
+                        </div>
+                    </div>
+                    <motion.a
+                        href={APK_URL}
+                        download="streaming-box-android.apk"
+                        style={S.appDownloadBtn}
+                        whileHover={{ y: -2, scale: 1.015, boxShadow: "0 18px 34px rgba(37,99,235,.4), inset 0 1px 0 rgba(255,255,255,.22)" }}
+                        whileTap={{ scale: 0.98 }}
+                    >
+                        ⬇ Descargar APK Android
+                    </motion.a>
+                </div>
+            ) : null}
+
             <div style={S.legalBar}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#06b6d4", boxShadow: "0 0 10px rgba(6,182,212,.7)" }} />
-                © Streaming Box 2026
-                <span className="tos-sep">·</span>
+                Â© Streaming Box 2026
+                <span className="tos-sep">Â·</span>
                 <button className="tos-link" style={S.legalLink} type="button" onClick={() => setShowTerms(true)}>
-                    Términos y Condiciones
+                    TÃ©rminos y Condiciones
                 </button>
             </div>
             <AnimatePresence>
@@ -656,7 +810,7 @@ export default function Auth() {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="tos-header">
-                                <h2>Términos y Condiciones</h2>
+                                <h2>TÃ©rminos y Condiciones</h2>
                                 <motion.button
                                     className="tos-close"
                                     type="button"
@@ -668,28 +822,28 @@ export default function Auth() {
                                 </motion.button>
                             </div>
                             <div className="tos-body">
-                                <p><strong>1. Aceptación de los Términos</strong><br />
-                                    Al registrarte o usar Streaming Box aceptas estos Términos y Condiciones. Si no estás de acuerdo, no debes usar la plataforma.</p>
+                                <p><strong>1. AceptaciÃ³n de los TÃ©rminos</strong><br />
+                                    Al registrarte o usar Streaming Box aceptas estos TÃ©rminos y Condiciones. Si no estÃ¡s de acuerdo, no debes usar la plataforma.</p>
                                 <p><strong>2. Objeto del Servicio</strong><br />
                                     Streaming Box es una plataforma privada para gestionar y comercializar accesos digitales, pedidos y saldos internos para usuarios autorizados.</p>
                                 <p><strong>3. Requisitos de Uso</strong><br />
-                                    Debes proporcionar información veraz, mantener tus datos actualizados y resguardar tus credenciales. Eres responsable de toda actividad realizada desde tu cuenta.</p>
+                                    Debes proporcionar informaciÃ³n veraz, mantener tus datos actualizados y resguardar tus credenciales. Eres responsable de toda actividad realizada desde tu cuenta.</p>
                                 <p><strong>4. Uso Prohibido</strong><br />
-                                    Queda prohibido compartir accesos, revender sin autorización, automatizar consultas mediante scraping o bots, vulnerar la seguridad de la plataforma o usarla para fines ilícitos.</p>
+                                    Queda prohibido compartir accesos, revender sin autorizaciÃ³n, automatizar consultas mediante scraping o bots, vulnerar la seguridad de la plataforma o usarla para fines ilÃ­citos.</p>
                                 <p><strong>5. Pagos, Saldos y Reembolsos</strong><br />
-                                    Los saldos acreditados en wallet se consideran consumibles dentro de la plataforma. Salvo obligación legal o falla comprobable del servicio, las compras son finales y no reembolsables.</p>
+                                    Los saldos acreditados en wallet se consideran consumibles dentro de la plataforma. Salvo obligaciÃ³n legal o falla comprobable del servicio, las compras son finales y no reembolsables.</p>
                                 <p><strong>6. Disponibilidad y Servicios de Terceros</strong><br />
                                     Algunas prestaciones dependen de proveedores externos. Streaming Box no garantiza continuidad absoluta ni responde por cambios, bloqueos o interrupciones causadas por terceros.</p>
-                                <p><strong>7. Suspensión o Cierre de Cuenta</strong><br />
+                                <p><strong>7. SuspensiÃ³n o Cierre de Cuenta</strong><br />
                                     Podemos limitar, suspender o cerrar cuentas por incumplimientos, actividad sospechosa, fraude o riesgos de seguridad, sin perjuicio de acciones adicionales que correspondan.</p>
-                                <p><strong>8. Limitación de Responsabilidad</strong><br />
-                                    En la máxima medida permitida por la ley, Streaming Box no será responsable por daños indirectos, incidentales o lucro cesante derivados del uso o imposibilidad de uso de la plataforma.</p>
+                                <p><strong>8. LimitaciÃ³n de Responsabilidad</strong><br />
+                                    En la mÃ¡xima medida permitida por la ley, Streaming Box no serÃ¡ responsable por daÃ±os indirectos, incidentales o lucro cesante derivados del uso o imposibilidad de uso de la plataforma.</p>
                                 <p><strong>9. Privacidad y Datos Personales</strong><br />
-                                    Tratamos tus datos para operación, soporte, seguridad y cumplimiento. Al usar la plataforma aceptas este tratamiento conforme a la normativa aplicable.</p>
-                                <p><strong>10. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
-                                    Podemos actualizar estos términos en cualquier momento. La versión vigente será la publicada en la plataforma. Cualquier controversia se regirá por la ley aplicable y la jurisdicción competente del domicilio del operador.</p>
-                                <p className="tos-legal">Última actualización: 11 de marzo de 2026.<br />
-                                    © 2026 Streaming Box. Todos los derechos reservados. Plataforma desarrollada y operada de forma privada.</p>
+                                    Tratamos tus datos para operaciÃ³n, soporte, seguridad y cumplimiento. Al usar la plataforma aceptas este tratamiento conforme a la normativa aplicable.</p>
+                                <p><strong>10. Modificaciones, Ley Aplicable y JurisdicciÃ³n</strong><br />
+                                    Podemos actualizar estos tÃ©rminos en cualquier momento. La versiÃ³n vigente serÃ¡ la publicada en la plataforma. Cualquier controversia se regirÃ¡ por la ley aplicable y la jurisdicciÃ³n competente del domicilio del operador.</p>
+                                <p className="tos-legal">Ãšltima actualizaciÃ³n: 11 de marzo de 2026.<br />
+                                    Â© 2026 Streaming Box. Todos los derechos reservados. Plataforma desarrollada y operada de forma privada.</p>
                             </div>
                         </motion.div>
                     </motion.div>
@@ -698,3 +852,4 @@ export default function Auth() {
         </div>
     );
 }
+

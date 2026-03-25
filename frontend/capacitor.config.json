@@ -1,0 +1,17 @@
+{
+  "appId": "co.strbx.app",
+  "appName": "Streaming Box",
+  "webDir": "dist",
+  "server": {
+    "url": "https://strbx.com.co",
+    "cleartext": false,
+    "allowNavigation": [
+      "strbx.com.co",
+      "*.strbx.com.co"
+    ]
+  },
+  "android": {
+    "backgroundColor": "#141b33",
+    "allowMixedContent": false
+  }
+}

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es-CO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#141b33" />
+    <title>Streaming Box | Sin conexión</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at top left, rgba(37, 99, 235, 0.25), transparent 30%),
+          radial-gradient(circle at bottom right, rgba(34, 211, 238, 0.16), transparent 28%),
+          #111827;
+        font-family: "Space Grotesk", Inter, system-ui, sans-serif;
+        color: #eef4ff;
+      }
+      .card {
+        width: min(100%, 420px);
+        padding: 28px 24px;
+        border-radius: 24px;
+        border: 1px solid rgba(120, 152, 230, 0.28);
+        background: linear-gradient(180deg, rgba(18, 25, 46, 0.96), rgba(25, 36, 68, 0.96));
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.38);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.18);
+        color: #bcd5ff;
+        font-size: 13px;
+        font-weight: 700;
+      }
+      h1 {
+        margin: 18px 0 10px;
+        font-size: clamp(28px, 5vw, 38px);
+        line-height: 1.05;
+      }
+      p {
+        margin: 0 0 18px;
+        color: rgba(226, 236, 255, 0.82);
+        line-height: 1.6;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      a,
+      button {
+        appearance: none;
+        border: 0;
+        border-radius: 12px;
+        padding: 12px 16px;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .primary {
+        background: linear-gradient(135deg, #22d3ee, #2563eb);
+        color: #fff;
+      }
+      .secondary {
+        background: rgba(255, 255, 255, 0.08);
+        color: #dbeafe;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="badge">App sin conexión</div>
+      <h1>Streaming Box</h1>
+      <p>No hay conexión en este momento. Si ya habías abierto la app, algunas pantallas pueden seguir funcionando con contenido en caché.</p>
+      <div class="actions">
+        <button class="primary" onclick="window.location.reload()">Reintentar</button>
+        <a class="secondary" href="/">Ir al inicio</a>
+      </div>
+    </main>
+  </body>
+</html>

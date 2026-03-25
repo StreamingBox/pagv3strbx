@@ -12,6 +12,9 @@ go-backend/api-gateway/pagv2strbx-gateway.exe
 # React / Frontend
 frontend/dist/
 frontend/build/
+frontend/android/keystore.properties
+frontend/android/keystores/
+frontend/android/release-signing.txt
 output/
 
 # Environment Variables
@@ -45,3 +48,4 @@ coverage/
 out/
 build/
 .gemini/
+.gradle-cache/

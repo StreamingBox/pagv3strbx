@@ -1,5 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
+import InstallAppPrompt from "./components/app/InstallAppPrompt.jsx";
+import BiometricGate from "./components/app/BiometricGate.jsx";
 
 import Auth from "./pages/Auth.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
@@ -56,14 +58,17 @@ function RedirectByRole() {
 ========================================== */
 export default function App() {
     return (
-        <Suspense
-            fallback={
-                <div className="page-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-                    <div className="spinner" aria-label="Cargando" role="status" />
-                </div>
-            }
-        >
-            <Routes>
+        <>
+            <BiometricGate>
+                <InstallAppPrompt />
+                <Suspense
+                    fallback={
+                        <div className="page-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+                            <div className="spinner" aria-label="Cargando" role="status" />
+                        </div>
+                    }
+                >
+                    <Routes>
                 {/* ================= Login / Register ================= */}
                 <Route path="/" element={<Auth />} />
                 <Route path="/register" element={<Auth />} />
@@ -316,7 +321,9 @@ export default function App() {
 
                 {/* ================= Catch-all (SIEMPRE al final) ================= */}
                 <Route path="*" element={<RedirectByRole />} />
-            </Routes>
-        </Suspense>
+                    </Routes>
+                </Suspense>
+            </BiometricGate>
+        </>
     );
 }

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="156" fill="#0f172a" />
+  <defs>
+    <linearGradient id="sb-grad-mask" x1="96" y1="88" x2="416" y2="424" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#16d4ff" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect x="104" y="104" width="304" height="304" rx="86" fill="url(#sb-grad-mask)" />
+  <polygon points="256,150 332,188 256,226 180,188" fill="#ffffff" fill-opacity="0.98" />
+  <polygon points="180,188 180,276 256,314 256,226" fill="#ffffff" fill-opacity="0.72" />
+  <polygon points="332,188 332,276 256,314 256,226" fill="#ffffff" fill-opacity="0.9" />
+  <polygon points="270,228 309,251 270,274" fill="#60a5fa" />
+</svg>

@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const pool = require("../db");
 const router = express.Router();
 
@@ -29,54 +30,136 @@ function daysLeft(date) {
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
-router.get("/s/:token", async (req, res) => {
+function wantsJson(req) {
+  const q = String(req.query.format || "").toLowerCase();
+  if (q === "json") return true;
+  const accept = String(req.get("Accept") || "");
+  return accept.includes("application/json") && !accept.includes("text/html");
+}
+
+/**
+ * Límite extra solo para GET JSON de credenciales (además del límite global en index.js).
+ * No cuenta peticiones HTML.
+ */
+const shareJsonCredentialLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.CREDENTIAL_JSON_RATE_MAX || 5),
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => !wantsJson(req),
+    message: { ok: false, error: "Demasiadas solicitudes JSON a este enlace. Espera un minuto." },
+});
+
+/**
+ * Evita que clientes arbitrarios (curl, otros sitios) obtengan JSON de credenciales solo con el token.
+ * Navegadores envían Sec-Fetch-Site en fetch same-origin; la página HTML envía Referer coherente.
+ */
+function assertJsonCredentialFetchAllowed(req, token) {
+    if (String(process.env.CREDENTIAL_SHARE_JSON_STRICT || "true").toLowerCase() === "false") {
+        return true;
+    }
+    if (String(process.env.CREDENTIAL_JSON_ALLOW_INSECURE || "").toLowerCase() === "true") {
+        return true;
+    }
+    const sfs = String(req.get("Sec-Fetch-Site") || "").toLowerCase();
+    if (sfs === "same-origin" || sfs === "same-site") {
+        return true;
+    }
+    const referer = String(req.get("Referer") || "");
+    const needle = `/s/${token}`;
+    if (referer.includes(needle)) {
+        return true;
+    }
+    return false;
+}
+
+async function loadCredentialByToken(token) {
+  const [rows] = await pool.query(
+    `SELECT
+       cl.token,
+       s.id AS order_id,
+       s.expires_at,
+       s.status,
+       p.name AS platform_name,
+       a.email,
+       a.password,
+       a.pin,
+       a.profile_number,
+       cl.show_whatsapp,
+       u.whatsapp AS whatsapp_number,
+       p.type AS platform_type,
+       p.whatsapp_instructions
+     FROM credential_links cl
+     JOIN subscriptions s ON s.id = cl.subscription_id
+     JOIN platforms p ON p.id = s.platform_id
+     LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
+     LEFT JOIN users u ON u.id = cl.created_by_user_id
+     WHERE cl.token = ?
+     LIMIT 1`,
+    [token]
+  );
+  return rows.length ? rows[0] : null;
+}
+
+router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
   try {
     const { token } = req.params;
 
-    const [rows] = await pool.query(
-      `SELECT
-         cl.token,
-         s.id AS order_id,
-         s.expires_at,
-         s.status,
-         p.name AS platform_name,
-         a.email,
-         a.password,
-         a.pin,
-         a.profile_number,
-         cl.show_whatsapp,
-         u.whatsapp AS whatsapp_number,
-         p.type AS platform_type,
-         p.whatsapp_instructions
-       FROM credential_links cl
-       JOIN subscriptions s ON s.id = cl.subscription_id
-       JOIN platforms p ON p.id = s.platform_id
-       LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
-       LEFT JOIN users u ON u.id = cl.created_by_user_id
-       WHERE cl.token = ?
-       LIMIT 1`,
-      [token]
-    );
+    if (wantsJson(req) && !assertJsonCredentialFetchAllowed(req, token)) {
+      return res.status(403).json({ ok: false, error: "Solicitud no permitida." });
+    }
 
-    if (!rows.length) return res.status(404).send("Link inválido.");
-
-    const r = rows[0];
+    const r = await loadCredentialByToken(token);
+    if (!r) {
+      if (wantsJson(req)) {
+        return res.status(404).json({ ok: false, error: "Link inválido." });
+      }
+      return res.status(404).send("Link inválido.");
+    }
 
     const expired = new Date(r.expires_at).getTime() < Date.now();
     const statusOk = r.status === "active";
-    if (expired || !statusOk) return res.status(403).send("Este link ya expiró.");
+    if (expired || !statusOk) {
+      if (wantsJson(req)) {
+        return res.status(403).json({ ok: false, error: "Este link ya expiró." });
+      }
+      return res.status(403).send("Este link ya expiró.");
+    }
 
     const exp = fmtYMD(r.expires_at);
     const remaining = daysLeft(r.expires_at);
-
-    // ✅ WhatsApp condicional (desde users)
     const showWA = Number(r.show_whatsapp) === 1 && !!r.whatsapp_number;
-
     const waNumber = showWA ? String(r.whatsapp_number) : null;
     const waMsg = encodeURIComponent(
       `Hola, necesito ayuda con mi cuenta.\nPedido: ${r.order_id}\nPlataforma: ${r.platform_name}`
     );
     const waLink = showWA ? `https://wa.me/${encodeURIComponent(waNumber)}?text=${waMsg}` : "";
+
+    const isEmailMode = r.platform_type === "correo";
+
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    res.set("Pragma", "no-cache");
+
+    if (wantsJson(req)) {
+      return res.json({
+        ok: true,
+        platformName: r.platform_name,
+        orderId: r.order_id,
+        email: r.email,
+        password: r.password,
+        pin: r.pin,
+        profileNumber: r.profile_number,
+        expiresAt: r.expires_at,
+        expiresLabel: exp,
+        daysRemaining: remaining,
+        status: r.status,
+        platformType: r.platform_type,
+        whatsappInstructions: r.whatsapp_instructions,
+        showWhatsapp: showWA,
+        waLink: waLink || null,
+        isEmailMode,
+      });
+    }
 
     const waButtonHtml = showWA
       ? `
@@ -93,10 +176,6 @@ router.get("/s/:token", async (req, res) => {
       : "";
 
     const platformName = escapeHtml(r.platform_name || "Plataforma");
-    const email = escapeHtml(r.email || "-");
-    const password = escapeHtml(r.password || "-");
-    const pin = escapeHtml(r.pin ?? "-");
-    const profile = escapeHtml(r.profile_number ?? "-");
     const orderId = escapeHtml(r.order_id ?? "-");
     const expEsc = escapeHtml(exp);
     const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
@@ -104,8 +183,51 @@ router.get("/s/:token", async (req, res) => {
     const statusText = expired ? "Vencido" : "Activo";
     const statusClass = expired ? "danger" : "ok";
 
-    const isEmailMode = r.platform_type === 'correo';
     const customWaitMsg = r.whatsapp_instructions || "Por favor, escribe al administrador para continuar con el proceso.";
+
+    const credentialsBlock = isEmailMode
+      ? `
+        <div class="row" style="flex-direction: column; text-align: center; gap: 8px; padding: 20px 0;">
+            <div style="font-size: 24px;">📧</div>
+            <div style="color: var(--text); font-weight: bold;">Plataforma bajo pedido</div>
+            <div style="color: var(--muted); font-size: 13px;">${escapeHtml(customWaitMsg)}</div>
+        </div>
+    `
+      : `
+        <div id="cred-status" class="row" style="display:none;"><div class="label"></div><div class="value cred-err"></div></div>
+        <div class="row cred-row"><div class="label">Correo:</div><div class="value" id="cred-email">Cargando…</div></div>
+        <div class="row cred-row"><div class="label">Contraseña:</div><div class="value" id="cred-pass">…</div></div>
+        <div class="row cred-row"><div class="label">Perfil:</div><div class="value" id="cred-profile">…</div></div>
+        <div class="row cred-row"><div class="label">Pin:</div><div class="value" id="cred-pin">…</div></div>
+        <script>
+          (function () {
+            var q = location.search ? "&" : "?";
+            var url = location.pathname + q + "format=json";
+            fetch(url, { credentials: "same-origin", mode: "same-origin", headers: { Accept: "application/json" } })
+              .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+              .then(function (x) {
+                if (!x.ok || !x.j || !x.j.ok) {
+                  var msg = (x.j && x.j.error) ? x.j.error : "No se pudieron cargar las credenciales.";
+                  document.querySelectorAll(".cred-row").forEach(function (el) { el.style.display = "none"; });
+                  var st = document.getElementById("cred-status");
+                  if (st) { st.style.display = "flex"; st.querySelector(".cred-err").textContent = msg; }
+                  return;
+                }
+                var d = x.j;
+                function set(id, v) { var el = document.getElementById(id); if (el) el.textContent = v == null || v === "" ? "—" : String(v); }
+                set("cred-email", d.email);
+                set("cred-pass", d.password);
+                set("cred-profile", d.profileNumber);
+                set("cred-pin", d.pin);
+              })
+              .catch(function () {
+                document.querySelectorAll(".cred-row").forEach(function (el) { el.style.display = "none"; });
+                var st = document.getElementById("cred-status");
+                if (st) { st.style.display = "flex"; st.querySelector(".cred-err").textContent = "Error de conexión al cargar credenciales."; }
+              });
+          })();
+        <\/script>
+    `;
 
     return res.send(`<!doctype html>
 <html lang="es">
@@ -220,20 +342,9 @@ router.get("/s/:token", async (req, res) => {
     <div class="divider"></div>
 
     <div class="row"><div class="label">ID:</div><div class="value">${orderId}</div></div>
-    
-    ${isEmailMode ? `
-        <div class="row" style="flex-direction: column; text-align: center; gap: 8px; padding: 20px 0;">
-            <div style="font-size: 24px;">📧</div>
-            <div style="color: var(--text); font-weight: bold;">Plataforma bajo pedido</div>
-            <div style="color: var(--muted); font-size: 13px;">${escapeHtml(customWaitMsg)}</div>
-        </div>
-    ` : `
-        <div class="row"><div class="label">Correo:</div><div class="value">${email}</div></div>
-        <div class="row"><div class="label">Contraseña:</div><div class="value">${password}</div></div>
-        <div class="row"><div class="label">Perfil:</div><div class="value">${profile}</div></div>
-        <div class="row"><div class="label">Pin:</div><div class="value">${pin}</div></div>
-    `}
-    
+
+    ${credentialsBlock}
+
     <div class="row"><div class="label">Fecha Final:</div><div class="value">${expEsc}</div></div>
     <div class="row"><div class="label">Días restantes:</div><div class="value">${remainingEsc}</div></div>
     <div class="row"><div class="label">Estado:</div>

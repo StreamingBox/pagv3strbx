@@ -7,10 +7,12 @@ yarn-error.log
 go-backend/api-gateway/api-gateway.exe
 go-backend/store-service/store-service.exe
 go-backend/codes-service/codes-service.exe
+go-backend/api-gateway/pagv2strbx-gateway.exe
 
 # React / Frontend
 frontend/dist/
 frontend/build/
+output/
 
 # Environment Variables
 .env

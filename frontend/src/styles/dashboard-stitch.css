@@ -8,9 +8,9 @@
     flex-direction: column;
     gap: 0;
     padding: 16px;
-    min-height: calc(100vh - 36px);
-    position: sticky;
-    top: 18px;
+    /* Altura la marca la fila flex (.page-inner + .sidebar stretch); no capar al viewport */
+    position: relative;
+    min-height: 0;
 }
 
 /* Header del sidebar */

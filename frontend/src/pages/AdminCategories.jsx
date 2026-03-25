@@ -20,7 +20,7 @@ async function apiFetch(path, opts = {}) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        window.location.href = "/";
         return null;
     }
     if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
@@ -142,9 +142,11 @@ export default function AdminCategories() {
 
     return (
         <div className="page-shell">
+            <div className="page-shell-bg" aria-hidden>
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 <AdminSidebar

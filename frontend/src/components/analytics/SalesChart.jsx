@@ -11,21 +11,7 @@ import {
     BarChart,
     Bar,
 } from "recharts";
-
-const MONTH_SHORT = [
-    "", "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
-];
-
-/** Paleta de colores para cada mes */
-export const MONTH_COLORS = [
-    "#0da6f2", // cian
-    "#8b5cf6", // violeta
-    "#10b981", // verde
-    "#f59e0b", // naranja
-    "#f43f5e", // rojo
-    "#06b6d4", // teal
-];
+import { MONTH_COLORS } from "./chartPalette.js";
 
 function useIsLight() {
     const [light, setLight] = useState(
@@ -42,7 +28,7 @@ function useIsLight() {
 }
 
 /** Tooltip custom multi-mes */
-function CustomTooltip({ active, payload, label, monthMeta, light }) {
+function CustomTooltip({ active, payload, label, light }) {
     if (!active || !payload?.length) return null;
     return (
         <div style={{
@@ -76,6 +62,8 @@ function CustomTooltip({ active, payload, label, monthMeta, light }) {
  * @param {string} chartType - "area" | "bar"
  */
 export default function SalesChart({ months = [], chartType = "area" }) {
+    const light = useIsLight();
+
     if (!months || months.length === 0) {
         return <div style={{ color: "var(--muted)", padding: 20 }}>Cargando datos...</div>;
     }
@@ -113,7 +101,6 @@ export default function SalesChart({ months = [], chartType = "area" }) {
             return row;
         });
 
-    const light = useIsLight();
     const axisColor = light ? "rgba(11,16,32,0.65)" : "rgba(220,238,255,0.45)";
     const gridColor = light ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.05)";
 
@@ -135,7 +122,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
     const grid = <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />;
     const tooltipEl = (
         <Tooltip
-            content={<CustomTooltip monthMeta={months} light={light} />}
+            content={<CustomTooltip light={light} />}
             cursor={{ stroke: light ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.07)", strokeWidth: 1, strokeDasharray: "4 3" }}
         />
     );

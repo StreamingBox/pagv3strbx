@@ -98,27 +98,47 @@ body {
     color: var(--text);
     background-color: var(--bg1);
     transition: background-color 0.3s ease;
+    overflow-x: hidden;
 }
 
 /* =========================
    BACKGROUND SHELLS
    ========================= */
-.auth-shell,
 .page-shell {
-    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     color: var(--text);
     background: 
         radial-gradient(1200px 900px at 20% 10%, var(--fx1), transparent 50%),
         radial-gradient(1000px 800px at 90% 70%, var(--fx2), transparent 50%),
         linear-gradient(180deg, var(--bg0), var(--bg1));
     position: relative;
+    overflow-x: hidden;
+    width: 100%;
+    flex: 1 1 auto;
+    /* Mínimo alto pantalla; crece si el contenido es más largo */
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 
+/* Login/registro: pantalla completa (clase reservada si se usa en HTML). */
 .auth-shell {
+    flex: 1;
+    min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 28px;
+}
+
+/* Capa de fondo: recorta orbes/grid sin usar overflow:hidden en .page-shell (no rompe sticky del sidebar) */
+.page-shell-bg {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .bg-grid {
@@ -143,14 +163,15 @@ body {
 }
 
 .orb-1 {
-    left: -180px;
-    top: -160px;
+    left: -120px;
+    top: -120px;
     background: radial-gradient(circle, var(--fx1), transparent 60%);
 }
 
+/* Valores menos agresivos: antes bottom:-220px extendía el scroll del documento */
 .orb-2 {
-    right: -220px;
-    bottom: -220px;
+    right: -100px;
+    bottom: -80px;
     background: radial-gradient(circle, var(--fx2), transparent 62%);
 }
 
@@ -440,26 +461,42 @@ select.select-inline:focus {
    ADMIN / DASHBOARD LAYOUT
    ========================= */
 .page-inner {
+    position: relative;
+    z-index: 1;
     width: 100%;
     margin: 0;
     padding: 18px;
+    box-sizing: border-box;
+    /* Flex fila + stretch: misma altura sidebar/main (más estable que grid 1fr con alto indefinido) */
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    align-content: stretch;
     gap: 0;
-    align-items: flex-start;
 }
 
-/* Sidebar sticky — se queda pegado al hacer scroll */
+/*
+  Sidebar (escritorio):
+  - La celda del grid tiene la misma altura que la del main cuando el main es más alto.
+  - overflow-y visible en escritorio: el scroll es el de la página, no un “mini viewport” dentro del aside.
+*/
 .sidebar {
     width: 320px;
     min-width: 320px;
-    padding: 16px;
-    overflow-y: auto;
-    transition: width 0.25s ease, min-width 0.25s ease, padding 0.2s ease;
-    position: sticky;
-    top: 0;
-    height: 100vh;
-    z-index: 100;
     flex-shrink: 0;
+    padding: 16px;
+    overflow-x: hidden;
+    overflow-y: visible;
+    transition: width 0.25s ease, min-width 0.25s ease, padding 0.2s ease;
+    position: relative;
+    min-height: 0;
+    align-self: stretch;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Sidebar colapsado: solo muestra el logo */
@@ -515,11 +552,47 @@ select.select-inline:focus {
     background: rgba(124, 92, 255, .10);
 }
 
-/* Main estable en flex (evita desbordes) */
+/* Main: ocupa el resto del ancho y la misma altura que el sidebar (stretch) */
 .main {
-    flex: 1;
+    flex: 1 1 auto;
     padding: 16px;
     min-width: 0;
+    min-height: 0;
+    align-self: stretch;
+    width: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+@media (min-width: 901px) {
+    .page-shell {
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+    }
+
+    .page-inner {
+        height: 100%;
+        min-height: 0;
+    }
+
+    .sidebar,
+    .main {
+        height: 100%;
+        min-height: 0;
+        scrollbar-gutter: stable;
+    }
+
+    .sidebar {
+        overflow-y: auto;
+    }
+
+    .main {
+        overflow-y: auto;
+    }
 }
 
 /* Sidebar header (marca + toggle) */
@@ -603,7 +676,7 @@ select.select-inline:focus {
 
 .admin-cards-grid {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-top: 20px;
 }
@@ -727,7 +800,9 @@ tr {
 
     /* En móvil el sidebar se convierte en un drawer lateral fijo */
     .page-inner {
+        display: flex;
         flex-direction: row;
+        flex: 1 1 auto;
         /* mantener horizontal para el drawer */
         padding: 14px;
         gap: 0;
@@ -738,6 +813,8 @@ tr {
         top: 0;
         left: 0;
         height: 100vh;
+        min-height: 100vh;
+        max-height: none;
         overflow-y: auto;
         z-index: 150;
         width: 280px;
@@ -759,6 +836,7 @@ tr {
     .main {
         width: 100%;
         flex: 1;
+        min-height: 0;
         padding: 14px;
         padding-top: 64px;
         margin-left: 0 !important;

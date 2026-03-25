@@ -59,9 +59,6 @@ const NAV_GROUPS = [
 
 export default function AdminSidebar({
     user,
-    logoSrc,
-    logoOk,
-    setLogoOk,
     uploadingLogo,
     onOpenLogoPicker,
     onLogout,
@@ -164,8 +161,7 @@ export default function AdminSidebar({
                     flexDirection: "column", 
                     background: "var(--card)", 
                     borderRight: "1px solid var(--stroke)", 
-                    overflowY: "auto", 
-                    overflowX: "hidden", 
+                    /* overflow: definido en auth.css (escritorio: visible; móvil drawer: auto) */
                     zIndex: 999,
                 }}
                 onMouseEnter={() => !isMobile && setIsHovered(true)}

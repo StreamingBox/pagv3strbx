@@ -1,11 +1,10 @@
 @echo off
-REM Arranque local: define DB_HOST, DB_USER, DB_PASS, DB_NAME (y GMAIL_* si aplica) en tu entorno.
-REM Copia start_all.example.bat y personaliza, o usa el panel de hosting para secretos.
+REM Copia este archivo a start_all.bat y rellena valores (start_all.bat no debe subirse a git con secretos).
+REM O define variables antes de ejecutar: set DB_HOST=... && start_all.bat
+
 setlocal
 if "%DB_HOST%"=="" (
-  echo ERROR: Variables DB_HOST, DB_USER, DB_PASS y DB_NAME deben estar definidas.
-  echo Ejemplo: set DB_HOST=... ^&^& set DB_USER=... ^&^& set DB_PASS=... ^&^& set DB_NAME=... ^&^& start_all.bat
-  echo O copia start_all.example.bat y edita tus valores.
+  echo ERROR: Define DB_HOST, DB_USER, DB_PASS, DB_NAME ^(y opcionalmente GMAIL_*^)
   exit /b 1
 )
 

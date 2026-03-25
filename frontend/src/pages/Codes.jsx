@@ -139,7 +139,7 @@ export default function Codes() {
             const body = { orderNumber: orderNumber.trim() };
             if (slug === "netflix") body.action = action;
             const r = await apiPost(`/api/codes/${slug}/request`, body);
-            if (r.status === 401) { navigate("/login"); return; }
+            if (r.status === 401) { navigate("/"); return; }
             if (!r.ok) {
                 const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
                 setData({ ok: false, status: r.data?.status || "error", message: r.data?.message || fallbackMessage });
@@ -170,10 +170,12 @@ export default function Codes() {
 
     return (
         <div className="page-shell">
+            <div className="page-shell-bg" aria-hidden>
             {/* Orbs decorativos nativos */}
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 {/* Sidebar */}

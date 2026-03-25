@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import * as XLSX from "xlsx";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import useAppLogout from "../hooks/useAppLogout.js";
+import { loadXlsx } from "../utils/loadXlsx.js";
 
 import { getApiBase } from "../config/apiBase.js";
 
 const API_BASE = getApiBase();
+const MotionDiv = motion.div;
 
 async function apiFetch(path, opts = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -29,7 +30,7 @@ async function apiFetch(path, opts = {}) {
 
     if (res.status === 401) {
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        window.location.href = "/";
         return null;
     }
 
@@ -122,7 +123,8 @@ function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
 
 export default function AdminAccounts() {
     const navigate = useNavigate();
-    const { user, setUser } = useAuth();
+    const { user } = useAuth();
+    const logout = useAppLogout();
 
     const [platforms, setPlatforms] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -147,17 +149,6 @@ export default function AdminAccounts() {
         () => platforms.find((p) => String(p.id) === String(platformId)),
         [platforms, platformId]
     );
-
-    async function logout() {
-        try { await apiLogout(); } catch (e) { console.error(e); }
-        setUser(null);
-        try {
-            localStorage.removeItem("user");
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
-        } catch { }
-        navigate("/", { replace: true });
-    }
 
     async function loadPlatforms() {
         setLoading(true);
@@ -225,6 +216,7 @@ export default function AdminAccounts() {
         try {
             // 1) leer excel
             const buffer = await file.arrayBuffer();
+            const XLSX = await loadXlsx();
             const wb = XLSX.read(buffer);
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
@@ -270,7 +262,7 @@ export default function AdminAccounts() {
         }
     }
 
-    function downloadTemplate() {
+    async function downloadTemplate() {
         const headers = ["platformId", "platformName", "email", "password", "profileNumber", "pin"];
         const exampleRow = {
             platformId: 1,
@@ -280,6 +272,7 @@ export default function AdminAccounts() {
             profileNumber: "1",
             pin: "1234"
         };
+        const XLSX = await loadXlsx();
 
         const wsCuentas = XLSX.utils.json_to_sheet([exampleRow], { header: headers });
 
@@ -297,8 +290,7 @@ export default function AdminAccounts() {
     }
 
     useEffect(() => {
-        loadPlatforms();
-        // eslint-disable-next-line
+        void loadPlatforms();
     }, []);
 
     useEffect(() => {
@@ -316,9 +308,11 @@ export default function AdminAccounts() {
 
     return (
         <div className="page-shell">
+            <div className="page-shell-bg" aria-hidden>
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 <AdminSidebar
@@ -333,7 +327,7 @@ export default function AdminAccounts() {
 
                 <main className="main" style={{ padding: "20px 24px 32px", maxWidth: 1000, margin: "0 auto" }}>
                     {/* ── Page header ── */}
-                    <motion.div
+                    <MotionDiv
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32, gap: 20, flexWrap: "wrap", borderBottom: "1px solid var(--stroke)", paddingBottom: 24 }}
@@ -367,16 +361,16 @@ export default function AdminAccounts() {
                             <span style={{ animation: loading ? "spin 1s linear infinite" : "none" }}>🔄</span>
                             {loading ? "Cargando..." : "Refrescar Plataformas"}
                         </button>
-                    </motion.div>
+                    </MotionDiv>
 
                     {error && (
-                        <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="error" style={{ marginBottom: 20 }}>
+                        <MotionDiv initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="error" style={{ marginBottom: 20 }}>
                             {error}
-                        </motion.div>
+                        </MotionDiv>
                     )}
 
                     {excelMsg && (
-                        <motion.div
+                        <MotionDiv
                             initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                             style={{
                                 padding: "14px 20px", borderRadius: 12, marginBottom: 24, fontSize: 13, fontWeight: 600,
@@ -386,11 +380,11 @@ export default function AdminAccounts() {
                             }}
                         >
                             {excelMsg}
-                        </motion.div>
+                        </MotionDiv>
                     )}
 
                     {/* ── EXCEL UPLOADER CARD ── */}
-                    <motion.div
+                    <MotionDiv
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px 28px", marginBottom: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}
                     >
@@ -437,10 +431,10 @@ export default function AdminAccounts() {
                             style={{ display: "none" }}
                             onChange={onPickExcel}
                         />
-                    </motion.div>
+                    </MotionDiv>
 
                     {/* ── MANUAL ENTRY CARD ── */}
-                    <motion.div
+                    <MotionDiv
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "clamp(16px, 4vw, 24px) clamp(20px, 5vw, 28px)", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}
                     >
@@ -534,7 +528,7 @@ export default function AdminAccounts() {
                                 {saving ? "Guardando..." : "✅ Agregar Cuenta"}
                             </button>
                         </div>
-                    </motion.div>
+                    </MotionDiv>
                 </main>
             </div>
         </div>

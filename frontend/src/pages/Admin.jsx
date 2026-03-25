@@ -3,33 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import AdminKpiCards from "../components/admin/AdminKpiCards.jsx";
-import { apiLogout, apiFetch } from "../api/api";
+import { apiFetch } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import "../styles/special-effects.css";
+import useAppLogout from "../hooks/useAppLogout.js";
 
 const LOGO_URL = "/api/branding/logo";
+const MotionDiv = motion.div;
 
 export default function Admin() {
     const navigate = useNavigate();
-    const { user, setUser } = useAuth();
+    const { user } = useAuth();
+    const logout = useAppLogout();
     const fileRef = useRef(null);
     const [logoOk, setLogoOk] = useState(true);
     const [logoTs, setLogoTs] = useState(Date.now());
     const [uploadingLogo, setUploadingLogo] = useState(false);
 
-    async function logout() {
-        try { await apiLogout(); } catch (e) { console.error(e); } finally {
-            setUser(null);
-            try {
-                localStorage.removeItem("user");
-                localStorage.removeItem("accessToken");
-                localStorage.removeItem("refreshToken");
-            } catch { }
-            navigate("/", { replace: true });
-        }
+    function openLogoPicker() {
+        fileRef.current?.click();
     }
-
-    function openLogoPicker() { fileRef.current?.click(); }
 
     async function onPickLogo(e) {
         const file = e.target.files?.[0];
@@ -42,14 +35,14 @@ export default function Admin() {
                 r.onerror = reject;
                 r.readAsDataURL(file);
             });
-            // apiFetch usa buildUrl() que agrega /api correctamente
+
             const { ok, data } = await apiFetch("/admin/branding/logo", {
                 method: "POST",
                 body: JSON.stringify({ dataUrl }),
             });
             if (!ok) throw new Error(data?.message || "No se pudo subir el logo.");
             setLogoOk(true);
-            setLogoTs(Date.now()); // fuerza recarga del <img> con nueva URL
+            setLogoTs(Date.now());
             alert("Logo actualizado ✅");
         } catch (err) {
             console.error("[Logo upload error]", err);
@@ -62,9 +55,19 @@ export default function Admin() {
 
     return (
         <div className="page-shell">
-            <div className="bg-grid" />
-            <div className="bg-orb orb-1" />
-            <div className="bg-orb orb-2" />
+            <div className="page-shell-bg" aria-hidden>
+                <div className="bg-grid" />
+                <div className="bg-orb orb-1" />
+                <div className="bg-orb orb-2" />
+            </div>
+
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                style={{ display: "none" }}
+                onChange={onPickLogo}
+            />
 
             <div className="page-inner">
                 <AdminSidebar
@@ -78,16 +81,8 @@ export default function Admin() {
                     onNavigate={navigate}
                 />
 
-                <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                    style={{ display: "none" }}
-                    onChange={onPickLogo}
-                />
-
                 <main className="main">
-                    <motion.div
+                    <MotionDiv
                         className="admin-page-header"
                         initial={{ opacity: 0, y: -14 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -98,7 +93,7 @@ export default function Admin() {
                             <p className="subtitle">Gestión centralizada de servicios</p>
                         </div>
 
-                        <motion.div
+                        <MotionDiv
                             className="stitch-beam-container"
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.96 }}
@@ -111,8 +106,8 @@ export default function Admin() {
                             >
                                 Ir a Dashboard
                             </button>
-                        </motion.div>
-                    </motion.div>
+                        </MotionDiv>
+                    </MotionDiv>
 
                     <AdminKpiCards onNavigate={navigate} />
                 </main>

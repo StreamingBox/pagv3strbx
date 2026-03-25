@@ -1,5 +1,8 @@
 import { motion } from "framer-motion";
-import { getPlatformLogo, getInitials } from "../../utils/platform.js";
+import { getPlatformLogo } from "../../utils/platform.js";
+
+const MotionDiv = motion.div;
+const MotionButton = motion.button;
 
 // Colores de fondo para mezclar con el fondo sólido de las imágenes PNG
 const PLATFORM_COLORS = {
@@ -58,7 +61,6 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
     return (
         <div className="catalog-grid">
             {sorted.map((item, index) => {
-                if (index === 0) console.log("Catalog Item Sample:", item);
                 const isUnlimited = item.platformType === 'correo';
                 const stock = Number(item.stock || 0);
                 const outOfStock = !isUnlimited && stock <= 0;
@@ -66,7 +68,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const color = getPlatformColor(item.platformSlug, item.platformName);
 
                 return (
-                    <motion.div
+                    <MotionDiv
                         key={item.platformPriceId}
                         className={`catalog-card${outOfStock ? " catalog-card--out" : ""}`}
                         initial={{ opacity: 0, y: 16, scale: 0.96 }}
@@ -149,7 +151,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             </div>
 
                             {outOfStock ? (
-                                <motion.button
+                                <MotionButton
                                     onClick={() => onNotifyMe && onNotifyMe(item)}
                                     className="catalog-card__btn catalog-card__btn--notify"
                                     style={{
@@ -167,9 +169,9 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     whileTap={{ scale: 0.95 }}
                                 >
                                     🔔 Avísame
-                                </motion.button>
+                                </MotionButton>
                             ) : (
-                                <motion.button
+                                <MotionButton
                                     className="catalog-card__btn"
                                     disabled={buyLoading}
                                     onClick={() => onAddToCart(item)}
@@ -184,10 +186,10 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                         <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
                                     </svg>
                                     Agregar
-                                </motion.button>
+                                </MotionButton>
                             )}
                         </div>
-                    </motion.div>
+                    </MotionDiv>
                 );
             })}
         </div>

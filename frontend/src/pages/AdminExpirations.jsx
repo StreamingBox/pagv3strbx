@@ -3,10 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
-import * as XLSX from "xlsx";
+import useAppLogout from "../hooks/useAppLogout.js";
+import { loadXlsx } from "../utils/loadXlsx.js";
 
 import { getApiBase } from "../config/apiBase.js";
 
@@ -25,7 +25,7 @@ async function apiFetch(path, opts = {}) {
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        window.location.href = "/";
         return null;
     }
     if (!res.ok) throw new Error(data?.message || "Error en la solicitud");
@@ -33,6 +33,7 @@ async function apiFetch(path, opts = {}) {
 }
 
 const LOGO_URL = "/api/branding/logo"; // or matching your global sidebar logo logic
+const MotionDiv = motion.div;
 
 function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
     const [open, setOpen] = useState(false);
@@ -113,7 +114,7 @@ function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
 }
 
 // ─── Componente de grupo por cuenta ─────────────────────────────────────────
-function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, handleRemind, navigate, revealedPasswords, togglePassword, allCollapsed }) {
+function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, handleRemind, navigate, allCollapsed }) {
     const [collapsed, setCollapsed] = useState(allCollapsed);
 
     useEffect(() => {
@@ -311,7 +312,8 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
 
 export default function AdminExpirations() {
     const navigate = useNavigate();
-    const { user, setUser } = useAuth();
+    const { user } = useAuth();
+    const logout = useAppLogout();
 
     const [items, setItems] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -331,7 +333,6 @@ export default function AdminExpirations() {
     const [limit, setLimit] = useState(20);
 
     const [platforms, setPlatforms] = useState([]);
-    const [revealedPasswords, setRevealedPasswords] = useState({}); // id -> bool
     const [allCollapsed, setAllCollapsed] = useState(false);
 
     const [remindModalOpen, setRemindModalOpen] = useState(false);
@@ -339,21 +340,6 @@ export default function AdminExpirations() {
     const [remindPhone, setRemindPhone] = useState("");
     const [reminding, setReminding] = useState(false);
     const [remindMsg, setRemindMsg] = useState({ type: "", text: "" });
-
-    function togglePassword(id) {
-        setRevealedPasswords(prev => ({ ...prev, [id]: !prev[id] }));
-    }
-
-    async function logout() {
-        try { await apiLogout(); } catch (e) { console.error(e); }
-        setUser(null);
-        try {
-            localStorage.removeItem("user");
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
-        } catch { }
-        navigate("/", { replace: true });
-    }
 
     useEffect(() => {
         let mounted = true;
@@ -431,6 +417,7 @@ export default function AdminExpirations() {
                 ATENDIDO: o.is_attended ? "SÍ" : "NO"
             }));
 
+            const XLSX = await loadXlsx();
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(excelData);
             XLSX.utils.book_append_sheet(wb, ws, "Vencimientos");
@@ -481,16 +468,18 @@ export default function AdminExpirations() {
         const finalPhone = remindPhone.trim();
 
         try {
-            const res = await apiFetch(`/orders/${remindItem.id}/remind-whatsapp`, { 
+            const data = await apiFetch(`/orders/${remindItem.id}/remind-whatsapp`, {
                 method: "POST",
-                body: JSON.stringify({ whatsappPhone: finalPhone }) 
+                body: JSON.stringify({ whatsappPhone: finalPhone })
             });
-            if (res && res.ok) {
-                setRemindMsg({ type: "success", text: "✅ Recordatorio enviado exitosamente a WhatsApp." });
+            if (data?.ok) {
+                setRemindMsg({ type: "success", text: data?.message || "✅ Recordatorio enviado exitosamente a WhatsApp." });
                 setItems(prev => prev.map(o => o.id === remindItem.id ? { ...o, reminder_sent: 1, whatsapp_phone: finalPhone } : o));
                 setTimeout(() => {
                     setRemindModalOpen(false);
                 }, 1500);
+            } else {
+                setRemindMsg({ type: "error", text: "❌ No se pudo confirmar el envío." });
             }
         } catch (e) {
             setRemindMsg({ type: "error", text: "❌ " + (e.message || "Error enviando recordatorio.") });
@@ -571,9 +560,11 @@ export default function AdminExpirations() {
 
     return (
         <div className="page-shell">
+            <div className="page-shell-bg" aria-hidden>
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 <AdminSidebar
@@ -588,7 +579,7 @@ export default function AdminExpirations() {
 
                 <main className="main" style={{ padding: "20px 24px 32px" }}>
                     {/* ── Page header ── */}
-                    <motion.div
+                    <MotionDiv
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, gap: 20, flexWrap: "wrap", borderBottom: "1px solid var(--stroke)", paddingBottom: 24 }}
@@ -619,10 +610,10 @@ export default function AdminExpirations() {
                             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>Total Registros</div>
                             <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)", marginLeft: 8 }}>{totalItems}</div>
                         </div>
-                    </motion.div>
+                    </MotionDiv>
 
                     {/* ── Filters Card ── */}
-                    <motion.div
+                    <MotionDiv
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "16px 20px", marginBottom: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
                     >
@@ -676,7 +667,7 @@ export default function AdminExpirations() {
                                 <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                             </div>
                         </div>
-                    </motion.div>
+                    </MotionDiv>
 
                     {error && <div className="error" style={{ marginBottom: 16 }}>{error}</div>}
 
@@ -784,8 +775,6 @@ export default function AdminExpirations() {
                                                 toggleAttended={toggleAttended}
                                                 handleRemind={openRemindModal}
                                                 navigate={navigate}
-                                                revealedPasswords={revealedPasswords}
-                                                togglePassword={togglePassword}
                                                 allCollapsed={allCollapsed}
                                             />
                                         ));
@@ -851,7 +840,7 @@ export default function AdminExpirations() {
                         zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
                         padding: 20
                     }}>
-                        <motion.div
+                        <MotionDiv
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
@@ -925,7 +914,7 @@ export default function AdminExpirations() {
                                     {reminding ? "Enviando..." : "Enviar Recordatorio"}
                                 </button>
                             </div>
-                        </motion.div>
+                        </MotionDiv>
                     </div>
                 )}
             </AnimatePresence>

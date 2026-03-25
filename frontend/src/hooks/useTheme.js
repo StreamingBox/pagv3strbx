@@ -1,28 +1,28 @@
 import { useEffect, useState } from "react";
 
+function getStoredTheme() {
+    try {
+        const saved = localStorage.getItem("sb-theme");
+        return saved === "light" || saved === "dark" ? saved : "dark";
+    } catch {
+        return "dark";
+    }
+}
+
 export default function useTheme() {
-    const [theme, setTheme] = useState("dark");
+    const [theme, setTheme] = useState(getStoredTheme);
 
     useEffect(() => {
-        // 1) Preferencia guardada
-        const saved = localStorage.getItem("sb-theme");
-        if (saved === "light" || saved === "dark") {
-            setTheme(saved);
-            document.documentElement.setAttribute("data-theme", saved);
-            return;
+        document.documentElement.setAttribute("data-theme", theme);
+        try {
+            localStorage.setItem("sb-theme", theme);
+        } catch {
+            /* ignore theme persistence failures */
         }
-
-        // 2) App siempre inicia en dark por defecto (plataforma de streaming premium)
-        const defaultTheme = "dark";
-
-        setTheme(defaultTheme);
-        document.documentElement.setAttribute("data-theme", defaultTheme);
-    }, []);
+    }, [theme]);
 
     function setThemeAndPersist(next) {
         setTheme(next);
-        localStorage.setItem("sb-theme", next);
-        document.documentElement.setAttribute("data-theme", next);
     }
 
     function toggleTheme() {

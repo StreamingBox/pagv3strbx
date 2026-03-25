@@ -9,15 +9,11 @@ const { sendPasswordResetEmail } = require("../services/mailService");
 const router = express.Router();
 
 /**
- * Si tu API pública está detrás de /api (Nginx: /api -> backend),
- * entonces PUBLIC_API_PREFIX debe ser "/api" en producción.
- * En local normalmente debe ser "" (vacío).
- *
- * Producción (.env): PUBLIC_API_PREFIX=/api
- * Local: PUBLIC_API_PREFIX=
+ * Auth siempre está montado bajo /api/auth en este backend.
+ * La cookie refreshToken debe usar el mismo path para que el navegador
+ * la envíe a /api/auth/refresh tanto en local como en producción.
  */
-const PUBLIC_API_PREFIX = (process.env.PUBLIC_API_PREFIX || "").trim();
-const REFRESH_COOKIE_PATH = `${PUBLIC_API_PREFIX}/auth`.replace(/\/+/g, "/");
+const REFRESH_COOKIE_PATH = "/api/auth";
 const PASSWORD_RESET_TOKEN_MINUTES = parseInt(process.env.PASSWORD_RESET_TOKEN_MINUTES || "30", 10);
 
 function cookieOpts(req, maxAgeMs, path = "/") {

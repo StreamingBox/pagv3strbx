@@ -7,14 +7,9 @@ import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import { getApiBase } from "../../config/apiBase.js";
 
 const API_BASE = getApiBase();
-const LOGO_URL = "/api/branding/logo";
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
-
-// Obtiene las iniciales del nombre/email del usuario
-function getAvatarInitials(user) {
-    const name = user?.name || user?.email || "U";
-    return name.slice(0, 2).toUpperCase();
-}
+const MotionButton = motion.button;
+const MotionSpan = motion.span;
 
 // Nav items del sidebar
 const NAV_ITEMS = [
@@ -28,10 +23,9 @@ const NAV_ITEMS = [
 
 export default function Sidebar({
     user, wallet, cartCount,
-    onOpenCart, onGoOrders, onGoWallet, onGoAnalytics, onGoAdmin,
-    onGoCodes, onGoCodeLogs, onGoExpirations, onGoHome, onLogout,
+    onOpenCart, onGoOrders, onGoAnalytics, onGoAdmin,
+    onGoCodes, onGoExpirations, onGoHome, onLogout,
 }) {
-    const [logoOk, setLogoOk] = useState(true);
     const [collapsed, setCollapsed] = useState(isMobile());
     const [expirationsCount, setExpirationsCount] = useState(0);
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
@@ -196,7 +190,7 @@ export default function Sidebar({
                         )}
 
                         {/* Botón Carrito — prominente */}
-                        <motion.button
+                        <MotionButton
                             className="sb-cart-btn"
                             onClick={() => nav(onOpenCart)}
                             whileHover={{ scale: 1.03, y: -1 }}
@@ -207,7 +201,7 @@ export default function Sidebar({
                             <span>Carrito</span>
                             <AnimatePresence>
                                 {cartCount > 0 && (
-                                    <motion.span
+                                    <MotionSpan
                                         className="sb-cart-badge"
                                         key="badge"
                                         initial={{ scale: 0 }}
@@ -216,10 +210,10 @@ export default function Sidebar({
                                         transition={{ type: "spring", stiffness: 500, damping: 20 }}
                                     >
                                         {cartCount}
-                                    </motion.span>
+                                    </MotionSpan>
                                 )}
                             </AnimatePresence>
-                        </motion.button>
+                        </MotionButton>
 
                         {/* Divisor */}
                         <div className="sb-divider" />
@@ -230,7 +224,7 @@ export default function Sidebar({
                                 const isActive = activePath === item.path;
                                 const handler = actionMap[item.key];
                                 return (
-                                    <motion.button
+                                    <MotionButton
                                         key={item.key}
                                         className={`sb-nav-item${isActive ? " sb-nav-item--active" : ""}`}
                                         onClick={() => handler && nav(handler)}
@@ -262,17 +256,17 @@ export default function Sidebar({
                                         )}
 
                                         {isActive && (
-                                            <motion.span
+                                            <MotionSpan
                                                 className="sb-nav-active-dot"
                                                 layoutId="activeNavDot"
                                             />
                                         )}
-                                    </motion.button>
+                                    </MotionButton>
                                 );
                             })}
 
                             {activePath !== "/dashboard" && (
-                                <motion.button
+                                <MotionButton
                                     className="sb-nav-item"
                                     onClick={() => nav(onGoHome)}
                                     whileHover={{ x: 4 }}
@@ -281,13 +275,13 @@ export default function Sidebar({
                                 >
                                     <span className="sb-nav-icon">🎯</span>
                                     <span className="sb-nav-label">Plataformas</span>
-                                </motion.button>
+                                </MotionButton>
                             )}
 
                             {isAdmin && (
                                 <>
                                     <div className="sb-divider" style={{ margin: "8px 0" }} />
-                                    <motion.button
+                                    <MotionButton
                                         className="sb-nav-item"
                                         onClick={() => nav(onGoAdmin)}
                                         whileHover={{ x: 4 }}
@@ -296,21 +290,21 @@ export default function Sidebar({
                                     >
                                         <span className="sb-nav-icon">⚙️</span>
                                         <span className="sb-nav-label">Panel Admin</span>
-                                    </motion.button>
+                                    </MotionButton>
                                 </>
                             )}
                         </nav>
 
                         {/* Divisor + Cerrar sesión al fondo */}
                         <div className="sb-divider" />
-                        <motion.button
+                        <MotionButton
                             className="sb-logout-btn"
                             onClick={onLogout}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.97 }}
                         >
                             <span>↩</span> Cerrar sesión
-                        </motion.button>
+                        </MotionButton>
 
                         {/* Status online */}
                         <div className="sb-status">

@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../api/api";
 import "../../styles/user-notifications.css";
+
+const MotionDiv = motion.div;
 
 export default function UserNotifications() {
     const [open, setOpen] = useState(false);
@@ -9,13 +11,31 @@ export default function UserNotifications() {
     const [unreadCount, setUnreadCount] = useState(0);
     const popupRef = useRef(null);
 
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const res = await apiFetch("/user/notifications");
+            if (res.ok && Array.isArray(res.data)) {
+                setNotifications(res.data);
+                setUnreadCount(res.data.filter(n => !n.is_read).length);
+            }
+        } catch {
+            /* ignore notification polling failures */
+        }
+    }, []);
+
     // Fetch initial notifications
     useEffect(() => {
-        fetchNotifications();
-        // Poll every 3 minutes
-        const timer = setInterval(fetchNotifications, 180000);
-        return () => clearInterval(timer);
-    }, []);
+        const initialTimer = window.setTimeout(() => {
+            void fetchNotifications();
+        }, 0);
+        const timer = setInterval(() => {
+            void fetchNotifications();
+        }, 180000);
+        return () => {
+            window.clearTimeout(initialTimer);
+            clearInterval(timer);
+        };
+    }, [fetchNotifications]);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -27,16 +47,6 @@ export default function UserNotifications() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
-
-    async function fetchNotifications() {
-        try {
-            const res = await apiFetch("/user/notifications");
-            if (res.ok && Array.isArray(res.data)) {
-                setNotifications(res.data);
-                setUnreadCount(res.data.filter(n => !n.is_read).length);
-            }
-        } catch { /* ignore silently */ }
-    }
 
     async function markAsRead(id) {
         try {
@@ -70,7 +80,7 @@ export default function UserNotifications() {
 
             <AnimatePresence>
                 {open && (
-                    <motion.div
+                    <MotionDiv
                         className="user-notif-popup"
                         initial={{ opacity: 0, y: 10, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -110,7 +120,7 @@ export default function UserNotifications() {
                                 ))
                             )}
                         </div>
-                    </motion.div>
+                    </MotionDiv>
                 )}
             </AnimatePresence>
         </div>

@@ -56,7 +56,13 @@ function RedirectByRole() {
 ========================================== */
 export default function App() {
     return (
-        <Suspense fallback={null}>
+        <Suspense
+            fallback={
+                <div className="page-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
+                    <div className="spinner" aria-label="Cargando" role="status" />
+                </div>
+            }
+        >
             <Routes>
                 {/* ================= Login / Register ================= */}
                 <Route path="/" element={<Auth />} />

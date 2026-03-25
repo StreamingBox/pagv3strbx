@@ -264,7 +264,8 @@
         min-width: 100%;
     }
 
+    /* Mantener mismo mínimo que desktop; scroll horizontal en .aclTableWrap */
     .aclTable {
-        min-width: 1050px;
+        min-width: 980px;
     }
 }

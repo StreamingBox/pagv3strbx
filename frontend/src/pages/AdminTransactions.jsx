@@ -43,9 +43,11 @@ export default function AdminTransactions() {
 
     return (
         <div className="page-shell">
+            <div className="page-shell-bg" aria-hidden>
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 <AdminSidebar

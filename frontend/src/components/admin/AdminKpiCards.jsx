@@ -113,7 +113,6 @@ export default function AdminKpiCards({ onNavigate }) {
                                         "--beam-color": border,
                                         cursor: "pointer",
                                         display: "flex",
-                                        height: "100%"
                                     }}
                                 >
                                     <div

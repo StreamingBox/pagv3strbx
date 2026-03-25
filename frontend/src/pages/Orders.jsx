@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
-import { apiLogout, apiGet } from "../api/api";
+import { apiGet } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-
+import useAppLogout from "../hooks/useAppLogout.js";
 
 export default function Orders() {
-    const { user, setUser } = useAuth();
+    const { user } = useAuth();
     const navigate = useNavigate();
+    const logout = useAppLogout();
 
     const [loading, setLoading] = useState(true);
     const [orders, setOrders] = useState([]);
     const [platforms, setPlatforms] = useState([]);
     const [error, setError] = useState("");
 
-    // ✅ paginación
     const [page, setPage] = useState(1);
     const [limit] = useState(5);
     const [total, setTotal] = useState(0);
@@ -26,25 +26,7 @@ export default function Orders() {
         platformId: "",
         q: "",
     });
-
-    async function logout() {
-        try {
-            await apiLogout();
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setUser(null);
-
-            // limpieza extra
-            try {
-                localStorage.removeItem("user");
-                localStorage.removeItem("accessToken");
-                localStorage.removeItem("refreshToken");
-            } catch { }
-
-            navigate("/", { replace: true });
-        }
-    }
+    const filtersRef = useRef(filters);
 
     function formatBogota(dt) {
         if (!dt) return "-";
@@ -78,20 +60,20 @@ export default function Orders() {
             const res = await apiGet("/platforms");
             if (res.ok && Array.isArray(res.data)) setPlatforms(res.data);
         } catch {
-            // ignore
+            /* ignore platform filter failures */
         }
     }
 
-    async function loadOrders(nextPage = page) {
+    const loadOrders = useCallback(async (nextPage = page, nextFilters = filtersRef.current) => {
         setLoading(true);
         setError("");
 
         try {
             const qs = new URLSearchParams();
-            if (filters.from) qs.set("from", filters.from);
-            if (filters.to) qs.set("to", filters.to);
-            if (filters.platformId) qs.set("platformId", filters.platformId);
-            if (filters.q) qs.set("q", filters.q);
+            if (nextFilters.from) qs.set("from", nextFilters.from);
+            if (nextFilters.to) qs.set("to", nextFilters.to);
+            if (nextFilters.platformId) qs.set("platformId", nextFilters.platformId);
+            if (nextFilters.q) qs.set("q", nextFilters.q);
 
             qs.set("page", String(nextPage));
             qs.set("limit", String(limit));
@@ -104,7 +86,6 @@ export default function Orders() {
             if (data && typeof data === "object" && Array.isArray(data.orders)) {
                 setOrders(data.orders);
                 setTotal(Number(data.total || 0));
-                // Eliminado setPage para no tener feedback loop con useEffect
             } else if (Array.isArray(data)) {
                 setOrders(data);
                 setTotal(data.length);
@@ -119,20 +100,19 @@ export default function Orders() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [limit, page]);
 
-    // carga inicial
     useEffect(() => {
-        loadPlatforms();
-        // loadOrders(page) se disparará por el useEffect de [page]
-        // eslint-disable-next-line
+        void loadPlatforms();
     }, []);
 
-    // recarga cuando cambie page
     useEffect(() => {
-        loadOrders(page);
-        // eslint-disable-next-line
-    }, [page]);
+        filtersRef.current = filters;
+    }, [filters]);
+
+    useEffect(() => {
+        void loadOrders(page);
+    }, [page, loadOrders]);
 
     const totalOrdersShown = orders.length;
     const totalItemsShown = useMemo(() => orders.reduce((sum, o) => sum + (o.items?.length || 0), 0), [orders]);
@@ -142,16 +122,18 @@ export default function Orders() {
 
     return (
         <div className="page-shell">
-            <div className="bg-orb orb-1" />
-            <div className="bg-orb orb-2" />
-            <div className="bg-grid" />
+            <div className="page-shell-bg" aria-hidden>
+                <div className="bg-orb orb-1" />
+                <div className="bg-orb orb-2" />
+                <div className="bg-grid" />
+            </div>
 
             <div className="page-inner">
                 <Sidebar
                     user={user}
                     wallet={null}
                     cartCount={0}
-                    onOpenCart={() => { }}
+                    onOpenCart={() => {}}
                     onGoOrders={() => navigate("/orders")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
@@ -163,7 +145,6 @@ export default function Orders() {
                     onLogout={logout}
                 />
 
-                {/* MAIN */}
                 <main className="main">
                     <h1 style={{ margin: 0 }}>Historial de compras</h1>
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
@@ -226,7 +207,7 @@ export default function Orders() {
                                     className="btn"
                                     onClick={() => {
                                         setPage(1);
-                                        loadOrders(1);
+                                        void loadOrders(1);
                                     }}
                                 >
                                     Aplicar filtros
@@ -237,7 +218,9 @@ export default function Orders() {
                                     onClick={() => {
                                         setFilters({ from: "", to: "", platformId: "", q: "" });
                                         setPage(1);
-                                        setTimeout(() => loadOrders(1), 0);
+                                        setTimeout(() => {
+                                            void loadOrders(1);
+                                        }, 0);
                                     }}
                                 >
                                     Limpiar
@@ -275,7 +258,6 @@ export default function Orders() {
                         </div>
                     </div>
 
-                    {/* Controles paginación */}
                     <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                         <button
                             className="btn-ghost"
@@ -285,7 +267,7 @@ export default function Orders() {
                             ⬅ Anterior
                         </button>
                         <button className="btn" disabled={!canNext || loading} onClick={() => setPage((p) => p + 1)}>
-                            Siguiente ➡️
+                            Siguiente ➡
                         </button>
                     </div>
 

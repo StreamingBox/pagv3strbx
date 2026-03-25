@@ -16,7 +16,10 @@ function getImapConfig() {
             port: 993,
             tls: true,
             authTimeout: 10000,
-            tlsOptions: { rejectUnauthorized: false }, // Permitir proxy/self-signed certs (e.g. en entorno local/desarrollo)
+            // Por defecto verificación TLS estricta. Solo en desarrollo: IMAP_TLS_INSECURE=true
+            tlsOptions: {
+                rejectUnauthorized: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() !== "true",
+            },
         },
     };
 }

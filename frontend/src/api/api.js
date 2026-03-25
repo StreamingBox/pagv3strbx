@@ -15,7 +15,7 @@ async function safeJson(res) {
  * Une API_BASE + path sin duplicar /api
  * - si API_BASE termina en "/api" y path empieza con "/api", se elimina uno
  */
-function buildUrl(path) {
+export function buildApiUrl(path) {
     const base = String(API_BASE || "").replace(/\/+$/, ""); // sin trailing /
     let p = String(path || "");
     p = p.startsWith("/") ? p : `/${p}`;
@@ -28,10 +28,20 @@ function buildUrl(path) {
     return `${base}${p}`;
 }
 
+export function clearLegacySession() {
+    try {
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        localStorage.removeItem("user");
+    } catch {
+        /* ignore legacy storage cleanup failures */
+    }
+}
+
 /** Refresh cookies HttpOnly */
 async function tryRefresh() {
     try {
-        const r = await fetch(buildUrl("/auth/refresh"), {
+        const r = await fetch(buildApiUrl("/auth/refresh"), {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
@@ -46,7 +56,7 @@ async function tryRefresh() {
  * apiFetch: fetch con cookies + retry si 401
  */
 export async function apiFetch(path, options = {}) {
-    const url = buildUrl(path);
+    const url = buildApiUrl(path);
 
     const res1 = await fetch(url, {
         ...options,
@@ -105,7 +115,7 @@ export async function apiDelete(path) {
 }
 
 export async function apiLogout() {
-    const res = await fetch(buildUrl("/auth/logout"), {
+    const res = await fetch(buildApiUrl("/auth/logout"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

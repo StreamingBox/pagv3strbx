@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import SalesChart, { MONTH_COLORS } from "./SalesChart";
+import SalesChart from "./SalesChart";
 import DistributionChart from "./DistributionChart";
 import WeeklyChart from "./WeeklyChart";
 import { apiGet } from "../../api/api";
+import { MONTH_COLORS } from "./chartPalette.js";
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -48,6 +49,17 @@ const TOP_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f43f5e", "#f59e0b"];
 
 function monthKey(year, month) {
     return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+function getApiPayload(res) {
+    return res?.data ?? res ?? {};
+}
+
+function assertApiOk(res, fallbackMessage) {
+    if (res?.ok === false) {
+        throw new Error(res?.data?.message || fallbackMessage);
+    }
+    return getApiPayload(res);
 }
 
 /* ── InsightChip ── */
@@ -399,29 +411,55 @@ function UserAnalyticsContent({ admin }) {
         if (admin) {
             apiGet("/admin/users?limit=1000")
                 .then(res => {
-                    const uList = res?.data?.items || res?.items || [];
+                    const data = assertApiOk(res, "No se pudo cargar la lista de usuarios.");
+                    const uList = data?.items || [];
                     setUsers(Array.isArray(uList) ? uList : []);
                 })
-                .catch(console.error);
+                .catch(err => {
+                    console.error(err);
+                    setError(err.message || "No se pudo cargar la lista de usuarios.");
+                });
         }
     }, [admin]);
 
     useEffect(() => {
+        let cancelled = false;
+        setError("");
+        setSelectedKeys([]);
+        setMonthsData([]);
         setLoadingMonths(true);
-        apiGet("/analytics/available-months")
+        let url = "/analytics/available-months";
+        if (admin && selectedUserIds.length === 0) url += "?global=true";
+        if (admin && selectedUserIds.length > 0) url += `?userIds=${selectedUserIds.join(",")}`;
+
+        apiGet(url)
             .then(res => {
-                const monthsList = Array.isArray(res?.months) ? res.months : (Array.isArray(res?.data?.months) ? res.data.months : []);
+                const data = assertApiOk(res, "No se pudieron cargar los meses con ventas.");
+                const monthsList = Array.isArray(data?.months) ? data.months : [];
+                if (cancelled) return;
                 setAllHistorical(monthsList);
                 if (monthsList.length > 0) {
                     const years = [...new Set(monthsList.map(m => m.year))].sort((a, b) => b - a);
                     setAvailableYears(years);
-                    if (!years.includes(year) && years.length > 0) setYear(years[0]);
+                    if (years.length > 0) setYear(prevYear => (years.includes(prevYear) ? prevYear : years[0]));
+                } else {
+                    setAvailableYears([currentYear]);
                 }
             })
-            .catch(() => setAllHistorical([]))
-            .finally(() => setLoadingMonths(false));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+            .catch(err => {
+                if (cancelled) return;
+                setAllHistorical([]);
+                setAvailableYears([currentYear]);
+                setError(err.message || "No se pudieron cargar los meses con ventas.");
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingMonths(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [admin, currentYear, selectedUserIds]);
 
     const filteredMonths = allHistorical.filter(m => m.year === year);
 
@@ -441,7 +479,8 @@ function UserAnalyticsContent({ admin }) {
                 const primaryMonth = selectedKeys[0];
                 const promises = selectedUserIds.map(async (uId) => {
                     const res = await apiGet(`/analytics/sales/multi?months=${primaryMonth}&userIds=${uId}`);
-                    const list = Array.isArray(res?.months) ? res.months : (Array.isArray(res?.data?.months) ? res.data.months : []);
+                    const data = assertApiOk(res, "No se pudieron cargar las ventas comparadas.");
+                    const list = Array.isArray(data?.months) ? data.months : [];
                     const monthData = list[0];
                     if (!monthData) return null;
                     const userObj = users.find(u => u.id === uId);
@@ -455,7 +494,8 @@ function UserAnalyticsContent({ admin }) {
                 if (admin && selectedUserIds.length === 0) url += `&global=true`;
                 if (admin && selectedUserIds.length === 1) url += `&userIds=${selectedUserIds[0]}`;
                 const res = await apiGet(url);
-                const list = Array.isArray(res?.months) ? res.months : (Array.isArray(res?.data?.months) ? res.data.months : []);
+                const data = assertApiOk(res, "No se pudieron cargar las ventas.");
+                const list = Array.isArray(data?.months) ? data.months : [];
                 const withLabel = list.map(m => ({ ...m, daily: m.daily || [], distribution: Array.isArray(m.distribution) ? m.distribution : [], label: `${MONTH_SHORT[m.month]} ${m.year}` }));
                 setMonthsData(withLabel);
             }

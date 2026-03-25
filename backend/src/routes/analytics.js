@@ -146,6 +146,11 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             pool.query(curDistQuery, [userId, targetYear, targetMonth]),
         ]);
 
+        const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
+        const prevTotal = prevRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
+        const curOrders = curRows.reduce((s, r) => s + Number(r.orders || 0), 0);
+        const prevOrders = prevRows.reduce((s, r) => s + Number(r.orders || 0), 0);
+
         return res.json({
             current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders, distribution: curDistRows },
             previous: { year: prevYear, month: prevMonth, daily: prevRows, total: prevTotal, orders: prevOrders },
@@ -158,27 +163,50 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
 
 
 /**
- * Meses disponibles del usuario: GET /analytics/available-months?year=
- * Devuelve lista de { year, month, total } donde el usuario tiene órdenes.
+ * Meses disponibles: GET /analytics/available-months?year=&global=true&userIds=1,2
+ * - Usuario normal: solo sus órdenes
+ * - Admin global: todas las órdenes
+ * - Admin filtrado: órdenes de los userIds solicitados
  */
 router.get("/analytics/available-months", requireAuth, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const actingUser = req.user;
+        const isAdmin = actingUser.role === "admin";
         const { year } = req.query;
         const parsedYear = year ? parseInt(year, 10) : null;
+
+        let userFilter = "AND user_id = ?";
+        const params = [actingUser.id];
+
+        if (isAdmin) {
+            if (req.query.global === "true") {
+                userFilter = "";
+                params.length = 0;
+            } else if (req.query.userIds) {
+                const ids = req.query.userIds
+                    .split(",")
+                    .map(id => Number(id.trim()))
+                    .filter(id => id > 0);
+
+                if (ids.length > 0) {
+                    userFilter = `AND user_id IN (${ids.map(() => "?").join(",")})`;
+                    params.length = 0;
+                    params.push(...ids);
+                }
+            }
+        }
+
         const yearFilter = parsedYear && Number.isFinite(parsedYear)
             ? "AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?"
             : "";
-        const params = parsedYear && Number.isFinite(parsedYear)
-            ? [userId, parsedYear]
-            : [userId];
+        if (parsedYear && Number.isFinite(parsedYear)) params.push(parsedYear);
 
         const [rows] = await pool.query(`
             SELECT YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) as year,
                    MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) as month,
                    SUM(total) as total, COUNT(id) as orders
             FROM orders
-            WHERE user_id = ? ${yearFilter}
+            WHERE 1=1 ${userFilter} ${yearFilter}
             GROUP BY YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)), MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY year DESC, month DESC
         `, params);

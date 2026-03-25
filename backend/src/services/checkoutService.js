@@ -2,6 +2,7 @@ const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
+const { sendOrderDeliveryEmail } = require("./mailService");
 
 async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, recordProfit, profitAmount }) {
     const platformPriceIds = items
@@ -224,13 +225,13 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
         await conn.commit();
 
         // 8) Notificación Telegram (fire-and-forget, no bloquea)
-        const sellerInfo = await pool.query(
+        const buyerInfo = await pool.query(
             "SELECT name, email FROM users WHERE id = ? LIMIT 1", [userId]
         ).then(([r]) => r[0]).catch(() => null);
 
         const { notifySale } = require("./telegramBot");
         notifySale({
-            seller: sellerInfo?.name || sellerInfo?.email || `ID ${userId}`,
+            seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
             platforms: plans.map(p => p.platform_name),
             total,
             currency,
@@ -239,6 +240,18 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             newBalance,
             orderCode,
         }).catch(e => console.error("[TelegramBot] notifySale error:", e?.message));
+
+        if (buyerInfo?.email) {
+            sendOrderDeliveryEmail({
+                to: buyerInfo.email,
+                name: buyerInfo.name,
+                orderCode,
+                total,
+                currency,
+                results,
+                paymentMethod: "Balance de cuenta",
+            }).catch(e => console.error("[mail] sendOrderDeliveryEmail error:", e?.message || e));
+        }
 
         // 9) Mensaje WhatsApp
         const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";

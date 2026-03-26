@@ -70,6 +70,15 @@ function assertJsonCredentialFetchAllowed(req, token) {
     if (referer.includes(needle)) {
         return true;
     }
+    // Algunos navegadores móviles o configuraciones de privacidad no envían
+    // Sec-Fetch-Site ni Referer en fetch same-origin. Si la petición parece
+    // venir de un navegador real y no trae Origin cruzado, permitimos el JSON.
+    const origin = String(req.get("Origin") || "");
+    const userAgent = String(req.get("User-Agent") || "");
+    const looksLikeBrowser = /\bmozilla\/|applewebkit|chrome\/|safari\/|firefox\/|edg\//i.test(userAgent);
+    if (!origin && looksLikeBrowser) {
+        return true;
+    }
     return false;
 }
 

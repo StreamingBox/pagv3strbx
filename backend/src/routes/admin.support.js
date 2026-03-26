@@ -3,7 +3,6 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 
 const router = express.Router();
 
@@ -16,29 +15,29 @@ const router = express.Router();
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
 
-function buildReplacementWhatsappMessage({ platformName, account, expiresAt, token, baseUrl }) {
+function buildReplacementWhatsappMessage({ orderCode, subscriptionId, platformName, account, expiresAt, token, baseUrl }) {
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
     const credentialUrl = token ? `${cleanBaseUrl}/s/${token}` : "";
     const lines = [
-        "Tu cuenta ha sido cambiada por:",
+        `🧾 Orden: ${orderCode || "—"}`,
+        "📦 Reemplazo aplicado (1 item)",
         "",
-        `Plataforma: ${platformName || "—"}`,
+        `🆔 ID: ${subscriptionId || "—"} | 🖥️ ${platformName || "—"}`,
     ];
 
-    if (account?.email) lines.push(`Correo: ${account.email}`);
-    if (account?.password) lines.push(`Contraseña: ${account.password}`);
+    if (account?.email) lines.push(`📧 Correo: ${account.email}`);
+    if (account?.password) lines.push(`🔑 Contraseña: ${account.password}`);
     if (account?.profile_number !== null && account?.profile_number !== undefined && String(account.profile_number).trim() !== "") {
-        lines.push(`Perfil: ${account.profile_number}`);
+        lines.push(`👤 Perfil: ${account.profile_number}`);
     }
     if (account?.pin !== null && account?.pin !== undefined && String(account.pin).trim() !== "") {
-        lines.push(`Pin: ${account.pin}`);
+        lines.push(`🔢 Pin: ${account.pin}`);
     }
     if (expiresAt) {
-        lines.push(`Expira: ${new Date(expiresAt).toISOString().slice(0, 10)}`);
+        lines.push(`📅 Expira: ${new Date(expiresAt).toISOString().slice(0, 10)}`);
     }
     if (credentialUrl) {
-        lines.push("");
-        lines.push(`Consulta tu acceso aquí: ${credentialUrl}`);
+        lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
     }
 
     return lines.join("\n").trim();
@@ -100,24 +99,19 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
     }
 
     const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
-
-    const message = buildWhatsappMessage({
+    const message = buildReplacementWhatsappMessage({
         orderCode: r.order_code || `#${r.order_id || "-"}`,
+        subscriptionId: r.subscription_id,
+        platformName: r.platform_name,
+        account: {
+            email: r.email,
+            password: r.password,
+            pin: r.pin,
+            profile_number: r.profile_number,
+        },
+        expiresAt: r.expires_at,
+        token,
         baseUrl,
-        results: [
-            {
-                subscriptionId: r.subscription_id,
-                plan: { platform_name: r.platform_name, platform_slug: r.platform_slug },
-                account: {
-                    email: r.email,
-                    password: r.password,
-                    pin: r.pin,
-                    profile_number: r.profile_number,
-                },
-                expiresAt: new Date(r.expires_at),
-                token,
-            },
-        ],
     });
 
     return {
@@ -260,6 +254,8 @@ router.post(
             const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
             if (info) {
                 info.message = buildReplacementWhatsappMessage({
+                    orderCode: info.orderCode || `#${info.orderId || "-"}`,
+                    subscriptionId: info.subscriptionId,
                     platformName: info.platformName,
                     account: info.account,
                     expiresAt: info.expiresAt,

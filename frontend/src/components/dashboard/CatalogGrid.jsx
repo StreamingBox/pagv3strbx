@@ -36,7 +36,7 @@ function getPlatformColor(slug, name) {
     return PLATFORM_COLORS.default;
 }
 
-export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe }) {
+export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
         const aUnlim = a.platformType === 'correo';
@@ -64,6 +64,8 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const isUnlimited = item.platformType === 'correo';
                 const stock = Number(item.stock || 0);
                 const outOfStock = !isUnlimited && stock <= 0;
+                const inCartCount = cartCountByPlatformPriceId?.get(item.platformPriceId) || 0;
+                const stockReached = !isUnlimited && inCartCount >= stock;
                 const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
                 const color = getPlatformColor(item.platformSlug, item.platformName);
 
@@ -132,7 +134,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                         ? "Stock: ∞"
                                         : outOfStock
                                             ? "Sin Stock"
-                                            : `Stock: ${stock}`
+                                            : `Stock: ${Math.max(stock - inCartCount, 0)}`
                                     }
                                 </span>
                             </div>
@@ -173,11 +175,12 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             ) : (
                                 <MotionButton
                                     className="catalog-card__btn"
-                                    disabled={buyLoading}
+                                    disabled={buyLoading || stockReached}
                                     onClick={() => onAddToCart(item)}
-                                    whileHover={{ scale: 1.08 }}
-                                    whileTap={{ scale: 0.92 }}
+                                    whileHover={stockReached ? {} : { scale: 1.08 }}
+                                    whileTap={stockReached ? {} : { scale: 0.92 }}
                                     transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                                    title={stockReached ? "Ya agregaste todo el stock disponible" : "Agregar al carrito"}
                                 >
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
                                         stroke="currentColor" strokeWidth="2.5"
@@ -185,7 +188,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                         <circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" />
                                         <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
                                     </svg>
-                                    Agregar
+                                    {stockReached ? "Límite" : "Agregar"}
                                 </MotionButton>
                             )}
                         </div>

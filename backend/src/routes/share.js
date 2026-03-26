@@ -105,6 +105,11 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
   try {
     const { token } = req.params;
 
+    // Esta página necesita poder hacer un fetch same-origin a su versión JSON.
+    // El helmet global usa "no-referrer", lo que impide que el backend valide
+    // el Referer en navegadores donde Sec-Fetch-* no llega consistente.
+    res.set("Referrer-Policy", "same-origin");
+
     if (wantsJson(req) && !assertJsonCredentialFetchAllowed(req, token)) {
       return res.status(403).json({ ok: false, error: "Solicitud no permitida." });
     }
@@ -203,7 +208,12 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
           (function () {
             var q = location.search ? "&" : "?";
             var url = location.pathname + q + "format=json";
-            fetch(url, { credentials: "same-origin", mode: "same-origin", headers: { Accept: "application/json" } })
+            fetch(url, {
+              credentials: "same-origin",
+              mode: "same-origin",
+              referrerPolicy: "same-origin",
+              headers: { Accept: "application/json" }
+            })
               .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
               .then(function (x) {
                 if (!x.ok || !x.j || !x.j.ok) {

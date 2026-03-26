@@ -8,29 +8,6 @@ import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
 
-// ─── IP Geo cache (global so it persists across re-renders) ─────────────────
-const geoCache = {};
-
-async function lookupIp(ip) {
-    if (!ip || ip === "::1" || ip === "127.0.0.1" || ip.startsWith("::ffff:127")) {
-        return { country: "Local", flag: "🖥️" };
-    }
-    if (geoCache[ip]) return geoCache[ip];
-    try {
-        const r = await fetch(`https://ipwho.is/${ip}`);
-        const d = await r.json();
-        const result = {
-            country: d.country || "Desconocido",
-            flag: d.flag?.emoji || "🌐",
-            city: d.city || "",
-        };
-        geoCache[ip] = result;
-        return result;
-    } catch {
-        return { country: "Desconocido", flag: "🌐", city: "" };
-    }
-}
-
 // ─── Status badge ────────────────────────────────────────────────────────────
 function StatusBadge({ status }) {
     const s = String(status || "").toLowerCase();
@@ -42,8 +19,18 @@ function StatusBadge({ status }) {
         color = "#ef4444"; glow = "0 0 10px rgba(239,68,68,0.35)";
     } else if (s.includes("expired")) {
         color = "#f59e0b"; glow = "0 0 10px rgba(245,158,11,0.35)";
-    } else if (s.includes("no_account") || s.includes("not_found")) {
+    } else if (
+        s.includes("no_account") ||
+        s.includes("not_found") ||
+        s.includes("mailbox_empty") ||
+        s.includes("sender_mismatch") ||
+        s.includes("regex_mismatch") ||
+        s.includes("subscription_missing") ||
+        s.includes("netflix_flow_miss")
+    ) {
         color = "#8b5cf6"; glow = "0 0 10px rgba(139,92,246,0.35)";
+    } else if (s.includes("config") || s.includes("platform")) {
+        color = "#f97316"; glow = "0 0 10px rgba(249,115,22,0.35)";
     }
 
     return (
@@ -58,22 +45,57 @@ function StatusBadge({ status }) {
     );
 }
 
-// ─── Geo cell (loads async) ───────────────────────────────────────────────────
-function GeoCell({ ip }) {
-    const [geo, setGeo] = useState(null);
+function formatReason(message) {
+    const text = String(message || "").trim();
+    if (!text) return "—";
+    return text;
+}
 
-    useEffect(() => {
-        if (!ip) return;
-        lookupIp(ip).then(setGeo);
-    }, [ip]);
+function ReasonBadge({ message }) {
+    const text = formatReason(message);
+    const lowered = text.toLowerCase();
 
+    let color = "#94a3b8";
+    if (lowered.includes("regex")) color = "#38bdf8";
+    else if (lowered.includes("remitente")) color = "#f59e0b";
+    else if (lowered.includes("no hay correos")) color = "#8b5cf6";
+    else if (lowered.includes("suscripción")) color = "#ef4444";
+    else if (lowered.includes("netflix")) color = "#14b8a6";
+
+    return (
+        <span
+            title={text}
+            style={{
+                display: "inline-flex",
+                alignItems: "center",
+                maxWidth: 260,
+                padding: "5px 10px",
+                borderRadius: 999,
+                border: `1px solid ${color}40`,
+                background: `${color}14`,
+                color,
+                fontSize: 11,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+            }}
+        >
+            {text}
+        </span>
+    );
+}
+
+// ─── Geo cell ────────────────────────────────────────────────────────────────
+function GeoCell({ ip, country, city, flag }) {
     return (
         <td style={{ padding: "12px 16px", minWidth: 170 }}>
             <div style={{ fontFamily: "monospace", fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>{ip}</div>
-            {geo ? (
+            {country ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
-                    <span style={{ fontSize: 16 }}>{geo.flag}</span>
-                    <span>{geo.country}{geo.city ? `, ${geo.city}` : ""}</span>
+                    <span style={{ fontSize: 16 }}>{flag || "🌐"}</span>
+                    <span>{country}{city ? `, ${city}` : ""}</span>
                 </div>
             ) : (
                 <div style={{ height: 14, width: 100, borderRadius: 6, background: "rgba(255,255,255,0.06)", animation: "pulse 1.5s infinite" }} />
@@ -110,6 +132,7 @@ export default function AdminCodeLogs() {
     const [loading, setLoading] = useState(true);
     const [q, setQ] = useState("");
     const [platform, setPlatform] = useState("all");
+    const [reason, setReason] = useState("all");
     const [page, setPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
     const searchRef = useRef(null);
@@ -158,20 +181,30 @@ export default function AdminCodeLogs() {
         return ["all", ...Array.from(set).sort()];
     }, [logs]);
 
+    const reasons = useMemo(() => {
+        const set = new Set();
+        logs.forEach((l) => {
+            const message = formatReason(l.message);
+            if (message && message !== "—") set.add(message);
+        });
+        return ["all", ...Array.from(set).sort((a, b) => a.localeCompare(b, "es"))];
+    }, [logs]);
+
     const filtered = useMemo(() => {
         const query = q.trim().toLowerCase();
         let result = logs.filter((l) => {
             if (platform !== "all" && l.platform_slug !== platform) return false;
+            if (reason !== "all" && formatReason(l.message) !== reason) return false;
             if (!query) return true;
-            const hay = [l.id, l.order_id, l.platform_slug, l.order_email, l.requested_by, l.delivered_code, l.status, l.requester_ip]
+            const hay = [l.id, l.order_id, l.platform_slug, l.order_email, l.requested_by, l.delivered_code, l.status, l.requester_ip, l.message]
                 .filter(Boolean).join(" ").toLowerCase();
             return hay.includes(query);
         });
         result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         return result;
-    }, [logs, q, platform]);
+    }, [logs, q, platform, reason]);
 
-    useEffect(() => { setPage(1); }, [q, platform, itemsPerPage]);
+    useEffect(() => { setPage(1); }, [q, platform, reason, itemsPerPage]);
 
     const paginated = useMemo(() => {
         const start = (page - 1) * itemsPerPage;
@@ -184,9 +217,14 @@ export default function AdminCodeLogs() {
         logs.filter(l => String(l.status || "").toLowerCase().includes("delivered")).length
         , [logs]);
 
+    const diagnosticIssuesCount = useMemo(() =>
+        logs.filter((l) => !String(l.status || "").toLowerCase().includes("delivered")).length
+        , [logs]);
+
     const clearFilters = useCallback(() => {
         setQ("");
         setPlatform("all");
+        setReason("all");
         searchRef.current?.focus();
     }, []);
 
@@ -239,6 +277,7 @@ export default function AdminCodeLogs() {
                             <KpiChip label="Total Logs" value={logs.length} icon="📋" accent="#0da6f2" />
                             <KpiChip label="Mostrando" value={filtered.length} icon="🔍" accent="#6333ff" />
                             <KpiChip label="Entregados" value={deliveredCount} icon="✅" accent="#10b981" />
+                            <KpiChip label="Con Motivo" value={diagnosticIssuesCount} icon="🩺" accent="#f59e0b" />
                         </div>
                     </motion.div>
 
@@ -282,8 +321,17 @@ export default function AdminCodeLogs() {
                                 <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                             </div>
 
+                            <div style={{ position: "relative", flex: "1 1 280px" }}>
+                                <select style={selStyle} value={reason} onChange={(e) => setReason(e.target.value)}>
+                                    {reasons.map((item) => (
+                                        <option key={item} value={item}>{item === "all" ? "🩺 Todos los motivos" : item}</option>
+                                    ))}
+                                </select>
+                                <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
+                            </div>
+
                             {/* Clear */}
-                            {(q || platform !== "all") && (
+                            {(q || platform !== "all" || reason !== "all") && (
                                 <button
                                     onClick={clearFilters}
                                     className="btn-ghost"
@@ -295,7 +343,7 @@ export default function AdminCodeLogs() {
                         </div>
 
                         {/* Result count hint */}
-                        {(q || platform !== "all") && (
+                        {(q || platform !== "all" || reason !== "all") && (
                             <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
                                 Mostrando <b style={{ color: "var(--accent)" }}>{filtered.length}</b> de <b style={{ color: "var(--text)" }}>{logs.length}</b> registros
                             </div>
@@ -311,7 +359,7 @@ export default function AdminCodeLogs() {
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,0.25)", borderBottom: "1px solid var(--stroke2)" }}>
-                                        {["ID", "Pedido", "Plataforma", "Correo", "Usuario", "IP + País", "Código", "Estado", "Fecha"].map(col => (
+                                        {["ID", "Pedido", "Plataforma", "Correo", "Usuario", "IP + País", "Código", "Estado", "Motivo", "Fecha"].map(col => (
                                             <th key={col} style={{ padding: "13px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{col}</th>
                                         ))}
                                     </tr>
@@ -319,7 +367,7 @@ export default function AdminCodeLogs() {
                                 <tbody>
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={9} style={{ padding: "70px 20px", textAlign: "center" }}>
+                                            <td colSpan={10} style={{ padding: "70px 20px", textAlign: "center" }}>
                                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
                                                     <div style={{ width: 36, height: 36, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
                                                     <span style={{ color: "var(--muted)", fontSize: 13 }}>Cargando logs...</span>
@@ -328,7 +376,7 @@ export default function AdminCodeLogs() {
                                         </tr>
                                     ) : paginated.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} style={{ padding: "70px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                            <td colSpan={10} style={{ padding: "70px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                 <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
                                                 <div style={{ fontSize: 15, fontWeight: 600 }}>Sin resultados</div>
                                                 <div style={{ fontSize: 12, marginTop: 6 }}>Intenta con otros términos de búsqueda.</div>
@@ -362,12 +410,20 @@ export default function AdminCodeLogs() {
                                                 <td style={{ padding: "12px 16px", color: "var(--muted)", fontSize: 12, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={l.requested_by || ""}>
                                                     {l.requested_by || "—"}
                                                 </td>
-                                                <GeoCell ip={l.requester_ip} />
+                                                <GeoCell
+                                                    ip={l.requester_ip}
+                                                    country={l.requester_country}
+                                                    city={l.requester_city}
+                                                    flag={l.requester_flag}
+                                                />
                                                 <td style={{ padding: "12px 16px", fontFamily: "monospace", fontWeight: 800, color: l.delivered_code ? "#0da6f2" : "var(--muted)", fontSize: 14, letterSpacing: "0.5px" }}>
                                                     {l.delivered_code || "—"}
                                                 </td>
                                                 <td style={{ padding: "12px 16px" }}>
                                                     <StatusBadge status={l.status} />
+                                                </td>
+                                                <td style={{ padding: "12px 16px", maxWidth: 300 }}>
+                                                    <ReasonBadge message={l.message} />
                                                 </td>
                                                 <td style={{ padding: "12px 16px", fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
                                                     {new Date(l.created_at).toLocaleString("es-CO", { timeZone: "America/Bogota", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}

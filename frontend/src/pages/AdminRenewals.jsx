@@ -136,6 +136,12 @@ export default function AdminRenewals() {
     const expiryColor = order?.expires_at
         ? new Date(order.expires_at) < new Date() ? "#ef4444" : "#10b981"
         : "#aaa";
+    const isExpired = order?.expires_at ? new Date(order.expires_at) <= new Date() : true;
+    const renewalBlockedReason = isExpired
+        ? "La suscripción ya está vencida. No se puede renovar desde aquí porque la cuenta podría haber sido reasignada."
+        : order?.is_attended
+            ? "La suscripción ya fue atendida en Vencimientos. No se puede renovar para evitar choques con otra asignación."
+            : "";
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -238,6 +244,7 @@ export default function AdminRenewals() {
                                         ["Duración", `${order.duration_name} (${order.days} días)`],
                                         ["Precio", `${Number(order.price).toLocaleString("es-CO")} ${order.currency}`],
                                         ["Vencimiento", <span style={{ color: expiryColor, fontWeight: 800 }}>{order.expires_at ? new Date(order.expires_at).toLocaleDateString("es-CO") : "—"}</span>],
+                                        ["Atención", order.is_attended ? "Atendida" : "Pendiente"],
                                         ["Acreditación", order.account_email || "Usuario Local"],
                                     ].map(([label, val]) => (
                                         <div key={label}>
@@ -256,6 +263,7 @@ export default function AdminRenewals() {
                                     </div>
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
                                         {[
+                                            ["Orden de renovación", result.renewalOrderCode || (result.renewalOrderId ? `#${result.renewalOrderId}` : "—")],
                                             ["Nuevo Vencimiento", new Date(result.newExpiry).toLocaleString("es-CO")],
                                             ["Monto Cobrado", result.deducted > 0 ? `$${Number(result.deducted).toLocaleString("es-CO")}` : "0"],
                                             ...(result.newBalance !== null ? [["Saldo del Usuario", `$${Number(result.newBalance).toLocaleString("es-CO")}`]] : []),
@@ -340,6 +348,11 @@ export default function AdminRenewals() {
                             ) : (
                                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>
                                     <div style={{ fontWeight: 800, fontSize: 16, marginBottom: 20, color: "var(--text)" }}>Configurar Renovación</div>
+                                    {renewalBlockedReason && (
+                                        <div style={{ marginBottom: 18, padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: "#ef4444", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+                                            <span>⛔</span> {renewalBlockedReason}
+                                        </div>
+                                    )}
                                     <form onSubmit={handleRenew}>
                                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 20 }}>
 
@@ -349,7 +362,8 @@ export default function AdminRenewals() {
                                                     Actualizar Cuenta Asignada (Opcional)
                                                 </label>
                                                 <div style={{ position: "relative" }}>
-                                                    <select style={{ ...inputStyle, cursor: "pointer", appearance: "none", WebkitAppearance: "none", paddingRight: 36 }}
+                                                    <select style={{ ...inputStyle, cursor: renewalBlockedReason ? "not-allowed" : "pointer", appearance: "none", WebkitAppearance: "none", paddingRight: 36, opacity: renewalBlockedReason ? 0.6 : 1 }}
+                                                        disabled={!!renewalBlockedReason}
                                                         value={newAccountId} onChange={e => setNewAccountId(e.target.value)}>
                                                         <option value="" style={{ background: "var(--input-bg)", color: "var(--text)" }}>Mantener asignación actual</option>
                                                         {accounts.map(a => (
@@ -368,6 +382,7 @@ export default function AdminRenewals() {
                                                 <div style={{ position: "relative" }}>
                                                     <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", fontSize: 14 }}>$</span>
                                                     <input style={{ ...inputStyle, paddingLeft: 30 }} type="number" min="0" step="any"
+                                                        disabled={!!renewalBlockedReason}
                                                         value={overridePrice} onChange={e => setOverridePrice(e.target.value)}
                                                         placeholder={order.price} />
                                                 </div>
@@ -379,6 +394,7 @@ export default function AdminRenewals() {
                                                     Nota Interna / Razón
                                                 </label>
                                                 <input style={inputStyle} type="text"
+                                                    disabled={!!renewalBlockedReason}
                                                     value={note} onChange={e => setNote(e.target.value)}
                                                     placeholder="Detalles sobre la renovación..." />
                                             </div>
@@ -391,6 +407,7 @@ export default function AdminRenewals() {
                                                 <input
                                                     style={inputStyle}
                                                     type="text"
+                                                    disabled={!!renewalBlockedReason}
                                                     value={whatsappPhone}
                                                     onChange={e => setWhatsappPhone(e.target.value)}
                                                     placeholder="Ej: 573152485340 (con código de país, sin +)"
@@ -404,6 +421,7 @@ export default function AdminRenewals() {
                                                 <input
                                                     type="checkbox"
                                                     checked={deductWallet}
+                                                    disabled={!!renewalBlockedReason}
                                                     onChange={e => setDeductWallet(e.target.checked)}
                                                     style={{ opacity: 0, width: 0, height: 0 }}
                                                 />
@@ -431,9 +449,9 @@ export default function AdminRenewals() {
                                         </div>}
 
                                         <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
-                                            <button type="submit" disabled={renewing}
-                                                style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: renewing ? "not-allowed" : "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", transition: "opacity 0.2s, transform 0.1s", opacity: renewing ? 0.7 : 1 }}>
-                                                {renewing ? "Procesando Renovación..." : "Confirmar Renovación"}
+                                            <button type="submit" disabled={renewing || !!renewalBlockedReason}
+                                                style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: (renewing || renewalBlockedReason) ? "not-allowed" : "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", transition: "opacity 0.2s, transform 0.1s", opacity: (renewing || renewalBlockedReason) ? 0.55 : 1 }}>
+                                                {renewalBlockedReason ? "Renovación no permitida" : (renewing ? "Procesando Renovación..." : "Confirmar Renovación")}
                                             </button>
                                         </div>
                                     </form>
@@ -446,4 +464,3 @@ export default function AdminRenewals() {
         </div>
     );
 }
-

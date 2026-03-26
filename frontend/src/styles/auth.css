@@ -569,29 +569,30 @@ select.select-inline:focus {
 
 @media (min-width: 901px) {
     .page-shell {
-        height: 100vh;
-        height: 100dvh;
-        overflow: hidden;
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow: visible;
     }
 
     .page-inner {
-        height: 100%;
+        height: auto;
         min-height: 0;
     }
 
     .sidebar,
     .main {
-        height: 100%;
+        height: auto;
         min-height: 0;
-        scrollbar-gutter: stable;
+        scrollbar-gutter: auto;
     }
 
     .sidebar {
-        overflow-y: auto;
+        overflow-y: visible;
     }
 
     .main {
-        overflow-y: auto;
+        overflow: visible;
     }
 }
 

@@ -15,7 +15,9 @@ function getImapConfig() {
             host: "imap.gmail.com",
             port: 993,
             tls: true,
+            connTimeout: 10000,
             authTimeout: 10000,
+            socketTimeout: 15000,
             // Por defecto verificación TLS estricta. Solo en desarrollo: IMAP_TLS_INSECURE=true
             tlsOptions: {
                 rejectUnauthorized: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() !== "true",

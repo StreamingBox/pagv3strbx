@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/dashboard.css";
 import "../styles/dashboard-stitch.css";
@@ -12,33 +12,148 @@ import { apiFetch } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
 
+const CART_STORAGE_PREFIX = "dashboard_cart_v1";
+const GUEST_CART_STORAGE_KEY = `${CART_STORAGE_PREFIX}:guest`;
+
 export default function Dashboard() {
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, authLoading } = useAuth();
     const logout = useAppLogout();
 
     const { wallet, setWallet, catalog, loading, error, setError, reload } = useDashboardData();
+
+    const cartStorageKey = `${CART_STORAGE_PREFIX}:${user?.id || user?.email || "guest"}`;
 
     const [cartOpen, setCartOpen] = useState(false);
     const [cart, setCart] = useState([]);
     const [categoryFilter, setCategoryFilter] = useState("all");
     const [search, setSearch] = useState("");
+    const [cartHydrated, setCartHydrated] = useState(false);
+
+    useEffect(() => {
+        if (authLoading) return;
+
+        try {
+            const raw = localStorage.getItem(cartStorageKey);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                setCart(Array.isArray(parsed) ? parsed : []);
+                setCartHydrated(true);
+                return;
+            }
+
+            if (user?.id || user?.email) {
+                const guestRaw = localStorage.getItem(GUEST_CART_STORAGE_KEY);
+                if (guestRaw) {
+                    const guestParsed = JSON.parse(guestRaw);
+                    const safeCart = Array.isArray(guestParsed) ? guestParsed : [];
+                    setCart(safeCart);
+                    if (safeCart.length) {
+                        localStorage.setItem(cartStorageKey, JSON.stringify(safeCart));
+                    }
+                    localStorage.removeItem(GUEST_CART_STORAGE_KEY);
+                    setCartHydrated(true);
+                    return;
+                }
+            }
+
+            setCart([]);
+        } catch {
+            setCart([]);
+        } finally {
+            setCartHydrated(true);
+        }
+    }, [authLoading, cartStorageKey, user?.email, user?.id]);
+
+    useEffect(() => {
+        if (!cartHydrated) return;
+
+        try {
+            if (!cart.length) {
+                localStorage.removeItem(cartStorageKey);
+                return;
+            }
+            localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+        } catch {
+            // Si el storage falla, el carrito sigue funcionando en memoria.
+        }
+    }, [cart, cartHydrated, cartStorageKey]);
+
+    useEffect(() => {
+        if (!catalog?.length || !cartHydrated) return;
+
+        const stockByPlatformPriceId = new Map(
+            catalog.map((item) => [
+                item.platformPriceId,
+                {
+                    stock: Number(item.stock || 0),
+                    isUnlimited: item.platformType === "correo",
+                },
+            ])
+        );
+
+        setCart((prev) => {
+            const counts = new Map();
+            let changed = false;
+
+            const next = prev.filter((item) => {
+                const stockInfo = stockByPlatformPriceId.get(item.platformPriceId);
+                if (!stockInfo) {
+                    changed = true;
+                    return false;
+                }
+
+                if (stockInfo.isUnlimited) return true;
+
+                const currentCount = counts.get(item.platformPriceId) || 0;
+                if (currentCount >= stockInfo.stock) {
+                    changed = true;
+                    return false;
+                }
+
+                counts.set(item.platformPriceId, currentCount + 1);
+                return true;
+            });
+
+            return changed ? next : prev;
+        });
+    }, [catalog, cartHydrated]);
+
+    const cartCountByPlatformPriceId = useMemo(() => {
+        const counts = new Map();
+        for (const item of cart) {
+            counts.set(item.platformPriceId, (counts.get(item.platformPriceId) || 0) + 1);
+        }
+        return counts;
+    }, [cart]);
 
     function addToCart(item) {
         setError("");
+        const isUnlimited = item.platformType === "correo";
+        const stock = Number(item.stock || 0);
 
-        setCart((prev) => [
-            ...prev,
-            {
-                platformPriceId: item.platformPriceId,
-                platformName: item.platformName,
-                durationName: item.durationName,
-                days: item.days,
-                price: item.price,
-                currency: item.currency,
-                platformSlug: item.platformSlug,
-            },
-        ]);
+        setCart((prev) => {
+            if (!isUnlimited) {
+                const alreadyInCart = prev.filter((x) => x.platformPriceId === item.platformPriceId).length;
+                if (alreadyInCart >= stock) {
+                    setError(`Solo hay ${stock} disponible${stock === 1 ? "" : "s"} de ${item.platformName}.`);
+                    return prev;
+                }
+            }
+
+            return [
+                ...prev,
+                {
+                    platformPriceId: item.platformPriceId,
+                    platformName: item.platformName,
+                    durationName: item.durationName,
+                    days: item.days,
+                    price: item.price,
+                    currency: item.currency,
+                    platformSlug: item.platformSlug,
+                },
+            ];
+        });
     }
 
     async function handleNotifyMe(item) {
@@ -237,6 +352,7 @@ export default function Dashboard() {
                         buyLoading={false}
                         onAddToCart={addToCart}
                         onNotifyMe={handleNotifyMe}
+                        cartCountByPlatformPriceId={cartCountByPlatformPriceId}
                     />
                 </main>
             </div>

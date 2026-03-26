@@ -1,20 +1,25 @@
+import { useState } from "react";
 import { getPlatformLogo, getInitials } from "../../../utils/platform.js";
 
 export default function CartItem({ item, index, onRemove }) {
     const c = item;
+    const logoSrc = getPlatformLogo(c.platformSlug, c.platformName);
+    const [logoFailed, setLogoFailed] = useState(!logoSrc);
 
     return (
         <article key={`${c.platformPriceId}-${index}`} className="cart-item">
             <div className="cart-logoBox">
-                {c.platformSlug ? (
+                {!logoFailed && logoSrc ? (
                     <img
                         className="cart-logoImg"
-                        src={getPlatformLogo(c.platformSlug)}
+                        src={logoSrc}
                         alt={c.platformName}
-                        onError={(e) => (e.currentTarget.style.display = "none")}
+                        onError={() => setLogoFailed(true)}
                     />
                 ) : (
-                    <span className="cart-logoFallback">{getInitials(c.platformName)}</span>
+                    <span className="cart-logoFallback" title={c.platformName}>
+                        {getInitials(c.platformName)}
+                    </span>
                 )}
             </div>
 

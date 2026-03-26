@@ -49,3 +49,4 @@ out/
 build/
 .gemini/
 .gradle-cache/
+.tools/

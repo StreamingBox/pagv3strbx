@@ -80,7 +80,9 @@ router.get("/catalog", requireAuth, async (req, res) => {
       [userCurrency, userCurrency]
     );
 
-    res.set("Cache-Control", "private, max-age=30"); // cacheable 30s por usuario
+    res.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
     return res.json(rows);
   } catch (err) {
     console.error("GET /catalog error:", err);

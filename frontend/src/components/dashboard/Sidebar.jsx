@@ -5,6 +5,7 @@ import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 
 import { getApiBase } from "../../config/apiBase.js";
+import { isNativeAndroidApp } from "../../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
@@ -30,6 +31,22 @@ export default function Sidebar({
     const [expirationsCount, setExpirationsCount] = useState(0);
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
     const activePath = window.location.pathname;
+
+    const APK_URL = "/downloads/streaming-box-android.apk";
+    const showApkButton = !isNativeAndroidApp();
+
+    function downloadApk() {
+        try {
+            const a = document.createElement("a");
+            a.href = APK_URL;
+            a.download = "streaming-box-android.apk";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch {
+            window.location.href = APK_URL;
+        }
+    }
 
     // React automatically to window resizes (desktop <-> mobile switch)
     useEffect(() => {
@@ -197,8 +214,10 @@ export default function Sidebar({
                             whileTap={{ scale: 0.97 }}
                             transition={{ type: "spring", stiffness: 380, damping: 22 }}
                         >
-                            <span className="sb-cart-icon">🛒</span>
-                            <span>Carrito</span>
+                            <span className="sb-cart-content">
+                                <span className="sb-cart-icon">🛒</span>
+                                <span>Carrito</span>
+                            </span>
                             <AnimatePresence>
                                 {cartCount > 0 && (
                                     <MotionSpan
@@ -278,6 +297,19 @@ export default function Sidebar({
                                 </MotionButton>
                             )}
 
+                            {showApkButton && (
+                                <MotionButton
+                                    className="sb-nav-item"
+                                    onClick={downloadApk}
+                                    whileHover={{ x: 4 }}
+                                    whileTap={{ scale: 0.97 }}
+                                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                                >
+                                    <span className="sb-nav-icon">📱</span>
+                                    <span className="sb-nav-label">Descargar app (APK)</span>
+                                </MotionButton>
+                            )}
+
                             {isAdmin && (
                                 <>
                                     <div className="sb-divider" style={{ margin: "8px 0" }} />
@@ -297,6 +329,7 @@ export default function Sidebar({
 
                         {/* Divisor + Cerrar sesión al fondo */}
                         <div className="sb-divider" />
+
                         <MotionButton
                             className="sb-logout-btn"
                             onClick={onLogout}

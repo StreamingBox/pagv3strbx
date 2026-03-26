@@ -114,7 +114,7 @@ function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
 }
 
 // ─── Componente de grupo por cuenta ─────────────────────────────────────────
-function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, handleRemind, navigate, allCollapsed }) {
+function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, handleRemind, navigate, allCollapsed, attendedFilter, savingIds }) {
     const [collapsed, setCollapsed] = useState(allCollapsed);
 
     useEffect(() => {
@@ -122,9 +122,22 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
     }, [allCollapsed]);
 
     const [pwVisible, setPwVisible] = useState(false);
+    const [copiedPw, setCopiedPw] = useState(false);
 
     const allAttended = group.rows.every(r => r.is_attended);
     const hasPassword = !!group.account_password;
+
+    async function copyPassword(e) {
+        e.stopPropagation();
+        if (!group.account_password) return;
+        try {
+            await navigator.clipboard.writeText(group.account_password);
+            setCopiedPw(true);
+            window.setTimeout(() => setCopiedPw(false), 1400);
+        } catch {
+            setCopiedPw(false);
+        }
+    }
 
     return (
         <>
@@ -177,11 +190,31 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
 
                         {/* Contraseña (solo si no es ChatGPT, donde ya está como título) */}
                         {hasPassword && !group.is_chatgpt && (
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(0,0,0,0.2)", borderRadius: 8, padding: "4px 10px", border: "1px solid var(--stroke)" }}>
+                            <button
+                                type="button"
+                                onClick={copyPassword}
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    background: copiedPw ? "rgba(16,185,129,0.12)" : "rgba(0,0,0,0.2)",
+                                    borderRadius: 8,
+                                    padding: "4px 10px",
+                                    border: copiedPw ? "1px solid rgba(16,185,129,0.35)" : "1px solid var(--stroke)",
+                                    cursor: "copy",
+                                    color: "inherit"
+                                }}
+                                title="Clic para copiar la clave"
+                            >
                                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.4px" }}>Clave:</span>
                                 <span style={{ fontSize: 13, fontFamily: "monospace", color: pwVisible ? "#0da6f2" : "var(--muted)", fontWeight: 600, letterSpacing: pwVisible ? 1 : 0 }}>
                                     {pwVisible ? group.account_password : "••••••••"}
                                 </span>
+                                {copiedPw && (
+                                    <span style={{ fontSize: 11, color: "#10b981", fontWeight: 800 }}>
+                                        Copiada
+                                    </span>
+                                )}
                                 <button
                                     onClick={e => { e.stopPropagation(); setPwVisible(v => !v); }}
                                     style={{
@@ -193,7 +226,7 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
                                 >
                                     {pwVisible ? "🙈" : "👁️"}
                                 </button>
-                            </div>
+                            </button>
                         )}
 
                         {/* Badge perfiles */}
@@ -222,18 +255,33 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
             {/* ── Filas de perfiles de esta cuenta ── */}
             {!collapsed && group.rows.map((item, idx) => {
                 const daysLeft = getDaysLeft(item.expires_at);
+                const isSaving = savingIds.includes(item.id);
+                const isOutsideFilter =
+                    attendedFilter === "0" ? !!item.is_attended :
+                    attendedFilter === "1" ? !item.is_attended :
+                    false;
+
                 return (
                     <tr
                         key={item.id}
                         style={{
                             borderBottom: "1px solid var(--stroke2)",
-                            background: idx % 2 === 0 ? "rgba(0,0,0,0.0)" : "rgba(255,255,255,0.012)",
-                            transition: "background 0.15s ease",
+                            background: isOutsideFilter
+                                ? "rgba(16,185,129,0.06)"
+                                : (idx % 2 === 0 ? "rgba(0,0,0,0.0)" : "rgba(255,255,255,0.012)"),
+                            transition: "background 0.15s ease, opacity 0.15s ease",
+                            opacity: isSaving ? 0.65 : 1,
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = "rgba(13,166,242,0.04)"}
-                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? "rgba(0,0,0,0)" : "rgba(255,255,255,0.012)"}
+                        onMouseEnter={e => {
+                            if (!isOutsideFilter) e.currentTarget.style.background = "rgba(13,166,242,0.04)";
+                        }}
+                        onMouseLeave={e => {
+                            e.currentTarget.style.background = isOutsideFilter
+                                ? "rgba(16,185,129,0.06)"
+                                : (idx % 2 === 0 ? "rgba(0,0,0,0)" : "rgba(255,255,255,0.012)");
+                        }}
                     >
-                        <td style={{ padding: "12px 16px 12px 40px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                        <td style={{ padding: "12px 16px 12px 40px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", fontWeight: 600 }} title={item.order_code || undefined}>
                             #{item.id} {item.is_attended ? "✔️" : ""}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
@@ -257,20 +305,35 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
                             {item.expires_at ? new Date(item.expires_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota", day: 'numeric', month: 'short', year: 'numeric' }) : "—"}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
-                            {renderDaysBadge(daysLeft)}
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                {renderDaysBadge(daysLeft)}
+                                {isOutsideFilter && (
+                                    <span style={{
+                                        background: "rgba(16,185,129,0.12)",
+                                        color: "#10b981",
+                                        border: "1px solid rgba(16,185,129,0.28)",
+                                        borderRadius: 20,
+                                        padding: "2px 10px",
+                                        fontSize: 11,
+                                        fontWeight: 700
+                                    }}>
+                                        Actualizada
+                                    </span>
+                                )}
+                            </div>
                         </td>
                         <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                             <button
                                 className="btn-ghost"
                                 title={item.reminder_sent ? "Recordatorio ya enviado" : (item.whatsapp_phone ? `Enviar recordatorio por WA a ${item.whatsapp_phone}` : "No hay número guardado, haz clic para ingresarlo")}
-                                disabled={item.reminder_sent}
+                                disabled={item.reminder_sent || isSaving}
                                 style={{
                                     padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 8,
-                                    color: item.reminder_sent ? "var(--muted)" : "#10b981",
-                                    background: item.reminder_sent ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.1)",
-                                    border: `1px solid ${item.reminder_sent ? "var(--stroke)" : "rgba(16,185,129,0.3)"}`,
-                                    marginRight: 6, cursor: item.reminder_sent ? "not-allowed" : "pointer",
-                                    opacity: item.reminder_sent ? 0.6 : 1
+                                    color: (item.reminder_sent || isSaving) ? "var(--muted)" : "#10b981",
+                                    background: (item.reminder_sent || isSaving) ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.1)",
+                                    border: `1px solid ${(item.reminder_sent || isSaving) ? "var(--stroke)" : "rgba(16,185,129,0.3)"}`,
+                                    marginRight: 6, cursor: (item.reminder_sent || isSaving) ? "not-allowed" : "pointer",
+                                    opacity: (item.reminder_sent || isSaving) ? 0.6 : 1
                                 }}
                                 onClick={() => !item.reminder_sent && handleRemind(item)}
                             >
@@ -283,11 +346,13 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
                                     color: item.is_attended ? "#f59e0b" : "#10b981",
                                     background: item.is_attended ? "rgba(245,158,11,0.1)" : "rgba(16,185,129,0.1)",
                                     border: `1px solid ${item.is_attended ? "rgba(245,158,11,0.3)" : "rgba(16,185,129,0.3)"}`,
-                                    marginRight: 6, cursor: "pointer"
+                                    marginRight: 6, cursor: isSaving ? "wait" : "pointer",
+                                    opacity: isSaving ? 0.7 : 1
                                 }}
+                                disabled={isSaving}
                                 onClick={() => toggleAttended(item.id, item.is_attended)}
                             >
-                                {item.is_attended ? "Desmarcar ⟲" : "Atendido ✓"}
+                                {isSaving ? "Guardando..." : (item.is_attended ? "Desmarcar ⟲" : "Atendido ✓")}
                             </button>
                             <button
                                 className="btn"
@@ -295,8 +360,10 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
                                     padding: "6px 12px", fontSize: 11, fontWeight: 700, borderRadius: 8,
                                     background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)",
                                     border: "none", color: "#fff",
-                                    boxShadow: "0 4px 14px rgba(13,166,242,0.3)", cursor: "pointer"
+                                    boxShadow: "0 4px 14px rgba(13,166,242,0.3)", cursor: isSaving ? "not-allowed" : "pointer",
+                                    opacity: isSaving ? 0.7 : 1
                                 }}
+                                disabled={isSaving}
                                 onClick={() => navigate(`/admin/renewals`, { state: { orderId: item.id } })}
                             >
                                 Renovar →
@@ -322,6 +389,7 @@ export default function AdminExpirations() {
     // Filters
     const [q, setQ] = useState("");
     const [email, setEmail] = useState("");
+    const [accountEmail, setAccountEmail] = useState("");
     const [platform, setPlatform] = useState("all");
     const [attendedFilter, setAttendedFilter] = useState("0"); // "0" = pendientes, "1" = atendidos, "all" = todos
     const [expiryFilter, setExpiryFilter] = useState("all"); // 'all', 'vencidos', 'hoy'
@@ -334,6 +402,7 @@ export default function AdminExpirations() {
 
     const [platforms, setPlatforms] = useState([]);
     const [allCollapsed, setAllCollapsed] = useState(false);
+    const [savingIds, setSavingIds] = useState([]);
 
     const [remindModalOpen, setRemindModalOpen] = useState(false);
     const [remindItem, setRemindItem] = useState(null);
@@ -366,6 +435,7 @@ export default function AdminExpirations() {
                 params.set("limit", limit);
                 if (q.trim()) params.set("q", q.trim());
                 if (email.trim()) params.set("email", email.trim());
+                if (accountEmail.trim()) params.set("accountEmail", accountEmail.trim());
                 if (platform !== "all") params.set("platform", platform);
                 if (attendedFilter !== "all") params.set("attended", attendedFilter);
                 if (expiryFilter !== "all") params.set("expiryFilter", expiryFilter);
@@ -377,6 +447,7 @@ export default function AdminExpirations() {
                     setItems(data.items);
                     setTotalPages(data.pages);
                     setTotalItems(data.total);
+                    setSavingIds([]);
                 }
             } catch (err) {
                 if (mounted) setError(err.message);
@@ -387,7 +458,7 @@ export default function AdminExpirations() {
 
         const t = setTimeout(loadData, 300);
         return () => { mounted = false; clearTimeout(t); };
-    }, [page, q, email, platform, attendedFilter, expiryFilter, limit]);
+    }, [page, q, email, accountEmail, platform, attendedFilter, expiryFilter, limit]);
 
     async function exportToExcel() {
         try {
@@ -396,6 +467,7 @@ export default function AdminExpirations() {
             params.set("limit", 1000); 
             if (q.trim()) params.set("q", q.trim());
             if (email.trim()) params.set("email", email.trim());
+            if (accountEmail.trim()) params.set("accountEmail", accountEmail.trim());
             if (platform !== "all") params.set("platform", platform);
             if (attendedFilter !== "all") params.set("attended", attendedFilter);
             if (expiryFilter !== "all") params.set("expiryFilter", expiryFilter);
@@ -429,6 +501,7 @@ export default function AdminExpirations() {
     }
 
     async function toggleAttended(id, currentStatus) {
+        setSavingIds(prev => prev.includes(id) ? prev : [...prev, id]);
         try {
             const is_attended = currentStatus ? 0 : 1;
             await apiFetch(`/admin/orders/${id}/attend`, {
@@ -436,15 +509,12 @@ export default function AdminExpirations() {
                 body: JSON.stringify({ is_attended })
             });
 
-            // If there's an active filter, remove from view, else update status in place
-            if (attendedFilter !== "all") {
-                setItems(prev => prev.filter(item => item.id !== id));
-                setTotalItems(prev => Math.max(0, prev - 1)); // update KPI optimistically
-            } else {
-                setItems(prev => prev.map(item => item.id === id ? { ...item, is_attended } : item));
-            }
+            // Mantener la fila en su lugar evita saltos de la tabla y clics en la cuenta equivocada.
+            setItems(prev => prev.map(item => item.id === id ? { ...item, is_attended } : item));
         } catch (e) {
             alert(e.message || "Error cambiando estado");
+        } finally {
+            setSavingIds(prev => prev.filter(itemId => itemId !== id));
         }
     }
     function openRemindModal(item) {
@@ -559,14 +629,14 @@ export default function AdminExpirations() {
     };
 
     return (
-        <div className="page-shell">
+        <div className="page-shell admin-expirations-shell">
             <div className="page-shell-bg" aria-hidden>
             <div className="bg-orb orb-1" />
             <div className="bg-orb orb-2" />
             <div className="bg-grid" />
             </div>
 
-            <div className="page-inner">
+            <div className="page-inner admin-expirations-inner">
                 <AdminSidebar
                     user={user}
                     logoSrc={LOGO_URL}
@@ -577,7 +647,7 @@ export default function AdminExpirations() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "20px 24px 32px" }}>
+                <main className="main admin-expirations-main" style={{ padding: "20px 24px 32px" }}>
                     {/* ── Page header ── */}
                     <MotionDiv
                         initial={{ opacity: 0, y: -10 }}
@@ -625,7 +695,7 @@ export default function AdminExpirations() {
                                     style={{ ...selStyle, paddingLeft: 34 }}
                                     value={q}
                                     onChange={(e) => { setQ(e.target.value); setPage(1); }}
-                                    placeholder="Ej: #12345"
+                                    placeholder="ID pedido o suscripción"
                                 />
                             </div>
 
@@ -636,7 +706,18 @@ export default function AdminExpirations() {
                                     style={{ ...selStyle, paddingLeft: 34 }}
                                     value={email}
                                     onChange={(e) => { setEmail(e.target.value); setPage(1); }}
-                                    placeholder="usuario@email.com"
+                                    placeholder="Correo usuario"
+                                />
+                            </div>
+
+                            <div style={{ position: "relative" }}>
+                                <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 14, opacity: 0.6 }}>🔑</span>
+                                <input
+                                    type="text"
+                                    style={{ ...selStyle, paddingLeft: 34 }}
+                                    value={accountEmail}
+                                    onChange={(e) => { setAccountEmail(e.target.value); setPage(1); }}
+                                    placeholder="Correo cuenta"
                                 />
                             </div>
 
@@ -670,6 +751,21 @@ export default function AdminExpirations() {
                     </MotionDiv>
 
                     {error && <div className="error" style={{ marginBottom: 16 }}>{error}</div>}
+
+                    {attendedFilter !== "all" && (
+                        <div style={{
+                            marginBottom: 16,
+                            padding: "12px 14px",
+                            borderRadius: 12,
+                            border: "1px solid rgba(245,158,11,0.22)",
+                            background: "rgba(245,158,11,0.08)",
+                            color: "#fcd34d",
+                            fontSize: 12,
+                            fontWeight: 600
+                        }}>
+                            Las filas actualizadas se mantienen visibles en su posición hasta recargar o cambiar filtros, para evitar saltos y errores al marcar varias cuentas seguidas.
+                        </div>
+                    )}
 
                     {/* ── Table Card ── */}
                     <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>
@@ -776,6 +872,8 @@ export default function AdminExpirations() {
                                                 handleRemind={openRemindModal}
                                                 navigate={navigate}
                                                 allCollapsed={allCollapsed}
+                                                attendedFilter={attendedFilter}
+                                                savingIds={savingIds}
                                             />
                                         ));
                                     })()}

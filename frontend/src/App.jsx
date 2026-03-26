@@ -57,10 +57,13 @@ function RedirectByRole() {
    APP ROUTES
 ========================================== */
 export default function App() {
+    const { user, authLoading } = useAuth();
+    const showInstallPrompt = !authLoading && !!user?.id;
+
     return (
         <>
             <BiometricGate>
-                <InstallAppPrompt />
+                {showInstallPrompt ? <InstallAppPrompt /> : null}
                 <Suspense
                     fallback={
                         <div className="page-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>

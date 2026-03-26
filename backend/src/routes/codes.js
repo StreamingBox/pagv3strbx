@@ -35,7 +35,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
 
         // 👉 log según resultado (mantiene tu misma info)
         if (!result?.meta?.sub) {
-            await saveLog({ status: "not_found", message: "Pedido no encontrado" });
+            await saveLog({ status: "subscription_missing", message: "Suscripción no encontrada" });
             return res.status(result.http || 404).json(result.body);
         }
 

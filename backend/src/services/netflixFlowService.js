@@ -104,7 +104,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         }
 
         if (!messages || messages.length === 0) {
-            return { ok: false, status: "not_found", message: "No hay correos recientes en la bandeja." };
+            return { ok: false, status: "mailbox_empty", message: "No hay correos recientes en la bandeja." };
         }
 
         // Ordenar más reciente a antiguo
@@ -116,6 +116,8 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
         const fromNeedle = "netflix.com";
         let sawExpiredMatch = false;
+        let sawSenderMatch = false;
+        let sawTargetMatch = false;
 
         for (const msg of messages) {
             const msgDate = safeToDate(msg?.attributes?.date);
@@ -136,6 +138,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             }
 
             if (!fromField.includes(fromNeedle)) continue;
+            sawSenderMatch = true;
 
             if (ageMin > maxAgeMinutes) {
                 sawExpiredMatch = true;
@@ -151,6 +154,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud") || subject.includes("hogar") || subject.includes("approve") || subject.includes("request"))) isTarget = true;
 
             if (!isTarget) continue;
+            sawTargetMatch = true;
 
             // ¡Encontramos el correo correcto! Ahora sí pedimos el cuerpo completo
             const fetchFull = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
@@ -232,7 +236,15 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             return { ok: false, status: "expired", message: `El correo de Netflix está vencido (más de ${maxAgeMinutes} min).` };
         }
 
-        return { ok: false, status: "not_found", message: "No se encontraron correos nuevos con códigos o aprobaciones." };
+        if (!sawSenderMatch) {
+            return { ok: false, status: "sender_mismatch", message: "No se encontraron correos recientes del remitente configurado." };
+        }
+
+        if (!sawTargetMatch) {
+            return { ok: false, status: "netflix_flow_miss", message: "No se encontraron correos nuevos con códigos o aprobaciones." };
+        }
+
+        return { ok: false, status: "netflix_flow_miss", message: "Se detectó el correo de Netflix, pero no se pudo completar el flujo." };
 
     } catch (err) {
         return { ok: false, status: "imap_error", message: err?.message || "Error leyendo correos." };

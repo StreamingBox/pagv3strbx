@@ -8,13 +8,126 @@ import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
 
+function SearchableSelect({
+    label,
+    value,
+    onChange,
+    options,
+    placeholder,
+    searchPlaceholder,
+    inputStyle,
+    getSearchText,
+}) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState("");
+
+    const selected = options.find((opt) => String(opt.value) === String(value));
+    const selectedLabel = selected?.label || placeholder;
+
+    const filteredOptions = options.filter((opt) => {
+        const haystack = (getSearchText ? getSearchText(opt) : opt.label).toLowerCase();
+        return haystack.includes(search.toLowerCase());
+    });
+
+    return (
+        <div>
+            <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
+                {label}
+            </label>
+            <div style={{ position: "relative" }}>
+                <button
+                    type="button"
+                    onClick={() => {
+                        setOpen((prev) => !prev);
+                        setSearch("");
+                    }}
+                    style={{
+                        ...inputStyle,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        textAlign: "left",
+                    }}
+                >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selectedLabel}</span>
+                    <span style={{ marginLeft: 12, fontSize: 10, color: "var(--muted)" }}>▼</span>
+                </button>
+
+                {open && (
+                    <div style={{
+                        position: "absolute",
+                        top: "calc(100% + 6px)",
+                        left: 0,
+                        right: 0,
+                        background: "var(--bg1)",
+                        border: "1px solid var(--stroke)",
+                        borderRadius: 14,
+                        boxShadow: "0 16px 40px rgba(0,0,0,0.35)",
+                        zIndex: 120,
+                        overflow: "hidden",
+                    }}>
+                        <div style={{ padding: 10, borderBottom: "1px solid var(--stroke2)" }}>
+                            <input
+                                autoFocus
+                                type="text"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                placeholder={searchPlaceholder}
+                                style={{ ...inputStyle, height: 38, fontSize: 13 }}
+                            />
+                        </div>
+
+                        <div style={{ maxHeight: 240, overflowY: "auto", padding: 6 }}>
+                            {filteredOptions.map((opt) => {
+                                const active = String(opt.value) === String(value);
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() => {
+                                            onChange(opt.value);
+                                            setOpen(false);
+                                            setSearch("");
+                                        }}
+                                        style={{
+                                            width: "100%",
+                                            textAlign: "left",
+                                            padding: "10px 12px",
+                                            borderRadius: 10,
+                                            border: active ? "1px solid rgba(13,166,242,0.35)" : "1px solid transparent",
+                                            background: active ? "rgba(13,166,242,0.12)" : "transparent",
+                                            color: active ? "var(--accent)" : "var(--text)",
+                                            cursor: "pointer",
+                                            fontSize: 13,
+                                            fontWeight: active ? 700 : 500,
+                                        }}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
+
+                            {!filteredOptions.length && (
+                                <div style={{ padding: "14px 12px", color: "var(--muted)", fontSize: 13, textAlign: "center" }}>
+                                    Sin resultados
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export default function AdminInventory() {
     const [platforms, setPlatforms] = useState([]);
     const [users, setUsers] = useState([]);
     const [items, setItems] = useState([]);
     const [prices, setPrices] = useState([]);
     const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(25);
+    const [limit, setLimit] = useState(10);
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
 
@@ -65,6 +178,38 @@ export default function AdminInventory() {
     const selectedPlatform = useMemo(
         () => platforms.find((p) => String(p.id) === String(platformId)),
         [platforms, platformId]
+    );
+
+    const platformOptions = useMemo(
+        () => [
+            { value: "", label: "Todas las plataformas" },
+            ...platforms.map((p) => ({ value: String(p.id), label: `#${p.id} - ${p.name}` })),
+        ],
+        [platforms]
+    );
+
+    const statusOptions = useMemo(
+        () => [
+            { value: "", label: "Cualquier estado" },
+            { value: "available", label: "🟢 Disponibles" },
+            { value: "assigned", label: "🔵 Asignadas (vendidas)" },
+            { value: "sold", label: "🟣 Vendidas (alias)" },
+            { value: "inactive", label: "⚪ Inactivas" },
+            { value: "down", label: "🔴 Caídas" },
+        ],
+        []
+    );
+
+    const assignedUserOptions = useMemo(
+        () => [
+            { value: "", label: "Cualquier usuario" },
+            ...users.map((u) => ({
+                value: u.email,
+                label: u.email,
+                name: u.name || "",
+            })),
+        ],
+        [users]
     );
 
     async function loadPlatforms() {
@@ -249,53 +394,40 @@ export default function AdminInventory() {
                         <form onSubmit={(e) => { e.preventDefault(); loadInventory(1); }} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
 
                             <div>
-                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
-                                    Plataforma
-                                </label>
-                                <div style={{ position: "relative" }}>
-                                    <select style={{ ...inputStyle, cursor: "pointer", paddingRight: 36 }}
-                                        value={platformId} onChange={e => setPlatformId(e.target.value)}>
-                                        <option value="" style={{ background: "var(--bg0)", color: "var(--text)" }}>Todas las plataformas</option>
-                                        {platforms.map(p => (
-                                            <option key={p.id} value={p.id} style={{ background: "var(--bg0)", color: "var(--text)" }}>#{p.id} - {p.name}</option>
-                                        ))}
-                                    </select>
-                                    <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
-                                </div>
+                                <SearchableSelect
+                                    label="Plataforma"
+                                    value={platformId}
+                                    onChange={setPlatformId}
+                                    options={platformOptions}
+                                    placeholder="Todas las plataformas"
+                                    searchPlaceholder="Buscar plataforma..."
+                                    inputStyle={inputStyle}
+                                />
                             </div>
 
                             <div>
-                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
-                                    Estado
-                                </label>
-                                <div style={{ position: "relative" }}>
-                                    <select style={{ ...inputStyle, cursor: "pointer", paddingRight: 36 }}
-                                        value={status} onChange={e => setStatus(e.target.value)}>
-                                        <option value="" style={{ background: "var(--bg0)", color: "var(--text)" }}>Cualquier estado</option>
-                                        <option value="available" style={{ background: "var(--bg0)", color: "var(--text)" }}>🟢 Disponibles</option>
-                                        <option value="assigned" style={{ background: "var(--bg0)", color: "var(--text)" }}>🔵 Asignadas (vendidas)</option>
-                                        <option value="sold" style={{ background: "var(--bg0)", color: "var(--text)" }}>🟣 Vendidas (alias)</option>
-                                        <option value="inactive" style={{ background: "var(--bg0)", color: "var(--text)" }}>⚪ Inactivas</option>
-                                        <option value="down" style={{ background: "var(--bg0)", color: "var(--text)" }}>🔴 Caídas</option>
-                                    </select>
-                                    <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
-                                </div>
+                                <SearchableSelect
+                                    label="Estado"
+                                    value={status}
+                                    onChange={setStatus}
+                                    options={statusOptions}
+                                    placeholder="Cualquier estado"
+                                    searchPlaceholder="Buscar estado..."
+                                    inputStyle={inputStyle}
+                                />
                             </div>
 
                             <div>
-                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
-                                    Asignada a (Email)
-                                </label>
-                                <div style={{ position: "relative" }}>
-                                    <select style={{ ...inputStyle, cursor: "pointer", paddingRight: 36 }}
-                                        value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-                                        <option value="" style={{ background: "var(--bg0)", color: "var(--text)" }}>Cualquier usuario</option>
-                                        {users.map(u => (
-                                            <option key={u.id} value={u.email} style={{ background: "var(--bg0)", color: "var(--text)" }}>{u.email}</option>
-                                        ))}
-                                    </select>
-                                    <span style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", fontSize: 10, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
-                                </div>
+                                <SearchableSelect
+                                    label="Asignada a (Email)"
+                                    value={assignedTo}
+                                    onChange={setAssignedTo}
+                                    options={assignedUserOptions}
+                                    placeholder="Cualquier usuario"
+                                    searchPlaceholder="Buscar usuario..."
+                                    inputStyle={inputStyle}
+                                    getSearchText={(opt) => `${opt.label} ${opt.name || ""}`}
+                                />
                             </div>
 
                             <div>

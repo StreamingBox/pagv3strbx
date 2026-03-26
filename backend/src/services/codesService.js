@@ -27,6 +27,24 @@ function pickPlatformIdentityFromSub(sub) {
     return String(raw || "");
 }
 
+async function withTimeout(promise, ms, timeoutMessage) {
+    let timer = null;
+    try {
+        return await Promise.race([
+            promise,
+            new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    const err = new Error(timeoutMessage || "Operation timed out");
+                    err.code = "ETIMEDOUT";
+                    reject(err);
+                }, ms);
+            }),
+        ]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
 async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "code" }) {
     const requestedSlug = toCodeSlug(platformSlug);
 
@@ -35,7 +53,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         plat = {
             slug: "chatgpt",
             gmail_from: "tm.openai.com",
-            code_regex: "Tu código de ChatGPT es\\s*([0-9]{6})",
+            code_regex: "(?:Tu\\s+código\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is)\\s*([0-9]{6})",
             max_age_minutes: 15,
             is_active: 1,
         };
@@ -50,7 +68,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
 
     if (!plat || Number(plat.is_active) !== 1) {
         console.error(`[requestCode] Plataforma no encontrada o inactiva: ${requestedSlug}`);
-        return { http: 404, body: { ok: false, message: `Plataforma '${requestedSlug}' no disponible` } };
+        return { http: 404, body: { ok: false, status: "platform_unavailable", message: `Plataforma '${requestedSlug}' no disponible` } };
     }
 
     const sub = await getSubscriptionWithAccount(orderNumber);
@@ -58,7 +76,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         console.error(`[requestCode] Pedido no encontrado: ${orderNumber}`);
         return {
             http: 404,
-            body: { ok: false, message: `Pedido #${orderNumber} no encontrado` },
+            body: { ok: false, status: "subscription_missing", message: `Suscripción #${orderNumber} no encontrada` },
             meta: { sub: null, plat },
         };
     }
@@ -87,7 +105,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     if (!isAdmin && Number(sub.userId) !== Number(requestedByUserId)) {
         return {
             http: 403,
-            body: { ok: false, message: "No autorizado" },
+            body: { ok: false, status: "unauthorized", message: "No autorizado" },
             meta: { sub, plat, fingerprint, buyerEmail },
         };
     }
@@ -100,6 +118,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             http: 403,
             body: {
                 ok: false,
+                status: "platform_mismatch",
                 message: "Plataforma no coincide con el pedido",
                 debug: {
                     requestedSlug,
@@ -118,7 +137,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     if (!isActive || !notExpired) {
         return {
             http: 400,
-            body: { ok: false, message: "Pedido/cuenta no activa o vencida" },
+            body: { ok: false, status: "subscription_inactive", message: "Pedido/cuenta no activa o vencida" },
             meta: { sub, fingerprint, soldAccountEmail },
         };
     }
@@ -143,19 +162,45 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     // 7) Extraer código de gmail o netflix flow
     let fetchingResult;
 
-    if (requestedSlug === "netflix") {
-        fetchingResult = await fetchNetflixFlow({
-            toEmail: soldAccountEmail,
-            maxAgeMinutes: Number(plat.max_age_minutes) || 15,
-            action,
+    try {
+        if (requestedSlug === "netflix") {
+            fetchingResult = await withTimeout(
+                fetchNetflixFlow({
+                    toEmail: soldAccountEmail,
+                    maxAgeMinutes: Number(plat.max_age_minutes) || 15,
+                    action,
+                }),
+                20000,
+                "Tiempo de espera agotado consultando Netflix/Gmail."
+            );
+        } else {
+            fetchingResult = await withTimeout(
+                fetchCodeFromGmail({
+                    toEmail: soldAccountEmail,
+                    gmailFromContains: plat.gmail_from,
+                    codeRegex: plat.code_regex,
+                    maxAgeMinutes: Number(plat.max_age_minutes) || 15,
+                }),
+                20000,
+                "Tiempo de espera agotado consultando Gmail."
+            );
+        }
+    } catch (error) {
+        console.error("[requestCode] fetch_failed", {
+            orderNumber,
+            requestedSlug,
+            accountEmail: soldAccountEmail,
+            message: error?.message || String(error),
         });
-    } else {
-        fetchingResult = await fetchCodeFromGmail({
-            toEmail: soldAccountEmail,
-            gmailFromContains: plat.gmail_from,
-            codeRegex: plat.code_regex,
-            maxAgeMinutes: Number(plat.max_age_minutes) || 15,
-        });
+        return {
+            http: 504,
+            body: {
+                ok: false,
+                status: "fetch_timeout",
+                message: "La busqueda del codigo tardó demasiado. Intenta nuevamente en unos segundos.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, error: error?.message || String(error) },
+        };
     }
 
     if (!fetchingResult.ok) {

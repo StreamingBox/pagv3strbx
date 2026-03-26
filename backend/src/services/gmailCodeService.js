@@ -1,11 +1,53 @@
 // BACKEND: pagv2strbx/src/services/gmailCodeService.js
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
+const cheerio = require("cheerio");
 const { getImapConfig, safeToDate } = require("../utils/imapConfig");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
     // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
     return new Date(Date.now() - 24 * 60 * 60 * 1000);
+}
+
+function normalizeWhitespace(value) {
+    return String(value || "").replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function buildHaystack(parsed) {
+    const subject = normalizeWhitespace(parsed?.subject || "");
+    const textBody = normalizeWhitespace(parsed?.text || "");
+    const htmlBody = String(parsed?.html || "").replace(/\u00A0/g, " ");
+
+    let htmlText = "";
+    if (htmlBody) {
+        try {
+            const $ = cheerio.load(htmlBody);
+            htmlText = normalizeWhitespace($("body").text() || $.text() || "");
+        } catch {
+            htmlText = "";
+        }
+    }
+
+    return [subject, textBody, htmlText, htmlBody]
+        .filter(Boolean)
+        .join("\n");
+}
+
+function extractFallbackCode(haystack) {
+    const patterns = [
+        /(?:tu\s+código\s+de\s+chatgpt\s+es|your\s+chatgpt\s+code\s+is)[^0-9]{0,30}([0-9]{6})/i,
+        /(?:introduce|enter)\s+(?:este|this)?\s*temporary\s*verification\s*code[^0-9]{0,30}([0-9]{6})/i,
+        /(?:código|codigo)\s+de\s+verificación[^0-9]{0,40}([0-9]{4,8})/i,
+        /verification\s+code\s+is[^0-9]{0,20}([0-9]{4,8})/i,
+        /verification\s+code[^0-9]{0,20}([0-9]{4,8})/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = String(haystack || "").match(pattern);
+        if (match?.[1]) return match[1];
+    }
+
+    return null;
 }
 
 /**
@@ -66,7 +108,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
         if (!messages || messages.length === 0) {
             return {
                 ok: false,
-                status: "not_found",
+                status: "mailbox_empty",
                 message: "No hay correos recientes para buscar código.",
             };
         }
@@ -113,16 +155,17 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
 
             const parsed = await simpleParser(raw.body);
 
-            // ✅ Buscamos en subject + text + html
-            const subject = String(parsed.subject || "").replace(/\u00A0/g, " ");
-            const textBody = String(parsed.text || "").replace(/\u00A0/g, " ");
-            const htmlBody = String(parsed.html || "").replace(/\u00A0/g, " ");
-
-            const haystack = `${subject}\n${textBody}\n${htmlBody}`;
+            // Buscamos en subject + text + texto limpio del html + html crudo.
+            const haystack = buildHaystack(parsed);
             const m = haystack.match(re);
 
             if (m?.[1]) {
                 return { ok: true, code: m[1], emailDate: msgDate };
+            }
+
+            const fallbackCode = extractFallbackCode(haystack);
+            if (fallbackCode) {
+                return { ok: true, code: fallbackCode, emailDate: msgDate };
             }
         }
 
@@ -138,14 +181,14 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
         if (!sawAnyFromMatch) {
             return {
                 ok: false,
-                status: "not_found",
+                status: "sender_mismatch",
                 message: "No se encontraron correos recientes del remitente configurado.",
             };
         }
 
         return {
             ok: false,
-            status: "not_found",
+            status: "regex_mismatch",
             message: "No se pudo extraer el código (regex no coincidió).",
         };
     } catch (err) {

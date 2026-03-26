@@ -2,7 +2,7 @@
 module.exports = {
     chatgpt: {
         gmail_from: "tm.openai.com",
-        code_regex: "Tu código de ChatGPT es\\s*([0-9]{6})",
+        code_regex: "(?:Tu\\s+código\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is)\\s*([0-9]{6})",
         max_age_minutes: 15,
         is_active: 1,
     },

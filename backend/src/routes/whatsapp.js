@@ -128,24 +128,42 @@ async function readWaToken() {
 }
 
 async function sendWaText({ token, to, text }) {
-    const response = await fetch("https://www.wasenderapi.com/api/send-message", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify({ to: normalizePhone(to), text }),
-    });
-    const data = await response.json().catch(() => ({}));
-    const ok = response.ok && data?.success !== false;
-    if (!ok) {
-        console.warn("[whatsapp.send] failed", {
-            to: normalizePhone(to),
-            status: response.status,
-            providerMessage: data?.message || data?.error || null,
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+        const response = await fetch("https://www.wasenderapi.com/api/send-message", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify({ to: normalizePhone(to), text }),
+            signal: controller.signal,
         });
+        const data = await response.json().catch(() => ({}));
+        const ok = response.ok && data?.success !== false;
+        if (!ok) {
+            console.warn("[whatsapp.send] failed", {
+                to: normalizePhone(to),
+                status: response.status,
+                providerMessage: data?.message || data?.error || null,
+            });
+        }
+        return { ok, status: response.status, data };
+    } catch (error) {
+        console.error("[whatsapp.send] exception", {
+            to: normalizePhone(to),
+            message: error?.name === "AbortError" ? "Timeout enviando mensaje a WhatsApp provider." : (error?.message || String(error)),
+        });
+        return {
+            ok: false,
+            status: error?.name === "AbortError" ? 504 : 500,
+            data: { success: false, message: error?.message || "send_failed" },
+        };
+    } finally {
+        clearTimeout(timeout);
     }
-    return { ok, status: response.status, data };
 }
 
 
@@ -254,26 +272,41 @@ async function resolveRequestUser(phone) {
 }
 
 async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
-    const userResolution = await resolveRequestUser(to);
-    if (!userResolution.ok) {
+    try {
+        const userResolution = await resolveRequestUser(to);
+        if (!userResolution.ok) {
+            const sent = await sendWaText({
+                token,
+                to,
+                text: userResolution.message,
+            });
+            return { handled: true, sent: sent.ok, reason: "user_not_active" };
+        }
+
+        const result = await requestCodeForOrder({
+            orderNumber,
+            platformSlug,
+            user: userResolution.user,
+            action: "code",
+        });
+
+        const reply = renderCodeReply(result);
+        const sent = await sendWaText({ token, to, text: reply });
+        return { handled: true, sent: sent.ok, reason: "code_query" };
+    } catch (error) {
+        console.error("[whatsapp.code] execute_failed", {
+            to: normalizePhone(to),
+            orderNumber,
+            platformSlug,
+            message: error?.message || String(error),
+        });
         const sent = await sendWaText({
             token,
             to,
-            text: userResolution.message,
+            text: "Ocurrió un error consultando el codigo. Intenta nuevamente en unos segundos.",
         });
-        return { handled: true, sent: sent.ok, reason: "user_not_active" };
+        return { handled: true, sent: sent.ok, reason: "execute_failed" };
     }
-
-    const result = await requestCodeForOrder({
-        orderNumber,
-        platformSlug,
-        user: userResolution.user,
-        action: "code",
-    });
-
-    const reply = renderCodeReply(result);
-    const sent = await sendWaText({ token, to, text: reply });
-    return { handled: true, sent: sent.ok, reason: "code_query" };
 }
 
 async function tryHandleIncomingCodeRequest(body) {
@@ -639,7 +672,6 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
-
 
 
 

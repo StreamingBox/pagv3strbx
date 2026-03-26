@@ -66,8 +66,8 @@
     height: 44px;
     border-radius: 12px;
     overflow: hidden;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(79, 108, 196, 0.22);
+    background: linear-gradient(180deg, rgba(19, 30, 64, 0.95), rgba(25, 39, 82, 0.92));
     display: grid;
     place-items: center;
     flex-shrink: 0;
@@ -82,6 +82,9 @@
 
 .cart-logoFallback {
     font-weight: 900;
+    font-size: 13px;
+    color: var(--text);
+    letter-spacing: 0.4px;
 }
 
 .cart-itemMain {

@@ -4,6 +4,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
+const { makeOrderCode } = require("../utils/orderCode");
 
 const router = express.Router();
 
@@ -152,6 +153,7 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
         s.*,
         u.email AS user_email,
         u.name AS user_name,
+        u.whatsapp AS user_phone,
         p.name AS platform_name,
         d.name AS duration_name,
         d.days,
@@ -195,14 +197,15 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
 
         // 1. Fetch subscription with duration days + price
         const [rows] = await conn.query(
-            `SELECT s.id, s.user_id, s.platform_id, s.platform_account_id,
-                    s.expires_at, s.price, s.currency, s.status,
+            `SELECT s.id, s.user_id, s.platform_id, s.platform_price_id, s.platform_account_id,
+                    s.expires_at, s.price, s.currency, s.status, IFNULL(s.is_attended, 0) AS is_attended,
                     d.days, p.name AS platform_name, u.email AS user_email
              FROM subscriptions s
              JOIN durations d ON d.id = s.duration_id
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
              WHERE s.id = ?
+             FOR UPDATE
              LIMIT 1`,
             [orderId]
         );
@@ -216,6 +219,26 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         const days = Number(sub.days || 30);
         const amount = Number(overridePrice !== undefined ? overridePrice : sub.price);
         const userId = sub.user_id;
+        const isExpired = !sub.expires_at || new Date(sub.expires_at) <= new Date();
+
+        if (!Number.isFinite(amount) || amount < 0) {
+            await conn.rollback();
+            return res.status(400).json({ message: "El monto de renovación debe ser un número mayor o igual a 0." });
+        }
+
+        if (isExpired) {
+            await conn.rollback();
+            return res.status(400).json({
+                message: "Esta suscripción ya está vencida. No se puede renovar desde aquí porque la cuenta podría haber sido reasignada."
+            });
+        }
+
+        if (Number(sub.is_attended) === 1) {
+            await conn.rollback();
+            return res.status(400).json({
+                message: "Esta suscripción ya fue atendida desde Vencimientos. No se puede renovar para evitar choques con cuentas reasignadas."
+            });
+        }
 
         // 2. Calculate new expiry: extend from MAX(now, current_expiry)
         const base = sub.expires_at && new Date(sub.expires_at) > new Date()
@@ -224,13 +247,52 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         base.setDate(base.getDate() + days);
         const newExpiry = base.toISOString().slice(0, 19).replace("T", " ");
 
+        const finalAccountId = newAccountId ? Number(newAccountId) : Number(sub.platform_account_id || 0);
+        let accountChanged = false;
+
+        if (newAccountId) {
+            if (!Number.isInteger(finalAccountId) || finalAccountId <= 0) {
+                await conn.rollback();
+                return res.status(400).json({ message: "La nueva cuenta seleccionada es inválida." });
+            }
+
+            if (finalAccountId !== Number(sub.platform_account_id || 0)) {
+                const [newAccountRows] = await conn.query(
+                    `SELECT id, platform_id, status
+                     FROM platform_accounts
+                     WHERE id = ?
+                     LIMIT 1
+                     FOR UPDATE`,
+                    [finalAccountId]
+                );
+
+                if (!newAccountRows.length) {
+                    await conn.rollback();
+                    return res.status(404).json({ message: "La nueva cuenta seleccionada no existe." });
+                }
+
+                const newAccount = newAccountRows[0];
+                if (Number(newAccount.platform_id) !== Number(sub.platform_id)) {
+                    await conn.rollback();
+                    return res.status(400).json({ message: "La nueva cuenta no pertenece a la misma plataforma." });
+                }
+
+                if (String(newAccount.status) !== "available") {
+                    await conn.rollback();
+                    return res.status(409).json({ message: "La nueva cuenta ya no está disponible." });
+                }
+
+                accountChanged = true;
+            }
+        }
+
         // 3. Build update fields
         const updateFields = ["expires_at = ?", "status = 'active'"];
         const updateParams = [newExpiry];
 
-        if (newAccountId) {
+        if (accountChanged) {
             updateFields.push("platform_account_id = ?");
-            updateParams.push(Number(newAccountId));
+            updateParams.push(finalAccountId);
         }
         updateParams.push(orderId);
 
@@ -239,9 +301,59 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
             updateParams
         );
 
-        let newBalance = null;
+        if (Number(sub.platform_account_id)) {
+            if (accountChanged) {
+                await conn.query(
+                    `UPDATE platform_accounts
+                     SET assigned_to_user_id = NULL,
+                         assigned_at = NULL,
+                         expires_at = NULL,
+                         status = 'available'
+                     WHERE id = ?`,
+                    [sub.platform_account_id]
+                );
 
-        // 4. Optionally deduct wallet
+                await conn.query(
+                    `UPDATE platform_accounts
+                     SET status = 'assigned',
+                         assigned_to_user_id = ?,
+                         assigned_at = NOW(),
+                         expires_at = ?
+                     WHERE id = ?`,
+                    [userId, newExpiry, finalAccountId]
+                );
+            } else {
+                await conn.query(
+                    `UPDATE platform_accounts
+                     SET expires_at = ?
+                     WHERE id = ?`,
+                    [newExpiry, sub.platform_account_id]
+                );
+            }
+        }
+
+        let newBalance = null;
+        let renewalOrderId = null;
+        let renewalOrderCode = null;
+
+        const finalChargedAmount = Number.isFinite(amount) ? amount : 0;
+
+        // 4. Registrar una nueva orden de renovación para mantener trazabilidad en historial
+        renewalOrderCode = makeOrderCode();
+        const [renewalOrderIns] = await conn.query(
+            `INSERT INTO orders (user_id, order_code, total, currency, created_at)
+             VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
+            [userId, renewalOrderCode, finalChargedAmount, sub.currency]
+        );
+        renewalOrderId = renewalOrderIns.insertId;
+
+        await conn.query(
+            `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price)
+             VALUES (?, ?, ?, ?, ?)`,
+            [renewalOrderId, orderId, sub.platform_id, sub.platform_price_id, finalChargedAmount]
+        );
+
+        // 5. Optionally deduct wallet
         if (deductWallet) {
             const [wrows] = await conn.query(
                 "SELECT id, balance, currency FROM wallets WHERE user_id = ? FOR UPDATE",
@@ -269,15 +381,14 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
             await conn.query(
                 `INSERT INTO wallet_transactions
                     (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
-                 VALUES (?, 'purchase', ?, ?, 'renewal', ?, ?)`,
-                [walletId, -amount, newBalance, orderId, note || `Renovación pedido #${orderId}`]
+                 VALUES (?, 'purchase', ?, ?, 'order', ?, ?)`,
+                [walletId, -amount, newBalance, renewalOrderId, note || `Renovación pedido #${orderId}`]
             );
         }
 
         await conn.commit();
 
         // --- Build WhatsApp Receipt ---
-        const finalAccountId = newAccountId || sub.platform_account_id;
         let whatsappText = "";
 
         if (finalAccountId) {
@@ -325,6 +436,8 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         return res.json({
             ok: true,
             orderId,
+            renewalOrderId,
+            renewalOrderCode,
             newExpiry,
             newAccountId: finalAccountId,
             deducted: deductWallet ? amount : 0,
@@ -347,21 +460,35 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const limit = Math.max(1, Number(req.query.limit) || 20);
         const offset = (page - 1) * limit;
 
-        const { q, platform, email } = req.query;
+        const { q, platform, email, accountEmail } = req.query;
 
         // Por defecto: <= 7 días (para el admin es mejor un margen un poco mayor, o igual 3)
         // Usaremos <= 7 días 
         let whereCols = [
             "s.status != 'cancelled'",
-            "s.expires_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)"
         ];
         let params = [];
 
         if (q) {
-            whereCols.push("s.id = ?");
-            const qStr = String(q).trim().replace(/^ORD-0*/i, "");
-            const qNum = Number(qStr) || 0;
-            params.push(qNum);
+            const qRaw = String(q).trim();
+            const qNum = Number(qRaw) || 0;
+            const isNumericOnly = /^\d+$/.test(qRaw);
+
+            if (isNumericOnly) {
+                whereCols.push("s.id = ?");
+                params.push(qNum);
+            } else {
+                whereCols.push(`EXISTS (
+                    SELECT 1
+                    FROM order_items oi_q
+                    JOIN orders o_q ON o_q.id = oi_q.order_id
+                    WHERE oi_q.subscription_id = s.id
+                      AND o_q.order_code LIKE ?
+                )`);
+                params.push(`%${qRaw}%`);
+            }
+        } else {
+            whereCols.push("s.expires_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)");
         }
 
         if (platform) {
@@ -372,6 +499,11 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         if (email) {
             whereCols.push("u.email LIKE ?");
             params.push(`%${email}%`);
+        }
+
+        if (accountEmail) {
+            whereCols.push("acc.email LIKE ?");
+            params.push(`%${accountEmail}%`);
         }
 
         // Optional: filter by attended status
@@ -398,6 +530,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
+             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}`,
             params
         );
@@ -407,6 +540,22 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const [rows] = await pool.query(
             `SELECT
                s.id,
+               (
+                 SELECT oi2.order_id
+                 FROM order_items oi2
+                 JOIN orders o2 ON o2.id = oi2.order_id
+                 WHERE oi2.subscription_id = s.id
+                 ORDER BY o2.created_at DESC, oi2.id DESC
+                 LIMIT 1
+               ) AS order_id,
+               (
+                 SELECT o2.order_code
+                 FROM order_items oi2
+                 JOIN orders o2 ON o2.id = oi2.order_id
+                 WHERE oi2.subscription_id = s.id
+                 ORDER BY o2.created_at DESC, oi2.id DESC
+                 LIMIT 1
+               ) AS order_code,
                s.platform_id,
                s.platform_account_id,
                s.expires_at,
@@ -491,4 +640,3 @@ router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), as
 });
 
 module.exports = router;
-

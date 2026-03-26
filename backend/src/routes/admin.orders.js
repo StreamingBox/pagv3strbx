@@ -205,8 +205,8 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
              WHERE s.id = ?
-             FOR UPDATE
-             LIMIT 1`,
+             LIMIT 1
+             FOR UPDATE`,
             [orderId]
         );
 

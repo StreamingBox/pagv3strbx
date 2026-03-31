@@ -1,0 +1,289 @@
+/* =========================
+   CODES — Premium UI (independiente)
+   ========================= */
+
+.codesPage{
+    min-height: 100vh;
+}
+
+/* respeta tus wrappers existentes, pero ajusta el layout sin inline styles */
+.codesInner{
+    display: block;
+}
+
+.codesMain{
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+/* Card principal */
+.codesCard{
+    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    box-shadow: 0 22px 70px rgba(0,0,0,.58);
+    backdrop-filter: blur(12px);
+    padding: 18px;
+    position: relative;
+}
+
+.codesCard::before{
+    content:"";
+    position:absolute;
+    inset:-1px;
+    border-radius: 20px;
+    background: linear-gradient(135deg, rgba(124,92,255,.55), rgba(57,208,255,.35));
+    opacity:.18;
+    filter: blur(14px);
+    z-index:-1;
+}
+
+/* Header */
+.codesHeader{
+    display:flex;
+    align-items:flex-start;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.codesBack{
+    padding: 10px 14px;
+    border-radius: 12px;
+}
+
+.codesHeaderText{
+    display:flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 240px;
+}
+
+.codesTitle{
+    margin: 0;
+    letter-spacing: .2px;
+}
+
+.codesSub{
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.45;
+}
+
+/* Body */
+.codesBody{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.codesField{
+    display:flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.codesLabel{
+    font-size: 13px;
+    opacity: .85;
+}
+
+.codesInput{
+    width: 100%;
+    padding: 12px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(10,12,20,.35);
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s ease, background .15s ease;
+}
+
+.codesInput:focus{
+    border-color: rgba(124,92,255,.45);
+    background: rgba(10,12,20,.42);
+}
+
+/* Platforms */
+.codesPlatforms{
+    display:flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+}
+
+.codesPlatformBtn{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+    color: var(--text);
+    cursor: pointer;
+    transition: transform .15s ease, background .15s ease, border-color .15s ease;
+    position: relative;
+}
+
+.codesPlatformBtn:hover{
+    transform: translateY(-1px);
+    background: rgba(255,255,255,.06);
+    border-color: rgba(255,255,255,.18);
+}
+
+.codesPlatformBtn:disabled{
+    opacity: .6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.codesPlatformIcon{
+    width: 30px;
+    height: 30px;
+    border-radius: 12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: rgba(124,92,255,.14);
+    border: 1px solid rgba(124,92,255,.18);
+}
+
+.codesPlatformText{
+    font-weight: 700;
+    font-size: 13.5px;
+}
+
+.codesPlatformBtn.isLoading{
+    border-color: rgba(124,92,255,.30);
+}
+
+.codesSpinner{
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 2px solid rgba(255,255,255,.30);
+    border-top-color: rgba(124,92,255,.95);
+    animation: codesSpin .8s linear infinite;
+}
+
+@keyframes codesSpin{
+    to { transform: rotate(360deg); }
+}
+
+/* Notice */
+.codesNotice{
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+/* Error spacing */
+.codesError{
+    margin-top: 6px;
+}
+
+/* Status card (expired/blocked/no_account/...) */
+.codesStatusCard{
+    margin-top: 6px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+}
+
+.codesStatusTitle{
+    font-weight: 800;
+}
+
+.codesStatusText{
+    margin-top: 6px;
+    color: var(--muted);
+    line-height: 1.35;
+}
+
+.codesStatusCard.warn{
+    border-color: rgba(255,180,46,.28);
+    background: rgba(60,40,10,.22);
+}
+
+.codesStatusCard.danger{
+    border-color: rgba(255,92,122,.28);
+    background: rgba(60,18,28,.22);
+}
+
+.codesStatusCard.info{
+    border-color: rgba(46,123,255,.25);
+    background: rgba(20,30,60,.22);
+}
+
+/* Result */
+.codesResultCard{
+    margin-top: 6px;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(46,123,255,.25);
+    background: rgba(20,30,60,.22);
+}
+
+.codesResultTop{
+    display:flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.codesResultCol{
+    min-width: 180px;
+}
+
+.codesMetaLabel{
+    font-size: 13px;
+    opacity: .80;
+}
+
+.codesMetaValue{
+    margin-top: 2px;
+    font-weight: 700;
+}
+
+.codesCode{
+    margin-top: 2px;
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: 1px;
+}
+
+.codesResultActions{
+    display:flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    min-width: 150px;
+}
+
+.codesCopy{
+    padding: 10px 14px;
+    border-radius: 12px;
+}
+
+.codesResultFooter{
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+/* Responsive */
+@media (max-width: 520px){
+    .codesPlatformBtn{
+        width: 100%;
+        justify-content: space-between;
+    }
+    .codesResultCol{
+        min-width: 100%;
+    }
+    .codesResultActions{
+        min-width: 100%;
+        justify-content: flex-start;
+    }
+}

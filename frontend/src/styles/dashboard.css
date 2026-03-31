@@ -1,0 +1,30 @@
+/* ===========================
+   DASHBOARD: TOOLBAR + SEARCH
+   (Definiciones canónicas están en auth.css)
+   Aquí solo overrides y variantes del dashboard
+   =========================== */
+
+.dash-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+}

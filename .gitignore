@@ -1,0 +1,52 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Go
+go-backend/api-gateway/api-gateway.exe
+go-backend/store-service/store-service.exe
+go-backend/codes-service/codes-service.exe
+go-backend/api-gateway/pagv2strbx-gateway.exe
+
+# React / Frontend
+frontend/dist/
+frontend/build/
+frontend/android/keystore.properties
+frontend/android/keystores/
+frontend/android/release-signing.txt
+output/
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# PM2 / Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Backend runtime (single-instance lock; do not commit)
+backend/.runtime/
+
+# Other
+coverage/
+.next/
+out/
+build/
+.gemini/
+.gradle-cache/
+.tools/

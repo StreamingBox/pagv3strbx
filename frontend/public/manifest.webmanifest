@@ -1,0 +1,50 @@
+{
+  "id": "/",
+  "name": "Streaming Box",
+  "short_name": "Strbx",
+  "description": "Panel y tienda de Streaming Box para compras, inventario y gestion de cuentas.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#141b33",
+  "lang": "es-CO",
+  "dir": "ltr",
+  "categories": ["shopping", "business", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Panel",
+      "short_name": "Panel",
+      "description": "Abre el panel principal",
+      "url": "/dashboard"
+    },
+    {
+      "name": "Pedidos",
+      "short_name": "Pedidos",
+      "description": "Consulta tus pedidos y entregas",
+      "url": "/orders"
+    },
+    {
+      "name": "Saldo",
+      "short_name": "Saldo",
+      "description": "Revisa tu wallet y movimientos",
+      "url": "/wallet"
+    }
+  ]
+}

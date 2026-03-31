@@ -1,0 +1,1304 @@
+/* =========================
+   GOOGLE FONTS — Space Grotesk (Stitch Design System)
+   ========================= */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
+
+/* =========================
+   THEME TOKENS (ONE SOURCE)
+   Stitch Design: cyan #0da6f2 accent, deep navy bg
+   ========================= */
+:root {
+    --radius: 12px;
+    --radius2: 24px;
+
+    --font: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
+        "Apple Color Emoji", "Segoe UI Emoji";
+
+    /* DARK — Navy vibrante y profundo (Aclarado según solicitud) */
+    --bg0: #141b33;
+    --bg1: #1a2342;
+
+    /* Cards con cristal y desenfoque */
+    --card: rgba(26, 35, 71, 0.85);
+    --card2: rgba(22, 30, 62, 0.80);
+
+    --stroke: rgba(59, 130, 246, 0.22);
+    --stroke2: rgba(255, 255, 255, .05);
+
+    --text: #ffffff; /* Blanco puro para títulos */
+    --muted: #f1f5f9; /* Casi blanco para etiquetas de stock, duración, etc. */
+    --muted2: #e2e8f0; /* Gris muy claro para info terciaria */
+    --card: rgba(30, 41, 75, 0.9); /* Fondo de tarjeta más definido y claro */
+
+    --shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.7);
+
+    /* Accents vibrantes */
+    --accent: #3B82F6;
+    --accent-dark: #2563EB;
+    --accent2: #8B5CF6;
+    --accent-glow: rgba(59, 130, 246, 0.30);
+    --danger: #EF4444;
+
+    /* inputs */
+    --input-bg: rgba(0, 0, 0, 0.25);
+    --input-color: #FFFFFF;
+    --input-stroke: rgba(255, 255, 255, .10);
+
+    /* background FX */
+    --fx1: rgba(37, 99, 235, 0.18);
+    --fx2: rgba(139, 92, 246, 0.14);
+    --accent-gradient: linear-gradient(180deg, #3B82F6, #2563EB);
+}
+
+html[data-theme="light"] {
+    /* LIGHT — Pure Pearl (Limpio y profesional) */
+    --bg0: #f0f4ff;
+    --bg1: #e8edf8;
+
+    --card: rgba(255, 255, 255, 0.9);
+    --card2: rgba(249, 250, 251, 0.8);
+
+    --stroke: rgba(0, 0, 0, 0.06);
+    --stroke2: rgba(0, 0, 0, 0.03);
+
+    --text: #0f172a;
+    --muted: #64748b;
+    --muted2: #94a3b8;
+
+    --shadow: 0 10px 40px rgba(0, 0, 0, 0.04);
+
+    --input-bg: #f9fafb;
+    --input-color: #0f172a;
+    --input-stroke: rgba(0, 0, 0, 0.08);
+
+    --fx1: rgba(59, 130, 246, 0.05);
+    --fx2: rgba(139, 92, 246, 0.04);
+}
+
+/* En modo claro la bg-grid es invisible */
+html[data-theme="light"] .bg-grid {
+    opacity: 0 !important;
+}
+
+/* Orbes muy sutiles en claro */
+html[data-theme="light"] .bg-orb {
+    opacity: 0.04 !important;
+}
+
+/* =========================
+   GLOBAL
+   ========================= */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--text);
+    background-color: var(--bg1);
+    transition: background-color 0.3s ease;
+    overflow-x: hidden;
+}
+
+/* =========================
+   BACKGROUND SHELLS
+   ========================= */
+.page-shell {
+    display: flex;
+    flex-direction: column;
+    color: var(--text);
+    background: 
+        radial-gradient(1200px 900px at 20% 10%, var(--fx1), transparent 50%),
+        radial-gradient(1000px 800px at 90% 70%, var(--fx2), transparent 50%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+    position: relative;
+    overflow-x: hidden;
+    width: 100%;
+    flex: 1 1 auto;
+    /* Mínimo alto pantalla; crece si el contenido es más largo */
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+/* Login/registro: pantalla completa (clase reservada si se usa en HTML). */
+.auth-shell {
+    flex: 1;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+}
+
+/* Capa de fondo: recorta orbes/grid sin usar overflow:hidden en .page-shell (no rompe sticky del sidebar) */
+.page-shell-bg {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.bg-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, .05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, .05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    opacity: .10;
+    pointer-events: none;
+}
+
+.bg-orb {
+    position: absolute;
+    width: 520px;
+    height: 520px;
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: .14;
+    pointer-events: none;
+}
+
+.orb-1 {
+    left: -120px;
+    top: -120px;
+    background: radial-gradient(circle, var(--fx1), transparent 60%);
+}
+
+/* Valores menos agresivos: antes bottom:-220px extendía el scroll del documento */
+.orb-2 {
+    right: -100px;
+    bottom: -80px;
+    background: radial-gradient(circle, var(--fx2), transparent 62%);
+}
+
+/* =========================
+   GLASS CONTAINERS
+   ========================= */
+.card,
+.sidebar,
+.main,
+.kpi {
+    background: linear-gradient(135deg, var(--card) 0%, var(--card2) 100%);
+    border: 1px solid var(--stroke);
+    border-radius: var(--radius2);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(16px);
+}
+
+/* =========================
+   AUTH CARD
+   ========================= */
+.card {
+    width: min(440px, 92vw);
+    padding: 22px 22px 18px;
+    position: relative;
+}
+
+.card::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: calc(var(--radius2) + 2px);
+    background: linear-gradient(135deg,
+            rgba(13, 166, 242, .45) 0%,
+            rgba(99, 51, 255, .25) 50%,
+            transparent 80%);
+    filter: blur(2px);
+    opacity: .7;
+    z-index: -1;
+    pointer-events: none;
+}
+
+.brand {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-bottom: 14px;
+}
+
+.title {
+    font-size: 20px;
+    font-weight: 900;
+    letter-spacing: .2px;
+}
+
+.subtitle {
+    margin-top: 2px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.logo {
+    width: 52px;
+    height: 52px;
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+
+.logo-core {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #6333ff);
+    box-shadow: 0 0 28px var(--accent-glow), 0 0 48px rgba(13, 166, 242, .20);
+}
+
+.logo-ring {
+    position: absolute;
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    border: 2px solid rgba(13, 166, 242, .50);
+    box-shadow: 0 0 18px rgba(13, 166, 242, .30);
+    transform: rotate(20deg);
+    animation: logo-spin 8s linear infinite;
+}
+
+.logo-ring.ring-2 {
+    width: 44px;
+    height: 44px;
+    border-color: rgba(99, 51, 255, .45);
+    transform: rotate(-18deg);
+    box-shadow: 0 0 18px rgba(99, 51, 255, .22);
+    animation: logo-spin 12s linear infinite reverse;
+}
+
+@keyframes logo-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.logo-ring.ring-2 {
+    animation: logo-spin-r 12s linear infinite;
+}
+
+@keyframes logo-spin-r {
+    to {
+        transform: rotate(-360deg);
+    }
+}
+
+/* Image logo */
+.brand-logo-img {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, .12);
+    border: 1px solid var(--stroke);
+    padding: 6px;
+    display: block;
+}
+
+/* =========================
+   FORM
+   ========================= */
+.form {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.label {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input,
+select,
+textarea {
+    width: 100%;
+    height: 44px;
+    border-radius: 8px;
+    border: 1px solid var(--input-stroke);
+    background: var(--input-bg);
+    color: var(--input-color);
+    padding: 0 16px;
+    outline: none;
+    transition: all .2s ease;
+    font-size: 14px;
+}
+
+.input:focus {
+    border-color: var(--accent);
+    background: var(--input-bg);
+    filter: brightness(1.1);
+}
+
+/* Select compacto para barras de filtros (ancho automático, no full-width) */
+select.select-inline {
+    width: auto !important;
+    height: 36px !important;
+    padding: 0 10px !important;
+    border-radius: 8px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border: 1px solid var(--stroke) !important;
+    background: var(--card) !important;
+    color: var(--text) !important;
+}
+
+select.select-inline:focus {
+    border-color: rgba(13, 166, 242, .55) !important;
+    box-shadow: 0 0 0 2px rgba(13, 166, 242, .15) !important;
+}
+
+.btn {
+    height: 48px;
+    border-radius: 12px;
+    border: 0;
+    background: var(--accent-gradient);
+    color: white;
+    font-weight: 700;
+    font-family: var(--font);
+    font-size: 15px;
+    letter-spacing: .4px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: transform .15s ease, box-shadow .15s ease;
+    box-shadow: 0 4px 16px rgba(13, 166, 242, .25);
+}
+
+.btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 32px rgba(13, 166, 242, .45);
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(0);
+    box-shadow: 0 2px 12px rgba(13, 166, 242, .30);
+}
+
+.btn:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-ghost {
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 14px;
+    border: 1px solid var(--stroke);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    transition: transform .12s ease, background .12s ease;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.btn-ghost:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, .03);
+}
+
+:root[data-theme="light"] .btn-ghost:hover {
+    background: rgba(10, 20, 40, .04);
+}
+
+.error {
+    background: rgba(239, 68, 68, .10);
+    border: 1px solid rgba(239, 68, 68, .35);
+    color: color-mix(in srgb, var(--text) 85%, #ffb4b4 15%);
+    padding: 10px 12px;
+    border-radius: 14px;
+    font-size: 13px;
+}
+
+.hint {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--muted2);
+    line-height: 1.35;
+}
+
+.footer {
+    position: absolute;
+    bottom: 14px;
+    font-size: 12px;
+    color: var(--muted2);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 14px var(--accent-glow);
+    animation: dot-pulse 2s ease-in-out infinite;
+}
+
+@keyframes dot-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* =========================
+   ADMIN / DASHBOARD LAYOUT
+   ========================= */
+.page-inner {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    margin: 0;
+    padding: 18px;
+    box-sizing: border-box;
+    /* Flex fila + stretch: misma altura sidebar/main (más estable que grid 1fr con alto indefinido) */
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    align-content: stretch;
+    gap: 0;
+}
+
+/*
+  Sidebar (escritorio):
+  - La celda del grid tiene la misma altura que la del main cuando el main es más alto.
+  - overflow-y visible en escritorio: el scroll es el de la página, no un “mini viewport” dentro del aside.
+*/
+.sidebar {
+    width: 320px;
+    min-width: 320px;
+    flex-shrink: 0;
+    padding: 16px;
+    overflow-x: hidden;
+    overflow-y: visible;
+    transition: width 0.25s ease, min-width 0.25s ease, padding 0.2s ease;
+    position: relative;
+    min-height: 0;
+    align-self: stretch;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Sidebar colapsado: solo muestra el logo */
+.sidebar--collapsed {
+    width: 64px;
+    min-width: 64px;
+    padding: 12px 8px;
+    overflow: hidden;
+}
+
+/* Overlay para cerrar sidebar en móvil */
+.sidebar-overlay {
+    display: none;
+}
+
+/* Botón hamburger: solo visible en móvil */
+.sidebar-toggle-btn {
+    display: none;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 200;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    /* Dark mode: negro casi sólido para contrastar sobre cualquier fondo */
+    border: 1px solid rgba(255, 255, 255, .16);
+    background: rgba(7, 10, 18, 0.97);
+    color: #EAF1FF;
+    font-size: 18px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .65);
+    transition: background 0.15s ease;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+.sidebar-toggle-btn:hover {
+    background: rgba(124, 92, 255, .25);
+}
+
+/* Light mode: fondo blanco sólido */
+:root[data-theme="light"] .sidebar-toggle-btn {
+    background: rgba(255, 255, 255, 0.98);
+    border-color: rgba(10, 20, 40, .15);
+    color: #0B1020;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .15);
+}
+
+:root[data-theme="light"] .sidebar-toggle-btn:hover {
+    background: rgba(124, 92, 255, .10);
+}
+
+/* Main: ocupa el resto del ancho y la misma altura que el sidebar (stretch) */
+.main {
+    flex: 1 1 auto;
+    padding: 16px;
+    min-width: 0;
+    min-height: 0;
+    align-self: stretch;
+    width: auto;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+@media (min-width: 901px) {
+    .page-shell {
+        height: auto;
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow: visible;
+    }
+
+    .page-inner {
+        height: auto;
+        min-height: 0;
+    }
+
+    .sidebar,
+    .main {
+        height: auto;
+        min-height: 0;
+        scrollbar-gutter: auto;
+    }
+
+    .sidebar {
+        overflow-y: visible;
+    }
+
+    .main {
+        overflow: visible;
+    }
+}
+
+/* Sidebar header (marca + toggle) */
+.sidebar-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+/* fila de marca */
+.brand-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+    /* clave para ellipsis */
+}
+
+/* Título del sidebar en 1 línea */
+.brand-title,
+.sidebar-top .brand-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Botón tema no se sale */
+.theme-toggle,
+.sidebar-top .btn-ghost {
+    flex: 0 0 auto;
+    max-width: 100%;
+}
+
+.nav-title {
+    font-weight: 900;
+    letter-spacing: .2px;
+    margin: 0 0 6px 0;
+}
+
+.nav-sub {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0 0 14px 0;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--stroke2);
+    background: rgba(13, 166, 242, .04);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+    margin-bottom: 8px;
+    transition: all .15s ease;
+}
+
+:root[data-theme="light"] .nav-item {
+    background: rgba(13, 166, 242, .04);
+}
+
+.nav-item:hover {
+    border-color: rgba(13, 166, 242, .40);
+    box-shadow: 0 0 0 3px rgba(13, 166, 242, .12), inset 0 0 20px rgba(13, 166, 242, .04);
+    background: rgba(13, 166, 242, .06);
+    transform: translateX(2px);
+}
+
+/* KPI GRID */
+.kpi-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.admin-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 20px;
+}
+
+@media (max-width: 1400px) {
+    .admin-cards-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 1100px) {
+    .admin-cards-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .admin-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-cards-grid {
+        grid-template-columns: 1fr;
+    }
+
+    /* Analytics: chips de insight en grid en móvil para evitar espacio vacío */
+    .insight-chips-row {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px !important;
+    }
+    .insight-chips-row > div {
+        min-width: 0 !important;
+        padding: 8px 10px !important;
+        flex: unset !important;
+    }
+}
+
+/* ===========================
+   REDUCED MOTION SUPPORT
+   =========================== */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
+
+.kpi {
+    border-radius: 16px;
+    padding: 14px;
+    /* sin !important */
+}
+
+.kpi .label {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.kpi .value {
+    font-size: 22px;
+    font-weight: 900;
+    margin-top: 6px;
+}
+
+/* =========================
+   FIX: selects/option in dark mode
+   ========================= */
+select {
+    color: var(--text);
+    background: var(--input-bg);
+}
+
+select option {
+    color: #0B1020;
+    background: #FFFFFF;
+}
+
+:root[data-theme="light"] select option {
+    color: #0B1020;
+    background: #FFFFFF;
+}
+
+/* =========================
+   FIX: tablas (headers y celdas)
+   ========================= */
+table,
+th,
+td {
+    color: var(--text);
+}
+
+th {
+    color: var(--muted);
+}
+
+td {
+    color: var(--text);
+}
+
+tr {
+    border-color: var(--stroke2);
+}
+
+/* =========================
+   RESPONSIVE
+   ========================= */
+/* Admin panel header: en móvil el botón cede espacio con wrap */
+.admin-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+@media (max-width: 900px) {
+
+    /* En móvil el sidebar se convierte en un drawer lateral fijo */
+    .page-inner {
+        display: flex;
+        flex-direction: row;
+        flex: 1 1 auto;
+        /* mantener horizontal para el drawer */
+        padding: 14px;
+        gap: 0;
+    }
+
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        min-height: 100vh;
+        max-height: none;
+        overflow-y: auto;
+        z-index: 150;
+        width: 280px;
+        min-width: 280px;
+        border-radius: 0 var(--radius2) var(--radius2) 0;
+        transform: translateX(0);
+        transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Colapsado = drawer cerrado, sale por la izquierda */
+    .sidebar--collapsed {
+        transform: translateX(-100%);
+        width: 280px;
+        min-width: 280px;
+        padding: 16px;
+    }
+
+    /* Main ocupa todo el ancho en móvil (sin margen del sidebar) */
+    .main {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+        padding: 14px;
+        padding-top: 64px;
+        margin-left: 0 !important;
+        /* espacio para el botón hamburger */
+    }
+
+    .kpi-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* Overlay activo solo en móvil cuando sidebar está abierto */
+    .sidebar-overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .45);
+        z-index: 140;
+        backdrop-filter: blur(2px);
+    }
+
+    /* Mostrar el botón hamburger */
+    .sidebar-toggle-btn {
+        display: flex;
+    }
+
+    /* Sin backdrop-filter complejo en celulares para evitar titileo */
+    .sidebar,
+    .main,
+    .kpi {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+    }
+}
+
+
+
+/* Toolbar: buscador izquierda + tabs derecha */
+.dash-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+}
+
+/* opcional: asegura que el swap quede como quieres */
+.dash-toolbar--swap {
+    flex-direction: row;
+}
+
+.dash-tabs {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.dash-tabs--right {
+    justify-content: flex-end;
+}
+
+/* ✅ Search PRO */
+.dash-search2 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    height: 40px;
+    padding: 0 10px;
+    border-radius: 999px;
+
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(14, 23, 48, 0.40);
+    backdrop-filter: blur(12px);
+
+    width: 44px;
+    overflow: hidden;
+
+    transition:
+        width .22s ease,
+        background .22s ease,
+        border-color .22s ease,
+        box-shadow .22s ease;
+}
+
+/* ✅ "bola" más delgada: ring de 1px, menos blur */
+.dash-search2:hover,
+.dash-search2:focus-within,
+.dash-search2.has-text {
+    width: 280px;
+    /* menos ancho al abrir */
+    border-color: rgba(124, 92, 255, .42);
+    box-shadow: 0 0 0 1px rgba(124, 92, 255, .18);
+    /* <- antes 3px, ahora sutil */
+    background: rgba(14, 23, 48, 0.55);
+}
+
+.dash-search2__btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, .80);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+.dash-search2__btn:hover {
+    color: rgba(255, 255, 255, .98);
+}
+
+.dash-search2__input {
+    width: 100%;
+    min-width: 0;
+    border: none !important;
+    outline: none !important;
+    background: transparent !important;
+    color: var(--text);
+    font-size: 14px;
+    height: 36px;
+    padding: 0;
+}
+
+.dash-search2__input::placeholder {
+    color: rgba(255, 255, 255, .45);
+}
+
+.dash-search2__clear {
+    border: none;
+    outline: none;
+    cursor: pointer;
+    color: rgba(255, 255, 255, .78);
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 999px;
+    width: 30px;
+    height: 30px;
+    display: grid;
+    place-items: center;
+    flex: 0 0 auto;
+    transition: background .15s ease, transform .15s ease;
+}
+
+.dash-search2__clear:hover {
+    background: rgba(255, 255, 255, .12);
+    transform: translateY(-1px);
+}
+
+/* Mobile: que no rompa */
+@media (max-width: 520px) {
+
+    .dash-search2:hover,
+    .dash-search2:focus-within,
+    .dash-search2.has-text {
+        width: min(92vw, 320px);
+    }
+}
+
+/* ================================================
+   THEME TOGGLE FLOTANTE (login page)
+   ================================================ */
+.theme-toggle-float {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid var(--stroke);
+    background: var(--card);
+    backdrop-filter: blur(16px);
+    color: var(--text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, .35), 0 0 0 1px rgba(13, 166, 242, .15);
+    transition: box-shadow .15s ease;
+    overflow: hidden;
+}
+
+.theme-toggle-float:hover {
+    box-shadow: 0 4px 24px rgba(13, 166, 242, .35), 0 0 0 2px rgba(13, 166, 242, .30);
+}
+
+/* ================================================
+   AUTH CARD FOOTER (T&C link)
+   ================================================ */
+.auth-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--stroke2);
+}
+
+.tos-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 11px;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font);
+    text-decoration: underline;
+    text-decoration-color: rgba(13, 166, 242, .40);
+    text-underline-offset: 2px;
+    transition: color .15s ease, text-decoration-color .15s ease;
+}
+
+.tos-link:hover {
+    color: var(--text);
+    text-decoration-color: rgba(13, 166, 242, .80);
+}
+
+.tos-sep {
+    font-size: 11px;
+    color: var(--muted2);
+}
+
+.tos-copy {
+    font-size: 11px;
+    color: var(--muted2);
+}
+
+/* ================================================
+   MODAL TÉRMINOS Y CONDICIONES
+   ================================================ */
+.tos-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(5, 8, 17, .75);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.tos-modal {
+    width: min(580px, 94vw);
+    max-height: 80vh;
+    background: linear-gradient(180deg, rgba(10, 18, 42, 0.96), rgba(10, 18, 42, 0.92));
+    border: 1px solid rgba(13, 166, 242, .25);
+    border-radius: var(--radius2);
+    box-shadow: 0 32px 80px rgba(0, 0, 0, .65), 0 0 0 1px rgba(13, 166, 242, .10);
+    backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tos-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--stroke2);
+}
+
+.tos-header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    font-family: var(--font);
+    background: linear-gradient(135deg, var(--accent), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.tos-close {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--stroke2);
+    background: rgba(255, 255, 255, .05);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .15s ease, color .15s ease;
+}
+
+.tos-close:hover {
+    background: rgba(239, 68, 68, .15);
+    color: #EF4444;
+    border-color: rgba(239, 68, 68, .30);
+}
+
+.tos-body {
+    padding: 20px 22px;
+    overflow-y: auto;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+    flex: 1;
+}
+
+.tos-body p {
+    margin: 0 0 14px;
+}
+
+.tos-body strong {
+    color: var(--text);
+    display: block;
+    margin-bottom: 4px;
+}
+
+.tos-legal {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--stroke2);
+    font-size: 11px;
+    color: var(--muted2);
+    text-align: center;
+}
+
+/* ================================================
+   ADMIN CARDS: Hover Premium (Stitch style)
+   ================================================ */
+.admin-card {
+    position: relative;
+    overflow: hidden;
+    transition: transform .2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow .2s ease;
+}
+
+.admin-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 16px 40px rgba(13, 166, 242, .20), 0 0 0 1px rgba(13, 166, 242, .25);
+}
+
+.admin-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(13, 166, 242, .04), transparent);
+    opacity: 0;
+    transition: opacity .2s ease;
+    pointer-events: none;
+    border-radius: inherit;
+}
+
+.admin-card:hover::after {
+    opacity: 1;
+}
+
+/* ================================================
+   DASHBOARD: Botones Comprar (framer-motion enhance)
+   ================================================ */
+.btn-buy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 16px;
+    height: 38px;
+    border-radius: 12px;
+    border: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, #3b52f0 100%);
+    color: white;
+    font-weight: 600;
+    font-family: var(--font);
+    font-size: 13px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(13, 166, 242, .25);
+    transition: box-shadow .15s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-buy::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, .12), transparent);
+    pointer-events: none;
+}
+
+.btn-buy:hover {
+    box-shadow: 0 8px 28px rgba(13, 166, 242, .45);
+}
+
+/* Stock badge pulsante */
+.stock-pulse {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.stock-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    box-shadow: 0 0 6px rgba(34, 197, 94, .60);
+    animation: pulse-green 2s ease-in-out infinite;
+}
+
+@keyframes pulse-green {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.7;
+        transform: scale(0.85);
+    }
+}
+
+/* ================================================
+   GLOBAL UTILITIES
+   ================================================ */
+
+/* Spinner de carga */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--stroke);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.75s linear infinite;
+    flex-shrink: 0;
+}
+
+/* Select inline (usado en analytics: año, tipo gráfico) */
+.select-inline {
+    appearance: none;
+    -webkit-appearance: none;
+    padding: 7px 28px 7px 12px;
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: var(--font);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.select-inline:focus,
+.select-inline:hover {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--stroke) 50%);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent 88%);
+}

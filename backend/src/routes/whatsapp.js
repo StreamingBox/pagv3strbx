@@ -399,12 +399,6 @@ async function tryHandleIncomingCodeRequest(body) {
             return { handled: true, sent: sent.ok, reason: "platform_not_identified" };
         }
 
-        const sentMsg = await sendWaText({
-            token,
-            to: incoming.from,
-            text: "🔍 Buscando código, por favor espera un momento...",
-        });
-
         return executeCodeRequest({ token, to: incoming.from, orderNumber, platformSlug });
     }
 
@@ -435,12 +429,6 @@ async function tryHandleIncomingCodeRequest(body) {
         const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
         return { handled: true, sent: sent.ok, reason: cmd.type };
     }
-
-    await sendWaText({
-        token,
-        to: incoming.from,
-        text: "🔍 Buscando código, por favor espera un momento...",
-    });
 
     return executeCodeRequest({
         token,
@@ -736,4 +724,3 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
-

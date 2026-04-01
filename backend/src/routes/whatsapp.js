@@ -15,7 +15,9 @@ const { toCodeSlug } = require("../utils/platformSlugMap");
 const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
 const processedWebhooks = new Set(); // Para deduplicación
+const recentIncomingFingerprints = new Map(); // fingerprint -> timestamp
 const FLOW_TTL_MS = 15 * 60 * 1000;
+const INCOMING_DEDUPE_TTL_MS = 8000;
 
 async function ensureSettingsTable() {
     await pool.query(`
@@ -99,6 +101,46 @@ function readIncomingMessage(body) {
 
     if (!from) return null;
     return { from: normalizePhone(from), text };
+}
+
+function readIncomingMessageMeta(body) {
+    const incoming = readIncomingMessage(body);
+    const messageNode = Array.isArray(body?.data?.messages)
+        ? body.data.messages[0]
+        : body?.data?.messages;
+    const key = messageNode?.key || {};
+    const msgId = key?.id ? String(key.id) : null;
+    const remoteJid = String(key?.remoteJid || "");
+    const eventName = String(body?.event || body?.type || "").trim().toLowerCase();
+
+    return {
+        eventName,
+        msgId,
+        remoteJid,
+        from: incoming?.from || "",
+        text: String(incoming?.text || "").trim(),
+    };
+}
+
+function makeIncomingFingerprint(body) {
+    const meta = readIncomingMessageMeta(body);
+    if (!meta.from) return null;
+
+    const normalizedText = meta.text.toLowerCase().replace(/\s+/g, " ").trim();
+    if (meta.msgId) {
+        return `msg:${meta.msgId}`;
+    }
+
+    return `fallback:${meta.from}:${normalizedText}`;
+}
+
+function cleanupRecentIncomingFingerprints() {
+    const now = Date.now();
+    for (const [fingerprint, ts] of recentIncomingFingerprints.entries()) {
+        if (now - ts > INCOMING_DEDUPE_TTL_MS) {
+            recentIncomingFingerprints.delete(fingerprint);
+        }
+    }
 }
 
 function deepFindFirstString(node, wantedKeys) {
@@ -558,31 +600,51 @@ router.post("/whatsapp/webhook", async (req, res) => {
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }
 
-        const update = readWebhookUpdate(req.body || {});
+        const body = req.body || {};
+        const update = readWebhookUpdate(body);
+        const incomingMeta = readIncomingMessageMeta(body);
+        const eventName = String(body?.event || body?.type || null);
+
         let isDuplicate = false;
-        const msgIdToTrack = update.msgId || req.body?.data?.messages?.key?.id || req.body?.data?.messages?.[0]?.key?.id || req.body?.data?.key?.id;
+        let duplicateReason = null;
+        const msgIdToTrack = update.msgId || incomingMeta.msgId || body?.data?.key?.id;
 
         if (msgIdToTrack) {
             if (processedWebhooks.has(msgIdToTrack)) {
                 isDuplicate = true;
+                duplicateReason = "msg_id";
             } else {
                 processedWebhooks.add(msgIdToTrack);
                 setTimeout(() => processedWebhooks.delete(msgIdToTrack), 600000); // 10 mins retención
             }
         }
 
+        if (!isDuplicate) {
+            const fingerprint = makeIncomingFingerprint(body);
+            if (fingerprint) {
+                cleanupRecentIncomingFingerprints();
+                if (recentIncomingFingerprints.has(fingerprint)) {
+                    isDuplicate = true;
+                    duplicateReason = duplicateReason || "fingerprint";
+                } else {
+                    recentIncomingFingerprints.set(fingerprint, Date.now());
+                }
+            }
+        }
+
         // Si no es un duplicado, procesarlo en BACKGROUND sin bloquear
         if (!isDuplicate) {
-            tryHandleIncomingCodeRequest(req.body || {}).catch((e) => {
+            tryHandleIncomingCodeRequest(body).catch((e) => {
                 console.error("[whatsapp.webhook] Error en background handle:", e);
             });
         }
 
         // Log the event, without waiting for incomingResult
         console.log("[whatsapp.webhook] event_received", {
-            event: req.body?.event || req.body?.type || null,
-            hasMsgId: !!update.msgId,
+            event: eventName,
+            hasMsgId: !!msgIdToTrack,
             isDuplicate,
+            duplicateReason,
         });
 
         if (!update.msgId) {
@@ -674,6 +736,4 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
-
-
 

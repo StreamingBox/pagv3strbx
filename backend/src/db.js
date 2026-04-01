@@ -120,6 +120,29 @@ pool.query("CREATE INDEX idx_orders_created ON orders(created_at)").catch(() => 
 pool.query("CREATE INDEX idx_order_items_order_platform ON order_items(order_id, platform_id)").catch(() => { });
 pool.query("CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_status_label, created_at)").catch(() => { });
 
+pool.query(`
+    CREATE TABLE IF NOT EXISTS whatsapp_webhook_dedupe (
+        event_key VARCHAR(191) PRIMARY KEY,
+        msg_id VARCHAR(128) NULL,
+        fingerprint VARCHAR(191) NULL,
+        event_name VARCHAR(64) NULL,
+        phone VARCHAR(50) NULL,
+        message_preview VARCHAR(255) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME NOT NULL,
+        INDEX idx_whatsapp_webhook_expires (expires_at),
+        INDEX idx_whatsapp_webhook_msg_id (msg_id)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN msg_id VARCHAR(128) NULL").catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN fingerprint VARCHAR(191) NULL").catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN event_name VARCHAR(64) NULL").catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN phone VARCHAR(50) NULL").catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN message_preview VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN expires_at DATETIME NOT NULL").catch(() => { });
+pool.query("CREATE INDEX idx_whatsapp_webhook_expires ON whatsapp_webhook_dedupe(expires_at)").catch(() => { });
+pool.query("CREATE INDEX idx_whatsapp_webhook_msg_id ON whatsapp_webhook_dedupe(msg_id)").catch(() => { });
+
 // ──────────────────────────────────────────────────────────────
 // Tabla de logs de carga de cuentas (manual y masiva)
 // ──────────────────────────────────────────────────────────────

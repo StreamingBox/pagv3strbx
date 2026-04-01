@@ -9,17 +9,17 @@ const {
     updateTraceByMsgId,
     mapWaStatus,
 } = require("../services/whatsappQueue");
+const { sendWaText, normalizePhone } = require("../services/wasenderClient");
+const {
+    cleanupExpiredWebhookDedupe,
+    reserveWebhookEvent,
+} = require("../services/whatsappWebhookDedupe");
 const { getSubscriptionWithAccount } = require("../services/codeQueries");
 const { toCodeSlug } = require("../utils/platformSlugMap");
 
 const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
-const processedWebhooks = new Set(); // Para deduplicación
-const recentIncomingFingerprints = new Map(); // fingerprint -> timestamp
-const lastOutboundAtByPhone = new Map(); // phone -> timestamp ms
 const FLOW_TTL_MS = 15 * 60 * 1000;
-const INCOMING_DEDUPE_TTL_MS = 8000;
-const WA_MIN_GAP_MS = 5500;
 
 async function ensureSettingsTable() {
     await pool.query(`
@@ -31,12 +31,6 @@ async function ensureSettingsTable() {
     `);
 }
 
-function normalizePhone(input) {
-    // Normaliza cualquier formato/jid a E.164 simple (+<digitos>)
-    const digits = String(input || "").replace(/\D/g, "");
-    if (!digits) return "";
-    return `+${digits}`;
-}
 function normalizeDigits(input) {
     return String(input || "").replace(/\D/g, "");
 }
@@ -127,41 +121,11 @@ function readIncomingMessageMeta(body) {
 function makeIncomingFingerprint(body) {
     const meta = readIncomingMessageMeta(body);
     if (!meta.from) return null;
+    if (meta.msgId) return null;
 
     const normalizedText = meta.text.toLowerCase().replace(/\s+/g, " ").trim();
-    if (meta.msgId) {
-        return `msg:${meta.msgId}`;
-    }
-
     return `fallback:${meta.from}:${normalizedText}`;
 }
-
-function cleanupRecentIncomingFingerprints() {
-    const now = Date.now();
-    for (const [fingerprint, ts] of recentIncomingFingerprints.entries()) {
-        if (now - ts > INCOMING_DEDUPE_TTL_MS) {
-            recentIncomingFingerprints.delete(fingerprint);
-        }
-    }
-}
-
-function deepFindFirstString(node, wantedKeys) {
-    const stack = [node];
-    while (stack.length) {
-        const cur = stack.pop();
-        if (!cur || typeof cur !== "object") continue;
-        if (Array.isArray(cur)) {
-            for (const item of cur) stack.push(item);
-            continue;
-        }
-        for (const [k, v] of Object.entries(cur)) {
-            if (wantedKeys.has(k) && typeof v === "string" && v.trim()) return v.trim();
-            if (v && typeof v === "object") stack.push(v);
-        }
-    }
-    return null;
-}
-
 
 async function readWaToken() {
     await ensureSettingsTable();
@@ -169,60 +133,6 @@ async function readWaToken() {
         "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
     );
     return String(row?.setting_value || "").trim();
-}
-
-function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function sendWaText({ token, to, text }) {
-    const normalizedTo = normalizePhone(to);
-    const lastSentAt = lastOutboundAtByPhone.get(normalizedTo) || 0;
-    const waitMs = Math.max(0, WA_MIN_GAP_MS - (Date.now() - lastSentAt));
-
-    if (waitMs > 0) {
-        await sleep(waitMs);
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
-    try {
-        const response = await fetch("https://www.wasenderapi.com/api/send-message", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
-            },
-            body: JSON.stringify({ to: normalizedTo, text }),
-            signal: controller.signal,
-        });
-        const data = await response.json().catch(() => ({}));
-        const ok = response.ok && data?.success !== false;
-        if (ok) {
-            lastOutboundAtByPhone.set(normalizedTo, Date.now());
-        }
-        if (!ok) {
-            console.warn("[whatsapp.send] failed", {
-                to: normalizedTo,
-                status: response.status,
-                providerMessage: data?.message || data?.error || null,
-            });
-        }
-        return { ok, status: response.status, data };
-    } catch (error) {
-        console.error("[whatsapp.send] exception", {
-            to: normalizedTo,
-            message: error?.name === "AbortError" ? "Timeout enviando mensaje a WhatsApp provider." : (error?.message || String(error)),
-        });
-        return {
-            ok: false,
-            status: error?.name === "AbortError" ? 504 : 500,
-            data: { success: false, message: error?.message || "send_failed" },
-        };
-    } finally {
-        clearTimeout(timeout);
-    }
 }
 
 
@@ -593,6 +503,7 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
 // POST /whatsapp/webhook
 router.post("/whatsapp/webhook", async (req, res) => {
     try {
+        cleanupExpiredWebhookDedupe().catch(() => { });
         const configuredSecret = String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
         const receivedSignature = String(req.get("X-Webhook-Signature") || "").trim();
         const skipSignature = String(process.env.WASENDER_SKIP_SIGNATURE || "false").toLowerCase() === "true";
@@ -606,33 +517,17 @@ router.post("/whatsapp/webhook", async (req, res) => {
         const update = readWebhookUpdate(body);
         const incomingMeta = readIncomingMessageMeta(body);
         const eventName = String(body?.event || body?.type || null);
-
-        let isDuplicate = false;
-        let duplicateReason = null;
         const msgIdToTrack = update.msgId || incomingMeta.msgId || body?.data?.key?.id;
-
-        if (msgIdToTrack) {
-            if (processedWebhooks.has(msgIdToTrack)) {
-                isDuplicate = true;
-                duplicateReason = "msg_id";
-            } else {
-                processedWebhooks.add(msgIdToTrack);
-                setTimeout(() => processedWebhooks.delete(msgIdToTrack), 600000); // 10 mins retención
-            }
-        }
-
-        if (!isDuplicate) {
-            const fingerprint = makeIncomingFingerprint(body);
-            if (fingerprint) {
-                cleanupRecentIncomingFingerprints();
-                if (recentIncomingFingerprints.has(fingerprint)) {
-                    isDuplicate = true;
-                    duplicateReason = duplicateReason || "fingerprint";
-                } else {
-                    recentIncomingFingerprints.set(fingerprint, Date.now());
-                }
-            }
-        }
+        const fallbackFingerprint = makeIncomingFingerprint(body);
+        const dedupe = await reserveWebhookEvent({
+            msgId: msgIdToTrack,
+            fallbackFingerprint,
+            eventName,
+            phone: incomingMeta.from,
+            text: incomingMeta.text,
+        });
+        const isDuplicate = dedupe.isDuplicate;
+        const duplicateReason = isDuplicate ? dedupe.reason : null;
 
         // Si no es un duplicado, procesarlo en BACKGROUND sin bloquear
         if (!isDuplicate) {
@@ -647,6 +542,7 @@ router.post("/whatsapp/webhook", async (req, res) => {
             hasMsgId: !!msgIdToTrack,
             isDuplicate,
             duplicateReason,
+            dedupeKey: dedupe.eventKey,
         });
 
         if (!update.msgId) {

@@ -1,8 +1,10 @@
 const pool = require("../db");
+const { sendWaText } = require("./wasenderClient");
 
 let lastSentTime = 0;
 let isProcessing = false;
-const QUEUE_DELAY = 60000;
+const queueDelayRaw = Number.parseInt(String(process.env.WA_QUEUE_MIN_DELAY_MS || "6000"), 10);
+const QUEUE_DELAY = Number.isFinite(queueDelayRaw) && queueDelayRaw >= 0 ? queueDelayRaw : 6000;
 const QUEUE_POLL_INTERVAL = 30000;
 let pausedUntil = 0;
 
@@ -138,20 +140,17 @@ async function processWhatsAppQueue() {
             return;
         }
 
-        const response = await fetch("https://www.wasenderapi.com/api/send-message", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${tokenRow.setting_value}`,
-            },
-            body: JSON.stringify({ to: job.phone, text: job.message }),
+        const wa = await sendWaText({
+            token: tokenRow.setting_value,
+            to: job.phone,
+            text: job.message,
+            context: "queue",
         });
-
-        const data = await response.json().catch(() => ({}));
-        const ok = response.ok && data?.success !== false;
+        const data = wa.data;
+        const ok = wa.ok;
 
         if (!ok) {
-            const errorMsg = data?.message || data?.error || `API Error (${response.status})`;
+            const errorMsg = data?.message || data?.error || `API Error (${wa.status})`;
             await updateTraceResult({
                 traceId: job.id,
                 ok: false,

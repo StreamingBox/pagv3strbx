@@ -7,6 +7,7 @@ function getImapConfig() {
     const user = process.env.GMAIL_EMAIL;
     const password = process.env.GMAIL_IMAP_PASS;
     if (!user || !password) return null;
+    const imapTlsInsecure = String(process.env.IMAP_TLS_INSECURE || "").trim().toLowerCase() === "true";
 
     return {
         imap: {
@@ -20,7 +21,7 @@ function getImapConfig() {
             socketTimeout: 15000,
             // Por defecto verificación TLS estricta. Solo en desarrollo: IMAP_TLS_INSECURE=true
             tlsOptions: {
-                rejectUnauthorized: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() !== "true",
+                rejectUnauthorized: !imapTlsInsecure,
             },
         },
     };

@@ -217,7 +217,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             gmailFromContains,
             message: err?.message || String(err),
             code: err?.code || null,
-            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() === "true",
+            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").trim().toLowerCase() === "true",
         });
         if (isTlsCertificateError(err)) {
             return {

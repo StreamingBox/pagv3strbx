@@ -1,10 +1,9 @@
 // BACKEND: pagv2strbx/src/services/netflixFlowService.js
-const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const https = require("https");
-const { getImapConfig, safeToDate, getEnvBool } = require("../utils/imapConfig");
+const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
 function getNetflixAxiosOptions() {
     const insecureTls = getEnvBool("NETFLIX_TLS_INSECURE");
@@ -20,20 +19,6 @@ function getNetflixAxiosOptions() {
         maxRedirects: 10,
         timeout: 15000,
     };
-}
-
-function isTlsCertificateError(error) {
-    const message = String(error?.message || "").toLowerCase();
-    const code = String(error?.code || "").toUpperCase();
-
-    return (
-        message.includes("self-signed certificate") ||
-        message.includes("unable to verify the first certificate") ||
-        message.includes("certificate") ||
-        code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-        code === "SELF_SIGNED_CERT_IN_CHAIN" ||
-        code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-    );
 }
 
 /**
@@ -125,7 +110,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
     let conn;
     let stage = "connect";
     try {
-        conn = await imaps.connect(config);
+        conn = await connectImapWithTlsFallback(config, "netflixFlowService");
         stage = "open_box";
         await conn.openBox("INBOX");
 

@@ -1,21 +1,7 @@
 // BACKEND: pagv2strbx/src/services/gmailCodeService.js
-const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
 const cheerio = require("cheerio");
-const { getImapConfig, safeToDate, getEnvBool } = require("../utils/imapConfig");
-
-function isTlsCertificateError(error) {
-    const message = String(error?.message || "").toLowerCase();
-    const code = String(error?.code || "").toUpperCase();
-
-    return (
-        message.includes("self-signed certificate") ||
-        message.includes("unable to verify the first certificate") ||
-        code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
-        code === "SELF_SIGNED_CERT_IN_CHAIN" ||
-        code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
-    );
-}
+const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
     // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
@@ -101,7 +87,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
     let conn;
     let stage = "connect";
     try {
-        conn = await imaps.connect(config);
+        conn = await connectImapWithTlsFallback(config, "gmailCodeService");
         stage = "open_box";
         await conn.openBox("INBOX");
 

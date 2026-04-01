@@ -16,8 +16,10 @@ const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
 const processedWebhooks = new Set(); // Para deduplicación
 const recentIncomingFingerprints = new Map(); // fingerprint -> timestamp
+const lastOutboundAtByPhone = new Map(); // phone -> timestamp ms
 const FLOW_TTL_MS = 15 * 60 * 1000;
 const INCOMING_DEDUPE_TTL_MS = 8000;
+const WA_MIN_GAP_MS = 5500;
 
 async function ensureSettingsTable() {
     await pool.query(`
@@ -169,7 +171,19 @@ async function readWaToken() {
     return String(row?.setting_value || "").trim();
 }
 
+function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function sendWaText({ token, to, text }) {
+    const normalizedTo = normalizePhone(to);
+    const lastSentAt = lastOutboundAtByPhone.get(normalizedTo) || 0;
+    const waitMs = Math.max(0, WA_MIN_GAP_MS - (Date.now() - lastSentAt));
+
+    if (waitMs > 0) {
+        await sleep(waitMs);
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -180,14 +194,17 @@ async function sendWaText({ token, to, text }) {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${token}`,
             },
-            body: JSON.stringify({ to: normalizePhone(to), text }),
+            body: JSON.stringify({ to: normalizedTo, text }),
             signal: controller.signal,
         });
         const data = await response.json().catch(() => ({}));
         const ok = response.ok && data?.success !== false;
+        if (ok) {
+            lastOutboundAtByPhone.set(normalizedTo, Date.now());
+        }
         if (!ok) {
             console.warn("[whatsapp.send] failed", {
-                to: normalizePhone(to),
+                to: normalizedTo,
                 status: response.status,
                 providerMessage: data?.message || data?.error || null,
             });
@@ -195,7 +212,7 @@ async function sendWaText({ token, to, text }) {
         return { ok, status: response.status, data };
     } catch (error) {
         console.error("[whatsapp.send] exception", {
-            to: normalizePhone(to),
+            to: normalizedTo,
             message: error?.name === "AbortError" ? "Timeout enviando mensaje a WhatsApp provider." : (error?.message || String(error)),
         });
         return {

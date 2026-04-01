@@ -256,6 +256,8 @@ function renderCodeReply(result) {
         `📦 *Pedido:* ${result.body.orderNumber}`,
         `📺 *Plataforma:* ${result.body.platform}`,
         `✉️ *Email:* ${result.body.email || "N/A"}`,
+        `🔐 *Clave:* ${result.body.password || "N/A"}`,
+        `#️⃣ *PIN:* ${result.body.pin || "N/A"}`,
         `🔑 *Código:* ${result.body.code || "N/A"}`,
     ].join("\n");
 }
@@ -672,7 +674,6 @@ router.get("/admin/whatsapp/queue", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
-
 
 
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -121,6 +121,27 @@ export default function Codes() {
     const [loadingSlug, setLoadingSlug] = useState(null);
     const [error, setError] = useState("");
     const [data, setData] = useState(null);
+    const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+    const feedbackRef = useRef(null);
+
+    useEffect(() => {
+        const handleResize = () => setViewportWidth(window.innerWidth);
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, []);
+
+    useEffect(() => {
+        if (!error && !data) return;
+
+        const timer = window.setTimeout(() => {
+            feedbackRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 120);
+
+        return () => window.clearTimeout(timer);
+    }, [data, error]);
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -165,6 +186,9 @@ export default function Codes() {
     }
 
     const activeMeta = useMemo(() => PLATFORMS.find(p => p.slug === activePlatform), [activePlatform]);
+    const isMobile = viewportWidth <= 900;
+    const isPhone = viewportWidth <= 640;
+    const isTinyPhone = viewportWidth <= 420;
 
     /* ── Estilos ahora definidos fuera del componente (const S) ── */
 
@@ -195,28 +219,31 @@ export default function Codes() {
 
                 {/* ── MAIN: 2 columnas ── */}
                 <main className="main" style={{
-                    padding: "20px 18px", display: "flex", gap: 16, alignItems: "flex-start",
-                    background: "transparent", border: "none", boxShadow: "none", backdropFilter: "none"
+                    padding: isPhone ? "10px 4px 18px" : "20px 18px", display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
+                    gap: isPhone ? 12 : 16, alignItems: "stretch",
+                    background: "transparent", border: "none", boxShadow: "none", backdropFilter: "none",
+                    overflow: "visible", paddingBottom: isPhone ? 28 : 20,
                 }}>
 
                     {/* ════ IZQUIERDA: Formulario ════ */}
                     <motion.div initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }}
-                        style={{ ...S.card, flex: "0 0 450px", overflow: "hidden" }}>
+                        style={{ ...S.card, flex: isMobile ? "1 1 auto" : "0 0 450px", width: isMobile ? "100%" : "auto", overflow: "hidden" }}>
 
                         {/* ── Header con glow ── */}
-                        <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid var(--stroke)", textAlign: "center" }}>
+                        <div style={{ padding: isPhone ? "18px 16px 14px" : "20px 20px 16px", borderBottom: "1px solid var(--stroke)", textAlign: "center" }}>
                             {/* Icono central con glow */}
                             <div style={{ position: "relative", display: "inline-flex", marginBottom: 12 }}>
                                 <div style={{ width: 52, height: 52, borderRadius: "50%", background: "linear-gradient(135deg,rgba(13,166,242,0.2),rgba(99,51,255,0.2))", border: "1.5px solid rgba(13,166,242,0.4)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, boxShadow: "0 0 24px rgba(13,166,242,0.25), inset 0 0 14px rgba(13,166,242,0.05)" }}>🔐</div>
                                 {/* Anillo decorativo */}
                                 <div style={{ position: "absolute", inset: -5, borderRadius: "50%", border: "1px solid rgba(13,166,242,0.12)", boxShadow: "0 0 12px rgba(13,166,242,0.08)" }} />
                             </div>
-                            <h1 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>Códigos (V3)</h1>
+                            <h1 style={{ margin: "0 0 4px", fontSize: isPhone ? 18 : 20, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>Códigos (V3)</h1>
                             <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>Obtén credenciales de acceso de tu pedido</p>
                         </div>
 
                         {/* ── Body ── */}
-                        <div style={{ padding: "18px 20px 20px", display: "flex", flexDirection: "column", gap: 15 }}>
+                        <div style={{ padding: isPhone ? "16px" : "18px 20px 20px", display: "flex", flexDirection: "column", gap: isPhone ? 13 : 15 }}>
 
                             {/* Input + botón inline */}
                             <div>
@@ -224,8 +251,8 @@ export default function Codes() {
                                     Número de pedido
                                 </label>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                    <div style={{ display: "flex", gap: 8 }}>
-                                        <div style={{ position: "relative", flex: 1 }}>
+                                        <div style={{ display: "flex", gap: 8 }}>
+                                            <div style={{ position: "relative", flex: 1 }}>
                                             <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, pointerEvents: "none", color: "var(--muted)" }}>🧾</span>
                                             <input
                                                 value={orderNumber}
@@ -248,7 +275,7 @@ export default function Codes() {
                                     </div>
 
                                     {activePlatform === "netflix" && (
-                                        <div style={{ display: "flex", gap: 8 }}>
+                                        <div style={{ display: "flex", flexDirection: isTinyPhone ? "column" : "row", gap: 8 }}>
                                             <motion.button
                                                 whileHover={{ scale: 1.02, boxShadow: "0 0 16px rgba(13,166,242,0.3)" }}
                                                 whileTap={{ scale: 0.98 }}
@@ -292,7 +319,7 @@ export default function Codes() {
                                 <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8 }}>
                                     Plataforma
                                 </label>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                <div style={{ display: "grid", gridTemplateColumns: isTinyPhone ? "1fr" : "1fr 1fr", gap: 8 }}>
                                     {PLATFORMS.map(p => {
                                         const isActive = activePlatform === p.slug;
                                         const isLoading = loadingSlug === p.slug;
@@ -328,7 +355,7 @@ export default function Codes() {
                                                         onError={e => { e.target.style.display = "none"; e.target.parentElement.textContent = p.icon; }}
                                                     />
                                                 </div>
-                                                <span style={{ fontSize: 12, fontWeight: 800, color: isActive ? p.accent : "var(--text)", lineHeight: 1, letterSpacing: "0.2px" }}>
+                                                <span style={{ fontSize: 12, fontWeight: 800, color: isActive ? p.accent : "var(--text)", lineHeight: 1.15, letterSpacing: "0.2px", textAlign: "center" }}>
                                                     {isLoading ? "..." : p.label}
                                                 </span>
                                                 {isLoading && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${p.accent}40`, borderTopColor: p.accent, display: "block", animation: "spin 0.7s linear infinite", position: "absolute", bottom: 12 }} />}
@@ -341,21 +368,53 @@ export default function Codes() {
                             {/* Errores */}
                             <AnimatePresence>
                                 {error && (
-                                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                        style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 9, padding: "10px 12px", fontSize: 12, color: "#ef4444", fontWeight: 700 }}>
+                                    <motion.div
+                                        ref={feedbackRef}
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0 }}
+                                        style={{
+                                            background: "rgba(239,68,68,0.1)",
+                                            border: "1px solid rgba(239,68,68,0.3)",
+                                            borderRadius: 9,
+                                            padding: "10px 12px",
+                                            fontSize: 12,
+                                            color: "#ef4444",
+                                            fontWeight: 700,
+                                            scrollMarginTop: isPhone ? 92 : 24,
+                                        }}
+                                    >
                                         ❌ {error}
                                     </motion.div>
                                 )}
                             </AnimatePresence>
-                            <AnimatePresence>{data?.ok === false && <StatusCard d={data} />}</AnimatePresence>
+                            <AnimatePresence>
+                                {data?.ok === false && (
+                                    <div ref={feedbackRef} style={{ scrollMarginTop: isPhone ? 92 : 24 }}>
+                                        <StatusCard d={data} />
+                                    </div>
+                                )}
+                            </AnimatePresence>
 
                             {/* Resultado exitoso */}
                             <AnimatePresence>
                                 {data?.ok && (
-                                    <motion.div initial={{ opacity: 0, y: 12, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }}
-                                        style={{ background: "linear-gradient(135deg,rgba(13,166,242,0.06),rgba(99,51,255,0.06))", border: "1px solid rgba(13,166,242,0.2)", borderRadius: 12, padding: 14, boxShadow: "0 8px 28px rgba(13,166,242,0.08)" }}>
+                                    <motion.div
+                                        ref={feedbackRef}
+                                        initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        style={{
+                                            background: "linear-gradient(135deg,rgba(13,166,242,0.06),rgba(99,51,255,0.06))",
+                                            border: "1px solid rgba(13,166,242,0.2)",
+                                            borderRadius: 12,
+                                            padding: 14,
+                                            boxShadow: "0 8px 28px rgba(13,166,242,0.08)",
+                                            scrollMarginTop: isPhone ? 92 : 24,
+                                        }}
+                                    >
                                         {/* Badge plataforma */}
-                                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12, flexWrap: "wrap" }}>
                                             <div style={{ width: 22, height: 22, borderRadius: 6, background: `${activeMeta?.accent}20`, border: `1px solid ${activeMeta?.border || "rgba(13,166,242,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{activeMeta?.icon}</div>
                                             <span style={{ fontSize: 10, fontWeight: 800, color: activeMeta?.accent || "var(--accent)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{data.platform || activeMeta?.label}</span>
                                             <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted)", fontFamily: "monospace", fontWeight: 600 }}>#{data.orderNumber}</span>
@@ -371,8 +430,9 @@ export default function Codes() {
                                         ) : (
                                             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                                                 {data.email && <CredField label="Correo electrónico" value={data.email} icon="✉️" />}
-                                                {data.code && <CredField label="Contraseña" value={data.code} icon="🔑" secret />}
+                                                {data.password && <CredField label="Contraseña de la cuenta" value={data.password} icon="🔐" secret />}
                                                 {data.pin && <CredField label="PIN" value={data.pin} icon="🔢" secret />}
+                                                {data.code && <CredField label="Código de acceso" value={data.code} icon="🔑" secret />}
                                             </div>
                                         )}
                                     </motion.div>
@@ -394,14 +454,14 @@ export default function Codes() {
                         style={{ flex: 1, display: "flex", flexDirection: "column", gap: 14 }}>
 
                         {/* ── Cómo obtener tu código ── */}
-                        <div style={{ ...S.card, padding: "18px 20px" }}>
+                        <div style={{ ...S.card, padding: isPhone ? "16px" : "18px 20px" }}>
                             {/* Header */}
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                                 <div style={{ ...S.sectionIcon, background: "linear-gradient(135deg,rgba(13,166,242,0.15),rgba(99,51,255,0.15))", border: "1px solid rgba(13,166,242,0.2)" }}>📖</div>
                                 <h2 style={S.sectionTitle}>¿Cómo obtener tu código?</h2>
                             </div>
                             {/* Steps — horizontal */}
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: isPhone ? "1fr" : "1fr 1fr 1fr", gap: 12 }}>
                                 {[
                                     { n: "01", icon: "🔍", title: "Localiza tu pedido", desc: "Revisa tu correo de confirmación o en Historial de Compras.", color: "#00d4ff" },
                                     { n: "02", icon: "⌨️", title: "Ingresa el número", desc: "Escríbelo en el campo de la izquierda, elige la plataforma.", color: "#8b5cf6" },
@@ -419,7 +479,7 @@ export default function Codes() {
                         </div>
 
                         {/* ── FAQ ── */}
-                        <div style={{ ...S.card, padding: "18px 20px" }}>
+                        <div style={{ ...S.card, padding: isPhone ? "16px" : "18px 20px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
                                 <div style={{ ...S.sectionIcon, background: "linear-gradient(135deg,rgba(99,51,255,0.15),rgba(13,166,242,0.15))", border: "1px solid rgba(99,51,255,0.2)" }}>❓</div>
                                 <h2 style={S.sectionTitle}>Preguntas frecuentes</h2>
@@ -434,12 +494,12 @@ export default function Codes() {
 
                         {/* ── Soporte banner ── */}
                         <motion.div
-                            style={{ ...S.card, padding: "16px 18px", display: "flex", alignItems: "center", gap: 14, position: "relative", overflow: "hidden" }}
+                            style={{ ...S.card, padding: isPhone ? "16px" : "16px 18px", display: "flex", alignItems: isPhone ? "flex-start" : "center", flexDirection: isPhone ? "column" : "row", gap: 14, position: "relative", overflow: "hidden" }}
                         >
                             {/* Fondo glow decorativo */}
                             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(13,166,242,0.04) 0%,rgba(99,51,255,0.06) 100%)", pointerEvents: "none" }} />
                             <div style={{ width: 42, height: 42, borderRadius: 12, background: "linear-gradient(135deg,rgba(13,166,242,0.15),rgba(99,51,255,0.15))", border: "1px solid rgba(13,166,242,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0, boxShadow: "0 0 16px rgba(13,166,242,0.1)" }}>🚀</div>
-                            <div style={{ flex: 1, position: "relative" }}>
+                            <div style={{ flex: 1, position: "relative", width: "100%" }}>
                                 <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 2 }}>¿Necesitas ayuda?</div>
                                 <div style={{ fontSize: 11, color: "var(--muted)", fontWeight: 500 }}>Nuestro equipo está disponible 24/7 para asistirte.</div>
                             </div>
@@ -454,6 +514,7 @@ export default function Codes() {
                                     fontFamily: "var(--font)", flexShrink: 0,
                                     boxShadow: "0 4px 16px rgba(13,166,242,0.25)",
                                     position: "relative",
+                                    width: isPhone ? "100%" : "auto",
                                 }}
                             >
                                 Ir a Soporte →

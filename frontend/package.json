@@ -13,6 +13,7 @@
     "android:run": "npm run build && npx cap run android"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.4",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",

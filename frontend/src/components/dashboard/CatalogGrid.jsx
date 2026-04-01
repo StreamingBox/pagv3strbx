@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { getPlatformLogo } from "../../utils/platform.js";
+import BalancedText from "../text/BalancedText.jsx";
 
 const MotionDiv = motion.div;
 const MotionButton = motion.button;
@@ -119,7 +120,13 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                         {/* Nombre, badge RENOVABLE y duración */}
                         <div className="catalog-card__body">
                             <div className="catalog-card__name-row">
-                                <div className="catalog-card__name">{item.platformName}</div>
+                                <BalancedText
+                                    as="div"
+                                    className="catalog-card__name"
+                                    text={item.platformName}
+                                    maxLines={2}
+                                    minWidthRatio={0.76}
+                                />
                                 {item.is_renewable === 1 && !outOfStock && (
                                     <span className="badge badge--renovable">Renovable</span>
                                 )}

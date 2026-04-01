@@ -6,7 +6,6 @@ const { credFingerprint } = require("../utils/credFingerprint");
 const {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
-    getLastDelivered,
 } = require("./codeQueries");
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
@@ -142,23 +141,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    // ChatGPT permite solicitudes ilimitadas (no tiene bloqueo por pedido)
-    if (requestedSlug !== "chatgpt") {
-        const last = await getLastDelivered(orderNumber, requestedSlug);
-        if (last && String(last.credential_fingerprint || "") === String(fingerprint)) {
-            return {
-                http: 409,
-                body: {
-                    ok: false,
-                    status: "blocked",
-                    message:
-                        "Solo se puede solicitar 1 código por pedido. Si cambias la clave/pin podrás solicitar nuevamente.",
-                },
-                meta: { sub, plat, fingerprint, soldAccountEmail },
-            };
-        }
-    }
-
     // 7) Extraer código de gmail o netflix flow
     let fetchingResult;
 
@@ -221,6 +203,8 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         orderNumber: Number(orderNumber),
         platform: requestedSlug,
         email: soldAccountEmail,
+        password: sub.accountPassword || null,
+        pin: sub.accountPin || null,
         type: fetchingResult.type || "code",
     };
 

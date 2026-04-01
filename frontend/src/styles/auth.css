@@ -818,8 +818,8 @@ tr {
         max-height: none;
         overflow-y: auto;
         z-index: 150;
-        width: 280px;
-        min-width: 280px;
+        width: min(88vw, 320px);
+        min-width: min(88vw, 320px);
         border-radius: 0 var(--radius2) var(--radius2) 0;
         transform: translateX(0);
         transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
@@ -828,8 +828,8 @@ tr {
     /* Colapsado = drawer cerrado, sale por la izquierda */
     .sidebar--collapsed {
         transform: translateX(-100%);
-        width: 280px;
-        min-width: 280px;
+        width: min(88vw, 320px);
+        min-width: min(88vw, 320px);
         padding: 16px;
     }
 
@@ -838,8 +838,8 @@ tr {
         width: 100%;
         flex: 1;
         min-height: 0;
-        padding: 14px;
-        padding-top: 64px;
+        padding: 12px;
+        padding-top: 72px;
         margin-left: 0 !important;
         /* espacio para el botón hamburger */
     }
@@ -869,6 +869,21 @@ tr {
     .kpi {
         backdrop-filter: none;
         -webkit-backdrop-filter: none;
+    }
+}
+
+@media (max-width: 480px) {
+    .sidebar-toggle-btn {
+        top: 12px;
+        left: 12px;
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+    }
+
+    .main {
+        padding: 10px;
+        padding-top: 76px;
     }
 }
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
+import BalancedText from "../text/BalancedText.jsx";
 
 import { getApiBase } from "../../config/apiBase.js";
 import { isNativeAndroidApp } from "../../native/biometricAuth.js";
@@ -252,7 +253,13 @@ export default function Sidebar({
                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                     >
                                         <span className="sb-nav-icon">{item.icon}</span>
-                                        <span className="sb-nav-label">{item.label}</span>
+                                        <BalancedText
+                                            as="span"
+                                            className="sb-nav-label sb-nav-label--balanced"
+                                            text={item.label}
+                                            maxLines={2}
+                                            minWidthRatio={0.74}
+                                        />
 
                                         {/* Badge para vencimientos del usuario */}
                                         {item.key === "expirations" && expirationsCount > 0 && !collapsed && (
@@ -293,7 +300,13 @@ export default function Sidebar({
                                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                 >
                                     <span className="sb-nav-icon">🎯</span>
-                                    <span className="sb-nav-label">Plataformas</span>
+                                    <BalancedText
+                                        as="span"
+                                        className="sb-nav-label sb-nav-label--balanced"
+                                        text="Plataformas"
+                                        maxLines={2}
+                                        minWidthRatio={0.74}
+                                    />
                                 </MotionButton>
                             )}
 
@@ -306,7 +319,13 @@ export default function Sidebar({
                                     transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                 >
                                     <span className="sb-nav-icon">📱</span>
-                                    <span className="sb-nav-label">Descargar app (APK)</span>
+                                    <BalancedText
+                                        as="span"
+                                        className="sb-nav-label sb-nav-label--balanced"
+                                        text="Descargar app (APK)"
+                                        maxLines={2}
+                                        minWidthRatio={0.74}
+                                    />
                                 </MotionButton>
                             )}
 
@@ -321,7 +340,13 @@ export default function Sidebar({
                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}
                                     >
                                         <span className="sb-nav-icon">⚙️</span>
-                                        <span className="sb-nav-label">Panel Admin</span>
+                                        <BalancedText
+                                            as="span"
+                                            className="sb-nav-label sb-nav-label--balanced"
+                                            text="Panel Admin"
+                                            maxLines={2}
+                                            minWidthRatio={0.74}
+                                        />
                                     </MotionButton>
                                 </>
                             )}

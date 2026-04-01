@@ -202,9 +202,6 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         ok: true,
         orderNumber: Number(orderNumber),
         platform: requestedSlug,
-        email: soldAccountEmail,
-        password: sub.accountPassword || null,
-        pin: sub.accountPin || null,
         type: fetchingResult.type || "code",
     };
 

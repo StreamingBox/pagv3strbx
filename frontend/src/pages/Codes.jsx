@@ -429,9 +429,6 @@ export default function Codes() {
                                             </div>
                                         ) : (
                                             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                                                {data.email && <CredField label="Correo electrónico" value={data.email} icon="✉️" />}
-                                                {data.password && <CredField label="Contraseña de la cuenta" value={data.password} icon="🔐" secret />}
-                                                {data.pin && <CredField label="PIN" value={data.pin} icon="🔢" secret />}
                                                 {data.code && <CredField label="Código de acceso" value={data.code} icon="🔑" secret />}
                                             </div>
                                         )}
@@ -465,7 +462,7 @@ export default function Codes() {
                                 {[
                                     { n: "01", icon: "🔍", title: "Localiza tu pedido", desc: "Revisa tu correo de confirmación o en Historial de Compras.", color: "#00d4ff" },
                                     { n: "02", icon: "⌨️", title: "Ingresa el número", desc: "Escríbelo en el campo de la izquierda, elige la plataforma.", color: "#8b5cf6" },
-                                    { n: "03", icon: "⚡", title: "Accede al instante", desc: "Recibirás el usuario y contraseña listos para usar.", color: "#10b981" },
+                                    { n: "03", icon: "⚡", title: "Accede al instante", desc: "Recibirás tu código al instante para continuar.", color: "#10b981" },
                                 ].map((s, i) => (
                                     <div key={i} style={{ padding: "14px 14px", background: "var(--input-bg)", border: "1px solid var(--stroke)", borderRadius: 12, position: "relative", overflow: "hidden" }}>
                                         {/* Número decorativo */}

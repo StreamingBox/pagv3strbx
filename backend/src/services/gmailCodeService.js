@@ -2,7 +2,7 @@
 const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
 const cheerio = require("cheerio");
-const { getImapConfig, safeToDate } = require("../utils/imapConfig");
+const { getImapConfig, safeToDate, getEnvBool } = require("../utils/imapConfig");
 
 function isTlsCertificateError(error) {
     const message = String(error?.message || "").toLowerCase();
@@ -217,7 +217,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             gmailFromContains,
             message: err?.message || String(err),
             code: err?.code || null,
-            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").trim().toLowerCase() === "true",
+            imapTlsInsecure: getEnvBool("IMAP_TLS_INSECURE"),
         });
         if (isTlsCertificateError(err)) {
             return {

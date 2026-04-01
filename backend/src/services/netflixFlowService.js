@@ -4,10 +4,10 @@ const { simpleParser } = require("mailparser");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const https = require("https");
-const { getImapConfig, safeToDate } = require("../utils/imapConfig");
+const { getImapConfig, safeToDate, getEnvBool } = require("../utils/imapConfig");
 
 function getNetflixAxiosOptions() {
-    const insecureTls = String(process.env.NETFLIX_TLS_INSECURE || "").trim().toLowerCase() === "true";
+    const insecureTls = getEnvBool("NETFLIX_TLS_INSECURE");
 
     return {
         headers: {
@@ -296,8 +296,8 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             action,
             message: err?.message || String(err),
             code: err?.code || null,
-            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").trim().toLowerCase() === "true",
-            netflixTlsInsecure: String(process.env.NETFLIX_TLS_INSECURE || "").trim().toLowerCase() === "true",
+            imapTlsInsecure: getEnvBool("IMAP_TLS_INSECURE"),
+            netflixTlsInsecure: getEnvBool("NETFLIX_TLS_INSECURE"),
         });
         if (isTlsCertificateError(err)) {
             return {

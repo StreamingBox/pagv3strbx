@@ -3,11 +3,18 @@
  * Exporta también `safeToDate` para uso en gmailCodeService y netflixFlowService.
  */
 
+function getEnvBool(name) {
+    const raw = String(process.env[name] || "");
+    const withoutComment = raw.split("#")[0].trim();
+    const unquoted = withoutComment.replace(/^['"]|['"]$/g, "").trim().toLowerCase();
+    return unquoted === "true" || unquoted === "1" || unquoted === "yes" || unquoted === "on";
+}
+
 function getImapConfig() {
     const user = process.env.GMAIL_EMAIL;
     const password = process.env.GMAIL_IMAP_PASS;
     if (!user || !password) return null;
-    const imapTlsInsecure = String(process.env.IMAP_TLS_INSECURE || "").trim().toLowerCase() === "true";
+    const imapTlsInsecure = getEnvBool("IMAP_TLS_INSECURE");
 
     return {
         imap: {
@@ -32,4 +39,4 @@ function safeToDate(v) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-module.exports = { getImapConfig, safeToDate };
+module.exports = { getImapConfig, safeToDate, getEnvBool };

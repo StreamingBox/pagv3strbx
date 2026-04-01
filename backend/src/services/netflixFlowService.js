@@ -3,19 +3,45 @@ const imaps = require("imap-simple");
 const { simpleParser } = require("mailparser");
 const axios = require("axios");
 const cheerio = require("cheerio");
+const https = require("https");
 const { getImapConfig, safeToDate } = require("../utils/imapConfig");
+
+function getNetflixAxiosOptions() {
+    const insecureTls = String(process.env.NETFLIX_TLS_INSECURE || "").toLowerCase() === "true";
+
+    return {
+        headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9",
+        },
+        httpsAgent: new https.Agent({
+            rejectUnauthorized: !insecureTls,
+        }),
+        maxRedirects: 10,
+        timeout: 15000,
+    };
+}
+
+function isTlsCertificateError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "").toUpperCase();
+
+    return (
+        message.includes("self-signed certificate") ||
+        message.includes("unable to verify the first certificate") ||
+        message.includes("certificate") ||
+        code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+        code === "SELF_SIGNED_CERT_IN_CHAIN" ||
+        code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+    );
+}
 
 /**
  * Entra al link de "Obtener código"
  */
 async function scrapeTemporalCode(link) {
     try {
-        const { data } = await axios.get(link, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept-Language": "es-ES,es;q=0.9",
-            }
-        });
+        const { data } = await axios.get(link, getNetflixAxiosOptions());
 
         const $ = cheerio.load(data);
         const textContent = $("body").text() || "";
@@ -40,6 +66,13 @@ async function scrapeTemporalCode(link) {
 
     } catch (err) {
         console.error("Error scraping temporal code:", err.message);
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: "tls_error",
+                message: "Error TLS al abrir el enlace de Netflix. Revisa certificados o activa NETFLIX_TLS_INSECURE=true temporalmente.",
+            };
+        }
         return { ok: false, status: "network_error", message: "Error al leer el enlace de Netflix." };
     }
 }
@@ -49,12 +82,7 @@ async function scrapeTemporalCode(link) {
  */
 async function scrapeApproveLink(link, deviceName) {
     try {
-        const { data } = await axios.get(link, {
-            headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Accept-Language": "es-ES,es;q=0.9",
-            }
-        });
+        const { data } = await axios.get(link, getNetflixAxiosOptions());
 
         // Netflix suele aprobarlo al abrir o confirmar. 
         // Asumiremos que el GET es suficiente, basándonos en cómo funciona el deep link en los correos recientes de Netflix.
@@ -71,6 +99,13 @@ async function scrapeApproveLink(link, deviceName) {
 
     } catch (err) {
         console.error("Error scraping approval link:", err.message);
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: "tls_error",
+                message: "Error TLS al abrir el enlace de aprobacion de Netflix. Revisa certificados o activa NETFLIX_TLS_INSECURE=true temporalmente.",
+            };
+        }
         return { ok: false, status: "network_error", message: "Error al confirmar aprobación de Netflix." };
     }
 }

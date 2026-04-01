@@ -123,10 +123,13 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
     const sinceDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     let conn;
+    let stage = "connect";
     try {
         conn = await imaps.connect(config);
+        stage = "open_box";
         await conn.openBox("INBOX");
 
+        stage = "search_headers";
         let criteria = [["SINCE", sinceDate]];
         if (toEmail && String(toEmail).trim()) {
             criteria.push(["TO", String(toEmail).trim()]);
@@ -135,6 +138,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         let messages = await conn.search(criteria, { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false });
 
         if (!messages || messages.length === 0) {
+            stage = "search_headers_fallback";
             messages = await conn.search([["SINCE", sinceDate]], { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false });
         }
 
@@ -192,12 +196,14 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             sawTargetMatch = true;
 
             // ¡Encontramos el correo correcto! Ahora sí pedimos el cuerpo completo
+            stage = "fetch_full_message";
             const fetchFull = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
             if (!fetchFull || !fetchFull[0]) continue;
 
             const raw = fetchFull[0].parts?.find(p => p.which === "");
             if (!raw?.body) continue;
 
+            stage = "parse_message";
             const parsed = await simpleParser(raw.body);
             const html = String(parsed.html || "");
             const text = String(parsed.text || "");
@@ -210,6 +216,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                 }).attr("href");
 
                 if (buttonLink) {
+                    stage = "open_netflix_code_link";
                     const result = await scrapeTemporalCode(buttonLink);
                     if (result.ok || result.status === "expired") {
                         return { ...result, emailDate: msgDate };
@@ -260,6 +267,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                     deviceName = matchDevice[1].trim();
                 }
 
+                stage = "open_netflix_approve_link";
                 const result = await scrapeApproveLink(buttonLink, deviceName);
                 if (result.ok || result.status === "expired") {
                     return { ...result, emailDate: msgDate };
@@ -282,6 +290,24 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         return { ok: false, status: "netflix_flow_miss", message: "Se detectó el correo de Netflix, pero no se pudo completar el flujo." };
 
     } catch (err) {
+        console.error("[netflixFlowService] error", {
+            stage,
+            toEmail,
+            action,
+            message: err?.message || String(err),
+            code: err?.code || null,
+            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() === "true",
+            netflixTlsInsecure: String(process.env.NETFLIX_TLS_INSECURE || "").toLowerCase() === "true",
+        });
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: stage.startsWith("open_netflix_") ? "netflix_tls_error" : "imap_tls_error",
+                message: stage.startsWith("open_netflix_")
+                    ? `Error TLS abriendo enlace de Netflix durante ${stage}.`
+                    : `Error TLS en Gmail IMAP durante ${stage}.`,
+            };
+        }
         return { ok: false, status: "imap_error", message: err?.message || "Error leyendo correos." };
     } finally {
         if (conn) {

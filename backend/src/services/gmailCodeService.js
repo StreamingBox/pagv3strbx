@@ -4,6 +4,19 @@ const { simpleParser } = require("mailparser");
 const cheerio = require("cheerio");
 const { getImapConfig, safeToDate } = require("../utils/imapConfig");
 
+function isTlsCertificateError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    const code = String(error?.code || "").toUpperCase();
+
+    return (
+        message.includes("self-signed certificate") ||
+        message.includes("unable to verify the first certificate") ||
+        code === "DEPTH_ZERO_SELF_SIGNED_CERT" ||
+        code === "SELF_SIGNED_CERT_IN_CHAIN" ||
+        code === "UNABLE_TO_VERIFY_LEAF_SIGNATURE"
+    );
+}
+
 function minutesAgoToSinceDate(maxAgeMinutes) {
     // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
     return new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -86,11 +99,14 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
     }
 
     let conn;
+    let stage = "connect";
     try {
         conn = await imaps.connect(config);
+        stage = "open_box";
         await conn.openBox("INBOX");
 
         // 1) SINCE + TO (si existe)
+        stage = "search_headers";
         let criteria = [["SINCE", sinceDate]];
         if (toEmail && String(toEmail).trim()) {
             criteria.push(["TO", String(toEmail).trim()]);
@@ -102,6 +118,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
 
         // 2) Fallback SINCE solo
         if (!messages || messages.length === 0) {
+            stage = "search_headers_fallback";
             messages = await conn.search([["SINCE", sinceDate]], headerOptions);
         }
 
@@ -147,12 +164,14 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             sawAnyFromMatch = true;
 
             // Encontrado: descargar cuerpo
+            stage = "fetch_full_message";
             const fetchFull = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
             if (!fetchFull || !fetchFull[0]) continue;
 
             const raw = fetchFull[0].parts?.find(p => p.which === "");
             if (!raw?.body) continue;
 
+            stage = "parse_message";
             const parsed = await simpleParser(raw.body);
 
             // Buscamos en subject + text + texto limpio del html + html crudo.
@@ -192,6 +211,21 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             message: "No se pudo extraer el código (regex no coincidió).",
         };
     } catch (err) {
+        console.error("[gmailCodeService] error", {
+            stage,
+            toEmail,
+            gmailFromContains,
+            message: err?.message || String(err),
+            code: err?.code || null,
+            imapTlsInsecure: String(process.env.IMAP_TLS_INSECURE || "").toLowerCase() === "true",
+        });
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: "imap_tls_error",
+                message: `Error TLS en Gmail IMAP durante ${stage}.`,
+            };
+        }
         return {
             ok: false,
             status: "imap_error",

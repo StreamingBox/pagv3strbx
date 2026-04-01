@@ -130,7 +130,7 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
 
         for (const plan of plans) {
             const [accRows] = await conn.query(
-                `SELECT id, email, password, pin, profile_number, access_url
+                `SELECT id, email, password, pin, profile_number, access_url, unit_cost
            FROM platform_accounts
            WHERE platform_id = ? AND status = 'available'
            ORDER BY id ASC
@@ -181,10 +181,13 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                 showWhatsapp: includeWhatsapp,
             });
 
+            const unitCost = Number(account.unit_cost || 0);
+            const itemPrice = Number(plan.price || 0);
+            const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             await conn.query(
-                `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price)
-         VALUES (?, ?, ?, ?, ?)`,
-                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, Number(plan.price)]
+                `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit]
             );
 
             results.push({ subscriptionId, plan, account, expiresAt, token });

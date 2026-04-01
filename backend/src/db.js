@@ -119,6 +119,13 @@ pool.query("CREATE INDEX idx_orders_user_created ON orders(user_id, created_at)"
 pool.query("CREATE INDEX idx_orders_created ON orders(created_at)").catch(() => { });
 pool.query("CREATE INDEX idx_order_items_order_platform ON order_items(order_id, platform_id)").catch(() => { });
 pool.query("CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_status_label, created_at)").catch(() => { });
+pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_account_cost_total DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_profiles_total INT NULL").catch(() => { });
+pool.query("ALTER TABLE platform_accounts ADD COLUMN unit_cost DECIMAL(12,2) NULL").catch(() => { });
+pool.query("CREATE INDEX idx_platform_accounts_unit_cost ON platform_accounts(unit_cost)").catch(() => { });
+pool.query("ALTER TABLE order_items ADD COLUMN cost_amount DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE order_items ADD COLUMN profit_amount DECIMAL(12,2) NULL").catch(() => { });
+pool.query("CREATE INDEX idx_order_items_subscription_id ON order_items(subscription_id)").catch(() => { });
 
 pool.query(`
     CREATE TABLE IF NOT EXISTS whatsapp_webhook_dedupe (

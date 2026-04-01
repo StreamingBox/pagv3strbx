@@ -8,6 +8,34 @@ const {
 
 const ACTIVE_STATUSES = ["available", "assigned"];
 
+function parsePositiveNumber(value) {
+    if (value === undefined || value === null || value === "") return null;
+    const n = Number(String(value).replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n;
+}
+
+function parsePositiveInt(value) {
+    if (value === undefined || value === null || value === "") return null;
+    const n = Number.parseInt(String(value), 10);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n;
+}
+
+function resolveCostModel({ motherCostTotal, motherProfilesTotal }) {
+    const total = parsePositiveNumber(motherCostTotal);
+    const profiles = parsePositiveInt(motherProfilesTotal);
+    if (!total || !profiles) {
+        return { parentCostTotal: null, parentProfilesTotal: null, unitCost: null };
+    }
+    const unitCost = Number((total / profiles).toFixed(2));
+    return {
+        parentCostTotal: Number(total.toFixed(2)),
+        parentProfilesTotal: profiles,
+        unitCost,
+    };
+}
+
 async function resolvePlatform(conn, { platformId, platformName }) {
     let pid = platformId ? Number(platformId) : null;
     let pname = String(platformName || "").trim();
@@ -55,12 +83,24 @@ async function upsertIdentity(conn, { pid, emailNorm, identityProf, password, pi
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailNorm, password, pin, accountProf, exp }) {
+async function insertAccount(conn, { identityId, pid, pname, emailNorm, password, pin, accountProf, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
-     (identity_id, platform_id, platform_name, email, password, pin, profile_number, status, expires_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?)`,
-        [identityId, pid, pname || "", emailNorm, password, pin, accountProf, exp]
+     (identity_id, platform_id, platform_name, email, password, pin, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
+        [
+            identityId,
+            pid,
+            pname || "",
+            emailNorm,
+            password,
+            pin,
+            accountProf,
+            exp,
+            costModel?.parentCostTotal ?? null,
+            costModel?.parentProfilesTotal ?? null,
+            costModel?.unitCost ?? null,
+        ]
     );
     
     // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
@@ -130,6 +170,10 @@ async function createAccountOne(conn, body) {
     const identityProf = normalizeProfileForIdentity(profileNumber);
     const accountProf = normalizeProfileForAccount(profileNumber);
     const exp = expiresAt ? toSqlDateStart(expiresAt) : null;
+    const costModel = resolveCostModel({
+        motherCostTotal: body.motherCostTotal ?? body.parentAccountCostTotal,
+        motherProfilesTotal: body.motherProfilesTotal ?? body.parentProfilesTotal,
+    });
 
     const { pid, pname } = await resolvePlatform(conn, { platformId, platformName });
 
@@ -150,6 +194,7 @@ async function createAccountOne(conn, body) {
         pin: normalizeOptionalValue(pin),
         accountProf,
         exp,
+        costModel,
     });
 
     await propagatePassword(conn, { pid, emailNorm, password, newId });
@@ -187,6 +232,8 @@ function normalizeBulkRows(rows) {
             pin: normalizeOptionalValue(r.pin),
             profileNumber,
             expiresAt: String(r.expiresAt || r.expires_at || "").trim(),
+            motherCostTotal: r.motherCostTotal ?? r.parentAccountCostTotal ?? r.costoCuentaMadre ?? "",
+            motherProfilesTotal: r.motherProfilesTotal ?? r.parentProfilesTotal ?? r.cantidadPerfiles ?? "",
         };
     });
 }
@@ -223,6 +270,10 @@ async function bulkInsertAccounts(conn, rows) {
         const identityProf = normalizeProfileForIdentity(r.profileNumber);
         const accountProf = normalizeProfileForAccount(r.profileNumber);
         const exp = r.expiresAt ? toSqlDateStart(r.expiresAt) : null;
+        const costModel = resolveCostModel({
+            motherCostTotal: r.motherCostTotal,
+            motherProfilesTotal: r.motherProfilesTotal,
+        });
 
         const identityId = await upsertIdentity(conn, {
             pid,
@@ -241,6 +292,7 @@ async function bulkInsertAccounts(conn, rows) {
             pin: r.pin,
             accountProf,
             exp,
+            costModel,
         });
 
         await propagatePassword(conn, { pid, emailNorm: r.email, password: r.password, newId });

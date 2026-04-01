@@ -137,8 +137,16 @@ async function sellAccountFromInventory(payload) {
 
         // 5.3 Crear Order Item
         await conn.query(
-            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price) VALUES (?, ?, ?, ?, ?)",
-            [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, totalAmount]
+            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+                orderId,
+                subscriptionId,
+                plan.platform_id,
+                plan.platform_price_id,
+                totalAmount,
+                Number(account.unit_cost || 0),
+                Number((totalAmount - Number(account.unit_cost || 0)).toFixed(2)),
+            ]
         );
 
         // 5.4 Marcar cuenta como asignada

@@ -543,6 +543,13 @@ function UserAnalyticsContent({ admin }) {
         ? Math.round(primary.total / primary.orders).toLocaleString("es-CO")
         : "—";
     const topPlatform = primary?.distribution?.[0]?.name ?? null;
+    const primaryMarginPct = Number(primary?.marginPct || 0);
+    const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
+    const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
+    const selectedNetProfit = monthsData.reduce((sum, m) => sum + Number(m.netProfit || 0), 0);
+    const selectedMarginPct = selectedRevenueTotal > 0
+        ? Number(((selectedNetProfit / selectedRevenueTotal) * 100).toFixed(2))
+        : 0;
 
     const isComparingUsers = admin && selectedUserIds.length >= 2;
 
@@ -751,6 +758,24 @@ function UserAnalyticsContent({ admin }) {
                             idx={idx}
                         />
                     ))}
+                </motion.div>
+            )}
+
+            {/* Rentabilidad admin */}
+            {admin && viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
+                <motion.div
+                    variants={itemVariants}
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: 12,
+                        marginBottom: 20,
+                    }}
+                >
+                    <InsightChip emoji="💰" label="Utilidad Neta (Periodo)" value={`$${selectedNetProfit.toLocaleString("es-CO")}`} color={selectedNetProfit >= 0 ? "#10b981" : "#ef4444"} />
+                    <InsightChip emoji="🧾" label="Costo Total (Periodo)" value={`$${selectedCostTotal.toLocaleString("es-CO")}`} color="#f59e0b" />
+                    <InsightChip emoji="📈" label="Margen % (Periodo)" value={`${selectedMarginPct.toLocaleString("es-CO")} %`} color={selectedMarginPct >= 0 ? "#10b981" : "#ef4444"} />
+                    <InsightChip emoji="🎯" label={`Margen ${primary?.label || "Mes"}`} value={`${primaryMarginPct.toLocaleString("es-CO")} %`} color={primaryMarginPct >= 0 ? "#10b981" : "#ef4444"} />
                 </motion.div>
             )}
 

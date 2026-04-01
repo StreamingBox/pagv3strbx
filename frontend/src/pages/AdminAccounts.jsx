@@ -137,6 +137,8 @@ export default function AdminAccounts() {
     const [password, setPassword] = useState("");
     const [pin, setPin] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
+    const [motherCostTotal, setMotherCostTotal] = useState("");
+    const [motherProfilesTotal, setMotherProfilesTotal] = useState("");
 
     // Excel upload
     const fileExcelRef = useRef(null);
@@ -180,6 +182,8 @@ export default function AdminAccounts() {
                     password,
                     pin: pin || null,
                     profileNumber: profileNumber || null,
+                    motherCostTotal: motherCostTotal || null,
+                    motherProfilesTotal: motherProfilesTotal || null,
                 }),
             });
 
@@ -188,6 +192,8 @@ export default function AdminAccounts() {
                 setPassword("");
                 setPin("");
                 setProfileNumber("");
+                setMotherCostTotal("");
+                setMotherProfilesTotal("");
                 setExcelError(false);
                 setExcelMsg(`✅ Cuenta cargada correctamente (ID: ${data.id})`);
                 setTimeout(() => setExcelMsg(""), 5000);
@@ -263,14 +269,16 @@ export default function AdminAccounts() {
     }
 
     async function downloadTemplate() {
-        const headers = ["platformId", "platformName", "email", "password", "profileNumber", "pin"];
+        const headers = ["platformId", "platformName", "email", "password", "profileNumber", "pin", "motherCostTotal", "motherProfilesTotal"];
         const exampleRow = {
             platformId: 1,
             platformName: "Netflix",
             email: "ejemplo@correo.com",
             password: "mypassword123",
             profileNumber: "1",
-            pin: "1234"
+            pin: "1234",
+            motherCostTotal: "54000",
+            motherProfilesTotal: "5",
         };
         const XLSX = await loadXlsx();
 
@@ -391,7 +399,7 @@ export default function AdminAccounts() {
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                             <div>
                                 <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "var(--text)" }}>Carga Masiva (Excel)</h3>
-                                <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>Encabezados clave: <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>platformId</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>email</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>password</code></p>
+                                <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--muted)" }}>Encabezados clave: <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>platformId</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>email</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>password</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>motherCostTotal</code> <code style={{ background: "rgba(255,255,255,0.05)", padding: "2px 6px", borderRadius: 4 }}>motherProfilesTotal</code></p>
                             </div>
                             <button
                                 className="btn-ghost"
@@ -514,6 +522,36 @@ export default function AdminAccounts() {
                                     placeholder="Ej: 1234"
                                     value={pin}
                                     onChange={(e) => setPin(e.target.value)}
+                                />
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    Costo Cuenta Madre <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
+                                </label>
+                                <input
+                                    style={inputStyle}
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="Ej: 54000"
+                                    value={motherCostTotal}
+                                    onChange={(e) => setMotherCostTotal(e.target.value)}
+                                />
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    Total Perfiles <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
+                                </label>
+                                <input
+                                    style={inputStyle}
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    placeholder="Ej: 5"
+                                    value={motherProfilesTotal}
+                                    onChange={(e) => setMotherProfilesTotal(e.target.value)}
                                 />
                             </div>
                         </div>

@@ -280,8 +280,44 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
 
             const [dist] = await pool.query(distQ, distParams);
+            const monthData = { year, month, daily, total, orders, distribution: dist };
 
-            return { year, month, daily, total, orders, distribution: dist };
+            if (isAdmin) {
+                let profitQ = `
+                    SELECT
+                        SUM(COALESCE(oi.cost_amount, pa.unit_cost, 0)) AS cost_total,
+                        SUM(
+                            COALESCE(
+                                oi.profit_amount,
+                                oi.price - COALESCE(oi.cost_amount, pa.unit_cost, 0)
+                            )
+                        ) AS net_profit
+                    FROM order_items oi
+                    JOIN orders o ON o.id = oi.order_id
+                    LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+                    LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+                    WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                      AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                `;
+                const profitParams = [year, month];
+
+                if (!isGlobalAdmin) {
+                    const placeholders = targetUserIds.map(() => "?").join(",");
+                    profitQ += ` AND o.user_id IN (${placeholders})`;
+                    profitParams.push(...targetUserIds);
+                }
+
+                const [[profitRow]] = await pool.query(profitQ, profitParams);
+                const costTotal = Number(profitRow?.cost_total || 0);
+                const netProfit = Number(profitRow?.net_profit || 0);
+                const marginPct = total > 0 ? Number(((netProfit / total) * 100).toFixed(2)) : 0;
+
+                monthData.costTotal = costTotal;
+                monthData.netProfit = netProfit;
+                monthData.marginPct = marginPct;
+            }
+
+            return monthData;
         }));
 
         return res.json({ months: results });
@@ -383,4 +419,3 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
 });
 
 module.exports = router;
-

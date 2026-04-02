@@ -6,6 +6,7 @@ function parseApiDate(value) {
 
     let s = String(value).trim();
     if (!s || s === "0000-00-00 00:00:00" || s === "0000-00-00") return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(`${s}T00:00:00Z`);
     if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
 
     const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(s);
@@ -14,6 +15,10 @@ function parseApiDate(value) {
 }
 
 function formatBogotaDate(value) {
+    if (typeof value === "string") {
+        const s = value.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    }
     const d = parseApiDate(value);
     if (!d) return "—";
 

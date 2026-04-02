@@ -22,6 +22,9 @@ function parseDateTime(value) {
 
     let s = String(value).trim();
     if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        return new Date(`${s}T00:00:00Z`);
+    }
     if (s.includes(" ") && !s.includes("T")) s = s.replace(" ", "T");
 
     const hasTimezone = /Z$|[+-]\d{2}:\d{2}$/.test(s);
@@ -42,6 +45,10 @@ function addDaysExact(value, days) {
 }
 
 function formatDateOnlyBogota(value) {
+    if (typeof value === "string") {
+        const s = value.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    }
     const d = parseDateTime(value);
     if (!d) return "-";
 

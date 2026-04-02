@@ -1,3 +1,5 @@
+const { formatDateOnlyBogota } = require("./date");
+
 function buildWhatsappMessage({ orderCode, results, baseUrl }) {
     // ✅ Limpiar baseUrl para evitar doble slash (//)
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
@@ -14,7 +16,7 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
 
         if (plan.type === 'correo') {
             lines.push(`🖥️ ${plan.platform_name}`);
-            const yyyy = r.expiresAt.toISOString().slice(0, 10);
+            const yyyy = formatDateOnlyBogota(r.expiresAt);
             lines.push(`📅 Expira: ${yyyy}`);
             lines.push(``);
             lines.push(`📲 *Escribe al numero 3006952221 para continuar con el proceso.*`);
@@ -71,7 +73,7 @@ function buildWhatsappMessage({ orderCode, results, baseUrl }) {
         }
 
         if (showExpire) {
-            const yyyy = r.expiresAt.toISOString().slice(0, 10);
+            const yyyy = formatDateOnlyBogota(r.expiresAt);
             lines.push(`📅 Expira: ${yyyy}`);
         }
 

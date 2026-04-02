@@ -1,6 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const pool = require("../db");
+const { formatDateOnlyBogota } = require("../utils/date");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -14,10 +15,7 @@ function escapeHtml(v) {
 }
 
 function fmtYMD(date) {
-  if (!date) return "-";
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toISOString().slice(0, 10);
+  return formatDateOnlyBogota(date);
 }
 
 function daysLeft(date) {

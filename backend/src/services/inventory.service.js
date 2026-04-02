@@ -3,7 +3,7 @@
 
 const pool = require("../db");
 const { escapeCsv } = require("../utils/csv");
-const { parseDateOnly, toSqlDateStart } = require("../utils/date");
+const { formatDateOnlyBogota, parseDateOnly, toSqlDateStart } = require("../utils/date");
 const { normalizeOptionalValue } = require("../utils/normalize");
 
 /**
@@ -184,7 +184,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.profile_number),
             escapeCsv(r.status),
             escapeCsv(r.assigned_user_email || ""),
-            escapeCsv(r.expires_at ? String(r.expires_at).slice(0, 10) : ""),
+            escapeCsv(r.expires_at ? formatDateOnlyBogota(r.expires_at) : ""),
         ].join(",")
     );
 

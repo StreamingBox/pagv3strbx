@@ -2,6 +2,7 @@ const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
+const { addDaysExact, toSqlDateTime } = require("../utils/date");
 const { sendOrderDeliveryEmail } = require("./mailService");
 
 async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, recordProfit, profitAmount }) {
@@ -146,7 +147,8 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             }
             const account = accRows[0];
 
-            const expiresAt = new Date(Date.now() + Number(plan.days) * 24 * 60 * 60 * 1000);
+            const expiresAt = addDaysExact(new Date(), Number(plan.days));
+            const expiresAtSql = toSqlDateTime(expiresAt);
 
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
@@ -159,7 +161,7 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                     plan.platform_price_id,
                     plan.duration_id,
                     account.id,
-                    expiresAt,
+                    expiresAtSql,
                     Number(plan.price),
                     currency,
                     whatsappPhone ? String(whatsappPhone).trim() : null,
@@ -172,7 +174,7 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                 `UPDATE platform_accounts
            SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
            WHERE id=?`,
-                [userId, expiresAt, account.id]
+                [userId, expiresAtSql, account.id]
             );
 
             const token = await insertCredentialLinkWithRetry(conn, {

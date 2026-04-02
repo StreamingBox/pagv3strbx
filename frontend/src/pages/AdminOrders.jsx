@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import { formatBogotaDate } from "../utils/datetime.js";
 
 import { getApiBase } from "../config/apiBase.js";
 
@@ -406,10 +407,10 @@ export default function AdminOrders() {
                                                     {renderStatusBadge(o.status)}
                                                 </td>
                                                 <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--muted)" }}>
-                                                    {String(o.created_at || "").slice(0, 10)}
+                                                    {formatBogotaDate(o.created_at)}
                                                 </td>
                                                 <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-                                                    {String(o.expires_at || "").slice(0, 10)}
+                                                    {formatBogotaDate(o.expires_at)}
                                                 </td>
                                             </motion.tr>
                                         ))

@@ -5,6 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { makeOrderCode } = require("../utils/orderCode");
+const { addDaysExact, toSqlDateTime } = require("../utils/date");
 
 const router = express.Router();
 
@@ -244,8 +245,8 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         const base = sub.expires_at && new Date(sub.expires_at) > new Date()
             ? new Date(sub.expires_at)
             : new Date();
-        base.setDate(base.getDate() + days);
-        const newExpiry = base.toISOString().slice(0, 19).replace("T", " ");
+        const newExpiryDate = addDaysExact(base, days);
+        const newExpiry = toSqlDateTime(newExpiryDate);
 
         const finalAccountId = newAccountId ? Number(newAccountId) : Number(sub.platform_account_id || 0);
         let accountChanged = false;
@@ -419,7 +420,7 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
                     subscriptionId: orderId,
                     plan: { platform_name: sub.platform_name },
                     account: accRows[0],
-                    expiresAt: new Date(newExpiry),
+                    expiresAt: newExpiryDate,
                     token: token
                 };
 

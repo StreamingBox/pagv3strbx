@@ -5,6 +5,7 @@ import { apiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import { getApiBase } from "../config/apiBase.js";
+import { formatBogotaDate } from "../utils/datetime.js";
 
 function useIsMobile() {
     const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
@@ -161,7 +162,7 @@ function Field({ label, value, mono = false }) {
     );
 }
 
-function shortDate(d) { return d ? String(d).slice(0, 10) : "—"; }
+function shortDate(d) { return formatBogotaDate(d); }
 function normalizePhone(phone) { return String(phone || "").replace(/\D/g, ""); }
 
 /* ─── Componente principal ─── */

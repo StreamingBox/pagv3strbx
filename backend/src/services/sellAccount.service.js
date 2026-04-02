@@ -2,7 +2,7 @@ const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
-const { toSqlDateStart } = require("../utils/date");
+const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
 
 /**
  * Vende una cuenta específica desde el inventario.
@@ -108,13 +108,13 @@ async function sellAccountFromInventory(payload) {
         let finalExpiresAt;
         if (customExpiryDate) {
             // Usar la fecha manual proporcionada por el admin
-            finalExpiresAt = new Date(`${customExpiryDate} 23:59:59`);
+            finalExpiresAt = bogotaDateOnlyToUtcEndOfDay(customExpiryDate);
         } else {
             // Usar la duración por defecto del plan
-            finalExpiresAt = new Date(Date.now() + Number(plan.days) * 24 * 60 * 60 * 1000);
+            finalExpiresAt = addDaysExact(new Date(), Number(plan.days));
         }
 
-        const expiresAtSql = finalExpiresAt.toISOString().slice(0, 19).replace("T", " ");
+        const expiresAtSql = toSqlDateTime(finalExpiresAt);
 
         // 5. Ejecutar Venta
         const orderCode = makeOrderCode();

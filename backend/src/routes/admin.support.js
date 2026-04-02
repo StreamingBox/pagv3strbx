@@ -3,15 +3,17 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
+const { buildWhatsappMessage } = require("../utils/whatsappMessage");
+const { formatDateOnlyBogota } = require("../utils/date");
 
 const router = express.Router();
 
 /**
  * Admin Soporte
- * - Buscar un subscription por ID (incluye orden/código y credenciales actuales)
+ * - Buscar un subscription por ID (incluye orden/cÃ³digo y credenciales actuales)
  * - Reemplazar la cuenta por otra "available" del mismo platform_id
  *
- * Nota: NO cambia la orden, ni el plan, ni la fecha de expiración (expires_at).
+ * Nota: NO cambia la orden, ni el plan, ni la fecha de expiraciÃ³n (expires_at).
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
 
@@ -19,10 +21,12 @@ function buildReplacementWhatsappMessage({ orderCode, subscriptionId, platformNa
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
     const credentialUrl = token ? `${cleanBaseUrl}/s/${token}` : "";
     const lines = [
-        `🧾 Orden: ${orderCode || "—"}`,
-        "📦 Reemplazo aplicado (1 item)",
+        "Tu cuenta ha sido remplazada por:",
         "",
-        `🆔 ID: ${subscriptionId || "—"} | 🖥️ ${platformName || "—"}`,
+        `🧾 Orden: ${orderCode || "-"}`,
+        "📦 Pedido múltiple (1 items)",
+        "",
+        `🆔 ID: ${subscriptionId || "-"} | 🖥️ ${platformName || "—"}`,
     ];
 
     if (account?.email) lines.push(`📧 Correo: ${account.email}`);
@@ -34,10 +38,11 @@ function buildReplacementWhatsappMessage({ orderCode, subscriptionId, platformNa
         lines.push(`🔢 Pin: ${account.pin}`);
     }
     if (expiresAt) {
-        lines.push(`📅 Expira: ${new Date(expiresAt).toISOString().slice(0, 10)}`);
+        lines.push(`📅 Expira: ${formatDateOnlyBogota(expiresAt)}`);
     }
     if (credentialUrl) {
-        lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
+        lines.push("");
+        lines.push(`*🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:*`);
     }
 
     return lines.join("\n").trim();
@@ -79,7 +84,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
 
     const r = rows[0];
 
-    // token: usar el último (si no existe, crearlo)
+    // token: usar el Ãºltimo (si no existe, crearlo)
     const [tokRows] = await conn.query(
         `SELECT token
        FROM credential_links
@@ -99,19 +104,24 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
     }
 
     const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
-    const message = buildReplacementWhatsappMessage({
+
+    const message = buildWhatsappMessage({
         orderCode: r.order_code || `#${r.order_id || "-"}`,
-        subscriptionId: r.subscription_id,
-        platformName: r.platform_name,
-        account: {
-            email: r.email,
-            password: r.password,
-            pin: r.pin,
-            profile_number: r.profile_number,
-        },
-        expiresAt: r.expires_at,
-        token,
         baseUrl,
+        results: [
+            {
+                subscriptionId: r.subscription_id,
+                plan: { platform_name: r.platform_name, platform_slug: r.platform_slug },
+                account: {
+                    email: r.email,
+                    password: r.password,
+                    pin: r.pin,
+                    profile_number: r.profile_number,
+                },
+                expiresAt: new Date(r.expires_at),
+                token,
+            },
+        ],
     });
 
     return {
@@ -143,13 +153,13 @@ router.get(
     async (req, res) => {
         const subscriptionId = Number(req.params.id);
         if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
-            return res.status(400).json({ message: "subscriptionId inválido." });
+            return res.status(400).json({ message: "subscriptionId invÃ¡lido." });
         }
 
         const conn = await pool.getConnection();
         try {
             const info = await getSubscriptionSupportInfo(conn, subscriptionId);
-            if (!info) return res.status(404).json({ message: "No se encontró el pedido/subscription." });
+            if (!info) return res.status(404).json({ message: "No se encontrÃ³ el pedido/subscription." });
             return res.json(info);
         } catch (e) {
             console.error("support get subscription error:", e);
@@ -168,7 +178,7 @@ router.post(
     async (req, res) => {
         const subscriptionId = Number(req.body?.subscriptionId);
         if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
-            return res.status(400).json({ message: "subscriptionId inválido." });
+            return res.status(400).json({ message: "subscriptionId invÃ¡lido." });
         }
 
         const conn = await pool.getConnection();
@@ -193,13 +203,13 @@ router.post(
 
             if (sub.status !== "active") {
                 await conn.rollback();
-                return res.status(409).json({ message: "La subscription no está activa." });
+                return res.status(409).json({ message: "La subscription no estÃ¡ activa." });
             }
 
             const expired = new Date(sub.expires_at).getTime() < Date.now();
             if (expired) {
                 await conn.rollback();
-                return res.status(409).json({ message: "La subscription ya está vencida." });
+                return res.status(409).json({ message: "La subscription ya estÃ¡ vencida." });
             }
 
             // Tomar otra cuenta disponible del MISMO platform_id
@@ -217,13 +227,13 @@ router.post(
                 await conn.rollback();
                 return res.status(409).json({
                     code: "NO_STOCK",
-                    message: "Sin stock: no podemos completar la acción porque no hay cuentas disponibles para reemplazo.",
+                    message: "Sin stock: no podemos completar la acciÃ³n porque no hay cuentas disponibles para reemplazo.",
                 });
             }
 
             const newAcc = accRows[0];
 
-            // Marcar nueva cuenta como assigned con misma expiración / user
+            // Marcar nueva cuenta como assigned con misma expiraciÃ³n / user
             await conn.query(
                 `UPDATE platform_accounts
             SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
@@ -231,7 +241,7 @@ router.post(
                 [sub.user_id, sub.expires_at, newAcc.id]
             );
 
-            // Swap en subscription (MISMA orden, MISMA expiración)
+            // Swap en subscription (MISMA orden, MISMA expiraciÃ³n)
             await conn.query(
                 `UPDATE subscriptions
             SET platform_account_id = ?

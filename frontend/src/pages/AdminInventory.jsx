@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiGet, apiPatch, apiPost, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import { formatBogotaDate } from "../utils/datetime.js";
 
 const LOGO_URL = "/api/branding/logo";
 
@@ -689,7 +690,7 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
                     {it.assigned_user_email || "—"}
                 </td>
                 <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--muted)" }}>
-                    {it.expires_at ? String(it.expires_at).slice(0, 10) : "—"}
+                    {formatBogotaDate(it.expires_at)}
                 </td>
                 <td style={{ padding: "14px 16px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 220 }}>

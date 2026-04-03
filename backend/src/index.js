@@ -12,6 +12,7 @@ const sanitize = require("./middleware/sanitize");
 const codesRoutes = require("./routes/codes");
 const codeLogsRoutes = require("./routes/codeLogs");
 const adminSupport = require("./routes/admin.support");
+const adminReplacements = require("./routes/admin.replacements");
 const adminCategories = require("./routes/admin.categories");
 
 const usersRoutes = require("./routes/users");
@@ -217,6 +218,7 @@ app.use("/api", codeLogsRoutes);
 
 // Soporte admin
 app.use("/api", adminSupport);
+app.use("/api", adminReplacements);
 
 // Categorías
 app.use("/api", adminCategories);

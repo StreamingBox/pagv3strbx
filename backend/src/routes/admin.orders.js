@@ -5,7 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { makeOrderCode } = require("../utils/orderCode");
-const { addDaysExact, toSqlDateTime } = require("../utils/date");
+const { addDaysExact, isStoredDateOnlyExpired, parseDateTime, toSqlDateTime } = require("../utils/date");
 
 const router = express.Router();
 
@@ -199,12 +199,13 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         // 1. Fetch subscription with duration days + price
         const [rows] = await conn.query(
             `SELECT s.id, s.user_id, s.platform_id, s.platform_price_id, s.platform_account_id,
-                    s.expires_at, s.price, s.currency, s.status, IFNULL(s.is_attended, 0) AS is_attended,
+                    s.expires_at, pa.expires_at AS account_expires_at, s.price, s.currency, s.status, IFNULL(s.is_attended, 0) AS is_attended,
                     d.days, p.name AS platform_name, u.email AS user_email
              FROM subscriptions s
              JOIN durations d ON d.id = s.duration_id
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
+             LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
              WHERE s.id = ?
              LIMIT 1
              FOR UPDATE`,
@@ -220,7 +221,7 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         const days = Number(sub.days || 30);
         const amount = Number(overridePrice !== undefined ? overridePrice : sub.price);
         const userId = sub.user_id;
-        const isExpired = !sub.expires_at || new Date(sub.expires_at) <= new Date();
+        const isExpired = !sub.expires_at || isStoredDateOnlyExpired(sub.expires_at);
 
         if (!Number.isFinite(amount) || amount < 0) {
             await conn.rollback();
@@ -242,8 +243,9 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         }
 
         // 2. Calculate new expiry: extend from MAX(now, current_expiry)
-        const base = sub.expires_at && new Date(sub.expires_at) > new Date()
-            ? new Date(sub.expires_at)
+        const currentAccountExpiry = parseDateTime(sub.account_expires_at);
+        const base = currentAccountExpiry && currentAccountExpiry > new Date()
+            ? currentAccountExpiry
             : new Date();
         const newExpiryDate = addDaysExact(base, days);
         const newExpiry = toSqlDateTime(newExpiryDate);

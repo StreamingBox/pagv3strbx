@@ -150,6 +150,40 @@ pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN expires_at DATETIME N
 pool.query("CREATE INDEX idx_whatsapp_webhook_expires ON whatsapp_webhook_dedupe(expires_at)").catch(() => { });
 pool.query("CREATE INDEX idx_whatsapp_webhook_msg_id ON whatsapp_webhook_dedupe(msg_id)").catch(() => { });
 
+pool.query(`
+    CREATE TABLE IF NOT EXISTS account_replacement_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        subscription_id INT NOT NULL,
+        order_id INT NULL,
+        order_code VARCHAR(64) NULL,
+        user_id INT NULL,
+        admin_user_id INT NULL,
+        platform_id INT NULL,
+        old_account_id INT NOT NULL,
+        old_account_email VARCHAR(191) NULL,
+        new_account_id INT NOT NULL,
+        new_account_email VARCHAR(191) NULL,
+        previous_expires_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_replacement_logs_created (created_at),
+        INDEX idx_replacement_logs_subscription (subscription_id),
+        INDEX idx_replacement_logs_order (order_id),
+        INDEX idx_replacement_logs_platform (platform_id)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN order_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN order_code VARCHAR(64) NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN user_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN admin_user_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN platform_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN old_account_email VARCHAR(191) NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN new_account_email VARCHAR(191) NULL").catch(() => { });
+pool.query("ALTER TABLE account_replacement_logs ADD COLUMN previous_expires_at DATETIME NULL").catch(() => { });
+pool.query("CREATE INDEX idx_replacement_logs_created ON account_replacement_logs(created_at)").catch(() => { });
+pool.query("CREATE INDEX idx_replacement_logs_subscription ON account_replacement_logs(subscription_id)").catch(() => { });
+pool.query("CREATE INDEX idx_replacement_logs_order ON account_replacement_logs(order_id)").catch(() => { });
+pool.query("CREATE INDEX idx_replacement_logs_platform ON account_replacement_logs(platform_id)").catch(() => { });
+
 // ──────────────────────────────────────────────────────────────
 // Tabla de logs de carga de cuentas (manual y masiva)
 // ──────────────────────────────────────────────────────────────

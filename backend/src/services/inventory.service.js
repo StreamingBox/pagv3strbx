@@ -43,11 +43,11 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, e
     const to = parseDateOnly(expiresTo);
 
     if (from) {
-        where.push("DATE(pa.expires_at) >= ?");
+        where.push("DATE(COALESCE(active_sub.expires_at, pa.expires_at)) >= ?");
         params.push(from);
     }
     if (to) {
-        where.push("DATE(pa.expires_at) <= ?");
+        where.push("DATE(COALESCE(active_sub.expires_at, pa.expires_at)) <= ?");
         params.push(to);
     }
 
@@ -80,6 +80,9 @@ async function getInventory(query = {}) {
          FROM platform_accounts pa
          LEFT JOIN platforms p ON p.id = pa.platform_id
          LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         LEFT JOIN subscriptions active_sub
+           ON active_sub.platform_account_id = pa.id
+          AND active_sub.status = 'active'
          ${whereSql}`,
         params
     );
@@ -101,11 +104,15 @@ async function getInventory(query = {}) {
       u.name  AS assigned_user_name,
       pa.assigned_at,
       pa.expires_at,
+      active_sub.expires_at AS subscription_expires_at,
       pa.created_at,
       pa.updated_at
     FROM platform_accounts pa
     LEFT JOIN platforms p ON p.id = pa.platform_id
     LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+    LEFT JOIN subscriptions active_sub
+      ON active_sub.platform_account_id = pa.id
+     AND active_sub.status = 'active'
     ${whereSql}
     ORDER BY pa.id DESC
     LIMIT ${limitNum} OFFSET ${offset}`,
@@ -115,6 +122,7 @@ async function getInventory(query = {}) {
     const items = rows.map((r) => ({
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
+        display_expires_at: r.subscription_expires_at || r.expires_at,
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
 
@@ -153,10 +161,14 @@ async function exportInventoryCsv(query = {}) {
       pa.profile_number,
       pa.status,
       u.email AS assigned_user_email,
-      pa.expires_at
+      pa.expires_at,
+      active_sub.expires_at AS subscription_expires_at
     FROM platform_accounts pa
     LEFT JOIN platforms p ON p.id = pa.platform_id
     LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+    LEFT JOIN subscriptions active_sub
+      ON active_sub.platform_account_id = pa.id
+     AND active_sub.status = 'active'
     ${whereSql}
     ORDER BY pa.expires_at DESC, pa.id DESC`,
         params
@@ -184,7 +196,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.profile_number),
             escapeCsv(r.status),
             escapeCsv(r.assigned_user_email || ""),
-            escapeCsv(r.expires_at ? formatDateOnlyBogota(r.expires_at) : ""),
+            escapeCsv((r.subscription_expires_at || r.expires_at) ? formatDateOnlyBogota(r.subscription_expires_at || r.expires_at) : ""),
         ].join(",")
     );
 

@@ -4,7 +4,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
-const { formatDateOnlyBogota } = require("../utils/date");
+const { formatDateOnlyBogota, isDateTimeExpired } = require("../utils/date");
 
 const router = express.Router();
 
@@ -68,7 +68,8 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         a.email,
         a.password,
         a.pin,
-        a.profile_number
+        a.profile_number,
+        a.expires_at AS account_expires_at
      FROM subscriptions s
      LEFT JOIN order_items oi ON oi.subscription_id = s.id
      LEFT JOIN orders o ON o.id = oi.order_id
@@ -118,7 +119,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
                     pin: r.pin,
                     profile_number: r.profile_number,
                 },
-                expiresAt: new Date(r.expires_at),
+                expiresAt: r.account_expires_at || r.expires_at,
                 token,
             },
         ],
@@ -131,7 +132,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         platformId: r.platform_id,
         platformName: r.platform_name,
         status: r.status,
-        expiresAt: r.expires_at,
+        expiresAt: r.account_expires_at || r.expires_at,
         accountId: r.platform_account_id,
         account: {
             email: r.email,
@@ -187,9 +188,11 @@ router.post(
 
             // Lock subscription
             const [subRows] = await conn.query(
-                `SELECT id, user_id, platform_id, status, expires_at, platform_account_id
-           FROM subscriptions
-          WHERE id = ?
+                `SELECT s.id, s.user_id, s.platform_id, s.status, s.expires_at, s.platform_account_id,
+                    pa.expires_at AS account_expires_at, pa.email AS old_account_email
+           FROM subscriptions s
+           LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+          WHERE s.id = ?
           FOR UPDATE`,
                 [subscriptionId]
             );
@@ -206,7 +209,7 @@ router.post(
                 return res.status(409).json({ message: "La subscription no estÃ¡ activa." });
             }
 
-            const expired = new Date(sub.expires_at).getTime() < Date.now();
+            const expired = isDateTimeExpired(sub.account_expires_at || sub.expires_at);
             if (expired) {
                 await conn.rollback();
                 return res.status(409).json({ message: "La subscription ya estÃ¡ vencida." });
@@ -238,7 +241,7 @@ router.post(
                 `UPDATE platform_accounts
             SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
           WHERE id = ?`,
-                [sub.user_id, sub.expires_at, newAcc.id]
+                [sub.user_id, sub.account_expires_at || sub.expires_at, newAcc.id]
             );
 
             // Swap en subscription (MISMA orden, MISMA expiraciÃ³n)
@@ -255,6 +258,36 @@ router.post(
             SET status='sold'
           WHERE id = ?`,
                 [sub.platform_account_id]
+            );
+
+            const [orderRows] = await conn.query(
+                `SELECT o.id AS order_id, o.order_code
+                   FROM order_items oi
+                   JOIN orders o ON o.id = oi.order_id
+                  WHERE oi.subscription_id = ?
+                  ORDER BY oi.id DESC
+                  LIMIT 1`,
+                [subscriptionId]
+            );
+
+            await conn.query(
+                `INSERT INTO account_replacement_logs
+                    (subscription_id, order_id, order_code, user_id, admin_user_id, platform_id,
+                     old_account_id, old_account_email, new_account_id, new_account_email, previous_expires_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    subscriptionId,
+                    orderRows?.[0]?.order_id || null,
+                    orderRows?.[0]?.order_code || null,
+                    sub.user_id,
+                    req.user.id,
+                    sub.platform_id,
+                    sub.platform_account_id,
+                    sub.old_account_email || null,
+                    newAcc.id,
+                    newAcc.email || null,
+                    sub.account_expires_at || null,
+                ]
             );
 
             await conn.commit();

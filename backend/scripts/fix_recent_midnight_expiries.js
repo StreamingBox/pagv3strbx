@@ -29,6 +29,7 @@ async function main() {
             WHERE s.status = 'active'
               AND s.created_at >= ?
               AND s.expires_at IS NOT NULL
+              AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
               AND TIME(s.expires_at) = '00:00:00'
             ORDER BY s.id DESC
             `,
@@ -53,6 +54,7 @@ async function main() {
             WHERE s.status = 'active'
               AND s.created_at >= ?
               AND s.expires_at IS NOT NULL
+              AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
               AND TIME(s.expires_at) = '00:00:00'
             `,
             [SINCE_UTC]
@@ -67,6 +69,7 @@ async function main() {
             WHERE s.status = 'active'
               AND s.created_at >= ?
               AND s.expires_at IS NOT NULL
+              AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
               AND TIME(s.expires_at) = '00:00:00'
             `,
             [SINCE_UTC]

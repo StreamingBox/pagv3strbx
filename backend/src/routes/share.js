@@ -1,7 +1,13 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const pool = require("../db");
-const { formatDateOnlyBogota } = require("../utils/date");
+const {
+  daysRemainingStoredDateOnly,
+  formatDateOnlyBogota,
+  formatStoredDateOnly,
+  isDateTimeExpired,
+  isStoredDateOnlyExpired,
+} = require("../utils/date");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -12,20 +18,6 @@ function escapeHtml(v) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
-}
-
-function fmtYMD(date) {
-  return formatDateOnlyBogota(date);
-}
-
-function daysLeft(date) {
-  if (!date) return null;
-  const end = new Date(date);
-  if (Number.isNaN(end.getTime())) return null;
-  end.setHours(23, 59, 59, 999);
-  const now = new Date();
-  const diff = end.getTime() - now.getTime();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
 
 function wantsJson(req) {
@@ -92,6 +84,7 @@ async function loadCredentialByToken(token) {
        a.password,
        a.pin,
        a.profile_number,
+       a.expires_at AS account_expires_at,
        cl.show_whatsapp,
        u.whatsapp AS whatsapp_number,
        p.type AS platform_type,
@@ -129,7 +122,10 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       return res.status(404).send("Link inválido.");
     }
 
-    const expired = new Date(r.expires_at).getTime() < Date.now();
+    const displayExpiresAt = r.account_expires_at || r.expires_at;
+    const expired = r.account_expires_at
+      ? isDateTimeExpired(r.account_expires_at)
+      : isStoredDateOnlyExpired(r.expires_at);
     const statusOk = r.status === "active";
     if (expired || !statusOk) {
       if (wantsJson(req)) {
@@ -138,8 +134,12 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       return res.status(403).send("Este link ya expiró.");
     }
 
-    const exp = fmtYMD(r.expires_at);
-    const remaining = daysLeft(r.expires_at);
+    const exp = r.account_expires_at
+      ? formatDateOnlyBogota(r.account_expires_at)
+      : formatStoredDateOnly(r.expires_at);
+    const remaining = r.account_expires_at
+      ? daysRemainingStoredDateOnly(formatDateOnlyBogota(r.account_expires_at))
+      : daysRemainingStoredDateOnly(r.expires_at);
     const showWA = Number(r.show_whatsapp) === 1 && !!r.whatsapp_number;
     const waNumber = showWA ? String(r.whatsapp_number) : null;
     const waMsg = encodeURIComponent(
@@ -161,7 +161,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         password: r.password,
         pin: r.pin,
         profileNumber: r.profile_number,
-        expiresAt: r.expires_at,
+        expiresAt: displayExpiresAt,
         expiresLabel: exp,
         daysRemaining: remaining,
         status: r.status,

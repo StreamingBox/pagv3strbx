@@ -46,6 +46,7 @@ const NAV_GROUPS = [
         links: [
             { path: "/admin/users", label: "Usuarios", icon: "👥" },
             { path: "/admin/support", label: "Soporte Técnico", icon: "🎧" },
+            { path: "/admin/replacements", label: "Historial Reemplazos", icon: "🔁" },
         ]
     },
     {

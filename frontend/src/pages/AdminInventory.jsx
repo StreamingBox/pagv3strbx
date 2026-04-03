@@ -690,7 +690,7 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
                     {it.assigned_user_email || "—"}
                 </td>
                 <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--muted)" }}>
-                    {formatBogotaDate(it.expires_at)}
+                    {formatBogotaDate(it.display_expires_at || it.expires_at)}
                 </td>
                 <td style={{ padding: "14px 16px" }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", maxWidth: 220 }}>

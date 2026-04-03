@@ -9,6 +9,7 @@ const {
 } = require("./codeQueries");
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
+const { isStoredDateOnlyExpired } = require("../utils/date");
 
 function normalizeSlug(slug) {
     return String(slug || "").trim().toLowerCase();
@@ -132,7 +133,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     }
 
     const isActive = String(sub.status || "").toLowerCase() === "active";
-    const notExpired = !sub.expires_at || new Date(sub.expires_at).getTime() > Date.now();
+    const notExpired = !sub.expires_at || !isStoredDateOnlyExpired(sub.expires_at);
     if (!isActive || !notExpired) {
         return {
             http: 400,

@@ -71,10 +71,52 @@ function bogotaDateOnlyToUtcEndOfDay(dateOnly) {
     return new Date(Date.UTC(year, month - 1, day, 23 + BOGOTA_UTC_OFFSET_HOURS, 59, 59));
 }
 
+function formatStoredDateOnly(value) {
+    if (!value) return "-";
+    if (typeof value === "string") {
+        const s = value.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    }
+
+    const d = value instanceof Date ? value : parseDateTime(value);
+    if (!d || Number.isNaN(d.getTime())) return "-";
+    return d.toISOString().slice(0, 10);
+}
+
+function currentBogotaDateOnly() {
+    return formatDateOnlyBogota(new Date());
+}
+
+function isStoredDateOnlyExpired(value, now = new Date()) {
+    const expiresAt = formatStoredDateOnly(value);
+    if (expiresAt === "-") return true;
+    const today = formatDateOnlyBogota(now);
+    return expiresAt < today;
+}
+
+function daysRemainingStoredDateOnly(value, now = new Date()) {
+    const expiresAt = formatStoredDateOnly(value);
+    if (expiresAt === "-") return null;
+    const today = formatDateOnlyBogota(now);
+    const diff = Date.parse(`${expiresAt}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`);
+    return Math.max(0, Math.ceil(diff / MS_PER_DAY));
+}
+
+function isDateTimeExpired(value, now = new Date()) {
+    const d = parseDateTime(value);
+    if (!d) return true;
+    return d.getTime() < now.getTime();
+}
+
 module.exports = {
     addDaysExact,
     bogotaDateOnlyToUtcEndOfDay,
+    currentBogotaDateOnly,
+    daysRemainingStoredDateOnly,
     formatDateOnlyBogota,
+    formatStoredDateOnly,
+    isDateTimeExpired,
+    isStoredDateOnlyExpired,
     parseDateOnly,
     parseDateTime,
     toSqlDateStart,

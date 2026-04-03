@@ -652,19 +652,25 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
     const [show, setShow] = useState(false);
 
     let badgeBg, badgeColor, badgeText;
-    switch (it.status) {
-        case "available":
-            badgeBg = "rgba(16,185,129,0.15)"; badgeColor = "#10b981"; badgeText = "Disponible"; break;
-        case "assigned":
-            badgeBg = "rgba(13,166,242,0.15)"; badgeColor = "#0da6f2"; badgeText = "Asignada"; break;
-        case "sold":
-            badgeBg = "rgba(139,92,246,0.15)"; badgeColor = "#8b5cf6"; badgeText = "Vendida"; break;
-        case "inactive":
-            badgeBg = "rgba(107,114,128,0.15)"; badgeColor = "#9ca3af"; badgeText = "Inactiva"; break;
-        case "down":
-            badgeBg = "rgba(239,68,68,0.15)"; badgeColor = "#ef4444"; badgeText = "Caída"; break;
-        default:
-            badgeBg = "rgba(255,255,255,0.05)"; badgeColor = "var(--muted)"; badgeText = String(it.status); break;
+    if (it.is_replacement) {
+        badgeBg = "rgba(245,158,11,0.16)";
+        badgeColor = "#f59e0b";
+        badgeText = "Cuenta reemplazada";
+    } else {
+        switch (it.status) {
+            case "available":
+                badgeBg = "rgba(16,185,129,0.15)"; badgeColor = "#10b981"; badgeText = "Disponible"; break;
+            case "assigned":
+                badgeBg = "rgba(13,166,242,0.15)"; badgeColor = "#0da6f2"; badgeText = "Asignada"; break;
+            case "sold":
+                badgeBg = "rgba(139,92,246,0.15)"; badgeColor = "#8b5cf6"; badgeText = "Vendida"; break;
+            case "inactive":
+                badgeBg = "rgba(107,114,128,0.15)"; badgeColor = "#9ca3af"; badgeText = "Inactiva"; break;
+            case "down":
+                badgeBg = "rgba(239,68,68,0.15)"; badgeColor = "#ef4444"; badgeText = "Caída"; break;
+            default:
+                badgeBg = "rgba(255,255,255,0.05)"; badgeColor = "var(--muted)"; badgeText = String(it.status); break;
+        }
     }
 
     const rowBtnStyle = { padding: "4px 10px", fontSize: 11, height: "auto", borderRadius: 6, minWidth: 0, whiteSpace: "nowrap" };
@@ -730,6 +736,15 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
                                     <span style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>Pin Control</span>
                                     <span style={{ color: "var(--text)", fontWeight: 800, fontSize: 13, background: "var(--bg0)", padding: "4px 12px", borderRadius: 6, textAlign: "center", fontFamily: "monospace" }}>{it.pin ?? "—"}</span>
                                 </div>
+                                {it.is_replacement && (
+                                    <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 }}>
+                                        <span style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>Viene de reemplazo</span>
+                                        <span style={{ color: "var(--text)", fontWeight: 600, fontSize: 13, background: "var(--bg0)", padding: "4px 8px", borderRadius: 6 }}>
+                                            {it.replaced_from_account_id ? `Cuenta #${it.replaced_from_account_id}` : "Cuenta anterior"}
+                                            {it.replaced_from_account_email ? ` · ${it.replaced_from_account_email}` : ""}
+                                        </span>
+                                    </div>
+                                )}
                                 {it.access_url && (
                                     <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 }}>
                                         <span style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>URL Acceso</span>

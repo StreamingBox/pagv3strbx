@@ -104,6 +104,7 @@ async function getInventory(query = {}) {
       u.name  AS assigned_user_name,
       pa.assigned_at,
       pa.expires_at,
+      active_sub.id AS sale_id,
       active_sub.expires_at AS subscription_expires_at,
       pa.created_at,
       pa.updated_at
@@ -122,6 +123,7 @@ async function getInventory(query = {}) {
     const items = rows.map((r) => ({
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
+        sale_id: r.sale_id || null,
         display_expires_at: r.subscription_expires_at || r.expires_at,
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
@@ -161,6 +163,7 @@ async function exportInventoryCsv(query = {}) {
       pa.profile_number,
       pa.status,
       u.email AS assigned_user_email,
+      active_sub.id AS sale_id,
       pa.expires_at,
       active_sub.expires_at AS subscription_expires_at
     FROM platform_accounts pa
@@ -182,6 +185,7 @@ async function exportInventoryCsv(query = {}) {
         "pin",
         "profile_number",
         "status",
+        "sale_id",
         "assigned_to",
         "expires_at",
     ].join(",");
@@ -195,6 +199,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.pin),
             escapeCsv(r.profile_number),
             escapeCsv(r.status),
+            escapeCsv(r.sale_id || ""),
             escapeCsv(r.assigned_user_email || ""),
             escapeCsv((r.subscription_expires_at || r.expires_at) ? formatDateOnlyBogota(r.subscription_expires_at || r.expires_at) : ""),
         ].join(",")

@@ -188,6 +188,8 @@ Según el entorno, normalmente el flujo es:
 - El backend expone rutas públicas y privadas bajo `/api`.
 - Existen vistas admin para órdenes, renovaciones, inventario, vencimientos, logs de códigos y soporte.
 - Hay integración con links compartidos `/s/:token` para mostrar credenciales temporales.
+- En inventario, el campo `ID Venta` solo debe mostrarse cuando la cuenta tiene una suscripción activa asociada; si no existe venta activa, debe quedar vacío.
+- Los links compartidos de credenciales vencidos se depuran automáticamente al iniciar el backend, cada hora y también al intentar abrir un token expirado.
 - Los logs de códigos ya incluyen diagnóstico por motivo para facilitar soporte.
 
 ## Estado del repo

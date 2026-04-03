@@ -1,6 +1,7 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
 const pool = require("../db");
+const { cleanupExpiredCredentialLinks } = require("../utils/tokens");
 const {
   daysRemainingStoredDateOnly,
   formatDateOnlyBogota,
@@ -104,6 +105,7 @@ async function loadCredentialByToken(token) {
 router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
   try {
     const { token } = req.params;
+    cleanupExpiredCredentialLinks(pool).catch(() => {});
 
     // Esta página necesita poder hacer un fetch same-origin a su versión JSON.
     // El helmet global usa "no-referrer", lo que impide que el backend valide
@@ -128,6 +130,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       : isStoredDateOnlyExpired(r.expires_at);
     const statusOk = r.status === "active";
     if (expired || !statusOk) {
+      pool.query("DELETE FROM credential_links WHERE token = ?", [token]).catch(() => {});
       if (wantsJson(req)) {
         return res.status(403).json({ ok: false, error: "Este link ya expiró." });
       }

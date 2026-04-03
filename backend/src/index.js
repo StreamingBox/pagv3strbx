@@ -40,6 +40,8 @@ const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
 const whatsappRoutes = require("./routes/whatsapp");
 const { initBot } = require("./services/telegramBot");
+const pool = require("./db");
+const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 
 let instanceLockPath = null;
 const lockEnabled = String(process.env.BACKEND_SINGLE_INSTANCE || "true").toLowerCase() !== "false";
@@ -74,6 +76,11 @@ if (lockEnabled) {
 }
 
 const app = express();
+
+cleanupExpiredCredentialLinks(pool).catch(() => { });
+setInterval(() => {
+    cleanupExpiredCredentialLinks(pool).catch(() => { });
+}, 60 * 60 * 1000).unref();
 
 // IP real detrás de Nginx
 app.set("trust proxy", 1);

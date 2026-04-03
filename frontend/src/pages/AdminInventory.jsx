@@ -473,6 +473,7 @@ export default function AdminInventory() {
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Plataforma</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Email Cuenta</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Estado</th>
+                                        <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>ID Venta</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Asignada A</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Expiración</th>
                                         <th style={{ padding: "14px 16px", fontWeight: 700, color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.5px" }}>Acciones Rápidas</th>
@@ -480,10 +481,10 @@ export default function AdminInventory() {
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={7} style={{ padding: "60px 20px", textAlign: "center" }}><div className="spinner" style={{ margin: "0 auto" }}></div></td></tr>
+                                        <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center" }}><div className="spinner" style={{ margin: "0 auto" }}></div></td></tr>
                                     ) : items.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                            <td colSpan={8} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                 <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
                                                 No hay registros de inventario con estos filtros.
                                             </td>
@@ -686,6 +687,9 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
                         {badgeText}
                     </span>
                 </td>
+                <td style={{ padding: "14px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--text)" }}>
+                    {it.sale_id ? `#${it.sale_id}` : ""}
+                </td>
                 <td style={{ padding: "14px 16px", color: "var(--muted)", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={it.assigned_user_email}>
                     {it.assigned_user_email || "—"}
                 </td>
@@ -708,7 +712,7 @@ function InvRow({ it, idx, saving, onUpdate, onSell }) {
             <AnimatePresence>
                 {show && (
                     <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                        <td colSpan={7} style={{ padding: 0 }}>
+                        <td colSpan={8} style={{ padding: 0 }}>
                             <div style={{ padding: "16px 24px", background: "rgba(13,166,242,0.05)", borderBottom: "1px solid var(--stroke2)", display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
                                 <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 }}>
                                     <span style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>Email</span>

@@ -152,6 +152,7 @@ async function propagatePassword(conn, { pid, emailNorm, password, newId }) {
      WHERE platform_id = ?
        AND LOWER(email) = LOWER(?)
        AND status IN (${ACTIVE_STATUSES.map(() => "?").join(",")})
+       AND (expires_at IS NULL OR expires_at >= UTC_TIMESTAMP())
        AND id <> ?`,
         [password, pid, emailNorm, ...ACTIVE_STATUSES, newId]
     );

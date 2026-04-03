@@ -6,6 +6,17 @@ const { escapeCsv } = require("../utils/csv");
 const { formatDateOnlyBogota, parseDateOnly, toSqlDateStart } = require("../utils/date");
 const { normalizeOptionalValue } = require("../utils/normalize");
 
+const LATEST_REPLACEMENT_JOIN = `
+LEFT JOIN (
+    SELECT arl1.*
+    FROM account_replacement_logs arl1
+    INNER JOIN (
+        SELECT new_account_id, MAX(id) AS max_id
+        FROM account_replacement_logs
+        GROUP BY new_account_id
+    ) arl_last ON arl_last.max_id = arl1.id
+) latest_replacement ON latest_replacement.new_account_id = pa.id`;
+
 /**
  * Construye WHERE dinámico + params para inventory/export.
  */
@@ -30,8 +41,17 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, e
     }
 
     if (q) {
-        where.push("(pa.email LIKE ? OR pa.platform_name LIKE ? OR p.name LIKE ? OR u.email LIKE ?)");
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+        where.push(`(
+            pa.email LIKE ? OR
+            pa.platform_name LIKE ? OR
+            p.name LIKE ? OR
+            u.email LIKE ? OR
+            CAST(active_sub.id AS CHAR) LIKE ? OR
+            CAST(latest_replacement.subscription_id AS CHAR) LIKE ? OR
+            CAST(latest_replacement.order_id AS CHAR) LIKE ? OR
+            COALESCE(latest_replacement.order_code, '') LIKE ?
+        )`);
+        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     }
 
     if (assignedTo) {
@@ -83,6 +103,7 @@ async function getInventory(query = {}) {
          LEFT JOIN subscriptions active_sub
            ON active_sub.platform_account_id = pa.id
           AND active_sub.status = 'active'
+         ${LATEST_REPLACEMENT_JOIN}
          ${whereSql}`,
         params
     );
@@ -104,7 +125,9 @@ async function getInventory(query = {}) {
       u.name  AS assigned_user_name,
       pa.assigned_at,
       pa.expires_at,
-      active_sub.id AS sale_id,
+      COALESCE(active_sub.id, latest_replacement.subscription_id) AS sale_id,
+      latest_replacement.order_id AS replacement_order_id,
+      latest_replacement.order_code AS replacement_order_code,
       active_sub.expires_at AS subscription_expires_at,
       pa.created_at,
       pa.updated_at
@@ -114,6 +137,7 @@ async function getInventory(query = {}) {
     LEFT JOIN subscriptions active_sub
       ON active_sub.platform_account_id = pa.id
      AND active_sub.status = 'active'
+    ${LATEST_REPLACEMENT_JOIN}
     ${whereSql}
     ORDER BY pa.id DESC
     LIMIT ${limitNum} OFFSET ${offset}`,
@@ -124,6 +148,8 @@ async function getInventory(query = {}) {
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
         sale_id: r.sale_id || null,
+        replacement_order_id: r.replacement_order_id || null,
+        replacement_order_code: r.replacement_order_code || null,
         display_expires_at: r.subscription_expires_at || r.expires_at,
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
@@ -163,7 +189,7 @@ async function exportInventoryCsv(query = {}) {
       pa.profile_number,
       pa.status,
       u.email AS assigned_user_email,
-      active_sub.id AS sale_id,
+      COALESCE(active_sub.id, latest_replacement.subscription_id) AS sale_id,
       pa.expires_at,
       active_sub.expires_at AS subscription_expires_at
     FROM platform_accounts pa
@@ -172,6 +198,7 @@ async function exportInventoryCsv(query = {}) {
     LEFT JOIN subscriptions active_sub
       ON active_sub.platform_account_id = pa.id
      AND active_sub.status = 'active'
+    ${LATEST_REPLACEMENT_JOIN}
     ${whereSql}
     ORDER BY pa.expires_at DESC, pa.id DESC`,
         params

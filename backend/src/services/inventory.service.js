@@ -244,6 +244,133 @@ async function exportInventoryCsv(query = {}) {
     };
 }
 
+async function getInventoryAccountDetail(id) {
+    const accountId = Number(id);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
+        const err = new Error("id requerido.");
+        err.status = 400;
+        throw err;
+    }
+
+    const [[account]] = await pool.query(
+        `SELECT
+            pa.id,
+            pa.platform_id,
+            COALESCE(p.name, pa.platform_name) AS platform_name,
+            pa.email,
+            pa.password,
+            pa.pin,
+            pa.profile_number,
+            pa.status,
+            pa.assigned_to_user_id,
+            u.email AS assigned_user_email,
+            u.name AS assigned_user_name,
+            pa.assigned_at,
+            pa.expires_at,
+            pa.created_at,
+            pa.updated_at
+         FROM platform_accounts pa
+         LEFT JOIN platforms p ON p.id = pa.platform_id
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         WHERE pa.id = ?
+         LIMIT 1`,
+        [accountId]
+    );
+
+    if (!account) {
+        const err = new Error("Cuenta no encontrada.");
+        err.status = 404;
+        throw err;
+    }
+
+    const [subscriptionRows] = await pool.query(
+        `SELECT
+            s.id AS subscription_id,
+            s.status,
+            s.expires_at,
+            s.created_at,
+            o.id AS order_id,
+            o.order_code,
+            u.email AS buyer_email,
+            u.name AS buyer_name
+         FROM subscriptions s
+         LEFT JOIN order_items oi ON oi.subscription_id = s.id
+         LEFT JOIN orders o ON o.id = oi.order_id
+         LEFT JOIN users u ON u.id = s.user_id
+         WHERE s.platform_account_id = ?
+         ORDER BY s.id DESC`,
+        [accountId]
+    );
+
+    const [replacementRows] = await pool.query(
+        `SELECT
+            arl.id,
+            arl.subscription_id,
+            arl.order_id,
+            arl.order_code,
+            arl.old_account_id,
+            arl.old_account_email,
+            arl.new_account_id,
+            arl.new_account_email,
+            arl.previous_expires_at,
+            arl.created_at,
+            admin.email AS admin_email,
+            admin.name AS admin_name,
+            usr.email AS user_email,
+            usr.name AS user_name
+         FROM account_replacement_logs arl
+         LEFT JOIN users admin ON admin.id = arl.admin_user_id
+         LEFT JOIN users usr ON usr.id = arl.user_id
+         WHERE arl.old_account_id = ? OR arl.new_account_id = ?
+         ORDER BY arl.id DESC`,
+        [accountId, accountId]
+    );
+
+    const currentSubscription = subscriptionRows.find((row) => String(row.status) === "active") || null;
+    const lastSubscription = subscriptionRows[0] || null;
+
+    const timeline = [
+        ...subscriptionRows.map((row) => ({
+            type: "subscription",
+            created_at: row.created_at,
+            title: `Venta #${row.subscription_id}`,
+            subtitle: row.order_code || (row.order_id ? `Orden #${row.order_id}` : "Sin orden"),
+            meta: row.buyer_email || row.buyer_name || "",
+            status: row.status,
+            expires_at: row.expires_at,
+        })),
+        ...replacementRows.map((row) => ({
+            type: row.new_account_id === accountId ? "replacement_in" : "replacement_out",
+            created_at: row.created_at,
+            title: row.new_account_id === accountId ? "Entró por reemplazo" : "Salió por reemplazo",
+            subtitle: row.order_code || (row.order_id ? `Orden #${row.order_id}` : "Sin orden"),
+            meta: row.new_account_id === accountId
+                ? `${row.old_account_id ? `Cuenta #${row.old_account_id}` : "Cuenta anterior"}${row.old_account_email ? ` · ${row.old_account_email}` : ""}`
+                : `${row.new_account_id ? `Cuenta #${row.new_account_id}` : "Cuenta nueva"}${row.new_account_email ? ` · ${row.new_account_email}` : ""}`,
+            status: null,
+            expires_at: row.previous_expires_at,
+            admin_email: row.admin_email || null,
+        })),
+    ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    return {
+        account: {
+            ...account,
+            current_subscription_id: currentSubscription?.subscription_id || null,
+            current_order_id: currentSubscription?.order_id || null,
+            current_order_code: currentSubscription?.order_code || null,
+        },
+        currentSubscription,
+        lastSubscription,
+        subscriptions: subscriptionRows,
+        replacements: replacementRows.map((row) => ({
+            ...row,
+            direction: row.new_account_id === accountId ? "incoming" : "outgoing",
+        })),
+        timeline,
+    };
+}
+
 /**
  * PATCH /admin/inventory/:id
  * Permite:
@@ -327,6 +454,7 @@ async function patchInventory(id, body = {}) {
 
 module.exports = {
     getInventory,
+    getInventoryAccountDetail,
     exportInventoryCsv,
     patchInventory,
 };

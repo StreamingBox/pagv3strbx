@@ -48,6 +48,27 @@ function buildReplacementWhatsappMessage({ orderCode, subscriptionId, platformNa
     return lines.join("\n").trim();
 }
 
+async function getReplacementCandidates(conn, { platformId, currentAccountId }) {
+    const [rows] = await conn.query(
+        `SELECT id, email, password, pin, profile_number, expires_at
+           FROM platform_accounts
+          WHERE platform_id = ?
+            AND status = 'available'
+            AND id <> ?
+          ORDER BY id ASC`,
+        [platformId, Number(currentAccountId || 0)]
+    );
+
+    return rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        password: row.password,
+        pin: row.pin,
+        profile_number: row.profile_number,
+        expiresAt: row.expires_at || null,
+    }));
+}
+
 async function getSubscriptionSupportInfo(conn, subscriptionId) {
     // subscription + order + platform + current account
     const [rows] = await conn.query(
@@ -105,6 +126,10 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
     }
 
     const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
+    const replacementCandidates = await getReplacementCandidates(conn, {
+        platformId: r.platform_id,
+        currentAccountId: r.platform_account_id,
+    });
 
     const message = buildWhatsappMessage({
         orderCode: r.order_code || `#${r.order_id || "-"}`,
@@ -140,6 +165,8 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
             pin: r.pin,
             profile_number: r.profile_number,
         },
+        replacementCandidates,
+        suggestedReplacementId: replacementCandidates?.[0]?.id || null,
         token,
         whatsappPhone: r.user_whatsapp || null,
         message,
@@ -156,7 +183,6 @@ router.get(
         if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
             return res.status(400).json({ message: "subscriptionId invÃ¡lido." });
         }
-
         const conn = await pool.getConnection();
         try {
             const info = await getSubscriptionSupportInfo(conn, subscriptionId);
@@ -178,8 +204,16 @@ router.post(
     requireRole("admin"),
     async (req, res) => {
         const subscriptionId = Number(req.body?.subscriptionId);
+        const replacementAccountIdRaw = req.body?.replacementAccountId;
+        const replacementAccountId =
+            replacementAccountIdRaw === undefined || replacementAccountIdRaw === null || replacementAccountIdRaw === ""
+                ? null
+                : Number(replacementAccountIdRaw);
         if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
             return res.status(400).json({ message: "subscriptionId invÃ¡lido." });
+        }
+        if (replacementAccountId !== null && (!Number.isFinite(replacementAccountId) || replacementAccountId <= 0)) {
+            return res.status(400).json({ message: "replacementAccountId invÃ¡lido." });
         }
 
         const conn = await pool.getConnection();
@@ -216,15 +250,37 @@ router.post(
             }
 
             // Tomar otra cuenta disponible del MISMO platform_id
-            const [accRows] = await conn.query(
-                `SELECT id, email, password, pin, profile_number
-           FROM platform_accounts
-          WHERE platform_id = ? AND status = 'available'
-          ORDER BY id ASC
-          LIMIT 1
-          FOR UPDATE`,
-                [sub.platform_id]
-            );
+            let accRows;
+            if (replacementAccountId) {
+                [accRows] = await conn.query(
+                    `SELECT id, email, password, pin, profile_number
+               FROM platform_accounts
+              WHERE id = ?
+                AND platform_id = ?
+                AND status = 'available'
+              LIMIT 1
+              FOR UPDATE`,
+                    [replacementAccountId, sub.platform_id]
+                );
+            } else {
+                [accRows] = await conn.query(
+                    `SELECT id, email, password, pin, profile_number
+               FROM platform_accounts
+              WHERE platform_id = ? AND status = 'available'
+              ORDER BY id ASC
+              LIMIT 1
+              FOR UPDATE`,
+                    [sub.platform_id]
+                );
+            }
+
+            if (replacementAccountId && !accRows.length) {
+                await conn.rollback();
+                return res.status(409).json({
+                    code: "NO_STOCK",
+                    message: "La cuenta seleccionada ya no estÃ¡ disponible para reemplazo.",
+                });
+            }
 
             if (!accRows.length) {
                 await conn.rollback();

@@ -189,6 +189,9 @@ Según el entorno, normalmente el flujo es:
 - Existen vistas admin para órdenes, renovaciones, inventario, vencimientos, logs de códigos y soporte.
 - Hay integración con links compartidos `/s/:token` para mostrar credenciales temporales.
 - En inventario, el campo `ID Venta` solo debe mostrarse cuando la cuenta tiene una suscripción activa asociada; si no existe venta activa, debe quedar vacío.
+- El inventario permite abrir una tarjeta responsive por cuenta con credenciales, orden actual, fechas, trazabilidad de reemplazo y línea de tiempo de ventas/reemplazos.
+- Desde inventario también se puede abrir soporte sin salir de la página, copiar mensaje/link y ejecutar reemplazos.
+- En soporte y en inventario, un reemplazo puede usar la siguiente cuenta disponible o una cuenta específica seleccionada manualmente.
 - Los links compartidos de credenciales vencidos se depuran automáticamente al iniciar el backend, cada hora y también al intentar abrir un token expirado.
 - Los logs de códigos ya incluyen diagnóstico por motivo para facilitar soporte.
 

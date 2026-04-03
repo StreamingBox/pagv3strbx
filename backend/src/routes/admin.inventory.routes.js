@@ -4,6 +4,7 @@ const requireRole = require("../middleware/requireRole");
 
 const {
     getInventory,
+    getInventoryAccountDetail,
     exportInventoryCsv,
     patchInventory,
 } = require("../services/inventory.service");
@@ -18,6 +19,16 @@ router.get("/admin/inventory", requireAuth, requireRole("admin"), async (req, re
         return res.json(data);
     } catch (e) {
         return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.get("/admin/inventory/:id/detail", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const data = await getInventoryAccountDetail(req.params.id);
+        return res.json(data);
+    } catch (e) {
+        const status = e.status || 500;
+        return res.status(status).json({ message: e.message || "Error interno." });
     }
 });
 

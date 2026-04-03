@@ -176,6 +176,7 @@ export default function AdminSupport() {
     const [info, setInfo] = useState(null);
     const [error, setError] = useState("");
     const [copied, setCopied] = useState("");
+    const [selectedReplacementId, setSelectedReplacementId] = useState("");
 
     // WhatsApp directo
     const [waPhone, setWaPhone] = useState("");
@@ -184,6 +185,11 @@ export default function AdminSupport() {
 
     const canReplace = useMemo(() => !!info?.subscriptionId && !loading, [info, loading]);
     const fullLink = info?.token ? `${PUBLIC_BASE}/s/${info.token}` : "";
+    const replacementCandidates = info?.replacementCandidates || [];
+
+    useEffect(() => {
+        setSelectedReplacementId(info?.suggestedReplacementId ? String(info.suggestedReplacementId) : "");
+    }, [info?.subscriptionId, info?.suggestedReplacementId]);
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -214,7 +220,10 @@ export default function AdminSupport() {
         try {
             const { ok, data, status } = await apiFetch("/admin/support/replace-account", {
                 method: "POST",
-                body: JSON.stringify({ subscriptionId: info.subscriptionId }),
+                body: JSON.stringify({
+                    subscriptionId: info.subscriptionId,
+                    replacementAccountId: selectedReplacementId || null,
+                }),
             });
             if (!ok) { setError(data?.message || `Error (${status})`); return; }
             setInfo(data.info);
@@ -318,6 +327,26 @@ export default function AdminSupport() {
                                 >
                                     🔄 Reemplazar
                                 </button>
+                            </div>
+                            <div style={{ ...S.fieldTile, marginTop: 16 }}>
+                                <div style={S.fieldLabel}>Cuenta para reemplazo</div>
+                                <select
+                                    value={selectedReplacementId}
+                                    onChange={e => setSelectedReplacementId(e.target.value)}
+                                    style={{ ...S.input, marginTop: 8, height: 42, paddingRight: 42 }}
+                                >
+                                    <option value="">Siguiente disponible</option>
+                                    {replacementCandidates.map((candidate) => (
+                                        <option key={candidate.id} value={candidate.id}>
+                                            #{candidate.id} · {candidate.email} · Perfil {candidate.profile_number ?? "â€”"}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(234,241,255,0.5)" }}>
+                                    {replacementCandidates.length
+                                        ? "Puedes usar la siguiente disponible o seleccionar una cuenta especÃ­fica para el reemplazo."
+                                        : "No hay cuentas disponibles para reemplazo en este momento."}
+                                </div>
                             </div>
                         </div>
                     </form>

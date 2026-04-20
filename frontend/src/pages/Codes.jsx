@@ -97,6 +97,8 @@ function CredField({ label, value, icon, secret = false }) {
 function StatusCard({ d }) {
     if (!d || d.ok !== false) return null;
     const st = String(d.status || "").toLowerCase();
+    const hasLimitDetails = st === "blocked" && Number.isFinite(Number(d.limit)) && Number.isFinite(Number(d.deliveredCount));
+    const limitUsageText = hasLimitDetails ? `${Number(d.deliveredCount)} de ${Number(d.limit)} solicitudes usadas` : "";
     const cfg = {
         expired: { icon: "⏱️", title: "Vencido", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
         blocked: { icon: "🚫", title: "Límite alcanzado", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" },
@@ -107,6 +109,20 @@ function StatusCard({ d }) {
             style={{ background: cfg.bg, border: `1px solid ${cfg.border}`, borderRadius: 10, padding: "12px 14px" }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: cfg.color, marginBottom: 3 }}>{cfg.icon} {cfg.title}</div>
             <div style={{ fontSize: 12, color: "var(--muted)", lineHeight: 1.5 }}>{d.message || "Ocurrió un problema."}</div>
+            {hasLimitDetails ? (
+                <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "fit-content", borderRadius: 999, padding: "5px 9px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.25)", color: "#fecaca", fontSize: 11, fontWeight: 800 }}>
+                        <span>Uso actual:</span>
+                        <span>{limitUsageText}</span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--text)", lineHeight: 1.55 }}>
+                        No puedes pedir otro codigo con estas credenciales actuales.
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", lineHeight: 1.55 }}>
+                        {d.resetRule || "El contador se reinicia cuando cambian las credenciales de la cuenta."}
+                    </div>
+                </div>
+            ) : null}
         </motion.div>
     );
 }
@@ -158,12 +174,16 @@ export default function Codes() {
         setLoadingSlug(slug);
         try {
             const body = { orderNumber: orderNumber.trim() };
-            if (slug === "netflix") body.action = action;
             const r = await apiPost(`/api/codes/${slug}/request`, body);
             if (r.status === 401) { navigate("/"); return; }
             if (!r.ok) {
                 const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
-                setData({ ok: false, status: r.data?.status || "error", message: r.data?.message || fallbackMessage });
+                setData({
+                    ok: false,
+                    ...r.data,
+                    status: r.data?.status || "error",
+                    message: r.data?.message || fallbackMessage,
+                });
                 return;
             }
             setData(r.data);
@@ -176,13 +196,7 @@ export default function Codes() {
 
     function handlePlatformClick(slug) {
         if (!canSearch) return;
-        if (slug !== "netflix") {
-            requestCode(slug, "code");
-        } else {
-            setError("");
-            setData(null);
-            setActivePlatform(slug);
-        }
+        requestCode(slug, "code");
     }
 
     const activeMeta = useMemo(() => PLATFORMS.find(p => p.slug === activePlatform), [activePlatform]);
@@ -257,7 +271,7 @@ export default function Codes() {
                                             <input
                                                 value={orderNumber}
                                                 onChange={e => setOrderNumber(e.target.value)}
-                                                onKeyDown={e => { if (e.key === "Enter" && activePlatform && activePlatform !== "netflix") requestCode(activePlatform); }}
+                                                onKeyDown={e => { if (e.key === "Enter" && activePlatform) requestCode(activePlatform); }}
                                                 placeholder="#12345"
                                                 inputMode="numeric"
                                                 style={{
@@ -274,43 +288,7 @@ export default function Codes() {
                                         </div>
                                     </div>
 
-                                    {activePlatform === "netflix" && (
-                                        <div style={{ display: "flex", flexDirection: isTinyPhone ? "column" : "row", gap: 8 }}>
-                                            <motion.button
-                                                whileHover={{ scale: 1.02, boxShadow: "0 0 16px rgba(13,166,242,0.3)" }}
-                                                whileTap={{ scale: 0.98 }}
-                                                disabled={!canSearch}
-                                                onClick={() => requestCode("netflix", "code")}
-                                                style={{
-                                                    flex: 1, height: 40, borderRadius: 10, fontSize: 12, fontWeight: 800,
-                                                    background: canSearch ? "linear-gradient(135deg,rgba(13,166,242,0.1),rgba(13,166,242,0.05))" : "var(--input-bg)",
-                                                    border: canSearch ? "1px solid rgba(13,166,242,0.4)" : "1px solid var(--stroke)",
-                                                    color: canSearch ? "var(--accent)" : "var(--muted)",
-                                                    cursor: canSearch ? "pointer" : "default", fontFamily: "var(--font)",
-                                                    transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                                                }}
-                                            >
-                                                <span>🔑</span> <span style={{ textShadow: canSearch ? "0 0 10px rgba(13,166,242,0.3)" : "none" }}>Obtener Código</span>
-                                            </motion.button>
-
-                                            <motion.button
-                                                whileHover={{ scale: 1.02, boxShadow: "0 0 16px rgba(16,185,129,0.3)" }}
-                                                whileTap={{ scale: 0.98 }}
-                                                disabled={!canSearch}
-                                                onClick={() => requestCode("netflix", "approve")}
-                                                style={{
-                                                    flex: 1, height: 40, borderRadius: 10, fontSize: 12, fontWeight: 800,
-                                                    background: canSearch ? "linear-gradient(135deg,rgba(16,185,129,0.1),rgba(16,185,129,0.05))" : "var(--input-bg)",
-                                                    border: canSearch ? "1px solid rgba(16,185,129,0.4)" : "1px solid var(--stroke)",
-                                                    color: canSearch ? "#10b981" : "var(--muted)",
-                                                    cursor: canSearch ? "pointer" : "default", fontFamily: "var(--font)",
-                                                    transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 6
-                                                }}
-                                            >
-                                                <span>✅</span> <span style={{ textShadow: canSearch ? "0 0 10px rgba(16,185,129,0.3)" : "none" }}>Aprobar Dispositivo</span>
-                                            </motion.button>
-                                        </div>
-                                    )}
+                                    
                                 </div>
                             </div>
 

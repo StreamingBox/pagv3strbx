@@ -261,7 +261,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         }
 
         if (sawExpiredMatch) {
-            return { ok: false, status: "expired", message: `El correo de Netflix está vencido (más de ${maxAgeMinutes} min).` };
+            return { ok: false, status: "expired", message: `No se evidencia un correo reciente de Netflix en los ultimos ${maxAgeMinutes} minutos.` };
         }
 
         if (!sawSenderMatch) {

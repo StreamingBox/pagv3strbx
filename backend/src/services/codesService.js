@@ -6,6 +6,7 @@ const { credFingerprint } = require("../utils/credFingerprint");
 const {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
+    countDeliveredByFingerprint,
 } = require("./codeQueries");
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
@@ -25,6 +26,76 @@ function pickPlatformIdentityFromSub(sub) {
         "";
 
     return String(raw || "");
+}
+
+function normalizePolicyKey(raw) {
+    return String(raw || "")
+        .toLowerCase()
+        .trim()
+        .replace(/\s+/g, " ")
+        .replace(/[^a-z0-9 ]/g, "");
+}
+
+function resolvePolicyPlatform({ requestPlatformSlug, subPlatformIdentity }) {
+    const requestKey = normalizePolicyKey(requestPlatformSlug);
+    const subKey = normalizePolicyKey(subPlatformIdentity);
+    const combined = `${requestKey} ${subKey}`.trim();
+
+    if (combined.includes("chatgpt business") || combined.includes("chatgptbusiness")) {
+        return "chatgpt-business";
+    }
+    if (combined.includes("chatgpt") || combined.includes("chat gpt")) {
+        return "chatgpt";
+    }
+    if (combined.includes("spotify")) {
+        return "spotify";
+    }
+    if (combined.includes("prime")) {
+        return "prime";
+    }
+    if (combined.includes("netflix")) {
+        return "netflix";
+    }
+
+    return toCodeSlug(requestPlatformSlug || subPlatformIdentity || "");
+}
+
+function getRequestLimitRule({ policyPlatform, action }) {
+    const normalizedAction = String(action || "code").toLowerCase();
+
+    if (policyPlatform === "chatgpt") {
+        return {
+            limited: true,
+            maxRequests: 2,
+            countOnlyDeliveredCodes: true,
+            message: "ChatGPT permite máximo 2 solicitudes por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+
+    if (policyPlatform === "netflix" && normalizedAction === "code") {
+        return {
+            limited: true,
+            maxRequests: 2,
+            countOnlyDeliveredCodes: true,
+            message: "Netflix permite máximo 2 códigos de inicio de sesión por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+
+    if (policyPlatform === "prime") {
+        return {
+            limited: true,
+            maxRequests: 1,
+            countOnlyDeliveredCodes: true,
+            message: "Prime Video permite 1 solicitud por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+
+    return {
+        limited: false,
+        maxRequests: null,
+        countOnlyDeliveredCodes: false,
+        message: null,
+    };
 }
 
 async function withTimeout(promise, ms, timeoutMessage) {
@@ -112,6 +183,10 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
 
     const rawFromSub = pickPlatformIdentityFromSub(sub);
     const expectedCodeSlug = toCodeSlug(rawFromSub);
+    const policyPlatform = resolvePolicyPlatform({
+        requestPlatformSlug: platformSlug,
+        subPlatformIdentity: rawFromSub,
+    });
 
     if (expectedCodeSlug !== requestedSlug) {
         return {
@@ -140,6 +215,31 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             body: { ok: false, status: "subscription_inactive", message: "Pedido/cuenta no activa o vencida" },
             meta: { sub, fingerprint, soldAccountEmail },
         };
+    }
+
+    const limitRule = getRequestLimitRule({ policyPlatform, action });
+    if (limitRule.limited) {
+        const deliveredCount = await countDeliveredByFingerprint({
+            orderId: orderNumber,
+            platformSlugLower: requestedSlug,
+            credentialFingerprint: fingerprint,
+            requireCodeValue: limitRule.countOnlyDeliveredCodes,
+        });
+
+        if (deliveredCount >= limitRule.maxRequests) {
+            return {
+                http: 429,
+                body: {
+                    ok: false,
+                    status: "blocked",
+                    message: limitRule.message,
+                    limit: limitRule.maxRequests,
+                    deliveredCount,
+                    resetRule: "El contador se reinicia cuando cambia la contraseña o PIN de la cuenta.",
+                },
+                meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, deliveredCount },
+            };
+        }
     }
 
     // 7) Extraer código de gmail o netflix flow

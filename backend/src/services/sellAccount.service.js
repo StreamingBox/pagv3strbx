@@ -3,6 +3,7 @@ const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
+const { sendOrderDeliveryEmail } = require("./mailService");
 
 /**
  * Vende una cuenta específica desde el inventario.
@@ -203,6 +204,23 @@ async function sellAccountFromInventory(payload) {
 
         const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
         const whatsappMessage = buildWhatsappMessage({ orderCode, results, baseUrl });
+
+        const buyerInfo = await pool.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
+            [userId]
+        ).then(([r]) => r[0]).catch(() => null);
+
+        if (buyerInfo?.email) {
+            sendOrderDeliveryEmail({
+                to: buyerInfo.email,
+                name: buyerInfo.name,
+                orderCode,
+                total: totalAmount,
+                currency: plan.currency,
+                results,
+                paymentMethod: "Venta manual desde inventario",
+            }).catch((e) => console.error("[mail] sendOrderDeliveryEmail inventory error:", e?.message || e));
+        }
 
         return {
             ok: true,

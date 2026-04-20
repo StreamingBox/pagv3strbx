@@ -179,7 +179,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
             return {
                 ok: false,
                 status: "expired",
-                message: `El correo del código está vencido (más de ${maxMin} minutos).`,
+                message: `No se evidencia un correo reciente con el codigo en los ultimos ${maxMin} minutos.`,
             };
         }
 

@@ -277,6 +277,51 @@ async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
     }
 }
 
+async function processOrderLookupInBackground({ token, to, orderNumber }) {
+    try {
+        const sub = await getSubscriptionWithAccount(orderNumber);
+
+        if (!sub) {
+            await sendWaText({
+                token,
+                to,
+                text: "No se encontró ningún pedido con ese número. Verifica y vuelve a escribir SOLICITUD CODIGO.",
+                context: "whatsapp_order_not_found",
+            });
+            return { handled: true, sent: true, reason: "order_not_found" };
+        }
+
+        const platformNameOrSlug = sub.platformSlug || sub.platform_slug || sub.platformName || sub.platform_name || sub.name || "";
+        const platformSlug = toCodeSlug(platformNameOrSlug);
+
+        if (!platformSlug) {
+            await sendWaText({
+                token,
+                to,
+                text: "Error al identificar la plataforma de tu pedido. Contacta a soporte.",
+                context: "whatsapp_platform_not_identified",
+            });
+            return { handled: true, sent: true, reason: "platform_not_identified" };
+        }
+
+        return executeCodeRequest({ token, to, orderNumber, platformSlug });
+    } catch (error) {
+        console.error("[whatsapp.code] background_order_lookup_failed", {
+            to: normalizePhone(to),
+            orderNumber,
+            message: error?.message || String(error),
+        });
+
+        await sendWaText({
+            token,
+            to,
+            text: "Ocurrió un error consultando tu pedido. Intenta nuevamente en unos segundos.",
+            context: "whatsapp_order_lookup_failed",
+        });
+        return { handled: true, sent: false, reason: "background_order_lookup_failed" };
+    }
+}
+
 async function tryHandleIncomingCodeRequest(body) {
     const incoming = readIncomingMessage(body);
     if (!incoming) return { handled: false };
@@ -298,32 +343,29 @@ async function tryHandleIncomingCodeRequest(body) {
         }
 
         const orderNumber = Number(raw);
-        flowSessions.delete(incoming.from); // Limpiar sesión, procederemos de inmediato
+        flowSessions.delete(incoming.from);
 
-        const sub = await getSubscriptionWithAccount(orderNumber);
-        
-        if (!sub) {
-            const sent = await sendWaText({
-                token,
-                to: incoming.from,
-                text: "No se encontró ningún pedido con ese número. Verifica y vuelve a escribir SOLICITUD CODIGO.",
+        const ackPromise = sendWaText({
+            token,
+            to: incoming.from,
+            text: "Perfecto. Estoy buscando tu código. Espera un momento...",
+            context: "whatsapp_lookup_ack",
+        });
+
+        processOrderLookupInBackground({
+            token,
+            to: incoming.from,
+            orderNumber,
+        }).catch((error) => {
+            console.error("[whatsapp.code] background_lookup_unhandled", {
+                to: normalizePhone(incoming.from),
+                orderNumber,
+                message: error?.message || String(error),
             });
-            return { handled: true, sent: sent.ok, reason: "order_not_found" };
-        }
+        });
 
-        const platformNameOrSlug = sub.platformSlug || sub.platform_slug || sub.platformName || sub.platform_name || sub.name || "";
-        const platformSlug = toCodeSlug(platformNameOrSlug);
-
-        if (!platformSlug) {
-             const sent = await sendWaText({
-                token,
-                to: incoming.from,
-                text: "Error al identificar la plataforma de tu pedido. Contacta a soporte.",
-            });
-            return { handled: true, sent: sent.ok, reason: "platform_not_identified" };
-        }
-
-        return executeCodeRequest({ token, to: incoming.from, orderNumber, platformSlug });
+        const sent = await ackPromise;
+        return { handled: true, sent: sent.ok, reason: "order_lookup_started" };
     }
 
     // El bloque de await_platform ya no es estrictamente necesario, pero se puede dejar por precaucion / retrocompatibilidad

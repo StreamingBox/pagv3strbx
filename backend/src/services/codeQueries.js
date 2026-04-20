@@ -49,4 +49,38 @@ async function getLastDelivered(orderId, platformSlugLower) {
     return rows?.[0] || null;
 }
 
-module.exports = { getCodePlatformBySlug, getSubscriptionWithAccount, getLastDelivered };
+async function countDeliveredByFingerprint({
+    orderId,
+    platformSlugLower,
+    credentialFingerprint,
+    requireCodeValue = false,
+}) {
+    const where = [
+        "order_id = ?",
+        "LOWER(platform_slug) = ?",
+        "status = 'delivered'",
+        "credential_fingerprint = ?",
+    ];
+    const params = [Number(orderId), String(platformSlugLower || "").toLowerCase(), String(credentialFingerprint || "")];
+
+    if (requireCodeValue) {
+        where.push("delivered_code IS NOT NULL");
+        where.push("delivered_code <> ''");
+    }
+
+    const [[row]] = await pool.query(
+        `SELECT COUNT(*) AS total
+         FROM code_deliveries
+         WHERE ${where.join(" AND ")}`,
+        params
+    );
+
+    return Number(row?.total || 0);
+}
+
+module.exports = {
+    getCodePlatformBySlug,
+    getSubscriptionWithAccount,
+    getLastDelivered,
+    countDeliveredByFingerprint,
+};

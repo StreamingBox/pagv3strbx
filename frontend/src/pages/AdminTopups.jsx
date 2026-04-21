@@ -32,6 +32,19 @@ export default function AdminTopups() {
     const [loading, setLoading] = useState(true);
     const [savingId, setSavingId] = useState(null);
     const [adminNoteDrafts, setAdminNoteDrafts] = useState({});
+    const [configLoading, setConfigLoading] = useState(true);
+    const [configSaving, setConfigSaving] = useState(false);
+    const [configMessage, setConfigMessage] = useState("");
+    const [configError, setConfigError] = useState("");
+    const [configForm, setConfigForm] = useState({
+        methodLabel: "Binance",
+        accountName: "",
+        binanceId: "",
+        binanceAlias: "",
+        minAmount: "10",
+        currency: "USD",
+        instructions: "",
+    });
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -60,9 +73,34 @@ export default function AdminTopups() {
         }
     }
 
+    async function loadConfig() {
+        setConfigLoading(true);
+        try {
+            const response = await apiFetch("/admin/manual-topups/config", { method: "GET" });
+            if (response.ok && response.data?.config) {
+                const config = response.data.config;
+                setConfigForm({
+                    methodLabel: config.methodLabel || "Binance",
+                    accountName: config.accountName || "",
+                    binanceId: config.binanceId || "",
+                    binanceAlias: config.binanceAlias || "",
+                    minAmount: String(config.minAmount ?? 10),
+                    currency: config.currency || "USD",
+                    instructions: config.instructions || "",
+                });
+            }
+        } finally {
+            setConfigLoading(false);
+        }
+    }
+
     useEffect(() => {
         void loadItems();
     }, [status]);
+
+    useEffect(() => {
+        void loadConfig();
+    }, []);
 
     async function updateStatus(item, nextStatus) {
         setSavingId(item.id);
@@ -79,6 +117,44 @@ export default function AdminTopups() {
             window.alert(error?.message || "No se pudo actualizar la solicitud.");
         } finally {
             setSavingId(null);
+        }
+    }
+
+    async function saveConfig() {
+        setConfigSaving(true);
+        setConfigMessage("");
+        setConfigError("");
+        try {
+            const response = await apiFetch("/admin/manual-topups/config", {
+                method: "PUT",
+                body: JSON.stringify({
+                    methodLabel: configForm.methodLabel,
+                    accountName: configForm.accountName,
+                    binanceId: configForm.binanceId,
+                    binanceAlias: configForm.binanceAlias,
+                    minAmount: Number(configForm.minAmount),
+                    currency: configForm.currency,
+                    instructions: configForm.instructions,
+                }),
+            });
+            if (!response.ok) {
+                throw new Error(response.data?.message || "No se pudo guardar la configuracion.");
+            }
+            const config = response.data?.config || {};
+            setConfigForm({
+                methodLabel: config.methodLabel || "Binance",
+                accountName: config.accountName || "",
+                binanceId: config.binanceId || "",
+                binanceAlias: config.binanceAlias || "",
+                minAmount: String(config.minAmount ?? 10),
+                currency: config.currency || "USD",
+                instructions: config.instructions || "",
+            });
+            setConfigMessage("Configuracion guardada.");
+        } catch (error) {
+            setConfigError(error?.message || "No se pudo guardar la configuracion.");
+        } finally {
+            setConfigSaving(false);
         }
     }
 
@@ -108,9 +184,90 @@ export default function AdminTopups() {
                         </button>
                         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>Recargas internacionales</h1>
                         <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-                            Solicitudes de recarga por Binance con comprobante para revisión manual.
+                            Edita aqui los datos de pago que ve el usuario y revisa las solicitudes de comprobante.
                         </p>
                     </div>
+
+                    <section
+                        style={{
+                            border: "1px solid var(--stroke)",
+                            borderRadius: 18,
+                            background: "linear-gradient(180deg, var(--card), var(--card2))",
+                            boxShadow: "var(--shadow)",
+                            padding: 16,
+                            display: "grid",
+                            gap: 14,
+                            marginBottom: 18,
+                        }}
+                    >
+                        <div>
+                            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>Configuracion de pago</div>
+                            <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                                Estos datos se reflejan en el frontend de recarga internacional.
+                            </div>
+                        </div>
+
+                        {configLoading ? (
+                            <div style={{ color: "var(--muted)" }}>Cargando configuracion...</div>
+                        ) : (
+                            <>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                                    <label className="wallet-label">
+                                        <span>Metodo</span>
+                                        <input className="wallet-input" value={configForm.methodLabel} onChange={(event) => setConfigForm((prev) => ({ ...prev, methodLabel: event.target.value }))} />
+                                    </label>
+                                    <label className="wallet-label">
+                                        <span>Titular</span>
+                                        <input className="wallet-input" value={configForm.accountName} onChange={(event) => setConfigForm((prev) => ({ ...prev, accountName: event.target.value }))} />
+                                    </label>
+                                    <label className="wallet-label">
+                                        <span>Moneda</span>
+                                        <input className="wallet-input" value={configForm.currency} onChange={(event) => setConfigForm((prev) => ({ ...prev, currency: event.target.value.toUpperCase() }))} />
+                                    </label>
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+                                    <label className="wallet-label">
+                                        <span>ID Binance</span>
+                                        <input className="wallet-input" value={configForm.binanceId} onChange={(event) => setConfigForm((prev) => ({ ...prev, binanceId: event.target.value }))} />
+                                    </label>
+                                    <label className="wallet-label">
+                                        <span>Alias Binance</span>
+                                        <input className="wallet-input" value={configForm.binanceAlias} onChange={(event) => setConfigForm((prev) => ({ ...prev, binanceAlias: event.target.value }))} />
+                                    </label>
+                                    <label className="wallet-label">
+                                        <span>Monto minimo</span>
+                                        <input className="wallet-input" inputMode="numeric" value={configForm.minAmount} onChange={(event) => setConfigForm((prev) => ({ ...prev, minAmount: event.target.value }))} />
+                                    </label>
+                                </div>
+
+                                <label className="wallet-label">
+                                    <span>Instrucciones</span>
+                                    <textarea
+                                        value={configForm.instructions}
+                                        onChange={(event) => setConfigForm((prev) => ({ ...prev, instructions: event.target.value }))}
+                                        style={{
+                                            minHeight: 100,
+                                            resize: "vertical",
+                                            padding: 12,
+                                            borderRadius: 14,
+                                            border: "1px solid var(--input-stroke)",
+                                            background: "var(--input-bg)",
+                                            color: "var(--text)",
+                                        }}
+                                    />
+                                </label>
+
+                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                    <button className="btn" style={{ width: "auto" }} onClick={saveConfig} disabled={configSaving}>
+                                        {configSaving ? "Guardando..." : "Guardar configuracion"}
+                                    </button>
+                                    {configMessage ? <span style={{ color: "#10b981", fontWeight: 700 }}>{configMessage}</span> : null}
+                                    {configError ? <span style={{ color: "#ef4444", fontWeight: 700 }}>{configError}</span> : null}
+                                </div>
+                            </>
+                        )}
+                    </section>
 
                     <section
                         style={{

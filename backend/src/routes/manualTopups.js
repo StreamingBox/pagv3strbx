@@ -27,7 +27,17 @@ const upload = multer({
     },
 });
 
-function getTopupConfig() {
+async function ensureSettingsTable() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+            setting_key   VARCHAR(128) PRIMARY KEY,
+            setting_value TEXT         NOT NULL,
+            updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )
+    `);
+}
+
+function getTopupConfigDefaults() {
     return {
         methodKey: "binance",
         methodLabel: "Binance",
@@ -36,6 +46,38 @@ function getTopupConfig() {
         binanceAlias: String(process.env.MANUAL_TOPUP_BINANCE_ALIAS || "SCREEN").trim(),
         minAmount: Number(process.env.MANUAL_TOPUP_MIN_AMOUNT_USD || 10),
         currency: "USD",
+        instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+    };
+}
+
+async function getTopupConfig() {
+    const defaults = getTopupConfigDefaults();
+    await ensureSettingsTable();
+    const [rows] = await pool.query(
+        `SELECT setting_key, setting_value
+         FROM app_settings
+         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?)`,
+        [
+            "topup_method_label",
+            "topup_account_name",
+            "topup_binance_id",
+            "topup_binance_alias",
+            "topup_min_amount_usd",
+            "topup_currency",
+            "topup_instructions",
+        ]
+    );
+
+    const values = Object.fromEntries(rows.map((row) => [row.setting_key, row.setting_value]));
+    return {
+        methodKey: "binance",
+        methodLabel: String(values.topup_method_label || defaults.methodLabel).trim(),
+        accountName: String(values.topup_account_name || defaults.accountName).trim(),
+        binanceId: String(values.topup_binance_id || defaults.binanceId).trim(),
+        binanceAlias: String(values.topup_binance_alias || defaults.binanceAlias).trim(),
+        minAmount: Number(values.topup_min_amount_usd || defaults.minAmount),
+        currency: String(values.topup_currency || defaults.currency).trim().toUpperCase() || "USD",
+        instructions: String(values.topup_instructions || defaults.instructions).trim(),
     };
 }
 
@@ -125,7 +167,7 @@ async function ensureWalletForUser(conn, userId, currency) {
 }
 
 router.get("/wallet/manual-topups/config", requireAuth, async (_req, res) => {
-    return res.json({ ok: true, config: getTopupConfig() });
+    return res.json({ ok: true, config: await getTopupConfig() });
 });
 
 router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
@@ -151,7 +193,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
     try {
         const userId = req.user.id;
         const amount = Number(req.body?.amount || 0);
-        const config = getTopupConfig();
+        const config = await getTopupConfig();
 
         const [[userRow]] = await conn.query(
             "SELECT id, name, email, currency FROM users WHERE id = ? LIMIT 1",
@@ -226,6 +268,59 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         return res.status(500).json({ message: err?.message || "No se pudo crear la solicitud de recarga." });
     } finally {
         conn.release();
+    }
+});
+
+router.get("/admin/manual-topups/config", requireAuth, requireRole("admin"), async (_req, res) => {
+    try {
+        return res.json({ ok: true, config: await getTopupConfig() });
+    } catch (err) {
+        console.error("Error GET /admin/manual-topups/config:", err);
+        return res.status(500).json({ message: "No se pudo cargar la configuracion." });
+    }
+});
+
+router.put("/admin/manual-topups/config", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const methodLabel = String(req.body?.methodLabel || "").trim() || "Binance";
+        const accountName = String(req.body?.accountName || "").trim() || "SCREEN";
+        const binanceId = String(req.body?.binanceId || "").trim();
+        const binanceAlias = String(req.body?.binanceAlias || "").trim();
+        const instructions = String(req.body?.instructions || "").trim();
+        const currency = String(req.body?.currency || "USD").trim().toUpperCase() || "USD";
+        const minAmount = Number(req.body?.minAmount || 0);
+
+        if (!binanceId && !binanceAlias) {
+            return res.status(400).json({ message: "Debes guardar al menos ID Binance o alias." });
+        }
+        if (!Number.isFinite(minAmount) || minAmount <= 0) {
+            return res.status(400).json({ message: "El monto minimo debe ser mayor a 0." });
+        }
+
+        await ensureSettingsTable();
+        const pairs = [
+            ["topup_method_label", methodLabel],
+            ["topup_account_name", accountName],
+            ["topup_binance_id", binanceId],
+            ["topup_binance_alias", binanceAlias],
+            ["topup_min_amount_usd", String(minAmount)],
+            ["topup_currency", currency],
+            ["topup_instructions", instructions],
+        ];
+
+        for (const [key, value] of pairs) {
+            await pool.query(
+                `INSERT INTO app_settings (setting_key, setting_value)
+                 VALUES (?, ?)
+                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+                [key, value]
+            );
+        }
+
+        return res.json({ ok: true, config: await getTopupConfig() });
+    } catch (err) {
+        console.error("Error PUT /admin/manual-topups/config:", err);
+        return res.status(500).json({ message: "No se pudo guardar la configuracion." });
     }
 });
 

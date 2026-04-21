@@ -17,6 +17,11 @@
 const TelegramBot = require("node-telegram-bot-api");
 const pool = require("../db");
 const { createAccountOne } = require("./accounts.service");
+const {
+    buildTopupProofUrl,
+    getManualTopupById,
+    updateManualTopupStatus,
+} = require("./manualTopups.service");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_ENABLED = String(process.env.TELEGRAM_BOT_ENABLED || "true").toLowerCase() !== "false";
@@ -41,6 +46,95 @@ function escMd(text) {
 function isAuthorized(chatId) {
     if (AUTHORIZED.size === 0) return true; // si no hay lista, abierto (dev)
     return AUTHORIZED.has(Number(chatId));
+}
+
+function getTopupStatusLabel(status) {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "submitted") return "Enviada";
+    if (normalized === "reviewing") return "Revisando";
+    if (normalized === "approved") return "Aprobada";
+    if (normalized === "rejected") return "Rechazada";
+    return normalized || "Sin estado";
+}
+
+function buildTopupInlineKeyboard(item) {
+    const proofUrl = buildTopupProofUrl(item?.proofFileUrl);
+    const rows = [];
+
+    if (proofUrl) {
+        rows.push([{ text: "Ver comprobante", url: proofUrl }]);
+    }
+
+    const status = String(item?.status || "").toLowerCase();
+    if (!["approved", "rejected"].includes(status) && Number(item?.id) > 0) {
+        rows.push([
+            { text: "Revisando", callback_data: `topup_reviewing_${item.id}` },
+            { text: "Aprobar", callback_data: `topup_approved_${item.id}` },
+            { text: "Rechazar", callback_data: `topup_rejected_${item.id}` },
+        ]);
+    }
+
+    return rows.length ? { inline_keyboard: rows } : undefined;
+}
+
+function buildTopupMessage(item, extra = {}) {
+    const lines = [
+        "Recarga manual",
+        `Codigo: ${item.requestCode}`,
+        `Usuario: ${item.userName || "-"}${item.userEmail ? ` | ${item.userEmail}` : ""}`,
+        `Monto: ${Number(item.amount || 0).toLocaleString("es-CO")} ${item.currency || ""}`.trim(),
+        `Metodo: ${item.methodLabel || "-"}`,
+        `Estado: ${getTopupStatusLabel(item.status)}`,
+    ];
+
+    if (item.createdAt) {
+        const date = new Date(item.createdAt);
+        lines.push(`Creada: ${date.toLocaleString("es-CO", { timeZone: "America/Bogota" })}`);
+    }
+    if (item.balanceBefore != null && item.balanceAfter != null) {
+        lines.push(`Saldo: ${Number(item.balanceBefore).toLocaleString("es-CO")} -> ${Number(item.balanceAfter).toLocaleString("es-CO")} ${item.currency || ""}`.trim());
+    }
+    if (item.adminNote) {
+        lines.push(`Nota: ${item.adminNote}`);
+    }
+    if (extra.actor) {
+        lines.push(`Gestionado por: ${extra.actor}`);
+    }
+    return lines.join("\n");
+}
+
+async function notifyAuthorizedChats(text, options = {}, meta = {}) {
+    if (!bot || AUTHORIZED.size === 0) return [];
+    const sent = [];
+    const excluded = new Set((meta.excludeChatIds || []).map((id) => Number(id)));
+    for (const chatId of AUTHORIZED) {
+        if (excluded.has(Number(chatId))) continue;
+        try {
+            const message = await bot.sendMessage(chatId, text, options);
+            sent.push({ chatId, message });
+        } catch (e) {
+            console.error(`[TelegramBot] Error enviando a ${chatId}:`, e?.message || e);
+        }
+    }
+    return sent;
+}
+
+async function sendTopupProofPreview(chatId, item) {
+    const proofUrl = buildTopupProofUrl(item?.proofFileUrl);
+    if (!proofUrl || !bot) return;
+    try {
+        if (/\.pdf($|\?)/i.test(proofUrl)) {
+            await bot.sendDocument(chatId, proofUrl, {
+                caption: `Comprobante ${item.requestCode}`,
+            });
+            return;
+        }
+        await bot.sendPhoto(chatId, proofUrl, {
+            caption: `Comprobante ${item.requestCode}`,
+        });
+    } catch (err) {
+        console.error(`[TelegramBot] Error enviando comprobante a ${chatId}:`, err?.message || err);
+    }
 }
 
 /* ─── Guard de autorización ───────────────────────────────────── */
@@ -541,6 +635,32 @@ function setupCommands() {
                     bot.answerCallbackQuery(query.id).catch(() => { });
                     return;
                 }
+                const topupMatch = String(data || "").match(/^topup_(reviewing|approved|rejected)_(\d+)$/);
+                if (topupMatch) {
+                    const [, status, rawId] = topupMatch;
+                    const actor = query.from?.username
+                        ? `@${query.from.username}`
+                        : (query.from?.first_name || "Admin Telegram");
+                    const item = await updateManualTopupStatus({
+                        id: Number(rawId),
+                        status,
+                        adminUserId: null,
+                        adminNote: `Gestionado desde Telegram por ${actor}`,
+                    });
+                    await bot.editMessageText(buildTopupMessage(item, { actor }), {
+                        chat_id: query.message.chat.id,
+                        message_id: query.message.message_id,
+                        reply_markup: buildTopupInlineKeyboard(item),
+                    });
+                    await notifyManualTopupStatusChanged(item, {
+                        actor,
+                        excludeChatIds: [query.message.chat.id],
+                    });
+                    bot.answerCallbackQuery(query.id, {
+                        text: `Recarga ${getTopupStatusLabel(status).toLowerCase()}.`,
+                    }).catch(() => { });
+                    return;
+                }
                 await handleBuyCallback(query);
             }
             bot.answerCallbackQuery(query.id).catch(() => { });
@@ -597,6 +717,38 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
     }
 }
 
+async function notifyManualTopupSubmitted(topupId) {
+    if (!bot || AUTHORIZED.size === 0) return;
+    const item = await getManualTopupById(Number(topupId));
+    if (!item) return;
+
+    const sent = await notifyAuthorizedChats(buildTopupMessage(item), {
+        reply_markup: buildTopupInlineKeyboard(item),
+    });
+
+    await Promise.all(sent.map(({ chatId }) => sendTopupProofPreview(chatId, item)));
+}
+
+async function notifyManualTopupStatusChanged(itemOrId, extra = {}) {
+    if (!bot || AUTHORIZED.size === 0) return;
+    const item = typeof itemOrId === "object" && itemOrId
+        ? itemOrId
+        : await getManualTopupById(Number(itemOrId));
+    if (!item) return;
+
+    const title = item.status === "approved"
+        ? "Recarga aprobada"
+        : item.status === "rejected"
+            ? "Recarga rechazada"
+            : "Recarga en revision";
+
+    await notifyAuthorizedChats(`${title}\n\n${buildTopupMessage(item, extra)}`, {
+        reply_markup: buildTopupInlineKeyboard(item),
+    }, {
+        excludeChatIds: extra.excludeChatIds || [],
+    });
+}
+
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
     if (!BOT_ENABLED) {
@@ -617,4 +769,9 @@ function initBot() {
     }
 }
 
-module.exports = { initBot, notifySale };
+module.exports = {
+    initBot,
+    notifySale,
+    notifyManualTopupSubmitted,
+    notifyManualTopupStatusChanged,
+};

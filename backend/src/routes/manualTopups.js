@@ -8,10 +8,12 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const {
     sendTopupSubmittedEmail,
-    sendTopupReviewingEmail,
-    sendTopupApprovedEmail,
-    sendTopupRejectedEmail,
 } = require("../services/mailService");
+const {
+    mapManualTopupRow,
+    updateManualTopupStatus,
+} = require("../services/manualTopups.service");
+const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
 
 const router = express.Router();
 
@@ -167,55 +169,6 @@ function saveProofFile({ file, requestCode }) {
     return `/topup-proofs/${filename}`;
 }
 
-function mapTopupRow(row) {
-    if (!row) return null;
-    return {
-        id: row.id,
-        requestCode: row.request_code,
-        userId: row.user_id,
-        userEmail: row.user_email || null,
-        userName: row.user_name || null,
-        amount: Number(row.amount || 0),
-        currency: row.currency || "USD",
-        methodKey: row.method_key,
-        methodLabel: row.method_label,
-        proofFileUrl: row.proof_file_url,
-        status: row.status,
-        adminNote: row.admin_note || "",
-        adminUserId: row.admin_user_id || null,
-        balanceBefore: row.balance_before != null ? Number(row.balance_before) : null,
-        balanceAfter: row.balance_after != null ? Number(row.balance_after) : null,
-        createdAt: row.created_at,
-        reviewingAt: row.reviewing_at,
-        approvedAt: row.approved_at,
-        rejectedAt: row.rejected_at,
-        submittedEmailSentAt: row.submitted_email_sent_at,
-        reviewingEmailSentAt: row.reviewing_email_sent_at,
-        approvedEmailSentAt: row.approved_email_sent_at,
-        rejectedEmailSentAt: row.rejected_email_sent_at,
-    };
-}
-
-async function ensureWalletForUser(conn, userId, currency) {
-    const [rows] = await conn.query(
-        "SELECT id, balance, currency FROM wallets WHERE user_id = ? LIMIT 1 FOR UPDATE",
-        [userId]
-    );
-    if (rows.length) {
-        return {
-            id: rows[0].id,
-            balance: Number(rows[0].balance || 0),
-            currency: String(rows[0].currency || currency || "USD").toUpperCase(),
-        };
-    }
-
-    const [ins] = await conn.query(
-        "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
-        [userId, String(currency || "USD").toUpperCase()]
-    );
-    return { id: ins.insertId, balance: 0, currency: String(currency || "USD").toUpperCase() };
-}
-
 router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
     try {
         const [[userRow]] = await pool.query(
@@ -249,7 +202,7 @@ router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
              LIMIT 20`,
             [userId]
         );
-        return res.json({ ok: true, items: rows.map(mapTopupRow) });
+        return res.json({ ok: true, items: rows.map(mapManualTopupRow) });
     } catch (err) {
         console.error("Error GET /wallet/manual-topups:", err);
         return res.status(500).json({ message: "No se pudieron cargar las recargas." });
@@ -319,9 +272,13 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
             console.error("[mail] sendTopupSubmittedEmail:", mailErr?.message || mailErr);
         });
 
+        notifyManualTopupSubmitted(ins.insertId).catch((tgErr) => {
+            console.error("[TelegramBot] notifyManualTopupSubmitted:", tgErr?.message || tgErr);
+        });
+
         return res.json({
             ok: true,
-            request: mapTopupRow({
+            request: mapManualTopupRow({
                 id: ins.insertId,
                 request_code: requestCode,
                 user_id: userId,
@@ -418,7 +375,7 @@ router.get("/admin/manual-topups", requireAuth, requireRole("admin"), async (req
 
         return res.json({
             ok: true,
-            items: rows.map(mapTopupRow),
+            items: rows.map(mapManualTopupRow),
             total,
             page: pageNum,
             limit: limitNum,
@@ -431,7 +388,6 @@ router.get("/admin/manual-topups", requireAuth, requireRole("admin"), async (req
 });
 
 router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"), async (req, res) => {
-    const conn = await pool.getConnection();
     try {
         const id = Number(req.params.id);
         const status = String(req.body?.status || "").trim().toLowerCase();
@@ -442,132 +398,22 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
         if (!["reviewing", "approved", "rejected"].includes(status)) {
             return res.status(400).json({ message: "Estado invalido." });
         }
-
-        await conn.beginTransaction();
-
-        const [rows] = await conn.query(
-            `SELECT m.*, u.email AS user_email, u.name AS user_name, u.currency AS user_currency
-             FROM manual_topup_requests m
-             JOIN users u ON u.id = m.user_id
-             WHERE m.id = ?
-             LIMIT 1
-             FOR UPDATE`,
-            [id]
-        );
-        if (!rows.length) {
-            await conn.rollback();
-            return res.status(404).json({ message: "Solicitud no encontrada." });
-        }
-
-        const requestRow = rows[0];
-        const currentStatus = String(requestRow.status || "").toLowerCase();
-        if (["approved", "rejected"].includes(currentStatus)) {
-            await conn.rollback();
-            return res.status(400).json({ message: "La solicitud ya fue cerrada." });
-        }
-
-        const updateFields = ["status = ?", "admin_user_id = ?", "admin_note = ?"];
-        const updateParams = [status, req.user.id, adminNote];
-
-        if (status === "reviewing") {
-            updateFields.push("reviewing_at = UTC_TIMESTAMP()");
-        }
-
-        let wallet = null;
-        if (status === "approved") {
-            wallet = await ensureWalletForUser(conn, requestRow.user_id, requestRow.user_currency || requestRow.currency || "COP");
-
-            if (String(wallet.currency || "").toUpperCase() !== String(requestRow.currency || "").toUpperCase()) {
-                await conn.rollback();
-                return res.status(400).json({ message: `La wallet del usuario esta en ${wallet.currency} y la solicitud esta en ${requestRow.currency}.` });
-            }
-
-            const newBalance = wallet.balance + Number(requestRow.amount || 0);
-
-            await conn.query("UPDATE wallets SET balance = ? WHERE id = ?", [newBalance, wallet.id]);
-            await conn.query(
-                `INSERT INTO wallet_transactions
-                    (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
-                 VALUES (?, 'topup', ?, ?, 'manual_topup', ?, ?)`,
-                [
-                    wallet.id,
-                    Number(requestRow.amount || 0),
-                    newBalance,
-                    id,
-                    `Recarga manual aprobada ${requestRow.request_code} (${requestRow.method_label})`,
-                ]
-            );
-
-            updateFields.push("wallet_id = ?");
-            updateParams.push(wallet.id);
-            updateFields.push("balance_before = ?");
-            updateParams.push(wallet.balance);
-            updateFields.push("balance_after = ?");
-            updateParams.push(newBalance);
-            updateFields.push("approved_at = UTC_TIMESTAMP()");
-        }
-
-        if (status === "rejected") {
-            updateFields.push("rejected_at = UTC_TIMESTAMP()");
-        }
-
-        await conn.query(
-            `UPDATE manual_topup_requests
-             SET ${updateFields.join(", ")}
-             WHERE id = ?`,
-            [...updateParams, id]
-        );
-
-        await conn.commit();
-
-        const mailPayload = {
-            to: requestRow.user_email,
-            name: requestRow.user_name,
-            requestCode: requestRow.request_code,
-            amount: Number(requestRow.amount || 0),
-            currency: requestRow.currency || "COP",
+        const item = await updateManualTopupStatus({
+            id,
+            status,
+            adminUserId: req.user.id,
             adminNote,
-        };
-
-        if (status === "reviewing") {
-            sendTopupReviewingEmail(mailPayload).then(() => {
-                pool.query(
-                    "UPDATE manual_topup_requests SET reviewing_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
-                    [id]
-                ).catch(() => { });
-            }).catch((mailErr) => console.error("[mail] sendTopupReviewingEmail:", mailErr?.message || mailErr));
-        } else if (status === "approved") {
-            sendTopupApprovedEmail(mailPayload).then(() => {
-                pool.query(
-                    "UPDATE manual_topup_requests SET approved_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
-                    [id]
-                ).catch(() => { });
-            }).catch((mailErr) => console.error("[mail] sendTopupApprovedEmail:", mailErr?.message || mailErr));
-        } else if (status === "rejected") {
-            sendTopupRejectedEmail(mailPayload).then(() => {
-                pool.query(
-                    "UPDATE manual_topup_requests SET rejected_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
-                    [id]
-                ).catch(() => { });
-            }).catch((mailErr) => console.error("[mail] sendTopupRejectedEmail:", mailErr?.message || mailErr));
-        }
-
-        const [freshRows] = await pool.query(
-            `SELECT m.*, u.email AS user_email, u.name AS user_name
-             FROM manual_topup_requests m
-             JOIN users u ON u.id = m.user_id
-             WHERE m.id = ?
-             LIMIT 1`,
-            [id]
-        );
-
-        return res.json({ ok: true, item: mapTopupRow(freshRows[0]) });
+        });
+        notifyManualTopupStatusChanged(item, { actor: req.user.email || req.user.name || "admin web" }).catch((tgErr) => {
+            console.error("[TelegramBot] notifyManualTopupStatusChanged:", tgErr?.message || tgErr);
+        });
+        return res.json({ ok: true, item });
     } catch (err) {
-        try { await conn.rollback(); } catch { }
         console.error("Error PATCH /admin/manual-topups/:id/status:", err);
-        return res.status(500).json({ message: err?.message || "No se pudo actualizar la solicitud." });
-    } finally {
-        conn.release();
+        const message = err?.message || "No se pudo actualizar la solicitud.";
+        if (/no encontrada/i.test(message)) return res.status(404).json({ message });
+        if (/invalido|cerrada|wallet|estado/i.test(message)) return res.status(400).json({ message });
+        return res.status(500).json({ message });
     }
 });
 

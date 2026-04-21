@@ -42,6 +42,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "📊", tone: "blue", title: "Estadísticas", hint: "Ventas: mes actual vs anterior.", path: "/admin/analytics" },
                 { icon: "💲", tone: "amber", title: "Transacciones / Saldo", hint: "Global y por usuario.", path: "/admin/transactions" },
+                { icon: "💸", tone: "sky", title: "Recargas", hint: "Comprobantes y aprobaciones.", path: "/admin/topups" },
                 { icon: "🧾", tone: "indigo", title: "Historial de Compras", hint: "Órdenes y detalles.", path: "/admin/orders" },
                 { icon: "🔄", tone: "emerald", title: "Renovaciones", hint: "Renovar pedidos.", path: "/admin/renewals" },
             ]

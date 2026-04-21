@@ -40,6 +40,7 @@ const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
 const whatsappRoutes = require("./routes/whatsapp");
 const nowpaymentsRoutes = require("./routes/payments.nowpayments");
+const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
@@ -271,6 +272,7 @@ app.use("/api", analyticsRoutes);
 // WhatsApp (WaSender)
 app.use("/api", whatsappRoutes);
 app.use("/api", nowpaymentsRoutes);
+app.use("/api", manualTopupsRoutes);
 
 const port = process.env.PORT || 3000;
 const server = app.listen(port, () => {

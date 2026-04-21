@@ -1,14 +1,22 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import "../styles/dashboard.css";
 import "../styles/wallet.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { apiGet, apiGetTransactions, apiPost } from "../api/api";
+import { apiGet, apiGetTransactions } from "../api/api";
+import { buildApiUrl } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import TransactionsList from "../components/wallet/TransactionsList.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
+
+const STATUS_META = {
+    submitted: { label: "Enviada", color: "#f59e0b" },
+    reviewing: { label: "Revisando", color: "#0ea5e9" },
+    approved: { label: "Aprobada", color: "#10b981" },
+    rejected: { label: "Rechazada", color: "#ef4444" },
+};
 
 export default function Wallet() {
     const navigate = useNavigate();
@@ -16,87 +24,83 @@ export default function Wallet() {
     const logout = useAppLogout();
 
     const [wallet, setWallet] = useState(null);
-    const [cryptoAmount, setCryptoAmount] = useState("");
-    const [cryptoLoading, setCryptoLoading] = useState(false);
-    const [cryptoError, setCryptoError] = useState("");
-    const [cryptoDeposit, setCryptoDeposit] = useState(null);
-    const [cryptoSuccess, setCryptoSuccess] = useState("");
+    const [topupConfig, setTopupConfig] = useState(null);
+    const [requests, setRequests] = useState([]);
+    const [amount, setAmount] = useState("");
+    const [proofFile, setProofFile] = useState(null);
+    const [submitting, setSubmitting] = useState(false);
+    const [formError, setFormError] = useState("");
+    const [formSuccess, setFormSuccess] = useState("");
 
     async function loadWallet() {
         const response = await apiGet("/wallet");
         if (response.ok) setWallet(response.data);
     }
 
-    async function loadLatestDeposit() {
-        const response = await apiGet("/payments/nowpayments/latest");
-        if (response.ok) setCryptoDeposit(response.data?.deposit || null);
+    async function loadTopupConfig() {
+        const response = await apiGet("/wallet/manual-topups/config");
+        if (response.ok) setTopupConfig(response.data?.config || null);
+    }
+
+    async function loadRequests() {
+        const response = await apiGet("/wallet/manual-topups");
+        if (response.ok) setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
     }
 
     useEffect(() => {
-        const timer = window.setTimeout(() => {
-            void loadWallet();
-            void loadLatestDeposit();
-        }, 0);
-        return () => window.clearTimeout(timer);
+        void loadWallet();
+        void loadTopupConfig();
+        void loadRequests();
     }, []);
 
-    useEffect(() => {
-        if (!cryptoDeposit?.id) return undefined;
-        if (String(cryptoDeposit.paymentStatus || "").toLowerCase() === "finished" && cryptoDeposit.creditedAt) {
-            return undefined;
+    async function submitManualTopup() {
+        setFormError("");
+        setFormSuccess("");
+
+        if (!proofFile) {
+            setFormError("Debes adjuntar el comprobante.");
+            return;
         }
 
-        const timer = window.setInterval(async () => {
-            const response = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
-            if (!response.ok) return;
-            const nextDeposit = response.data?.deposit || null;
-            setCryptoDeposit(nextDeposit);
-            if (nextDeposit?.creditedAt) {
-                setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
-                void loadWallet();
-            }
-        }, 15000);
+        const normalizedAmount = Number(String(amount || "").replace(/[^\d.]/g, ""));
+        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+            setFormError("Ingresa un monto válido.");
+            return;
+        }
 
-        return () => window.clearInterval(timer);
-    }, [cryptoDeposit?.creditedAt, cryptoDeposit?.id, cryptoDeposit?.paymentStatus]);
+        const form = new FormData();
+        form.append("amount", String(normalizedAmount));
+        form.append("proof", proofFile);
 
-    async function createCryptoDeposit() {
-        setCryptoError("");
-        setCryptoSuccess("");
-        setCryptoDeposit(null);
-        setCryptoLoading(true);
-
+        setSubmitting(true);
         try {
-            const amount = Number(String(cryptoAmount || "").replace(/[^\d.]/g, ""));
-            const response = await apiPost("/payments/nowpayments/create", { amount });
-            if (!response.ok) throw new Error(response.data?.message || "No se pudo crear la recarga.");
-            setCryptoDeposit(response.data?.deposit || null);
+            const response = await fetch(buildApiUrl("/wallet/manual-topups"), {
+                method: "POST",
+                credentials: "include",
+                body: form,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data?.message || "No se pudo enviar la solicitud.");
+
+            setAmount("");
+            setProofFile(null);
+            setFormSuccess("Comprobante cargado con exito. La recarga ya quedo en revision.");
+            void loadRequests();
         } catch (error) {
-            setCryptoError(error?.message || "No se pudo crear la recarga.");
+            setFormError(error?.message || "No se pudo enviar la solicitud.");
         } finally {
-            setCryptoLoading(false);
-        }
-    }
-
-    async function refreshDepositStatus() {
-        if (!cryptoDeposit?.id) return;
-        const response = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
-        if (!response.ok) return;
-
-        const nextDeposit = response.data?.deposit || null;
-        setCryptoDeposit(nextDeposit);
-        if (nextDeposit?.creditedAt) {
-            setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
-            void loadWallet();
+            setSubmitting(false);
         }
     }
 
     const currency = String(wallet?.currency || "").toUpperCase();
-    const canUseCryptoTopup = currency === "USD";
-    const qrValue = cryptoDeposit?.payAddress ? String(cryptoDeposit.payAddress) : "";
-    const qrSrc = qrValue
-        ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qrValue)}`
-        : "";
+    const canUseInternationalTopup = currency === "USD";
+    const latestRequest = requests[0] || null;
+
+    const highlightedStatus = useMemo(() => {
+        const key = String(latestRequest?.status || "").toLowerCase();
+        return STATUS_META[key] || null;
+    }, [latestRequest?.status]);
 
     return (
         <div className="page-shell">
@@ -129,7 +133,6 @@ export default function Wallet() {
                         <button className="btn-ghost" onClick={() => navigate("/dashboard")}>
                             {"<-"} Volver
                         </button>
-
                         <h1 className="wallet-title">Transacciones y Saldo</h1>
                     </div>
 
@@ -248,108 +251,209 @@ export default function Wallet() {
                     </section>
 
                     <section className="wallet-card" style={{ marginBottom: 14 }}>
-                        <div className="wallet-card__title">Recargar saldo</div>
+                        <div className="wallet-card__title">Recarga internacional</div>
 
-                        {canUseCryptoTopup ? (
+                        {canUseInternationalTopup ? (
                             <>
-                                <div className="wallet-row" style={{ marginTop: 14 }}>
-                                    <label className="wallet-label">
-                                        <span>Monto ({wallet?.currency || "USD"})</span>
-                                        <input
-                                            className="wallet-input"
-                                            inputMode="numeric"
-                                            placeholder="Ej: 10"
-                                            value={cryptoAmount}
-                                            onChange={(event) => setCryptoAmount(event.target.value)}
-                                        />
-                                    </label>
+                                <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, marginTop: 14 }}>
+                                    <div style={{ display: "grid", gap: 12 }}>
+                                        <label className="wallet-label">
+                                            <span>Monto a recargar ({wallet?.currency || "USD"})</span>
+                                            <input
+                                                className="wallet-input"
+                                                inputMode="numeric"
+                                                placeholder={`Ej: ${topupConfig?.minAmount || 10}`}
+                                                value={amount}
+                                                onChange={(event) => setAmount(event.target.value)}
+                                            />
+                                        </label>
 
-                                    <button className="btn" style={{ width: "auto", padding: "10px 18px" }} onClick={createCryptoDeposit} disabled={cryptoLoading}>
-                                        {cryptoLoading ? "Creando..." : "Generar pago"}
-                                    </button>
-                                </div>
-
-                                {cryptoError ? <div className="error" style={{ marginTop: 12 }}>{cryptoError}</div> : null}
-                                {cryptoSuccess ? <div className="wallet-success">{cryptoSuccess}</div> : null}
-
-                                {cryptoDeposit ? (
-                                    <div className="wallet-paybox">
-                                        <div className="wallet-qr">
-                                            <div className="wallet-qr__title">Escanea y paga</div>
-                                            {qrSrc ? (
-                                                <img className="wallet-qr__img" src={qrSrc} alt="QR del pago" />
-                                            ) : (
-                                                <div
-                                                    className="wallet-qr__img"
-                                                    style={{
-                                                        minHeight: 260,
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        justifyContent: "center",
-                                                        color: "var(--muted)",
-                                                        fontSize: 13,
-                                                        padding: 12,
-                                                        textAlign: "center",
-                                                    }}
-                                                >
-                                                    Esperando direccion de deposito...
+                                        <label
+                                            style={{
+                                                border: "1px dashed rgba(148,163,184,0.45)",
+                                                borderRadius: 16,
+                                                padding: 18,
+                                                background: "rgba(255,255,255,0.02)",
+                                                cursor: "pointer",
+                                                minHeight: 150,
+                                                display: "grid",
+                                                placeItems: "center",
+                                                textAlign: "center",
+                                            }}
+                                        >
+                                            <input
+                                                type="file"
+                                                accept=".jpg,.jpeg,.png,.webp,.pdf"
+                                                style={{ display: "none" }}
+                                                onChange={(event) => setProofFile(event.target.files?.[0] || null)}
+                                            />
+                                            <div>
+                                                <div style={{ fontSize: 28, marginBottom: 8 }}>↑</div>
+                                                <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                                                    {proofFile ? proofFile.name : "Adjunta tu comprobante"}
                                                 </div>
-                                            )}
+                                                <div className="wallet-small">
+                                                    JPG, PNG, WEBP o PDF. Maximo 5MB.
+                                                </div>
+                                            </div>
+                                        </label>
 
-                                            <div style={{ display: "grid", gap: 8, fontSize: 13, marginTop: 12 }}>
-                                                <div><b>Estado:</b> {cryptoDeposit.paymentStatus}</div>
-                                                <div><b>Monto en wallet:</b> {Number(cryptoDeposit.amount || 0).toLocaleString("es-CO")} {cryptoDeposit.currency || "USD"}</div>
-                                                <div><b>Debes enviar:</b> {cryptoDeposit.payAmount != null ? Number(cryptoDeposit.payAmount).toFixed(6) : "-"} {String(cryptoDeposit.payCurrency || "").toUpperCase()}</div>
-                                                <div><b>Red:</b> BNB Smart Chain (BEP20)</div>
-                                                {cryptoDeposit.payinExtraId ? <div><b>Memo / extra:</b> {cryptoDeposit.payinExtraId}</div> : null}
+                                        <button className="btn" onClick={submitManualTopup} disabled={submitting}>
+                                            {submitting ? "Enviando..." : "Enviar solicitud"}
+                                        </button>
+
+                                        <div className="wallet-small" style={{ marginTop: 0 }}>
+                                            Tu solicitud sera revisada por el administrador. Recibiras un correo cuando se apruebe, se revise o se rechace.
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            borderRadius: 18,
+                                            border: "1px solid rgba(59,130,246,0.55)",
+                                            background: "rgba(37,99,235,0.08)",
+                                            padding: 16,
+                                            display: "grid",
+                                            gap: 12,
+                                            alignContent: "start",
+                                        }}
+                                    >
+                                        <div style={{ fontSize: 18, fontWeight: 800 }}>Detalles para transferir</div>
+                                        <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                                <span style={{ color: "var(--muted)" }}>Banco:</span>
+                                                <strong>{topupConfig?.methodLabel || "Binance"}</strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                                <span style={{ color: "var(--muted)" }}>ID Binance:</span>
+                                                <strong>{topupConfig?.binanceId || "-"}</strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                                <span style={{ color: "var(--muted)" }}>Alias:</span>
+                                                <strong>{topupConfig?.binanceAlias || "-"}</strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                                <span style={{ color: "var(--muted)" }}>Titular:</span>
+                                                <strong>{topupConfig?.accountName || "-"}</strong>
+                                            </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                                                <span style={{ color: "var(--muted)" }}>Monto minimo:</span>
+                                                <strong>{Number(topupConfig?.minAmount || 10).toLocaleString("es-CO")} USD</strong>
                                             </div>
                                         </div>
 
-                                        <div className="wallet-links">
-                                            <div className="wallet-links__title">Direccion de deposito</div>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ marginTop: 4 }}
+                                            onClick={async () => {
+                                                const lines = [
+                                                    `ID Binance: ${topupConfig?.binanceId || ""}`,
+                                                    `Alias: ${topupConfig?.binanceAlias || ""}`,
+                                                    `Titular: ${topupConfig?.accountName || ""}`,
+                                                ].filter(Boolean).join("\n");
+                                                await navigator.clipboard.writeText(lines);
+                                            }}
+                                        >
+                                            Copiar datos
+                                        </button>
+
+                                        {latestRequest ? (
                                             <div
                                                 style={{
+                                                    marginTop: 8,
                                                     padding: 12,
-                                                    borderRadius: 12,
-                                                    background: "var(--input-bg)",
-                                                    border: "1px solid var(--stroke)",
-                                                    wordBreak: "break-all",
-                                                    fontSize: 13,
-                                                    marginBottom: 10,
+                                                    borderRadius: 14,
+                                                    background: "rgba(15,23,42,0.28)",
+                                                    border: "1px solid rgba(148,163,184,0.2)",
                                                 }}
                                             >
-                                                {cryptoDeposit.payAddress || "Esperando direccion..."}
+                                                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Ultima solicitud</div>
+                                                <div style={{ fontWeight: 800, marginBottom: 4 }}>{latestRequest.requestCode}</div>
+                                                <div style={{ fontSize: 14, marginBottom: 8 }}>
+                                                    {Number(latestRequest.amount || 0).toLocaleString("es-CO")} {latestRequest.currency || "USD"}
+                                                </div>
+                                                {highlightedStatus ? (
+                                                    <span
+                                                        style={{
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            gap: 6,
+                                                            borderRadius: 999,
+                                                            padding: "6px 10px",
+                                                            border: `1px solid ${highlightedStatus.color}55`,
+                                                            background: `${highlightedStatus.color}18`,
+                                                            color: highlightedStatus.color,
+                                                            fontWeight: 700,
+                                                            fontSize: 12,
+                                                        }}
+                                                    >
+                                                        {highlightedStatus.label}
+                                                    </span>
+                                                ) : null}
                                             </div>
+                                        ) : null}
+                                    </div>
+                                </div>
 
-                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                                <button
-                                                    className="btn-ghost"
-                                                    style={{ width: "auto", padding: "8px 14px" }}
-                                                    onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAddress || ""))}
-                                                    disabled={!cryptoDeposit.payAddress}
-                                                >
-                                                    Copiar direccion
-                                                </button>
-                                                <button
-                                                    className="btn-ghost"
-                                                    style={{ width: "auto", padding: "8px 14px" }}
-                                                    onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAmount != null ? cryptoDeposit.payAmount : ""))}
-                                                    disabled={cryptoDeposit.payAmount == null}
-                                                >
-                                                    Copiar monto
-                                                </button>
-                                                <button
-                                                    className="btn-ghost"
-                                                    style={{ width: "auto", padding: "8px 14px" }}
-                                                    onClick={refreshDepositStatus}
-                                                >
-                                                    Actualizar estado
-                                                </button>
-                                            </div>
+                                {formError ? <div className="error" style={{ marginTop: 12 }}>{formError}</div> : null}
+                                {formSuccess ? <div className="wallet-success">{formSuccess}</div> : null}
 
-                                            <div className="wallet-small">
-                                                Envia solo USDT por BNB Smart Chain (BEP20).
-                                            </div>
+                                {requests.length ? (
+                                    <div style={{ marginTop: 18 }}>
+                                        <div className="wallet-card__title" style={{ marginBottom: 10 }}>Tus solicitudes</div>
+                                        <div style={{ display: "grid", gap: 10 }}>
+                                            {requests.map((item) => {
+                                                const meta = STATUS_META[String(item.status || "").toLowerCase()] || { label: item.status, color: "#94a3b8" };
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        style={{
+                                                            border: "1px solid var(--stroke)",
+                                                            borderRadius: 14,
+                                                            padding: 14,
+                                                            background: "rgba(255,255,255,0.02)",
+                                                            display: "grid",
+                                                            gap: 8,
+                                                        }}
+                                                    >
+                                                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                                                            <div>
+                                                                <div style={{ fontWeight: 800 }}>{item.requestCode}</div>
+                                                                <div className="wallet-small" style={{ marginTop: 2 }}>
+                                                                    {Number(item.amount || 0).toLocaleString("es-CO")} {item.currency || "USD"}
+                                                                </div>
+                                                            </div>
+                                                            <span
+                                                                style={{
+                                                                    display: "inline-flex",
+                                                                    alignItems: "center",
+                                                                    borderRadius: 999,
+                                                                    padding: "6px 10px",
+                                                                    border: `1px solid ${meta.color}55`,
+                                                                    background: `${meta.color}18`,
+                                                                    color: meta.color,
+                                                                    fontWeight: 700,
+                                                                    fontSize: 12,
+                                                                }}
+                                                            >
+                                                                {meta.label}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="wallet-small" style={{ marginTop: 0 }}>
+                                                            Creada: {new Date(item.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}
+                                                        </div>
+                                                        {item.adminNote ? (
+                                                            <div className="wallet-small" style={{ marginTop: 0 }}>
+                                                                Nota admin: {item.adminNote}
+                                                            </div>
+                                                        ) : null}
+                                                        <a className="wallet-link" href={item.proofFileUrl} target="_blank" rel="noreferrer">
+                                                            Ver comprobante
+                                                        </a>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ) : null}

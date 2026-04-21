@@ -319,4 +319,59 @@ pool.query("CREATE INDEX idx_crypto_payment_user ON crypto_payment_requests(user
 pool.query("CREATE INDEX idx_crypto_payment_status ON crypto_payment_requests(payment_status)").catch(() => { });
 pool.query("CREATE INDEX idx_crypto_payment_created ON crypto_payment_requests(created_at)").catch(() => { });
 
+pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_topup_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        request_code VARCHAR(32) NOT NULL,
+        user_id INT NOT NULL,
+        wallet_id INT NULL,
+        method_key VARCHAR(32) NOT NULL DEFAULT 'binance',
+        method_label VARCHAR(64) NOT NULL DEFAULT 'Binance',
+        amount DECIMAL(12,2) NOT NULL,
+        currency VARCHAR(10) NOT NULL DEFAULT 'USD',
+        proof_file_url VARCHAR(255) NOT NULL,
+        status VARCHAR(32) NOT NULL DEFAULT 'submitted',
+        submitted_email_sent_at DATETIME NULL,
+        reviewing_email_sent_at DATETIME NULL,
+        approved_email_sent_at DATETIME NULL,
+        rejected_email_sent_at DATETIME NULL,
+        admin_user_id INT NULL,
+        admin_note TEXT NULL,
+        balance_before DECIMAL(12,2) NULL,
+        balance_after DECIMAL(12,2) NULL,
+        approved_at DATETIME NULL,
+        rejected_at DATETIME NULL,
+        reviewing_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_manual_topup_request_code (request_code),
+        INDEX idx_manual_topup_user (user_id),
+        INDEX idx_manual_topup_status (status),
+        INDEX idx_manual_topup_created (created_at)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN request_code VARCHAR(32) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN wallet_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN method_key VARCHAR(32) NOT NULL DEFAULT 'binance'").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN method_label VARCHAR(64) NOT NULL DEFAULT 'Binance'").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN amount DECIMAL(12,2) NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN currency VARCHAR(10) NOT NULL DEFAULT 'USD'").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN proof_file_url VARCHAR(255) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN status VARCHAR(32) NOT NULL DEFAULT 'submitted'").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN submitted_email_sent_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN reviewing_email_sent_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN approved_email_sent_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN rejected_email_sent_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN admin_user_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN admin_note TEXT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN balance_before DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN balance_after DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN approved_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN rejected_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN reviewing_at DATETIME NULL").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_manual_topup_request_code ON manual_topup_requests(request_code)").catch(() => { });
+pool.query("CREATE INDEX idx_manual_topup_user ON manual_topup_requests(user_id)").catch(() => { });
+pool.query("CREATE INDEX idx_manual_topup_status ON manual_topup_requests(status)").catch(() => { });
+pool.query("CREATE INDEX idx_manual_topup_created ON manual_topup_requests(created_at)").catch(() => { });
+
 module.exports = pool;

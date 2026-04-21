@@ -3,6 +3,7 @@ const crypto = require("crypto");
 
 let transporterPromise = null;
 let salesTransporterPromise = null;
+let topupTransporterPromise = null;
 
 function redactResetUrlForLog(resetUrl) {
     const s = String(resetUrl || "");
@@ -77,8 +78,18 @@ function getSalesMailConfig() {
     return buildMailConfig("SALES_") || getMailConfig();
 }
 
+function getTopupMailConfig() {
+    const config = buildMailConfig("TOPUP_") || getMailConfig();
+    if (!config) return null;
+    return {
+        ...config,
+        from: String(process.env.TOPUP_MAIL_FROM || config.from || "Streaming Box Recargas <recargas@strbx.com.co>").trim(),
+    };
+}
+
 async function getTransporter(kind = "default") {
     const isSales = kind === "sales";
+    const isTopup = kind === "topup";
     if (isSales) {
         if (!salesTransporterPromise) {
             const config = getSalesMailConfig();
@@ -86,6 +97,15 @@ async function getTransporter(kind = "default") {
             salesTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
         }
         return salesTransporterPromise;
+    }
+
+    if (isTopup) {
+        if (!topupTransporterPromise) {
+            const config = getTopupMailConfig();
+            if (!config) return null;
+            topupTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
+        }
+        return topupTransporterPromise;
     }
 
     if (!transporterPromise) {
@@ -420,7 +440,148 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     }
 }
 
+function buildTopupEmailShell({ title, subtitle, bodyHtml }) {
+    const appName = process.env.APP_NAME || "Streaming Box";
+    return `
+        <div style="margin:0;padding:28px;background:#eaf0ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+            <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #dbe4f5;border-radius:20px;overflow:hidden">
+                <div style="background:#131a2a;padding:28px 30px;color:#ffffff">
+                    <div style="font-size:18px;font-weight:700;opacity:.92;margin:0 0 8px">${escapeHtml(appName)}</div>
+                    <div style="font-size:28px;font-weight:900;line-height:1.1;margin:0 0 6px">${escapeHtml(title)}</div>
+                    <div style="font-size:15px;color:#cbd5e1">${escapeHtml(subtitle)}</div>
+                </div>
+                <div style="padding:30px">${bodyHtml}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subtitle, intro, amount, currency, requestCode, statusLabel, adminNote }) {
+    const safeTo = String(to || "").trim();
+    if (!safeTo) throw new Error("Destino de correo invalido.");
+
+    const config = getTopupMailConfig();
+    if (!config) {
+        console.warn(`[mail] No hay SMTP configurado para recargas. Solicitud ${requestCode} para ${safeTo} no enviada por email.`);
+        return { ok: true, delivery: "log" };
+    }
+
+    const transporter = await getTransporter("topup");
+    const amountText = formatMoney(amount, currency || "USD");
+    const text = [
+        `Hola ${greetingName || "cliente"},`,
+        "",
+        intro,
+        "",
+        `Solicitud: ${requestCode}`,
+        `Estado: ${statusLabel}`,
+        `Monto: ${amountText}`,
+        adminNote ? `Nota: ${adminNote}` : "",
+    ].filter(Boolean).join("\n");
+
+    const bodyHtml = `
+        <div style="font-size:16px;font-weight:700;margin:0 0 10px">Hola ${escapeHtml(greetingName || "cliente")},</div>
+        <div style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 20px">${escapeHtml(intro)}</div>
+        <div style="border:1px solid #d8e1f0;border-radius:16px;background:#f8fbff;padding:16px 18px;margin:0 0 18px">
+            <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Solicitud:</strong> ${escapeHtml(requestCode)}</div>
+            <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Estado:</strong> ${escapeHtml(statusLabel)}</div>
+            <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Monto:</strong> ${escapeHtml(amountText)}</div>
+            ${adminNote ? `<div style="font-size:15px;color:#334155"><strong style="color:#0f172a">Nota:</strong> ${escapeHtml(adminNote)}</div>` : ""}
+        </div>
+        <div style="font-size:13px;line-height:1.6;color:#64748b">
+            Este es un correo transaccional relacionado con tu recarga. Si no reconoces esta solicitud, responde a este mensaje.
+        </div>
+    `;
+
+    try {
+        await transporter.sendMail({
+            from: config.from,
+            to: safeTo,
+            replyTo: config.from,
+            subject,
+            text,
+            html: buildTopupEmailShell({ title, subtitle, bodyHtml }),
+            headers: {
+                "Auto-Submitted": "auto-generated",
+                "X-Auto-Response-Suppress": "All",
+                "X-Entity-Ref-ID": String(requestCode || ""),
+            },
+        });
+        return { ok: true, delivery: "email" };
+    } catch (err) {
+        console.error("[mail] Error enviando correo de recarga:", err?.message || err);
+        return { ok: false, delivery: "error", message: err?.message || "No se pudo enviar el correo." };
+    }
+}
+
+async function sendTopupSubmittedEmail({ to, name, requestCode, amount, currency }) {
+    return sendTopupLifecycleEmail({
+        to,
+        greetingName: name,
+        requestCode,
+        amount,
+        currency,
+        subject: `Streaming Box | Recarga recibida ${requestCode}`,
+        title: "Comprobante recibido",
+        subtitle: "Tu recarga fue cargada exitosamente y esta en revision.",
+        intro: "Recibimos tu comprobante de recarga. Nuestro equipo lo va a revisar y te avisaremos cuando cambie de estado.",
+        statusLabel: "En revision inicial",
+    });
+}
+
+async function sendTopupReviewingEmail({ to, name, requestCode, amount, currency, adminNote }) {
+    return sendTopupLifecycleEmail({
+        to,
+        greetingName: name,
+        requestCode,
+        amount,
+        currency,
+        adminNote,
+        subject: `Streaming Box | Estamos revisando tu recarga ${requestCode}`,
+        title: "Recarga en revision",
+        subtitle: "Ya estamos manejando tu transaccion.",
+        intro: "Tu recarga ya fue tomada por un administrador y esta siendo revisada.",
+        statusLabel: "Revisando",
+    });
+}
+
+async function sendTopupApprovedEmail({ to, name, requestCode, amount, currency, adminNote }) {
+    return sendTopupLifecycleEmail({
+        to,
+        greetingName: name,
+        requestCode,
+        amount,
+        currency,
+        adminNote,
+        subject: `Streaming Box | Recarga exitosa ${requestCode}`,
+        title: "Recarga aprobada",
+        subtitle: "Tu saldo ya fue acreditado correctamente.",
+        intro: "La recarga fue aprobada y el saldo ya esta disponible para usar dentro de la plataforma.",
+        statusLabel: "Aprobada",
+    });
+}
+
+async function sendTopupRejectedEmail({ to, name, requestCode, amount, currency, adminNote }) {
+    return sendTopupLifecycleEmail({
+        to,
+        greetingName: name,
+        requestCode,
+        amount,
+        currency,
+        adminNote,
+        subject: `Streaming Box | Recarga rechazada ${requestCode}`,
+        title: "Recarga rechazada",
+        subtitle: "Tu solicitud no pudo ser aprobada.",
+        intro: "La recarga fue revisada pero no pudo aprobarse. Revisa la nota del administrador y vuelve a cargar el comprobante si hace falta.",
+        statusLabel: "Rechazada",
+    });
+}
+
 module.exports = {
     sendPasswordResetEmail,
     sendOrderDeliveryEmail,
+    sendTopupSubmittedEmail,
+    sendTopupReviewingEmail,
+    sendTopupApprovedEmail,
+    sendTopupRejectedEmail,
 };

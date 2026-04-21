@@ -9,16 +9,17 @@ const NAV_GROUPS = [
         title: "Principal",
         links: [
             { path: "/admin", label: "Panel Principal", icon: "🏠" },
-        ]
+        ],
     },
     {
         title: "Ventas & Finanzas",
         links: [
-            { path: "/admin/analytics", label: "Estadísticas", icon: "📊" },
+            { path: "/admin/analytics", label: "Estadisticas", icon: "📊" },
             { path: "/admin/transactions", label: "Transacciones / Saldo", icon: "💲" },
+            { path: "/admin/topups", label: "Recargas Internacionales", icon: "💸" },
             { path: "/admin/orders", label: "Historial de Compras", icon: "📜" },
             { path: "/admin/renewals", label: "Renovaciones", icon: "🔄" },
-        ]
+        ],
     },
     {
         title: "Cuentas & Inventario",
@@ -26,44 +27,39 @@ const NAV_GROUPS = [
             { path: "/admin/accounts", label: "Inventario de Cuentas", icon: "🔐" },
             { path: "/admin/inventory", label: "Inventario General", icon: "📦" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
-            { path: "/admin/code-requests", label: "Pedidos de Códigos", icon: "🎟️" },
-            { path: "/admin/code-logs", label: "Logs de Códigos", icon: "🎫" },
+            { path: "/admin/code-requests", label: "Pedidos de Codigos", icon: "🎟️" },
+            { path: "/admin/code-logs", label: "Logs de Codigos", icon: "🎫" },
             { path: "/admin/stock-notify", label: "Alertas de Stock", icon: "🔔" },
             { path: "/admin/upload-logs", label: "Logs de Carga", icon: "📋" },
-        ]
+        ],
     },
     {
-        title: "Catálogo & Oferta",
+        title: "Catalogo & Oferta",
         links: [
-            { path: "/admin/categories", label: "Categorías", icon: "📁" },
+            { path: "/admin/categories", label: "Categorias", icon: "📁" },
             { path: "/admin/platforms", label: "Plataformas", icon: "📺" },
             { path: "/admin/prices", label: "Planes y Precios", icon: "💳" },
             { path: "/admin/durations", label: "Duraciones", icon: "⏱️" },
-        ]
+        ],
     },
     {
-        title: "Usuarios & Atención",
+        title: "Usuarios & Atencion",
         links: [
             { path: "/admin/users", label: "Usuarios", icon: "👥" },
-            { path: "/admin/support", label: "Soporte Técnico", icon: "🎧" },
+            { path: "/admin/support", label: "Soporte Tecnico", icon: "🎧" },
             { path: "/admin/replacements", label: "Historial Reemplazos", icon: "🔁" },
-        ]
+        ],
     },
     {
-        title: "Configuración",
+        title: "Configuracion",
         links: [
             { path: "/admin/whatsapp", label: "WhatsApp API", icon: "💬" },
             { path: "/admin/whatsapp-trace", label: "Traza de WhatsApp", icon: "📡" },
-        ]
-    }
+        ],
+    },
 ];
 
-export default function AdminSidebar({
-    user,
-    uploadingLogo,
-    onOpenLogoPicker,
-    onLogout,
-}) {
+export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, onLogout }) {
     const [collapsed, setCollapsed] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
@@ -74,37 +70,34 @@ export default function AdminSidebar({
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Poll stock notification count every 3 minutes
     useEffect(() => {
         async function fetchStockCount() {
             try {
-                const res = await fetch("/api/admin/stock-subscriptions", { credentials: "include" });
-                if (res.ok) {
-                    const data = await res.json();
+                const response = await fetch("/api/admin/stock-subscriptions", { credentials: "include" });
+                if (response.ok) {
+                    const data = await response.json();
                     setStockCount(Array.isArray(data) ? data.length : 0);
                 }
-            } catch { /* silently ignore */ }
+            } catch { }
         }
         fetchStockCount();
         const timer = setInterval(fetchStockCount, 180000);
         return () => clearInterval(timer);
     }, []);
 
-    // Poll expirations count
     useEffect(() => {
         async function fetchExpirations() {
-            // Hide badge while on the expirations page
             if (location.pathname === "/admin/expirations") {
                 setExpirationsCount(0);
                 return;
             }
             try {
-                const res = await fetch("/api/admin/orders-expiring-count", { credentials: "include" });
-                if (res.ok) {
-                    const data = await res.json();
+                const response = await fetch("/api/admin/orders-expiring-count", { credentials: "include" });
+                if (response.ok) {
+                    const data = await response.json();
                     setExpirationsCount(Number(data.count) || 0);
                 }
-            } catch { /* silently ignore */ }
+            } catch { }
         }
         fetchExpirations();
         const timer = setInterval(fetchExpirations, 180000);
@@ -113,42 +106,29 @@ export default function AdminSidebar({
 
     useEffect(() => {
         const handleResize = () => {
-            if (typeof window !== "undefined") {
-                const mobile = window.innerWidth <= 900;
-                
-                // Si cambiamos de desktop a mobile, colapsamos para no tapar el contenido
-                if (mobile && !isMobile) setCollapsed(true);
-                // Si volvemos a desktop, lo expandimos automáticamente si estaba colapsado por el cambio previo
-                if (!mobile && isMobile) setCollapsed(false);
-
-                setIsMobile(mobile);
-            }
+            if (typeof window === "undefined") return;
+            const mobile = window.innerWidth <= 900;
+            if (mobile && !isMobile) setCollapsed(true);
+            if (!mobile && isMobile) setCollapsed(false);
+            setIsMobile(mobile);
         };
         handleResize();
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, [isMobile]);
 
-    // effectiveCollapsed determines visual state. 
-    // On mobile: it's strictly controlled by the hamburger menu (`collapsed` state).
-    // On desktop: it's collapsed by default, but hovering expands it (`collapsed && !isHovered`).
     const effectiveCollapsed = isMobile ? collapsed : (collapsed && !isHovered);
 
     return (
         <>
-            {/* Overlay oscuro para cerrar el sidebar en móvil */}
-            {isMobile && !effectiveCollapsed && (
-                <div
-                    className="sidebar-overlay"
-                    onClick={() => setCollapsed(true)}
-                />
-            )}
+            {isMobile && !effectiveCollapsed ? (
+                <div className="sidebar-overlay" onClick={() => setCollapsed(true)} />
+            ) : null}
 
-            {/* Botón hamburger (solo visible en móvil) */}
             <button
                 className="sidebar-toggle-btn"
-                onClick={() => setCollapsed((v) => !v)}
-                title={effectiveCollapsed ? "Abrir menú" : "Cerrar menú"}
+                onClick={() => setCollapsed((value) => !value)}
+                title={effectiveCollapsed ? "Abrir menu" : "Cerrar menu"}
                 style={{ zIndex: 1000 }}
             >
                 {effectiveCollapsed ? "☰" : "✕"}
@@ -156,21 +136,23 @@ export default function AdminSidebar({
 
             <aside
                 className={`sidebar${effectiveCollapsed ? " sidebar--collapsed" : ""}`}
-                style={{ 
-                    padding: "0", 
-                    display: "flex", 
-                    flexDirection: "column", 
-                    background: "var(--card)", 
-                    borderRight: "1px solid var(--stroke)", 
-                    /* overflow: definido en auth.css (escritorio: visible; móvil drawer: auto) */
+                style={{
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    background: "var(--card)",
+                    borderRight: "1px solid var(--stroke)",
                     zIndex: 999,
                 }}
                 onMouseEnter={() => !isMobile && setIsHovered(true)}
                 onMouseLeave={() => !isMobile && setIsHovered(false)}
             >
-                {/* Cabecera Sidebar */}
                 <div style={{ padding: effectiveCollapsed ? "24px 8px" : "24px 20px", transition: "padding 0.2s" }}>
-                    <div className="brand-row" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: effectiveCollapsed ? 0 : 12, cursor: "pointer", justifyContent: effectiveCollapsed ? "center" : "flex-start" }} onClick={() => navigate("/admin")}>
+                    <div
+                        className="brand-row"
+                        style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: effectiveCollapsed ? 0 : 12, cursor: "pointer", justifyContent: effectiveCollapsed ? "center" : "flex-start" }}
+                        onClick={() => navigate("/admin")}
+                    >
                         {effectiveCollapsed ? (
                             <StreamingBoxLogo size={36} showText={false} />
                         ) : (
@@ -178,44 +160,41 @@ export default function AdminSidebar({
                         )}
                     </div>
 
-                    {!effectiveCollapsed && (
+                    {!effectiveCollapsed ? (
                         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
                             <button
                                 className="btn-ghost"
                                 onClick={onOpenLogoPicker}
                                 disabled={uploadingLogo}
-                                style={{ 
-                                    flex: 1, height: 32, fontSize: 11, padding: "0", borderRadius: 8, minHeight: 0,
-                                    borderColor: "var(--stroke)", color: "var(--text)"
+                                style={{
+                                    flex: 1,
+                                    height: 32,
+                                    fontSize: 11,
+                                    padding: 0,
+                                    borderRadius: 8,
+                                    minHeight: 0,
+                                    borderColor: "var(--stroke)",
+                                    color: "var(--text)",
                                 }}
                             >
                                 {uploadingLogo ? "Subiendo..." : "Cambiar logo"}
                             </button>
                             <ThemeToggle />
                         </div>
-                    )}
+                    ) : null}
                 </div>
 
-                {/* Navegación por Grupos */}
                 <div style={{ flex: 1, padding: effectiveCollapsed ? "10px 8px 24px" : "0 12px 24px", display: "flex", flexDirection: "column", gap: effectiveCollapsed ? 12 : 24, transition: "padding 0.2s" }}>
-                    {NAV_GROUPS.map((group, idx) => (
-                        <div key={idx}>
-                            {!effectiveCollapsed && (
-                                <div style={{ 
-                                    padding: "0 12px", 
-                                    fontSize: 10, 
-                                    fontWeight: 700, 
-                                    color: "var(--muted)", 
-                                    textTransform: "uppercase", 
-                                    letterSpacing: "1px", 
-                                    marginBottom: 8, 
-                                    whiteSpace: "nowrap" 
-                                }}>
+                    {NAV_GROUPS.map((group) => (
+                        <div key={group.title}>
+                            {!effectiveCollapsed ? (
+                                <div style={{ padding: "0 12px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8, whiteSpace: "nowrap" }}>
                                     {group.title}
                                 </div>
-                            )}
+                            ) : null}
+
                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                {group.links.map(link => {
+                                {group.links.map((link) => {
                                     const isActive = location.pathname === link.path;
                                     return (
                                         <div
@@ -226,77 +205,89 @@ export default function AdminSidebar({
                                             }}
                                             title={effectiveCollapsed ? link.label : ""}
                                             style={{
-                                                display: "flex", alignItems: "center", gap: 12,
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 12,
                                                 padding: effectiveCollapsed ? "12px" : "12px 14px",
                                                 justifyContent: effectiveCollapsed ? "center" : "flex-start",
-                                                borderRadius: 14, cursor: "pointer", transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                                                borderRadius: 14,
+                                                cursor: "pointer",
+                                                transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
                                                 background: isActive ? "linear-gradient(135deg, rgba(13,166,242,0.15), rgba(99,51,255,0.08))" : "transparent",
                                                 color: isActive ? "#0ca5e9" : "var(--muted)",
                                                 border: isActive ? "1px solid rgba(13,166,242,0.25)" : "1px solid transparent",
                                                 boxShadow: isActive ? "0 8px 16px rgba(0, 0, 0, 0.15)" : "none",
                                                 position: "relative",
-                                                overflow: "hidden"
+                                                overflow: "hidden",
                                             }}
-                                            onMouseEnter={e => {
-                                                if (!isActive) e.currentTarget.style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
+                                            onMouseEnter={(event) => {
+                                                if (!isActive) event.currentTarget.style.background = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)";
                                             }}
-                                            onMouseLeave={e => {
-                                                if (!isActive) e.currentTarget.style.background = "transparent";
+                                            onMouseLeave={(event) => {
+                                                if (!isActive) event.currentTarget.style.background = "transparent";
                                             }}
                                         >
-                                            <span style={{ 
-                                                fontSize: 18, 
-                                                opacity: isActive ? 1 : 0.7, 
-                                                color: isActive ? "#0ca5e9" : "inherit",
-                                                filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none", 
-                                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 
-                                            }}>
+                                            <span
+                                                style={{
+                                                    fontSize: 18,
+                                                    opacity: isActive ? 1 : 0.7,
+                                                    color: isActive ? "#0ca5e9" : "inherit",
+                                                    filter: isActive ? "drop-shadow(0 0 4px rgba(13,166,242,0.6))" : "none",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    flexShrink: 0,
+                                                }}
+                                            >
                                                 {link.icon}
                                             </span>
-                                            {!effectiveCollapsed && (
+                                            {!effectiveCollapsed ? (
                                                 <span style={{ fontSize: 13, fontWeight: isActive ? 700 : 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
                                                     {link.label}
                                                 </span>
-                                            )}
-                                            {/* Badge para alertas de stock */}
-                                            {link.path === "/admin/stock-notify" && stockCount > 0 && (
-                                                <span style={{
-                                                    background: "#f59e0b",
-                                                    color: "#000",
-                                                    borderRadius: 99,
-                                                    fontSize: 10,
-                                                    fontWeight: 800,
-                                                    padding: "2px 7px",
-                                                    minWidth: 20,
-                                                    textAlign: "center",
-                                                    lineHeight: "16px",
-                                                    flexShrink: 0,
-                                                    boxShadow: "0 0 8px rgba(245,158,11,.5)",
-                                                    animation: "pulse 1.8s infinite"
-                                                }}>
+                                            ) : null}
+
+                                            {link.path === "/admin/stock-notify" && stockCount > 0 ? (
+                                                <span
+                                                    style={{
+                                                        background: "#f59e0b",
+                                                        color: "#000",
+                                                        borderRadius: 99,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        padding: "2px 7px",
+                                                        minWidth: 20,
+                                                        textAlign: "center",
+                                                        lineHeight: "16px",
+                                                        flexShrink: 0,
+                                                        boxShadow: "0 0 8px rgba(245,158,11,.5)",
+                                                        animation: "pulse 1.8s infinite",
+                                                    }}
+                                                >
                                                     {stockCount}
                                                 </span>
-                                            )}
+                                            ) : null}
 
-                                            {/* Badge para vencimientos del día */}
-                                            {link.path === "/admin/expirations" && expirationsCount > 0 && (
-                                                <span style={{
-                                                    background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
-                                                    color: "#fff",
-                                                    borderRadius: 99,
-                                                    fontSize: 10,
-                                                    fontWeight: 800,
-                                                    padding: "2px 7px",
-                                                    minWidth: 20,
-                                                    textAlign: "center",
-                                                    lineHeight: "16px",
-                                                    flexShrink: 0,
-                                                    boxShadow: "0 0 12px rgba(239,68,68,0.4)",
-                                                    animation: "pulse 1.8s infinite"
-                                                }}>
+                                            {link.path === "/admin/expirations" && expirationsCount > 0 ? (
+                                                <span
+                                                    style={{
+                                                        background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                                                        color: "#fff",
+                                                        borderRadius: 99,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        padding: "2px 7px",
+                                                        minWidth: 20,
+                                                        textAlign: "center",
+                                                        lineHeight: "16px",
+                                                        flexShrink: 0,
+                                                        boxShadow: "0 0 12px rgba(239,68,68,0.4)",
+                                                        animation: "pulse 1.8s infinite",
+                                                    }}
+                                                >
                                                     {expirationsCount}
                                                 </span>
-                                            )}
+                                            ) : null}
                                         </div>
                                     );
                                 })}
@@ -305,11 +296,10 @@ export default function AdminSidebar({
                     ))}
                 </div>
 
-                {/* Perfil Usuario */}
                 <div style={{ padding: effectiveCollapsed ? "16px 8px" : "16px 20px", borderTop: "1px solid var(--stroke)", background: "var(--bg0)", marginTop: "auto", transition: "padding 0.2s" }}>
                     {!effectiveCollapsed ? (
                         <>
-                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>SESIÓN ACTUAL</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4, fontWeight: 600 }}>SESION ACTUAL</div>
                             <div style={{ fontSize: 12, color: "var(--text)", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", marginBottom: 16 }}>
                                 {user?.email || "admin"}
                             </div>
@@ -318,16 +308,16 @@ export default function AdminSidebar({
                                 onClick={onLogout}
                                 style={{ width: "100%", height: 36, fontSize: 12, borderRadius: 8, minHeight: 0, color: "var(--muted)" }}
                             >
-                                Cerrar sesión
+                                Cerrar sesion
                             </button>
                         </>
                     ) : (
                         <div
-                            title="Cerrar sesión"
+                            title="Cerrar sesion"
                             onClick={onLogout}
                             style={{ width: "100%", height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--muted)", borderRadius: 8, transition: "background 0.2s" }}
-                            onMouseEnter={e => e.currentTarget.style.background = "rgba(239, 68, 68, .1)"}
-                            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                            onMouseEnter={(event) => { event.currentTarget.style.background = "rgba(239, 68, 68, .1)"; }}
+                            onMouseLeave={(event) => { event.currentTarget.style.background = "transparent"; }}
                         >
                             <span style={{ fontSize: 18 }}>🚪</span>
                         </div>

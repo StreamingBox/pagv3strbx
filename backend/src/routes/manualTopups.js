@@ -218,7 +218,11 @@ async function ensureWalletForUser(conn, userId, currency) {
 
 router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
     try {
-        const currency = String(req.user?.currency || "").trim().toUpperCase();
+        const [[userRow]] = await pool.query(
+            "SELECT currency FROM users WHERE id = ? LIMIT 1",
+            [req.user.id]
+        );
+        const currency = String(userRow?.currency || "").trim().toUpperCase();
         const methods = await getPaymentMethodsConfig();
         const filteredMethods = methods.filter((item) => item.currency === currency);
         return res.json({

@@ -65,6 +65,7 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
     const [isMobile, setIsMobile] = useState(false);
     const [stockCount, setStockCount] = useState(0);
     const [expirationsCount, setExpirationsCount] = useState(0);
+    const [topupsCount, setTopupsCount] = useState(0);
     const { theme } = useTheme();
     const isDark = theme === "dark";
     const navigate = useNavigate();
@@ -101,6 +102,25 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
         }
         fetchExpirations();
         const timer = setInterval(fetchExpirations, 180000);
+        return () => clearInterval(timer);
+    }, [location.pathname]);
+
+    useEffect(() => {
+        async function fetchTopups() {
+            if (location.pathname === "/admin/topups") {
+                setTopupsCount(0);
+                return;
+            }
+            try {
+                const response = await fetch("/api/admin/manual-topups?status=submitted&limit=1", { credentials: "include" });
+                if (response.ok) {
+                    const data = await response.json();
+                    setTopupsCount(Number(data.total) || 0);
+                }
+            } catch { }
+        }
+        fetchTopups();
+        const timer = setInterval(fetchTopups, 180000);
         return () => clearInterval(timer);
     }, [location.pathname]);
 
@@ -286,6 +306,27 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                     }}
                                                 >
                                                     {expirationsCount}
+                                                </span>
+                                            ) : null}
+
+                                            {link.path === "/admin/topups" && topupsCount > 0 ? (
+                                                <span
+                                                    style={{
+                                                        background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                                                        color: "#fff",
+                                                        borderRadius: 99,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        padding: "2px 7px",
+                                                        minWidth: 20,
+                                                        textAlign: "center",
+                                                        lineHeight: "16px",
+                                                        flexShrink: 0,
+                                                        boxShadow: "0 0 12px rgba(239,68,68,0.4)",
+                                                        animation: "pulse 1.8s infinite",
+                                                    }}
+                                                >
+                                                    {topupsCount}
                                                 </span>
                                             ) : null}
                                         </div>

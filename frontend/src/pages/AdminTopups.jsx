@@ -23,8 +23,12 @@ const STATUS_META = {
     rejected: { label: "Rechazada", color: "#ef4444" },
 };
 
+const CURRENCY_OPTIONS = ["COP", "USD", "MXN"];
+let nextMethodRowId = 1;
+
 function emptyMethod() {
     return {
+        _rowId: `method-row-${nextMethodRowId++}`,
         key: "",
         label: "",
         currency: "COP",
@@ -269,7 +273,7 @@ export default function AdminTopups() {
                             <>
                                 <div style={{ display: "grid", gap: 12 }}>
                                     {methods.map((method, index) => (
-                                        <div key={`${method.key || "new"}-${index}`} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, display: "grid", gap: 12 }}>
+                                        <div key={method._rowId || `method-${index}`} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, display: "grid", gap: 12 }}>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
                                                 <label className="wallet-label">
                                                     <span>Clave</span>
@@ -281,7 +285,11 @@ export default function AdminTopups() {
                                                 </label>
                                                 <label className="wallet-label">
                                                     <span>Moneda</span>
-                                                    <input className="wallet-input" value={method.currency} onChange={(event) => updateMethod(index, "currency", event.target.value.toUpperCase())} />
+                                                    <select className="wallet-input" value={method.currency} onChange={(event) => updateMethod(index, "currency", event.target.value)}>
+                                                        {CURRENCY_OPTIONS.map((currency) => (
+                                                            <option key={currency} value={currency}>{currency}</option>
+                                                        ))}
+                                                    </select>
                                                 </label>
                                                 <label className="wallet-label">
                                                     <span>Monto minimo</span>

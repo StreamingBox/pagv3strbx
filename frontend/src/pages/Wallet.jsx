@@ -93,15 +93,7 @@ export default function Wallet() {
 
     const currency = String(wallet?.currency || "").toUpperCase();
     const canUseCryptoTopup = currency === "USD";
-    const qrValue = cryptoDeposit?.payAddress
-        ? [
-              "USDT BSC",
-              `Address: ${cryptoDeposit.payAddress}`,
-              cryptoDeposit.payAmount != null ? `Amount: ${cryptoDeposit.payAmount}` : null,
-          ]
-              .filter(Boolean)
-              .join("\n")
-        : "";
+    const qrValue = cryptoDeposit?.payAddress ? String(cryptoDeposit.payAddress) : "";
     const qrSrc = qrValue
         ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qrValue)}`
         : "";

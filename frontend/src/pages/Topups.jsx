@@ -165,16 +165,7 @@ export default function Topups() {
                         <h1 className="wallet-title">Recargas</h1>
                     </div>
 
-                    <section
-                        className="wallet-card"
-                        style={{
-                            marginBottom: 16,
-                            display: "grid",
-                            gridTemplateColumns: "1.25fr .95fr",
-                            gap: 16,
-                            alignItems: "stretch",
-                        }}
-                    >
+                    <section className="wallet-card topups-hero-grid" style={{ marginBottom: 16 }}>
                         <div>
                             <div className="wallet-card__title" style={{ fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase" }}>
                                 Recargar saldo
@@ -257,7 +248,7 @@ export default function Topups() {
                                 </div>
 
                                 {selectedMethod ? (
-                                    <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16 }}>
+                                    <div className="topups-form-grid">
                                         <div style={{ display: "grid", gap: 12 }}>
                                             <label className="wallet-label">
                                                 <span>Monto a recargar ({currency || selectedMethod.currency})</span>

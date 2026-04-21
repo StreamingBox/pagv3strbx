@@ -37,6 +37,7 @@ const AdminTopups = lazy(() => import("./pages/AdminTopups.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
 const Renewals = lazy(() => import("./pages/Renewals.jsx"));
+const Topups = lazy(() => import("./pages/Topups.jsx"));
 const Wallet = lazy(() => import("./pages/Wallet.jsx"));
 const UserAnalyticsPage = lazy(() => import("./pages/UserAnalyticsPage.jsx"));
 const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
@@ -92,6 +93,15 @@ export default function App() {
                 />
 
                 {/* ================= Wallet ================= */}
+                <Route
+                    path="/topups"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Topups />
+                        </ProtectedRoute>
+                    }
+                />
+
                 <Route
                     path="/wallet"
                     element={

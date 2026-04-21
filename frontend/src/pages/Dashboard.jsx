@@ -241,7 +241,7 @@ export default function Dashboard() {
                     onOpenCart={() => setCartOpen((v) => !v)}
                     onGoOrders={() => navigate("/orders")}
                     onGoRenewals={() => navigate("/renewals")}
-                    onGoWallet={() => navigate("/wallet")}
+                    onGoWallet={() => navigate("/topups")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
                     onGoCodeLogs={() => navigate("/admin/code-logs")}

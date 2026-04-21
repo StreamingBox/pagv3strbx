@@ -187,9 +187,9 @@ export default function AdminTopups() {
                         <button className="btn-ghost" onClick={() => navigate("/admin")} style={{ marginBottom: 14 }}>
                             {"<-"} Volver al panel
                         </button>
-                        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>Recargas manuales</h1>
+                        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 900 }}>Recargas</h1>
                         <p style={{ margin: "6px 0 0", color: "var(--muted)" }}>
-                            Define los medios de pago por moneda y revisa los comprobantes cargados por los usuarios.
+                            Configura medios de pago y revisa los comprobantes de recarga cargados por los usuarios.
                         </p>
                     </div>
 
@@ -255,7 +255,7 @@ export default function AdminTopups() {
                     <section style={{ border: "1px solid var(--stroke)", borderRadius: 18, background: "linear-gradient(180deg, var(--card), var(--card2))", boxShadow: "var(--shadow)", padding: 16, display: "grid", gap: 14, marginBottom: 18 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                             <div>
-                                <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>Metodos de pago</div>
+                                <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>Configuracion de medios</div>
                                 <div style={{ color: "var(--muted)", fontSize: 13 }}>
                                     COP puede mostrar Nequi, Llave o Daviplata. Otras monedas pueden usar Binance.
                                 </div>
@@ -336,6 +336,13 @@ export default function AdminTopups() {
                                 </div>
                             </>
                         )}
+                    </section>
+
+                    <section style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>Solicitudes de recarga</div>
+                        <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                            Filtra, revisa soportes y aprueba o rechaza las recargas pendientes.
+                        </div>
                     </section>
 
                     <section style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 12, alignItems: "end", marginBottom: 16 }}>

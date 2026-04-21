@@ -17,7 +17,7 @@ const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 
 const NAV_ITEMS = [
     { key: "home", label: "Inicio", icon: "🏠", path: "/dashboard" },
-    { key: "wallet", label: "Recargar saldo", icon: "💳", path: "/wallet" },
+    { key: "wallet", label: "Recargas", icon: "💳", path: "/topups" },
     { key: "orders", label: "Historial de Compras", icon: "🧾", path: "/orders" },
     { key: "renewals", label: "Renovaciones", icon: "🔄", path: "/renewals" },
     { key: "analytics", label: "Mis Estadísticas", icon: "📊", path: "/analytics" },

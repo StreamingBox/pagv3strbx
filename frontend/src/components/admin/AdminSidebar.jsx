@@ -16,7 +16,7 @@ const NAV_GROUPS = [
         links: [
             { path: "/admin/analytics", label: "Estadisticas", icon: "📊" },
             { path: "/admin/transactions", label: "Transacciones / Saldo", icon: "💲" },
-            { path: "/admin/topups", label: "Recargas Internacionales", icon: "💸" },
+            { path: "/admin/topups", label: "Recargas", icon: "💸" },
             { path: "/admin/orders", label: "Historial de Compras", icon: "📜" },
             { path: "/admin/renewals", label: "Renovaciones", icon: "🔄" },
         ],

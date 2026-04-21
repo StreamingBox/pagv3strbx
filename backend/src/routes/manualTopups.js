@@ -37,48 +37,98 @@ async function ensureSettingsTable() {
     `);
 }
 
-function getTopupConfigDefaults() {
+function defaultPaymentMethods() {
+    return [
+        {
+            key: "nequi",
+            label: "Nequi",
+            currency: "COP",
+            holderName: "Leydis (KKK)",
+            accountLabel: "Numero",
+            accountValue: "3152749108",
+            accountType: "ahorro",
+            minAmount: 15000,
+            instructions: "Transfiere y sube el comprobante.",
+        },
+        {
+            key: "llave",
+            label: "Llave",
+            currency: "COP",
+            holderName: "Leydis (KKK)",
+            accountLabel: "Llave",
+            accountValue: "@LEIDYSC7422",
+            accountType: "ahorro",
+            minAmount: 15000,
+            instructions: "Transfiere y sube el comprobante.",
+        },
+        {
+            key: "daviplata",
+            label: "Daviplata",
+            currency: "COP",
+            holderName: "Leydis (KKK)",
+            accountLabel: "Numero",
+            accountValue: "",
+            accountType: "ahorro",
+            minAmount: 15000,
+            instructions: "Transfiere y sube el comprobante.",
+        },
+        {
+            key: "binance",
+            label: "Binance",
+            currency: "USD",
+            holderName: "SCREEN",
+            accountLabel: "ID Binance",
+            accountValue: "920604097",
+            accountAlias: "SCREEN",
+            accountType: "binance",
+            minAmount: 10,
+            instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+        },
+    ];
+}
+
+function normalizeMethod(input) {
+    const raw = input && typeof input === "object" ? input : {};
     return {
-        methodKey: "binance",
-        methodLabel: "Binance",
-        accountName: String(process.env.MANUAL_TOPUP_BINANCE_NAME || "SCREEN").trim(),
-        binanceId: String(process.env.MANUAL_TOPUP_BINANCE_ID || "920604097").trim(),
-        binanceAlias: String(process.env.MANUAL_TOPUP_BINANCE_ALIAS || "SCREEN").trim(),
-        minAmount: Number(process.env.MANUAL_TOPUP_MIN_AMOUNT_USD || 10),
-        currency: "USD",
-        instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+        key: String(raw.key || "").trim().toLowerCase(),
+        label: String(raw.label || "").trim(),
+        currency: String(raw.currency || "").trim().toUpperCase(),
+        holderName: String(raw.holderName || "").trim(),
+        accountLabel: String(raw.accountLabel || "").trim(),
+        accountValue: String(raw.accountValue || "").trim(),
+        accountAlias: String(raw.accountAlias || "").trim(),
+        accountType: String(raw.accountType || "").trim(),
+        minAmount: Number(raw.minAmount || 0),
+        instructions: String(raw.instructions || "").trim(),
     };
 }
 
-async function getTopupConfig() {
-    const defaults = getTopupConfigDefaults();
+async function getPaymentMethodsConfig() {
     await ensureSettingsTable();
-    const [rows] = await pool.query(
-        `SELECT setting_key, setting_value
-         FROM app_settings
-         WHERE setting_key IN (?, ?, ?, ?, ?, ?, ?)`,
-        [
-            "topup_method_label",
-            "topup_account_name",
-            "topup_binance_id",
-            "topup_binance_alias",
-            "topup_min_amount_usd",
-            "topup_currency",
-            "topup_instructions",
-        ]
+    const defaults = defaultPaymentMethods();
+    const [[row]] = await pool.query(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'topup_payment_methods_json' LIMIT 1"
     );
+    if (!row?.setting_value) return defaults;
 
-    const values = Object.fromEntries(rows.map((row) => [row.setting_key, row.setting_value]));
-    return {
-        methodKey: "binance",
-        methodLabel: String(values.topup_method_label || defaults.methodLabel).trim(),
-        accountName: String(values.topup_account_name || defaults.accountName).trim(),
-        binanceId: String(values.topup_binance_id || defaults.binanceId).trim(),
-        binanceAlias: String(values.topup_binance_alias || defaults.binanceAlias).trim(),
-        minAmount: Number(values.topup_min_amount_usd || defaults.minAmount),
-        currency: String(values.topup_currency || defaults.currency).trim().toUpperCase() || "USD",
-        instructions: String(values.topup_instructions || defaults.instructions).trim(),
-    };
+    try {
+        const parsed = JSON.parse(row.setting_value);
+        if (!Array.isArray(parsed)) return defaults;
+        const methods = parsed.map(normalizeMethod).filter((item) => item.key && item.label && item.currency && item.accountValue);
+        return methods.length ? methods : defaults;
+    } catch {
+        return defaults;
+    }
+}
+
+async function savePaymentMethodsConfig(methods) {
+    await ensureSettingsTable();
+    await pool.query(
+        `INSERT INTO app_settings (setting_key, setting_value)
+         VALUES ('topup_payment_methods_json', ?)
+         ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+        [JSON.stringify(methods)]
+    );
 }
 
 function buildRequestCode() {
@@ -166,8 +216,22 @@ async function ensureWalletForUser(conn, userId, currency) {
     return { id: ins.insertId, balance: 0, currency: String(currency || "USD").toUpperCase() };
 }
 
-router.get("/wallet/manual-topups/config", requireAuth, async (_req, res) => {
-    return res.json({ ok: true, config: await getTopupConfig() });
+router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
+    try {
+        const currency = String(req.user?.currency || "").trim().toUpperCase();
+        const methods = await getPaymentMethodsConfig();
+        const filteredMethods = methods.filter((item) => item.currency === currency);
+        return res.json({
+            ok: true,
+            config: {
+                currency,
+                methods: filteredMethods,
+            },
+        });
+    } catch (err) {
+        console.error("Error GET /wallet/manual-topups/config:", err);
+        return res.status(500).json({ message: "No se pudo cargar la configuracion de recarga." });
+    }
 });
 
 router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
@@ -193,7 +257,8 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
     try {
         const userId = req.user.id;
         const amount = Number(req.body?.amount || 0);
-        const config = await getTopupConfig();
+        const methodKey = String(req.body?.methodKey || "").trim().toLowerCase();
+        const methods = await getPaymentMethodsConfig();
 
         const [[userRow]] = await conn.query(
             "SELECT id, name, email, currency FROM users WHERE id = ? LIMIT 1",
@@ -204,16 +269,19 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
             return res.status(404).json({ message: "Usuario no encontrado." });
         }
 
-        if (String(userRow.currency || "").toUpperCase() !== "USD") {
-            return res.status(400).json({ message: "La recarga internacional solo está habilitada para usuarios con moneda USD." });
+        const userCurrency = String(userRow.currency || "").trim().toUpperCase();
+        const selectedMethod = methods.find((item) => item.key === methodKey && item.currency === userCurrency);
+
+        if (!selectedMethod) {
+            return res.status(400).json({ message: "El medio de pago no esta disponible para tu moneda." });
         }
 
         if (!Number.isFinite(amount) || amount <= 0) {
-            return res.status(400).json({ message: "Ingresa un monto válido." });
+            return res.status(400).json({ message: "Ingresa un monto valido." });
         }
 
-        if (amount < config.minAmount) {
-            return res.status(400).json({ message: `La recarga mínima internacional es de ${config.minAmount} USD.` });
+        if (amount < Number(selectedMethod.minAmount || 0)) {
+            return res.status(400).json({ message: `La recarga minima para ${selectedMethod.label} es de ${Number(selectedMethod.minAmount || 0).toLocaleString("es-CO")} ${userCurrency}.` });
         }
 
         if (!req.file) {
@@ -227,8 +295,8 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         const [ins] = await conn.query(
             `INSERT INTO manual_topup_requests
                 (request_code, user_id, method_key, method_label, amount, currency, proof_file_url, status)
-             VALUES (?, ?, ?, ?, ?, 'USD', ?, 'submitted')`,
-            [requestCode, userId, config.methodKey, config.methodLabel, amount, proofFileUrl]
+             VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+            [requestCode, userId, selectedMethod.key, selectedMethod.label, amount, userCurrency, proofFileUrl]
         );
         await conn.commit();
 
@@ -237,7 +305,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
             name: userRow.name,
             requestCode,
             amount,
-            currency: "USD",
+            currency: userCurrency,
         }).then(() => {
             pool.query(
                 "UPDATE manual_topup_requests SET submitted_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
@@ -254,9 +322,9 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
                 request_code: requestCode,
                 user_id: userId,
                 amount,
-                currency: "USD",
-                method_key: config.methodKey,
-                method_label: config.methodLabel,
+                currency: userCurrency,
+                method_key: selectedMethod.key,
+                method_label: selectedMethod.label,
                 proof_file_url: proofFileUrl,
                 status: "submitted",
                 created_at: new Date().toISOString(),
@@ -273,7 +341,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
 
 router.get("/admin/manual-topups/config", requireAuth, requireRole("admin"), async (_req, res) => {
     try {
-        return res.json({ ok: true, config: await getTopupConfig() });
+        return res.json({ ok: true, config: { methods: await getPaymentMethodsConfig() } });
     } catch (err) {
         console.error("Error GET /admin/manual-topups/config:", err);
         return res.status(500).json({ message: "No se pudo cargar la configuracion." });
@@ -282,42 +350,21 @@ router.get("/admin/manual-topups/config", requireAuth, requireRole("admin"), asy
 
 router.put("/admin/manual-topups/config", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const methodLabel = String(req.body?.methodLabel || "").trim() || "Binance";
-        const accountName = String(req.body?.accountName || "").trim() || "SCREEN";
-        const binanceId = String(req.body?.binanceId || "").trim();
-        const binanceAlias = String(req.body?.binanceAlias || "").trim();
-        const instructions = String(req.body?.instructions || "").trim();
-        const currency = String(req.body?.currency || "USD").trim().toUpperCase() || "USD";
-        const minAmount = Number(req.body?.minAmount || 0);
+        const rawMethods = Array.isArray(req.body?.methods) ? req.body.methods : [];
+        const methods = rawMethods.map(normalizeMethod).filter((item) => item.key && item.label && item.currency && item.accountValue);
 
-        if (!binanceId && !binanceAlias) {
-            return res.status(400).json({ message: "Debes guardar al menos ID Binance o alias." });
-        }
-        if (!Number.isFinite(minAmount) || minAmount <= 0) {
-            return res.status(400).json({ message: "El monto minimo debe ser mayor a 0." });
+        if (!methods.length) {
+            return res.status(400).json({ message: "Debes guardar al menos un medio de pago valido." });
         }
 
-        await ensureSettingsTable();
-        const pairs = [
-            ["topup_method_label", methodLabel],
-            ["topup_account_name", accountName],
-            ["topup_binance_id", binanceId],
-            ["topup_binance_alias", binanceAlias],
-            ["topup_min_amount_usd", String(minAmount)],
-            ["topup_currency", currency],
-            ["topup_instructions", instructions],
-        ];
-
-        for (const [key, value] of pairs) {
-            await pool.query(
-                `INSERT INTO app_settings (setting_key, setting_value)
-                 VALUES (?, ?)
-                 ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-                [key, value]
-            );
+        for (const method of methods) {
+            if (!Number.isFinite(method.minAmount) || method.minAmount <= 0) {
+                return res.status(400).json({ message: `El monto minimo de ${method.label} debe ser mayor a 0.` });
+            }
         }
 
-        return res.json({ ok: true, config: await getTopupConfig() });
+        await savePaymentMethodsConfig(methods);
+        return res.json({ ok: true, config: { methods: await getPaymentMethodsConfig() } });
     } catch (err) {
         console.error("Error PUT /admin/manual-topups/config:", err);
         return res.status(500).json({ message: "No se pudo guardar la configuracion." });
@@ -341,8 +388,8 @@ router.get("/admin/manual-topups", requireAuth, requireRole("admin"), async (req
 
         if (q) {
             const like = `%${String(q).trim()}%`;
-            where.push("(m.request_code LIKE ? OR u.email LIKE ? OR u.name LIKE ?)");
-            params.push(like, like, like);
+            where.push("(m.request_code LIKE ? OR u.email LIKE ? OR u.name LIKE ? OR m.method_label LIKE ?)");
+            params.push(like, like, like, like);
         }
 
         const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -386,10 +433,10 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
         const status = String(req.body?.status || "").trim().toLowerCase();
         const adminNote = String(req.body?.adminNote || "").trim() || null;
         if (!Number.isFinite(id) || id <= 0) {
-            return res.status(400).json({ message: "ID inválido." });
+            return res.status(400).json({ message: "ID invalido." });
         }
         if (!["reviewing", "approved", "rejected"].includes(status)) {
-            return res.status(400).json({ message: "Estado inválido." });
+            return res.status(400).json({ message: "Estado invalido." });
         }
 
         await conn.beginTransaction();
@@ -415,11 +462,7 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
             return res.status(400).json({ message: "La solicitud ya fue cerrada." });
         }
 
-        const updateFields = [
-            "status = ?",
-            "admin_user_id = ?",
-            "admin_note = ?",
-        ];
+        const updateFields = ["status = ?", "admin_user_id = ?", "admin_note = ?"];
         const updateParams = [status, req.user.id, adminNote];
 
         if (status === "reviewing") {
@@ -428,12 +471,13 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
 
         let wallet = null;
         if (status === "approved") {
-            if (String(requestRow.user_currency || "").toUpperCase() !== "USD") {
+            wallet = await ensureWalletForUser(conn, requestRow.user_id, requestRow.user_currency || requestRow.currency || "COP");
+
+            if (String(wallet.currency || "").toUpperCase() !== String(requestRow.currency || "").toUpperCase()) {
                 await conn.rollback();
-                return res.status(400).json({ message: "La wallet del usuario no está en USD." });
+                return res.status(400).json({ message: `La wallet del usuario esta en ${wallet.currency} y la solicitud esta en ${requestRow.currency}.` });
             }
 
-            wallet = await ensureWalletForUser(conn, requestRow.user_id, requestRow.user_currency || "USD");
             const newBalance = wallet.balance + Number(requestRow.amount || 0);
 
             await conn.query("UPDATE wallets SET balance = ? WHERE id = ?", [newBalance, wallet.id]);
@@ -446,7 +490,7 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
                     Number(requestRow.amount || 0),
                     newBalance,
                     id,
-                    `Recarga internacional aprobada ${requestRow.request_code}`,
+                    `Recarga manual aprobada ${requestRow.request_code} (${requestRow.method_label})`,
                 ]
             );
 
@@ -477,7 +521,7 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
             name: requestRow.user_name,
             requestCode: requestRow.request_code,
             amount: Number(requestRow.amount || 0),
-            currency: requestRow.currency || "USD",
+            currency: requestRow.currency || "COP",
             adminNote,
         };
 

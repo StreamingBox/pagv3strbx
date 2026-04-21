@@ -26,6 +26,26 @@ const STATUS_META = {
 const CURRENCY_OPTIONS = ["COP", "USD", "MXN"];
 let nextMethodRowId = 1;
 
+const ADMIN_FIELD_STYLE = {
+    width: "100%",
+    minWidth: 0,
+    padding: "12px 14px",
+    borderRadius: 14,
+    border: "1px solid var(--input-stroke)",
+    background: "var(--input-bg)",
+    color: "var(--text)",
+    outline: "none",
+    fontSize: 14,
+};
+
+const ADMIN_LABEL_STYLE = {
+    display: "grid",
+    gap: 8,
+    color: "var(--muted)",
+    fontSize: 12,
+    fontWeight: 700,
+};
+
 function emptyMethod() {
     return {
         _rowId: `method-row-${nextMethodRowId++}`,
@@ -273,63 +293,136 @@ export default function AdminTopups() {
                             <>
                                 <div style={{ display: "grid", gap: 12 }}>
                                     {methods.map((method, index) => (
-                                        <div key={method._rowId || `method-${index}`} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, display: "grid", gap: 12 }}>
-                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-                                                <label className="wallet-label">
-                                                    <span>Clave</span>
-                                                    <input className="wallet-input" value={method.key} onChange={(event) => updateMethod(index, "key", event.target.value.toLowerCase())} />
+                                        <div
+                                            key={method._rowId || `method-${index}`}
+                                            style={{
+                                                border: "1px solid var(--stroke)",
+                                                borderRadius: 18,
+                                                padding: 16,
+                                                display: "grid",
+                                                gap: 14,
+                                                background: "rgba(255,255,255,.02)",
+                                            }}
+                                        >
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                                <div>
+                                                    <div style={{ fontSize: 17, fontWeight: 900, marginBottom: 4 }}>
+                                                        {method.label || `Medio ${index + 1}`}
+                                                    </div>
+                                                    <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                                                        Configura los datos que verá el usuario al momento de recargar.
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                                    <span
+                                                        style={{
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            borderRadius: 999,
+                                                            padding: "6px 10px",
+                                                            border: "1px solid rgba(59,130,246,.28)",
+                                                            background: "rgba(37,99,235,.10)",
+                                                            color: "#7dd3fc",
+                                                            fontWeight: 800,
+                                                            fontSize: 12,
+                                                        }}
+                                                    >
+                                                        {method.currency}
+                                                    </span>
+                                                    <button className="btn-ghost" style={{ width: "auto", color: "#ef4444", borderColor: "rgba(239,68,68,.35)" }} onClick={() => removeMethod(index)}>
+                                                        Quitar
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+                                                <label style={ADMIN_LABEL_STYLE}>
+                                                    <span>Clave interna</span>
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.key}
+                                                        onChange={(event) => updateMethod(index, "key", event.target.value.toLowerCase())}
+                                                    />
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Nombre</span>
-                                                    <input className="wallet-input" value={method.label} onChange={(event) => updateMethod(index, "label", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.label}
+                                                        onChange={(event) => updateMethod(index, "label", event.target.value)}
+                                                    />
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Moneda</span>
-                                                    <select className="wallet-input" value={method.currency} onChange={(event) => updateMethod(index, "currency", event.target.value)}>
+                                                    <select style={ADMIN_FIELD_STYLE} value={method.currency} onChange={(event) => updateMethod(index, "currency", event.target.value)}>
                                                         {CURRENCY_OPTIONS.map((currency) => (
                                                             <option key={currency} value={currency}>{currency}</option>
                                                         ))}
                                                     </select>
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Monto minimo</span>
-                                                    <input className="wallet-input" inputMode="numeric" value={method.minAmount} onChange={(event) => updateMethod(index, "minAmount", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        inputMode="numeric"
+                                                        value={method.minAmount}
+                                                        onChange={(event) => updateMethod(index, "minAmount", event.target.value)}
+                                                    />
                                                 </label>
                                             </div>
 
-                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
-                                                <label className="wallet-label">
+                                            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 14 }}>
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Titular</span>
-                                                    <input className="wallet-input" value={method.holderName} onChange={(event) => updateMethod(index, "holderName", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.holderName}
+                                                        onChange={(event) => updateMethod(index, "holderName", event.target.value)}
+                                                    />
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Etiqueta cuenta</span>
-                                                    <input className="wallet-input" value={method.accountLabel} onChange={(event) => updateMethod(index, "accountLabel", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.accountLabel}
+                                                        onChange={(event) => updateMethod(index, "accountLabel", event.target.value)}
+                                                    />
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Dato cuenta</span>
-                                                    <input className="wallet-input" value={method.accountValue} onChange={(event) => updateMethod(index, "accountValue", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.accountValue}
+                                                        onChange={(event) => updateMethod(index, "accountValue", event.target.value)}
+                                                    />
                                                 </label>
-                                                <label className="wallet-label">
+                                                <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Tipo</span>
-                                                    <input className="wallet-input" value={method.accountType} onChange={(event) => updateMethod(index, "accountType", event.target.value)} />
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.accountType}
+                                                        onChange={(event) => updateMethod(index, "accountType", event.target.value)}
+                                                    />
                                                 </label>
                                             </div>
 
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 12, alignItems: "end" }}>
-                                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                                                    <label className="wallet-label">
-                                                        <span>Alias</span>
-                                                        <input className="wallet-input" value={method.accountAlias} onChange={(event) => updateMethod(index, "accountAlias", event.target.value)} />
-                                                    </label>
-                                                    <label className="wallet-label">
-                                                        <span>Instrucciones</span>
-                                                        <input className="wallet-input" value={method.instructions} onChange={(event) => updateMethod(index, "instructions", event.target.value)} />
-                                                    </label>
-                                                </div>
-                                                <button className="btn-ghost" style={{ width: "auto", color: "#ef4444", borderColor: "rgba(239,68,68,.35)" }} onClick={() => removeMethod(index)}>
-                                                    Quitar
-                                                </button>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                                                <label style={ADMIN_LABEL_STYLE}>
+                                                    <span>Alias</span>
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.accountAlias}
+                                                        onChange={(event) => updateMethod(index, "accountAlias", event.target.value)}
+                                                    />
+                                                </label>
+                                                <label style={ADMIN_LABEL_STYLE}>
+                                                    <span>Instrucciones para el usuario</span>
+                                                    <textarea
+                                                        style={{ ...ADMIN_FIELD_STYLE, minHeight: 96, resize: "vertical" }}
+                                                        value={method.instructions}
+                                                        onChange={(event) => updateMethod(index, "instructions", event.target.value)}
+                                                    />
+                                                </label>
                                             </div>
                                         </div>
                                     ))}

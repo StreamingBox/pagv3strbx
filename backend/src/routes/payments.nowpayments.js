@@ -141,8 +141,13 @@ router.post("/payments/nowpayments/create", requireAuth, async (req, res) => {
     } catch (err) {
         try { await conn.rollback(); } catch {}
         console.error("Error POST /payments/nowpayments/create:", err?.response?.data || err);
+        const providerMessage = String(err?.response?.data?.message || err?.message || "").trim();
+        const friendlyMessage =
+            providerMessage.toLowerCase().includes("amountto is too small")
+                ? "El monto es demasiado bajo para USDT BSC en este momento. Intenta con un valor mayor."
+                : providerMessage;
         return res.status(err?.status || err?.response?.status || 500).json({
-            message: err?.response?.data?.message || err?.message || "No se pudo crear la recarga crypto.",
+            message: friendlyMessage || "No se pudo crear la recarga crypto.",
         });
     } finally {
         conn.release();

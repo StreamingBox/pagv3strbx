@@ -23,13 +23,13 @@ export default function Wallet() {
     const [cryptoSuccess, setCryptoSuccess] = useState("");
 
     async function loadWallet() {
-        const r = await apiGet("/wallet");
-        if (r.ok) setWallet(r.data);
+        const response = await apiGet("/wallet");
+        if (response.ok) setWallet(response.data);
     }
 
     async function loadLatestDeposit() {
-        const r = await apiGet("/payments/nowpayments/latest");
-        if (r.ok) setCryptoDeposit(r.data?.deposit || null);
+        const response = await apiGet("/payments/nowpayments/latest");
+        if (response.ok) setCryptoDeposit(response.data?.deposit || null);
     }
 
     useEffect(() => {
@@ -47,9 +47,9 @@ export default function Wallet() {
         }
 
         const timer = window.setInterval(async () => {
-            const r = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
-            if (!r.ok) return;
-            const nextDeposit = r.data?.deposit || null;
+            const response = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
+            if (!response.ok) return;
+            const nextDeposit = response.data?.deposit || null;
             setCryptoDeposit(nextDeposit);
             if (nextDeposit?.creditedAt) {
                 setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
@@ -63,21 +63,48 @@ export default function Wallet() {
     async function createCryptoDeposit() {
         setCryptoError("");
         setCryptoSuccess("");
+        setCryptoDeposit(null);
         setCryptoLoading(true);
+
         try {
             const amount = Number(String(cryptoAmount || "").replace(/[^\d.]/g, ""));
-            const res = await apiPost("/payments/nowpayments/create", { amount });
-            if (!res.ok) throw new Error(res.data?.message || "No se pudo crear la recarga.");
-            setCryptoDeposit(res.data?.deposit || null);
-        } catch (e) {
-            setCryptoError(e?.message || "No se pudo crear la recarga.");
+            const response = await apiPost("/payments/nowpayments/create", { amount });
+            if (!response.ok) throw new Error(response.data?.message || "No se pudo crear la recarga.");
+            setCryptoDeposit(response.data?.deposit || null);
+        } catch (error) {
+            setCryptoError(error?.message || "No se pudo crear la recarga.");
         } finally {
             setCryptoLoading(false);
         }
     }
 
+    async function refreshDepositStatus() {
+        if (!cryptoDeposit?.id) return;
+        const response = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
+        if (!response.ok) return;
+
+        const nextDeposit = response.data?.deposit || null;
+        setCryptoDeposit(nextDeposit);
+        if (nextDeposit?.creditedAt) {
+            setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
+            void loadWallet();
+        }
+    }
+
     const currency = String(wallet?.currency || "").toUpperCase();
     const canUseCryptoTopup = currency === "USD";
+    const qrValue = cryptoDeposit?.payAddress
+        ? [
+              "USDT BSC",
+              `Address: ${cryptoDeposit.payAddress}`,
+              cryptoDeposit.payAmount != null ? `Amount: ${cryptoDeposit.payAmount}` : null,
+          ]
+              .filter(Boolean)
+              .join("\n")
+        : "";
+    const qrSrc = qrValue
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(qrValue)}`
+        : "";
 
     return (
         <div className="page-shell">
@@ -108,7 +135,7 @@ export default function Wallet() {
                 <main className="main">
                     <div className="wallet-topbar">
                         <button className="btn-ghost" onClick={() => navigate("/dashboard")}>
-                            ← Volver
+                            {"<-"} Volver
                         </button>
 
                         <h1 className="wallet-title">Transacciones y Saldo</h1>
@@ -117,7 +144,9 @@ export default function Wallet() {
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
                         <section className="wallet-card" style={{ position: "relative", overflow: "hidden" }}>
                             <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg,rgba(13,166,242,0.06),transparent)", pointerEvents: "none" }} />
-                            <div className="wallet-card__title" style={{ fontSize: 10, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>Saldo disponible</div>
+                            <div className="wallet-card__title" style={{ fontSize: 10, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>
+                                Saldo disponible
+                            </div>
                             <div className="wallet-balance" style={{ fontSize: 24 }}>
                                 {Number(wallet?.balance || 0).toLocaleString("es-CO")}
                                 <span
@@ -157,9 +186,11 @@ export default function Wallet() {
                                         fontSize: 10,
                                     }}
                                 >
-                                    📈
+                                    +
                                 </span>
-                                <div className="wallet-card__title" style={{ fontSize: 10, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", margin: 0 }}>Ganancia obtenida</div>
+                                <div className="wallet-card__title" style={{ fontSize: 10, letterSpacing: "0.8px", textTransform: "uppercase", color: "var(--muted)", margin: 0 }}>
+                                    Ganancia obtenida
+                                </div>
                             </div>
                             <div className="wallet-balance" style={{ color: "#10b981", fontSize: 24 }}>
                                 {Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
@@ -209,7 +240,7 @@ export default function Wallet() {
 
                         <div style={{ flex: 1 }}>
                             <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.8px", color: "#13c8ec", marginBottom: 2 }}>
-                                Inversión Total
+                                Inversion total
                             </div>
                             <div style={{ fontSize: 12, color: "var(--muted)" }}>Total gastado en compras</div>
                         </div>
@@ -230,92 +261,105 @@ export default function Wallet() {
                         {canUseCryptoTopup ? (
                             <>
                                 <div className="wallet-row" style={{ marginTop: 14 }}>
-                            <label className="wallet-label">
-                                <span>Monto ({wallet?.currency || "USD"})</span>
-                                <input
-                                    className="wallet-input"
-                                    inputMode="numeric"
-                                    placeholder="Ej: 25"
-                                    value={cryptoAmount}
-                                    onChange={(e) => setCryptoAmount(e.target.value)}
-                                />
-                            </label>
+                                    <label className="wallet-label">
+                                        <span>Monto ({wallet?.currency || "USD"})</span>
+                                        <input
+                                            className="wallet-input"
+                                            inputMode="numeric"
+                                            placeholder="Ej: 10"
+                                            value={cryptoAmount}
+                                            onChange={(event) => setCryptoAmount(event.target.value)}
+                                        />
+                                    </label>
 
-                            <button className="btn" style={{ width: "auto", padding: "10px 18px" }} onClick={createCryptoDeposit} disabled={cryptoLoading}>
-                                {cryptoLoading ? "Creando..." : "Generar pago"}
-                            </button>
+                                    <button className="btn" style={{ width: "auto", padding: "10px 18px" }} onClick={createCryptoDeposit} disabled={cryptoLoading}>
+                                        {cryptoLoading ? "Creando..." : "Generar pago"}
+                                    </button>
                                 </div>
 
                                 {cryptoError ? <div className="error" style={{ marginTop: 12 }}>{cryptoError}</div> : null}
                                 {cryptoSuccess ? <div className="wallet-success">{cryptoSuccess}</div> : null}
 
                                 {cryptoDeposit ? (
-                            <div className="wallet-paybox">
-                                <div className="wallet-qr">
-                                    <div className="wallet-qr__title">Datos del pago</div>
-                                    <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
-                                        <div><b>Estado:</b> {cryptoDeposit.paymentStatus}</div>
-                                        <div><b>Monto en wallet:</b> {Number(cryptoDeposit.amount || 0).toLocaleString("es-CO")} {cryptoDeposit.currency || "USD"}</div>
-                                        <div><b>Debes enviar:</b> {cryptoDeposit.payAmount != null ? Number(cryptoDeposit.payAmount).toFixed(6) : "-"} {String(cryptoDeposit.payCurrency || "").toUpperCase()}</div>
-                                        <div><b>Red:</b> BNB Smart Chain (BEP20)</div>
-                                        {cryptoDeposit.payinExtraId ? <div><b>Memo / extra:</b> {cryptoDeposit.payinExtraId}</div> : null}
-                                    </div>
-                                </div>
+                                    <div className="wallet-paybox">
+                                        <div className="wallet-qr">
+                                            <div className="wallet-qr__title">Escanea y paga</div>
+                                            {qrSrc ? (
+                                                <img className="wallet-qr__img" src={qrSrc} alt="QR del pago" />
+                                            ) : (
+                                                <div
+                                                    className="wallet-qr__img"
+                                                    style={{
+                                                        minHeight: 260,
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        justifyContent: "center",
+                                                        color: "var(--muted)",
+                                                        fontSize: 13,
+                                                        padding: 12,
+                                                        textAlign: "center",
+                                                    }}
+                                                >
+                                                    Esperando direccion de deposito...
+                                                </div>
+                                            )}
 
-                                <div className="wallet-links">
-                                    <div className="wallet-links__title">Dirección de depósito</div>
-                                    <div
-                                        style={{
-                                            padding: 12,
-                                            borderRadius: 12,
-                                            background: "var(--input-bg)",
-                                            border: "1px solid var(--stroke)",
-                                            wordBreak: "break-all",
-                                            fontSize: 13,
-                                            marginBottom: 10,
-                                        }}
-                                    >
-                                        {cryptoDeposit.payAddress || "Esperando dirección..."}
+                                            <div style={{ display: "grid", gap: 8, fontSize: 13, marginTop: 12 }}>
+                                                <div><b>Estado:</b> {cryptoDeposit.paymentStatus}</div>
+                                                <div><b>Monto en wallet:</b> {Number(cryptoDeposit.amount || 0).toLocaleString("es-CO")} {cryptoDeposit.currency || "USD"}</div>
+                                                <div><b>Debes enviar:</b> {cryptoDeposit.payAmount != null ? Number(cryptoDeposit.payAmount).toFixed(6) : "-"} {String(cryptoDeposit.payCurrency || "").toUpperCase()}</div>
+                                                <div><b>Red:</b> BNB Smart Chain (BEP20)</div>
+                                                {cryptoDeposit.payinExtraId ? <div><b>Memo / extra:</b> {cryptoDeposit.payinExtraId}</div> : null}
+                                            </div>
+                                        </div>
+
+                                        <div className="wallet-links">
+                                            <div className="wallet-links__title">Direccion de deposito</div>
+                                            <div
+                                                style={{
+                                                    padding: 12,
+                                                    borderRadius: 12,
+                                                    background: "var(--input-bg)",
+                                                    border: "1px solid var(--stroke)",
+                                                    wordBreak: "break-all",
+                                                    fontSize: 13,
+                                                    marginBottom: 10,
+                                                }}
+                                            >
+                                                {cryptoDeposit.payAddress || "Esperando direccion..."}
+                                            </div>
+
+                                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                                <button
+                                                    className="btn-ghost"
+                                                    style={{ width: "auto", padding: "8px 14px" }}
+                                                    onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAddress || ""))}
+                                                    disabled={!cryptoDeposit.payAddress}
+                                                >
+                                                    Copiar direccion
+                                                </button>
+                                                <button
+                                                    className="btn-ghost"
+                                                    style={{ width: "auto", padding: "8px 14px" }}
+                                                    onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAmount != null ? cryptoDeposit.payAmount : ""))}
+                                                    disabled={cryptoDeposit.payAmount == null}
+                                                >
+                                                    Copiar monto
+                                                </button>
+                                                <button
+                                                    className="btn-ghost"
+                                                    style={{ width: "auto", padding: "8px 14px" }}
+                                                    onClick={refreshDepositStatus}
+                                                >
+                                                    Actualizar estado
+                                                </button>
+                                            </div>
+
+                                            <div className="wallet-small">
+                                                Envia solo USDT por BNB Smart Chain (BEP20).
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                        <button
-                                            className="btn-ghost"
-                                            style={{ width: "auto", padding: "8px 14px" }}
-                                            onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAddress || ""))}
-                                            disabled={!cryptoDeposit.payAddress}
-                                        >
-                                            Copiar dirección
-                                        </button>
-                                        <button
-                                            className="btn-ghost"
-                                            style={{ width: "auto", padding: "8px 14px" }}
-                                            onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAmount != null ? cryptoDeposit.payAmount : ""))}
-                                            disabled={cryptoDeposit.payAmount == null}
-                                        >
-                                            Copiar monto
-                                        </button>
-                                        <button
-                                            className="btn-ghost"
-                                            style={{ width: "auto", padding: "8px 14px" }}
-                                            onClick={async () => {
-                                                const r = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
-                                                if (r.ok) {
-                                                    setCryptoDeposit(r.data?.deposit || null);
-                                                    if (r.data?.deposit?.creditedAt) {
-                                                        setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
-                                                        void loadWallet();
-                                                    }
-                                                }
-                                            }}
-                                        >
-                                            Actualizar estado
-                                        </button>
-                                    </div>
-                                    <div className="wallet-small">
-                                        Envía solo USDT por la red BNB Smart Chain (BEP20). Si envías por otra red, el pago puede perderse.
-                                    </div>
-                                </div>
-                            </div>
                                 ) : null}
                             </>
                         ) : (
@@ -325,7 +369,7 @@ export default function Wallet() {
                         )}
                     </section>
 
-                    <TransactionsList fetchFn={(q) => apiGetTransactions(q)} />
+                    <TransactionsList fetchFn={(query) => apiGetTransactions(query)} />
                 </main>
             </div>
         </div>

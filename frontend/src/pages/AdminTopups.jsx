@@ -52,6 +52,7 @@ export default function AdminTopups() {
     const [configMessage, setConfigMessage] = useState("");
     const [configError, setConfigError] = useState("");
     const [methods, setMethods] = useState([]);
+    const [previewItem, setPreviewItem] = useState(null);
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -153,6 +154,15 @@ export default function AdminTopups() {
         }
     }
 
+    const submittedCount = items.filter((item) => String(item.status || "").toLowerCase() === "submitted").length;
+    const reviewingCount = items.filter((item) => String(item.status || "").toLowerCase() === "reviewing").length;
+    const approvedCount = items.filter((item) => String(item.status || "").toLowerCase() === "approved").length;
+    const rejectedCount = items.filter((item) => String(item.status || "").toLowerCase() === "rejected").length;
+
+    function proofIsPdf(url) {
+        return String(url || "").toLowerCase().includes(".pdf");
+    }
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden>
@@ -182,6 +192,65 @@ export default function AdminTopups() {
                             Define los medios de pago por moneda y revisa los comprobantes cargados por los usuarios.
                         </p>
                     </div>
+
+                    {submittedCount > 0 ? (
+                        <section
+                            style={{
+                                border: "1px solid rgba(245,158,11,.35)",
+                                borderRadius: 18,
+                                background: "linear-gradient(135deg, rgba(245,158,11,.14), rgba(245,158,11,.05))",
+                                boxShadow: "0 0 24px rgba(245,158,11,.08)",
+                                padding: 16,
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: 16,
+                                marginBottom: 16,
+                            }}
+                        >
+                            <div>
+                                <div style={{ fontSize: 18, fontWeight: 900, color: "#fbbf24", marginBottom: 4 }}>
+                                    Tienes {submittedCount} recarga{submittedCount === 1 ? "" : "s"} nueva{submittedCount === 1 ? "" : "s"} por revisar
+                                </div>
+                                <div style={{ color: "var(--muted)" }}>
+                                    Abre el comprobante y valida el soporte antes de aprobar la recarga.
+                                </div>
+                            </div>
+                            <button className="btn" style={{ width: "auto" }} onClick={() => setStatus("submitted")}>
+                                Ver pendientes
+                            </button>
+                        </section>
+                    ) : null}
+
+                    <section
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                            gap: 12,
+                            marginBottom: 18,
+                        }}
+                    >
+                        {[
+                            { label: "Nuevas", value: submittedCount, color: "#f59e0b" },
+                            { label: "Revisando", value: reviewingCount, color: "#0ea5e9" },
+                            { label: "Aprobadas", value: approvedCount, color: "#10b981" },
+                            { label: "Rechazadas", value: rejectedCount, color: "#ef4444" },
+                        ].map((card) => (
+                            <div
+                                key={card.label}
+                                style={{
+                                    border: `1px solid ${card.color}33`,
+                                    borderRadius: 18,
+                                    background: "linear-gradient(180deg, var(--card), var(--card2))",
+                                    boxShadow: "var(--shadow)",
+                                    padding: 16,
+                                }}
+                            >
+                                <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 8 }}>{card.label}</div>
+                                <div style={{ fontSize: 28, fontWeight: 900, color: card.color }}>{card.value}</div>
+                            </div>
+                        ))}
+                    </section>
 
                     <section style={{ border: "1px solid var(--stroke)", borderRadius: 18, background: "linear-gradient(180deg, var(--card), var(--card2))", boxShadow: "var(--shadow)", padding: 16, display: "grid", gap: 14, marginBottom: 18 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
@@ -294,8 +363,22 @@ export default function AdminTopups() {
                             {items.map((item) => {
                                 const meta = STATUS_META[String(item.status || "").toLowerCase()] || { label: item.status, color: "#94a3b8" };
                                 const closed = item.status === "approved" || item.status === "rejected";
+                                const isSubmitted = String(item.status || "").toLowerCase() === "submitted";
                                 return (
-                                    <section key={item.id} style={{ border: "1px solid var(--stroke)", borderRadius: 18, background: "linear-gradient(180deg, var(--card), var(--card2))", boxShadow: "var(--shadow)", padding: 16, display: "grid", gap: 14 }}>
+                                    <section
+                                        key={item.id}
+                                        style={{
+                                            border: isSubmitted ? "1px solid rgba(245,158,11,.45)" : "1px solid var(--stroke)",
+                                            borderRadius: 18,
+                                            background: isSubmitted
+                                                ? "linear-gradient(180deg, rgba(245,158,11,.08), var(--card2))"
+                                                : "linear-gradient(180deg, var(--card), var(--card2))",
+                                            boxShadow: isSubmitted ? "0 0 22px rgba(245,158,11,.08)" : "var(--shadow)",
+                                            padding: 16,
+                                            display: "grid",
+                                            gap: 14,
+                                        }}
+                                    >
                                         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}>
                                             <div>
                                                 <div style={{ fontSize: 18, fontWeight: 900 }}>{item.requestCode}</div>
@@ -303,12 +386,19 @@ export default function AdminTopups() {
                                                     {item.userName || item.userEmail} · {item.userEmail}
                                                 </div>
                                             </div>
-                                            <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 12px", border: `1px solid ${meta.color}55`, background: `${meta.color}18`, color: meta.color, fontWeight: 800, fontSize: 12 }}>
-                                                {meta.label}
-                                            </span>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                                {isSubmitted ? (
+                                                    <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 12px", border: "1px solid rgba(245,158,11,.35)", background: "rgba(245,158,11,.12)", color: "#fbbf24", fontWeight: 900, fontSize: 12 }}>
+                                                        Nueva
+                                                    </span>
+                                                ) : null}
+                                                <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 12px", border: `1px solid ${meta.color}55`, background: `${meta.color}18`, color: meta.color, fontWeight: 800, fontSize: 12 }}>
+                                                    {meta.label}
+                                                </span>
+                                            </div>
                                         </div>
 
-                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, alignItems: "end" }}>
                                             <div>
                                                 <div style={{ fontSize: 12, color: "var(--muted)" }}>Monto</div>
                                                 <div style={{ fontWeight: 800 }}>{Number(item.amount || 0).toLocaleString("es-CO")} {item.currency || "COP"}</div>
@@ -322,8 +412,10 @@ export default function AdminTopups() {
                                                 <div style={{ fontWeight: 700 }}>{new Date(item.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</div>
                                             </div>
                                             <div>
-                                                <div style={{ fontSize: 12, color: "var(--muted)" }}>Comprobante</div>
-                                                <a className="wallet-link" href={item.proofFileUrl} target="_blank" rel="noreferrer">Abrir archivo</a>
+                                                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Comprobante</div>
+                                                <button className="btn" style={{ width: "auto" }} onClick={() => setPreviewItem(item)}>
+                                                    Ver comprobante
+                                                </button>
                                             </div>
                                         </div>
 
@@ -366,6 +458,83 @@ export default function AdminTopups() {
                     )}
                 </main>
             </div>
+
+            {previewItem ? (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    onClick={() => setPreviewItem(null)}
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(2,6,23,.72)",
+                        backdropFilter: "blur(6px)",
+                        display: "grid",
+                        placeItems: "center",
+                        zIndex: 1200,
+                        padding: 24,
+                    }}
+                >
+                    <div
+                        onClick={(event) => event.stopPropagation()}
+                        style={{
+                            width: "min(1100px, 96vw)",
+                            maxHeight: "90vh",
+                            overflow: "auto",
+                            borderRadius: 22,
+                            border: "1px solid var(--stroke)",
+                            background: "linear-gradient(180deg, var(--card), var(--card2))",
+                            boxShadow: "0 24px 80px rgba(0,0,0,.45)",
+                            padding: 18,
+                            display: "grid",
+                            gap: 16,
+                        }}
+                    >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                            <div>
+                                <div style={{ fontSize: 20, fontWeight: 900 }}>Comprobante de {previewItem.requestCode}</div>
+                                <div style={{ color: "var(--muted)", marginTop: 4 }}>
+                                    {previewItem.userName || previewItem.userEmail} · {Number(previewItem.amount || 0).toLocaleString("es-CO")} {previewItem.currency || "COP"}
+                                </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                <a className="btn-ghost" style={{ width: "auto" }} href={previewItem.proofFileUrl} target="_blank" rel="noreferrer">
+                                    Abrir aparte
+                                </a>
+                                <button className="btn-ghost" style={{ width: "auto" }} onClick={() => setPreviewItem(null)}>
+                                    Cerrar
+                                </button>
+                            </div>
+                        </div>
+
+                        <div
+                            style={{
+                                borderRadius: 18,
+                                border: "1px solid var(--stroke)",
+                                background: "rgba(15,23,42,.45)",
+                                minHeight: "60vh",
+                                overflow: "hidden",
+                                display: "grid",
+                                placeItems: "center",
+                            }}
+                        >
+                            {proofIsPdf(previewItem.proofFileUrl) ? (
+                                <iframe
+                                    title={`Comprobante ${previewItem.requestCode}`}
+                                    src={previewItem.proofFileUrl}
+                                    style={{ width: "100%", height: "70vh", border: 0, background: "#fff" }}
+                                />
+                            ) : (
+                                <img
+                                    alt={`Comprobante ${previewItem.requestCode}`}
+                                    src={previewItem.proofFileUrl}
+                                    style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }}
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }

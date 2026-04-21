@@ -12,11 +12,14 @@ const API_BASE = getApiBase();
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 const MotionButton = motion.button;
 const MotionSpan = motion.span;
+const APK_RELEASE_ID = typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "dev";
+const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 
-// Nav items del sidebar
 const NAV_ITEMS = [
     { key: "home", label: "Inicio", icon: "🏠", path: "/dashboard" },
+    { key: "wallet", label: "Recargar saldo", icon: "💳", path: "/wallet" },
     { key: "orders", label: "Historial de Compras", icon: "🧾", path: "/orders" },
+    { key: "renewals", label: "Renovaciones", icon: "🔄", path: "/renewals" },
     { key: "analytics", label: "Mis Estadísticas", icon: "📊", path: "/analytics" },
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
@@ -24,19 +27,38 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({
-    user, wallet, cartCount,
-    onOpenCart, onGoOrders, onGoAnalytics, onGoAdmin,
-    onGoCodes, onGoExpirations, onGoHome, onLogout,
+    user,
+    wallet,
+    cartCount,
+    onOpenCart,
+    onGoWallet,
+    onGoOrders,
+    onGoRenewals,
+    onGoAnalytics,
+    onGoAdmin,
+    onGoCodes,
+    onGoExpirations,
+    onGoHome,
+    onLogout,
 }) {
     const [collapsed, setCollapsed] = useState(isMobile());
     const [expirationsCount, setExpirationsCount] = useState(0);
+    const [apkDownloadedRelease, setApkDownloadedRelease] = useState("");
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
     const activePath = window.location.pathname;
 
-    const APK_URL = "/downloads/streaming-box-android.apk";
+    const APK_URL = `/downloads/streaming-box-android.apk?v=${encodeURIComponent(APK_RELEASE_ID)}`;
     const showApkButton = !isNativeAndroidApp();
+    const hasNewApkRelease = showApkButton && apkDownloadedRelease !== APK_RELEASE_ID;
 
     function downloadApk() {
+        try {
+            window.localStorage.setItem(APK_ACK_STORAGE_KEY, APK_RELEASE_ID);
+            setApkDownloadedRelease(APK_RELEASE_ID);
+        } catch {
+            // ignore storage failures
+        }
+
         try {
             const a = document.createElement("a");
             a.href = APK_URL;
@@ -49,7 +71,6 @@ export default function Sidebar({
         }
     }
 
-    // React automatically to window resizes (desktop <-> mobile switch)
     useEffect(() => {
         const handleResize = () => {
             setCollapsed(typeof window !== "undefined" && window.innerWidth <= 900);
@@ -58,10 +79,17 @@ export default function Sidebar({
         return () => window.removeEventListener("resize", handleResize);
     }, []);
 
-    // Poll expirations count every 3 minutes
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            setApkDownloadedRelease(window.localStorage.getItem(APK_ACK_STORAGE_KEY) || "");
+        } catch {
+            setApkDownloadedRelease("");
+        }
+    }, []);
+
     useEffect(() => {
         async function fetchExpirations() {
-            // Hide badge while on the expirations page
             if (activePath === "/expirations") {
                 setExpirationsCount(0);
                 return;
@@ -72,9 +100,12 @@ export default function Sidebar({
                     const data = await res.json();
                     setExpirationsCount(Number(data.count) || 0);
                 }
-            } catch { /* silently ignore */ }
+            } catch {
+                // Ignore badge fetch failures.
+            }
         }
-        fetchExpirations();
+
+        void fetchExpirations();
         const timer = setInterval(fetchExpirations, 180000);
         return () => clearInterval(timer);
     }, [activePath]);
@@ -86,7 +117,9 @@ export default function Sidebar({
 
     const actionMap = {
         home: onGoHome,
+        wallet: onGoWallet,
         orders: onGoOrders,
+        renewals: onGoRenewals,
         analytics: onGoAnalytics,
         expirations: onGoExpirations,
         codes: onGoCodes,
@@ -101,7 +134,7 @@ export default function Sidebar({
 
             <button
                 className="sidebar-toggle-btn"
-                onClick={() => setCollapsed(v => !v)}
+                onClick={() => setCollapsed((v) => !v)}
                 title={collapsed ? "Abrir menú" : "Cerrar menú"}
             >
                 {collapsed ? "☰" : "✕"}
@@ -115,20 +148,30 @@ export default function Sidebar({
                     title={`Carrito (${cartCount})`}
                 >
                     🛒
-                    <span style={{
-                        fontSize: 10, position: "absolute", top: 4, right: 4,
-                        background: "#EF4444", borderRadius: "50%",
-                        width: 16, height: 16, display: "flex",
-                        alignItems: "center", justifyContent: "center",
-                        color: "#fff", fontWeight: 900
-                    }}>{cartCount}</span>
+                    <span
+                        style={{
+                            fontSize: 10,
+                            position: "absolute",
+                            top: 4,
+                            right: 4,
+                            background: "#EF4444",
+                            borderRadius: "50%",
+                            width: 16,
+                            height: 16,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            color: "#fff",
+                            fontWeight: 900,
+                        }}
+                    >
+                        {cartCount}
+                    </span>
                 </button>
             )}
 
             <aside className={`sidebar sb-new${collapsed ? " sidebar--collapsed" : ""}`}>
-                {/* Header: Logo + Info */}
                 <div className="sb-header">
-                    {/* Logo circular */}
                     <div className="sb-avatar">
                         <StreamingBoxLogo size={46} showText={false} onDark={true} />
                     </div>
@@ -154,7 +197,6 @@ export default function Sidebar({
 
                 {!collapsed && (
                     <>
-                        {/* Saldo Disponible */}
                         {wallet && (
                             <div className="sb-balance-card">
                                 <div className="sb-balance-label">SALDO DISPONIBLE</div>
@@ -165,40 +207,61 @@ export default function Sidebar({
                                     </span>
                                 </div>
 
-                                {/* Divisor */}
                                 <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "10px 0 8px" }} />
 
-                                {/* Ganancias totales */}
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                                    <span style={{
-                                        width: 22, height: 22, borderRadius: "50%",
-                                        background: "rgba(16,185,129,0.18)",
-                                        border: "1px solid rgba(16,185,129,0.35)",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        fontSize: 11, flexShrink: 0,
-                                    }}>📈</span>
+                                    <span
+                                        style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: "50%",
+                                            background: "rgba(16,185,129,0.18)",
+                                            border: "1px solid rgba(16,185,129,0.35)",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontSize: 11,
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        📈
+                                    </span>
                                     <span className="sb-profit-label" style={{ flex: 1, fontSize: 12 }}>Ganancias totales</span>
                                     <span className="sb-profit-value" style={{ fontSize: 13, fontWeight: 800, color: "#10b981" }}>
                                         +{Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
                                     </span>
                                 </div>
 
-                                {/* Divisor sutil */}
                                 <div style={{ height: 1, background: "rgba(255,255,255,0.04)", margin: "4px 0" }} />
 
-                                {/* Inversión total — estilo Stitch: borde teal izquierdo */}
-                                <div style={{
-                                    display: "flex", alignItems: "center", gap: 8,
-                                    borderLeft: "2.5px solid #13c8ec",
-                                    paddingLeft: 8, marginTop: 4,
-                                }}>
-                                    <span style={{
-                                        width: 22, height: 22, borderRadius: "50%",
-                                        background: "rgba(19,200,236,0.15)",
-                                        border: "1px solid rgba(19,200,236,0.4)",
-                                        display: "flex", alignItems: "center", justifyContent: "center",
-                                        fontSize: 11, fontWeight: 900, color: "#13c8ec", flexShrink: 0,
-                                    }}>$</span>
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        borderLeft: "2.5px solid #13c8ec",
+                                        paddingLeft: 8,
+                                        marginTop: 4,
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: "50%",
+                                            background: "rgba(19,200,236,0.15)",
+                                            border: "1px solid rgba(19,200,236,0.4)",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            justifyContent: "center",
+                                            fontSize: 11,
+                                            fontWeight: 900,
+                                            color: "#13c8ec",
+                                            flexShrink: 0,
+                                        }}
+                                    >
+                                        $
+                                    </span>
                                     <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>Inversión total</span>
                                     <span style={{ fontSize: 13, fontWeight: 800, color: "#13c8ec" }}>
                                         {Number(wallet?.total_invested || 0).toLocaleString("es-CO")}
@@ -207,7 +270,6 @@ export default function Sidebar({
                             </div>
                         )}
 
-                        {/* Botón Carrito — prominente */}
                         <MotionButton
                             className="sb-cart-btn"
                             onClick={() => nav(onOpenCart)}
@@ -235,10 +297,8 @@ export default function Sidebar({
                             </AnimatePresence>
                         </MotionButton>
 
-                        {/* Divisor */}
                         <div className="sb-divider" />
 
-                        {/* Nav Items */}
                         <nav className="sb-nav">
                             {NAV_ITEMS.map((item) => {
                                 const isActive = activePath === item.path;
@@ -261,31 +321,29 @@ export default function Sidebar({
                                             minWidthRatio={0.74}
                                         />
 
-                                        {/* Badge para vencimientos del usuario */}
                                         {item.key === "expirations" && expirationsCount > 0 && !collapsed && (
-                                            <span style={{
-                                                background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
-                                                color: "#fff",
-                                                borderRadius: 99,
-                                                fontSize: 10,
-                                                fontWeight: 800,
-                                                padding: "2px 7px",
-                                                marginLeft: "auto",
-                                                minWidth: 20,
-                                                textAlign: "center",
-                                                lineHeight: "16px",
-                                                boxShadow: "0 0 12px rgba(239,68,68,0.3)",
-                                                animation: "pulse 1.8s infinite"
-                                            }}>
+                                            <span
+                                                style={{
+                                                    background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
+                                                    color: "#fff",
+                                                    borderRadius: 99,
+                                                    fontSize: 10,
+                                                    fontWeight: 800,
+                                                    padding: "2px 7px",
+                                                    marginLeft: "auto",
+                                                    minWidth: 20,
+                                                    textAlign: "center",
+                                                    lineHeight: "16px",
+                                                    boxShadow: "0 0 12px rgba(239,68,68,0.3)",
+                                                    animation: "pulse 1.8s infinite",
+                                                }}
+                                            >
                                                 {expirationsCount}
                                             </span>
                                         )}
 
                                         {isActive && (
-                                            <MotionSpan
-                                                className="sb-nav-active-dot"
-                                                layoutId="activeNavDot"
-                                            />
+                                            <MotionSpan className="sb-nav-active-dot" layoutId="activeNavDot" />
                                         )}
                                     </MotionButton>
                                 );
@@ -322,10 +380,26 @@ export default function Sidebar({
                                     <BalancedText
                                         as="span"
                                         className="sb-nav-label sb-nav-label--balanced"
-                                        text="Descargar app (APK)"
+                                        text={hasNewApkRelease ? "Descargar app (APK) - Nueva actualización" : "Descargar app (APK)"}
                                         maxLines={2}
                                         minWidthRatio={0.74}
                                     />
+                                    {hasNewApkRelease && (
+                                        <span
+                                            style={{
+                                                marginLeft: "auto",
+                                                fontSize: 10,
+                                                fontWeight: 800,
+                                                color: "#fff",
+                                                background: "linear-gradient(135deg, #22c55e 0%, #16a34a 100%)",
+                                                borderRadius: 999,
+                                                padding: "3px 8px",
+                                                boxShadow: "0 0 12px rgba(34,197,94,0.28)",
+                                            }}
+                                        >
+                                            Nueva
+                                        </span>
+                                    )}
                                 </MotionButton>
                             )}
 
@@ -352,7 +426,6 @@ export default function Sidebar({
                             )}
                         </nav>
 
-                        {/* Divisor + Cerrar sesión al fondo */}
                         <div className="sb-divider" />
 
                         <MotionButton
@@ -364,7 +437,6 @@ export default function Sidebar({
                             <span>↩</span> Cerrar sesión
                         </MotionButton>
 
-                        {/* Status online */}
                         <div className="sb-status">
                             <span className="sb-status-dot" />
                             <span>Server Status: Online</span>

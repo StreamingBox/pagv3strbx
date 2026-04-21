@@ -155,11 +155,6 @@ export default function AdminCodeLogs() {
             setLoading(true);
             try {
                 const r = await apiGet("/admin/code-logs");
-                if (r.status === 401) {
-                    try { localStorage.removeItem("user"); localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken"); } catch { }
-                    navigate("/");
-                    return;
-                }
                 if (!mounted) return;
                 if (r.ok && r.data?.ok) setLogs(r.data.logs || []);
                 else setLogs([]);
@@ -173,7 +168,7 @@ export default function AdminCodeLogs() {
 
         load();
         return () => { mounted = false; };
-    }, [navigate]);
+    }, []);
 
     const platforms = useMemo(() => {
         const set = new Set();

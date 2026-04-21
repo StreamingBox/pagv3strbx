@@ -5,7 +5,7 @@ import "../styles/dashboard.css";
 import "../styles/wallet.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { apiGet, apiGetTransactions } from "../api/api";
+import { apiGet, apiGetTransactions, apiPost } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import TransactionsList from "../components/wallet/TransactionsList.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -16,20 +16,68 @@ export default function Wallet() {
     const logout = useAppLogout();
 
     const [wallet, setWallet] = useState(null);
+    const [cryptoAmount, setCryptoAmount] = useState("");
+    const [cryptoLoading, setCryptoLoading] = useState(false);
+    const [cryptoError, setCryptoError] = useState("");
+    const [cryptoDeposit, setCryptoDeposit] = useState(null);
+    const [cryptoSuccess, setCryptoSuccess] = useState("");
 
     async function loadWallet() {
         const r = await apiGet("/wallet");
         if (r.ok) setWallet(r.data);
     }
 
+    async function loadLatestDeposit() {
+        const r = await apiGet("/payments/nowpayments/latest");
+        if (r.ok) setCryptoDeposit(r.data?.deposit || null);
+    }
+
     useEffect(() => {
         const timer = window.setTimeout(() => {
             void loadWallet();
+            void loadLatestDeposit();
         }, 0);
         return () => window.clearTimeout(timer);
     }, []);
 
+    useEffect(() => {
+        if (!cryptoDeposit?.id) return undefined;
+        if (String(cryptoDeposit.paymentStatus || "").toLowerCase() === "finished" && cryptoDeposit.creditedAt) {
+            return undefined;
+        }
+
+        const timer = window.setInterval(async () => {
+            const r = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
+            if (!r.ok) return;
+            const nextDeposit = r.data?.deposit || null;
+            setCryptoDeposit(nextDeposit);
+            if (nextDeposit?.creditedAt) {
+                setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
+                void loadWallet();
+            }
+        }, 15000);
+
+        return () => window.clearInterval(timer);
+    }, [cryptoDeposit?.creditedAt, cryptoDeposit?.id, cryptoDeposit?.paymentStatus]);
+
+    async function createCryptoDeposit() {
+        setCryptoError("");
+        setCryptoSuccess("");
+        setCryptoLoading(true);
+        try {
+            const amount = Number(String(cryptoAmount || "").replace(/[^\d.]/g, ""));
+            const res = await apiPost("/payments/nowpayments/create", { amount });
+            if (!res.ok) throw new Error(res.data?.message || "No se pudo crear la recarga.");
+            setCryptoDeposit(res.data?.deposit || null);
+        } catch (e) {
+            setCryptoError(e?.message || "No se pudo crear la recarga.");
+        } finally {
+            setCryptoLoading(false);
+        }
+    }
+
     const currency = String(wallet?.currency || "").toUpperCase();
+    const canUseCryptoTopup = currency === "USD";
 
     return (
         <div className="page-shell">
@@ -46,6 +94,7 @@ export default function Wallet() {
                     cartCount={0}
                     onOpenCart={() => {}}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
@@ -173,6 +222,107 @@ export default function Wallet() {
                                 {wallet?.currency || "COP"}
                             </div>
                         </div>
+                    </section>
+
+                    <section className="wallet-card" style={{ marginBottom: 14 }}>
+                        <div className="wallet-card__title">Recargar saldo</div>
+
+                        {canUseCryptoTopup ? (
+                            <>
+                                <div className="wallet-row" style={{ marginTop: 14 }}>
+                            <label className="wallet-label">
+                                <span>Monto ({wallet?.currency || "USD"})</span>
+                                <input
+                                    className="wallet-input"
+                                    inputMode="numeric"
+                                    placeholder="Ej: 25"
+                                    value={cryptoAmount}
+                                    onChange={(e) => setCryptoAmount(e.target.value)}
+                                />
+                            </label>
+
+                            <button className="btn" style={{ width: "auto", padding: "10px 18px" }} onClick={createCryptoDeposit} disabled={cryptoLoading}>
+                                {cryptoLoading ? "Creando..." : "Generar pago"}
+                            </button>
+                                </div>
+
+                                {cryptoError ? <div className="error" style={{ marginTop: 12 }}>{cryptoError}</div> : null}
+                                {cryptoSuccess ? <div className="wallet-success">{cryptoSuccess}</div> : null}
+
+                                {cryptoDeposit ? (
+                            <div className="wallet-paybox">
+                                <div className="wallet-qr">
+                                    <div className="wallet-qr__title">Datos del pago</div>
+                                    <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
+                                        <div><b>Estado:</b> {cryptoDeposit.paymentStatus}</div>
+                                        <div><b>Monto en wallet:</b> {Number(cryptoDeposit.amount || 0).toLocaleString("es-CO")} {cryptoDeposit.currency || "USD"}</div>
+                                        <div><b>Debes enviar:</b> {cryptoDeposit.payAmount != null ? Number(cryptoDeposit.payAmount).toFixed(6) : "-"} {String(cryptoDeposit.payCurrency || "").toUpperCase()}</div>
+                                        <div><b>Red:</b> BNB Smart Chain (BEP20)</div>
+                                        {cryptoDeposit.payinExtraId ? <div><b>Memo / extra:</b> {cryptoDeposit.payinExtraId}</div> : null}
+                                    </div>
+                                </div>
+
+                                <div className="wallet-links">
+                                    <div className="wallet-links__title">Dirección de depósito</div>
+                                    <div
+                                        style={{
+                                            padding: 12,
+                                            borderRadius: 12,
+                                            background: "var(--input-bg)",
+                                            border: "1px solid var(--stroke)",
+                                            wordBreak: "break-all",
+                                            fontSize: 13,
+                                            marginBottom: 10,
+                                        }}
+                                    >
+                                        {cryptoDeposit.payAddress || "Esperando dirección..."}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ width: "auto", padding: "8px 14px" }}
+                                            onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAddress || ""))}
+                                            disabled={!cryptoDeposit.payAddress}
+                                        >
+                                            Copiar dirección
+                                        </button>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ width: "auto", padding: "8px 14px" }}
+                                            onClick={() => navigator.clipboard.writeText(String(cryptoDeposit.payAmount != null ? cryptoDeposit.payAmount : ""))}
+                                            disabled={cryptoDeposit.payAmount == null}
+                                        >
+                                            Copiar monto
+                                        </button>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ width: "auto", padding: "8px 14px" }}
+                                            onClick={async () => {
+                                                const r = await apiGet(`/payments/nowpayments/${cryptoDeposit.id}`);
+                                                if (r.ok) {
+                                                    setCryptoDeposit(r.data?.deposit || null);
+                                                    if (r.data?.deposit?.creditedAt) {
+                                                        setCryptoSuccess("Pago confirmado. El saldo ya fue acreditado en tu wallet.");
+                                                        void loadWallet();
+                                                    }
+                                                }
+                                            }}
+                                        >
+                                            Actualizar estado
+                                        </button>
+                                    </div>
+                                    <div className="wallet-small">
+                                        Envía solo USDT por la red BNB Smart Chain (BEP20). Si envías por otra red, el pago puede perderse.
+                                    </div>
+                                </div>
+                            </div>
+                                ) : null}
+                            </>
+                        ) : (
+                            <div className="wallet-small" style={{ marginTop: 10 }}>
+                                Disponible solo para cuentas en USD.
+                            </div>
+                        )}
                     </section>
 
                     <TransactionsList fetchFn={(q) => apiGetTransactions(q)} />

@@ -3,33 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { apiFetch as baseApiFetch } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { loadXlsx } from "../utils/loadXlsx.js";
 
-import { getApiBase } from "../config/apiBase.js";
-
-const API_BASE = getApiBase();
-function buildUrl(path) {
-    const base = String(API_BASE).replace(/\/+$/, "");
-    if (base.endsWith("/api") && path.startsWith("/api/")) path = path.slice(4);
-    return `${base}${path}`;
-}
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(buildUrl(path), {
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-        localStorage.removeItem("user");
-        window.location.href = "/";
-        return null;
-    }
-    if (!res.ok) throw new Error(data?.message || "Error en la solicitud");
-    return data;
+    const res = await baseApiFetch(path, opts);
+    if (!res.ok) throw new Error(res.data?.message || "Error en la solicitud");
+    return res.data;
 }
 
 const LOGO_URL = "/api/branding/logo"; // or matching your global sidebar logo logic

@@ -2,13 +2,10 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api";
+import { apiFetch as baseApiFetch, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
-import { getApiBase } from "../config/apiBase.js";
-
-const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 
 // Mirrors backend toCodeSlug logic: verifica si una plataforma tiene soporte de código
@@ -27,14 +24,7 @@ function isSupportedPlatform(slug = "", name = "") {
 }
 
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(`${API_BASE}${path}`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) { localStorage.removeItem("user"); window.location.href = "/"; return null; }
-    return { ok: res.ok, data, status: res.status };
+    return baseApiFetch(path, opts);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

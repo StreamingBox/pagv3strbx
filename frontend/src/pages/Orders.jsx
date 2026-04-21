@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
-import { apiGet } from "../api/api";
+import { apiGet, apiPost } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -27,6 +27,12 @@ export default function Orders() {
         q: "",
     });
     const filtersRef = useRef(filters);
+    const [renewModal, setRenewModal] = useState(null);
+    const [renewWallet, setRenewWallet] = useState(null);
+    const [renewLoadingWallet, setRenewLoadingWallet] = useState(false);
+    const [renewSubmitting, setRenewSubmitting] = useState(false);
+    const [renewError, setRenewError] = useState("");
+    const [renewSuccess, setRenewSuccess] = useState("");
 
     function formatBogota(dt) {
         if (!dt) return "-";
@@ -120,6 +126,42 @@ export default function Orders() {
     const canPrev = page > 1;
     const canNext = page * limit < total;
 
+    async function openRenewModal(item) {
+        setRenewModal(item);
+        setRenewWallet(null);
+        setRenewLoadingWallet(true);
+        setRenewError("");
+        setRenewSuccess("");
+        try {
+            const res = await apiGet("/wallet");
+            if (!res.ok) throw new Error(res.data?.message || "No se pudo cargar tu saldo.");
+            setRenewWallet(res.data);
+        } catch (e) {
+            setRenewError(e?.message || "No se pudo cargar tu saldo.");
+        } finally {
+            setRenewLoadingWallet(false);
+        }
+    }
+
+    async function confirmRenew() {
+        if (!renewModal?.subscription_id) return;
+        setRenewSubmitting(true);
+        setRenewError("");
+        setRenewSuccess("");
+        try {
+            const res = await apiPost(`/orders/${renewModal.subscription_id}/renew`, {});
+            if (!res.ok) throw new Error(res.data?.message || "No se pudo renovar la suscripción.");
+            setRenewSuccess(res.data?.message || "Renovación completada.");
+            const walletRes = await apiGet("/wallet");
+            if (walletRes.ok) setRenewWallet(walletRes.data);
+            await loadOrders(page);
+        } catch (e) {
+            setRenewError(e?.message || "No se pudo renovar la suscripción.");
+        } finally {
+            setRenewSubmitting(false);
+        }
+    }
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden>
@@ -135,6 +177,7 @@ export default function Orders() {
                     cartCount={0}
                     onOpenCart={() => {}}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
@@ -306,6 +349,38 @@ export default function Orders() {
                                                 </div>
                                             ) : null}
 
+                                            {it.renewal?.is_renewable ? (
+                                                <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                                    <button
+                                                        className="btn"
+                                                        disabled={!it.renewal?.can_renew_now}
+                                                        onClick={() => openRenewModal(it)}
+                                                        style={{
+                                                            width: "auto",
+                                                            padding: "8px 14px",
+                                                            fontSize: 12,
+                                                            opacity: it.renewal?.can_renew_now ? 1 : 0.5,
+                                                            cursor: it.renewal?.can_renew_now ? "pointer" : "not-allowed",
+                                                        }}
+                                                        title={it.renewal?.can_renew_now ? "Renovar ahora" : (it.renewal?.block_reason || "No disponible")}
+                                                    >
+                                                        Renovar
+                                                    </button>
+                                                    <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                                                        Valor: {Number(it.renewal?.renewal_price || 0).toLocaleString("es-CO")} {it.renewal?.currency || o.currency}
+                                                    </span>
+                                                    {!it.renewal?.can_renew_now ? (
+                                                        <span style={{ fontSize: 12, color: "#f59e0b" }}>
+                                                            {it.renewal?.block_reason}
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: 12, color: "#10b981" }}>
+                                                            Renovable hasta el {it.renewal?.eligible_until_date}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : null}
+
                                             {it.account ? (
                                                 <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.35 }}>
                                                     <div>
@@ -351,6 +426,115 @@ export default function Orders() {
                     </div>
                 </main>
             </div>
+
+            {renewModal ? (
+                <div
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,0.65)",
+                        zIndex: 9999,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 20,
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !renewSubmitting) {
+                            setRenewModal(null);
+                        }
+                    }}
+                >
+                    <div
+                        className="kpi"
+                        style={{
+                            width: "100%",
+                            maxWidth: 520,
+                            maxHeight: "90vh",
+                            overflowY: "auto",
+                            background: "var(--card)",
+                        }}
+                    >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                            <div>
+                                <div style={{ fontSize: 20, fontWeight: 900 }}>Renovar suscripción</div>
+                                <div style={{ color: "var(--muted)", marginTop: 4 }}>
+                                    {renewModal.platform_name} · Sub #{renewModal.subscription_id}
+                                </div>
+                            </div>
+                            <button
+                                className="btn-ghost"
+                                disabled={renewSubmitting}
+                                onClick={() => setRenewModal(null)}
+                                style={{ width: "auto", padding: "6px 12px" }}
+                            >
+                                Cerrar
+                            </button>
+                        </div>
+
+                        <div style={{ display: "grid", gap: 10, marginTop: 16 }}>
+                            <div>
+                                <div className="label">Expira</div>
+                                <div>{formatBogota(renewModal.subscription_expires_at)}</div>
+                            </div>
+                            <div>
+                                <div className="label">Límite para renovar</div>
+                                <div>{renewModal.renewal?.eligible_until_date} 23:59 Colombia</div>
+                            </div>
+                            <div>
+                                <div className="label">Valor de la renovación</div>
+                                <div>
+                                    {Number(renewModal.renewal?.renewal_price || 0).toLocaleString("es-CO")} {renewModal.renewal?.currency || "COP"}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="label">Saldo disponible</div>
+                                <div>
+                                    {renewLoadingWallet
+                                        ? "Cargando saldo..."
+                                        : renewWallet
+                                            ? `${Number(renewWallet.balance || 0).toLocaleString("es-CO")} ${renewWallet.currency || "COP"}`
+                                            : "No disponible"}
+                                </div>
+                            </div>
+                        </div>
+
+                        {renewError ? (
+                            <div className="error" style={{ marginTop: 14 }}>{renewError}</div>
+                        ) : null}
+
+                        {renewSuccess ? (
+                            <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)", color: "#10b981", fontWeight: 700 }}>
+                                {renewSuccess}
+                                {renewWallet ? (
+                                    <div style={{ marginTop: 6, color: "var(--text)", fontWeight: 500 }}>
+                                        Nuevo saldo: {Number(renewWallet.balance || 0).toLocaleString("es-CO")} {renewWallet.currency || "COP"}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+
+                        <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                            <button
+                                className="btn-ghost"
+                                disabled={renewSubmitting}
+                                onClick={() => setRenewModal(null)}
+                                style={{ width: "auto", padding: "8px 16px" }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                className="btn"
+                                disabled={renewSubmitting || !renewModal.renewal?.can_renew_now}
+                                onClick={confirmRenew}
+                                style={{ width: "auto", padding: "8px 16px" }}
+                            >
+                                {renewSubmitting ? "Renovando..." : "Confirmar renovación"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
         </div>
     );
 }

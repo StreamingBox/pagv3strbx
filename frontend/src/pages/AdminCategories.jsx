@@ -2,29 +2,15 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api.js";
+import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
-
-import { getApiBase } from "../config/apiBase.js";
-
-const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(`${API_BASE}${path}`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-        localStorage.removeItem("user");
-        window.location.href = "/";
-        return null;
-    }
-    if (!res.ok) throw new Error(data?.message || `HTTP ${res.status}`);
-    return data;
+    const res = await baseApiFetch(path, opts);
+    if (!res.ok) throw new Error(res.data?.message || `HTTP ${res.status}`);
+    return res.data;
 }
 
 function slugify(text) {

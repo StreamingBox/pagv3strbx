@@ -3,8 +3,9 @@ const requireAuth = require("../middleware/requireAuth");
 const pool = require("../db");
 
 const { checkoutService } = require("../services/checkoutService");
-const { getOrdersHistory } = require("../services/orderHistoryService");
+const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
 const { addToQueue } = require("../services/whatsappQueue");
+const { renewSubscription } = require("../services/renewal.service");
 
 const router = express.Router();
 
@@ -61,6 +62,27 @@ router.get("/orders", requireAuth, async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error cargando historial." });
+    }
+});
+
+router.get("/orders/renewals", requireAuth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { q, platformId, availability, page, limit } = req.query;
+
+        const data = await getRenewalsHistory({
+            userId,
+            q,
+            platformId,
+            availability,
+            page,
+            limit,
+        });
+
+        return res.json(data);
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ message: "Error cargando renovaciones." });
     }
 });
 
@@ -244,6 +266,41 @@ router.post("/orders/:id/remind-whatsapp", requireAuth, async (req, res) => {
     } catch (e) {
         console.error("Error en POST /orders/:id/remind-whatsapp:", e);
         return res.status(500).json({ message: "Error interno al enviar recordatorio: " + e.message });
+    }
+});
+
+router.post("/orders/:id/renew", requireAuth, async (req, res) => {
+    const subscriptionId = Number(req.params.id);
+
+    if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
+        return res.status(400).json({ message: "ID de suscripción inválido." });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+
+        const result = await renewSubscription({
+            conn,
+            subscriptionId,
+            actorUserId: req.user.id,
+            actorRole: req.user.role || "user",
+            deductWallet: true,
+            allowAccountChange: false,
+        });
+
+        await conn.commit();
+        return res.json({
+            ok: true,
+            message: `Se te descontó ${Number(result.deducted || 0).toLocaleString("es-CO")} ${result.currency || ""}`.trim(),
+            ...result,
+        });
+    } catch (err) {
+        await conn.rollback();
+        console.error("Error en POST /orders/:id/renew:", err);
+        return res.status(err?.status || 500).json({ message: err?.message || "Error interno al renovar." });
+    } finally {
+        conn.release();
     }
 });
 

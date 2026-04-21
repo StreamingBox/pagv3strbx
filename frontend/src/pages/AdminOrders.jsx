@@ -2,14 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api";
+import { apiFetch as baseApiFetch, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import { formatBogotaDate } from "../utils/datetime.js";
-
-import { getApiBase } from "../config/apiBase.js";
-
-const API_BASE = getApiBase();
 
 function qs(obj) {
     const sp = new URLSearchParams();
@@ -23,19 +19,9 @@ function qs(obj) {
 }
 
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(`${API_BASE}${path}`, {
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-        localStorage.removeItem("user");
-        window.location.href = "/";
-        return null;
-    }
-    if (!res.ok) throw new Error(data?.message || "Error en la solicitud");
-    return data;
+    const res = await baseApiFetch(path, opts);
+    if (!res.ok) throw new Error(res.data?.message || "Error en la solicitud");
+    return res.data;
 }
 
 const LOGO_URL = "/api/branding/logo";

@@ -175,7 +175,6 @@ export default function Codes() {
         try {
             const body = { orderNumber: orderNumber.trim() };
             const r = await apiPost(`/api/codes/${slug}/request`, body);
-            if (r.status === 401) { navigate("/"); return; }
             if (!r.ok) {
                 const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
                 setData({
@@ -221,6 +220,7 @@ export default function Codes() {
                     user={user} wallet={null} cartCount={0}
                     onOpenCart={() => { }}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}

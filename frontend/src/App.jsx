@@ -35,6 +35,7 @@ const AdminWhatsappTrace = lazy(() => import("./pages/AdminWhatsappTrace.jsx"));
 const AdminUploadLogs = lazy(() => import("./pages/AdminUploadLogs.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
+const Renewals = lazy(() => import("./pages/Renewals.jsx"));
 const Wallet = lazy(() => import("./pages/Wallet.jsx"));
 const UserAnalyticsPage = lazy(() => import("./pages/UserAnalyticsPage.jsx"));
 const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
@@ -105,6 +106,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin", "user"]}>
                             <Orders />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/renewals"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Renewals />
                         </ProtectedRoute>
                     }
                 />

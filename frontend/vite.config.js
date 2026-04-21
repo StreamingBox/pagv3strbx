@@ -13,9 +13,13 @@ function apiOnly(req) {
 }
 
 const backendTarget = 'http://localhost:3000';
+const appBuildId = `${process.env.npm_package_version || '0.0.0'}-${Date.now()}`;
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __APP_BUILD_ID__: JSON.stringify(appBuildId),
+  },
   plugins: [react()],
   server: {
     port: 5173,

@@ -3,31 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiLogout } from "../api/api";
+import { apiFetch as baseApiFetch, apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar";
-
-import { getApiBase } from "../config/apiBase.js";
-
-const API_BASE = getApiBase();
-function buildUrl(path) {
-    const base = String(API_BASE).replace(/\/+$/, "");
-    if (base.endsWith("/api") && path.startsWith("/api/")) path = path.slice(4);
-    return `${base}${path}`;
-}
 async function apiFetch(path, opts = {}) {
-    const res = await fetch(buildUrl(path), {
-        credentials: "include",
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-        localStorage.removeItem("user");
-        window.location.href = "/";
-        return null;
-    }
-    if (!res.ok) throw new Error(data?.message || "Error en la solicitud");
-    return data;
+    const res = await baseApiFetch(path, opts);
+    if (!res.ok) throw new Error(res.data?.message || "Error en la solicitud");
+    return res.data;
 }
 
 export default function UserExpirations() {
@@ -172,6 +153,7 @@ export default function UserExpirations() {
                     cartCount={0}
                     onOpenCart={() => { }}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}

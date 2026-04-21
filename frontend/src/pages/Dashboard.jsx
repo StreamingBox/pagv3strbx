@@ -240,6 +240,7 @@ export default function Dashboard() {
                     cartCount={cart.length}
                     onOpenCart={() => setCartOpen((v) => !v)}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}

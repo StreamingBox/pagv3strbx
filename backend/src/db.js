@@ -208,4 +208,115 @@ pool.query(`
     )
 `).catch(() => { });
 
+pool.query(`
+    CREATE TABLE IF NOT EXISTS subscription_renewal_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        subscription_id INT NOT NULL,
+        previous_order_id INT NULL,
+        previous_order_code VARCHAR(64) NULL,
+        renewal_order_id INT NOT NULL,
+        renewal_order_code VARCHAR(64) NOT NULL,
+        user_id INT NOT NULL,
+        actor_user_id INT NOT NULL,
+        actor_role VARCHAR(32) NOT NULL,
+        platform_id INT NULL,
+        platform_price_id INT NULL,
+        previous_account_id INT NULL,
+        new_account_id INT NULL,
+        previous_expires_at DATETIME NULL,
+        new_expires_at DATETIME NOT NULL,
+        amount_charged DECIMAL(12,2) NOT NULL DEFAULT 0,
+        currency VARCHAR(10) NOT NULL DEFAULT 'COP',
+        deduct_wallet TINYINT(1) NOT NULL DEFAULT 1,
+        wallet_id INT NULL,
+        balance_before DECIMAL(12,2) NULL,
+        balance_after DECIMAL(12,2) NULL,
+        note TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_renewal_logs_created (created_at),
+        INDEX idx_renewal_logs_subscription (subscription_id),
+        INDEX idx_renewal_logs_user (user_id),
+        INDEX idx_renewal_logs_actor (actor_user_id),
+        INDEX idx_renewal_logs_platform (platform_id),
+        INDEX idx_renewal_logs_order (renewal_order_id)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN previous_order_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN previous_order_code VARCHAR(64) NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN renewal_order_id INT NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN renewal_order_code VARCHAR(64) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN user_id INT NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN actor_user_id INT NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN actor_role VARCHAR(32) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN platform_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN platform_price_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN previous_account_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN new_account_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN previous_expires_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN new_expires_at DATETIME NOT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN amount_charged DECIMAL(12,2) NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN currency VARCHAR(10) NOT NULL DEFAULT 'COP'").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN deduct_wallet TINYINT(1) NOT NULL DEFAULT 1").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN wallet_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN balance_before DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN balance_after DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE subscription_renewal_logs ADD COLUMN note TEXT NULL").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_created ON subscription_renewal_logs(created_at)").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_subscription ON subscription_renewal_logs(subscription_id)").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_user ON subscription_renewal_logs(user_id)").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_actor ON subscription_renewal_logs(actor_user_id)").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_platform ON subscription_renewal_logs(platform_id)").catch(() => { });
+pool.query("CREATE INDEX idx_renewal_logs_order ON subscription_renewal_logs(renewal_order_id)").catch(() => { });
+
+pool.query(`
+    CREATE TABLE IF NOT EXISTS crypto_payment_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        provider VARCHAR(32) NOT NULL DEFAULT 'nowpayments',
+        provider_payment_id BIGINT NULL,
+        provider_invoice_id VARCHAR(64) NULL,
+        order_id VARCHAR(128) NULL,
+        payment_status VARCHAR(32) NOT NULL DEFAULT 'waiting',
+        price_amount DECIMAL(12,2) NOT NULL,
+        price_currency VARCHAR(16) NOT NULL DEFAULT 'COP',
+        pay_amount DECIMAL(24,8) NULL,
+        pay_currency VARCHAR(32) NOT NULL DEFAULT 'usdtbsc',
+        pay_address VARCHAR(255) NULL,
+        payin_extra_id VARCHAR(255) NULL,
+        provider_payload_json LONGTEXT NULL,
+        wallet_id INT NULL,
+        balance_before DECIMAL(12,2) NULL,
+        balance_after DECIMAL(12,2) NULL,
+        credited_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_crypto_payment_provider_payment (provider, provider_payment_id),
+        UNIQUE KEY uq_crypto_payment_order (provider, order_id),
+        INDEX idx_crypto_payment_user (user_id),
+        INDEX idx_crypto_payment_status (payment_status),
+        INDEX idx_crypto_payment_created (created_at)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_payment_id BIGINT NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_invoice_id VARCHAR(64) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN order_id VARCHAR(128) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN payment_status VARCHAR(32) NOT NULL DEFAULT 'waiting'").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN price_amount DECIMAL(12,2) NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN price_currency VARCHAR(16) NOT NULL DEFAULT 'COP'").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_amount DECIMAL(24,8) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_currency VARCHAR(32) NOT NULL DEFAULT 'usdtbsc'").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_address VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN payin_extra_id VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_payload_json LONGTEXT NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN wallet_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN balance_before DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN balance_after DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN credited_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_crypto_payment_provider_payment ON crypto_payment_requests(provider, provider_payment_id)").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_crypto_payment_order ON crypto_payment_requests(provider, order_id)").catch(() => { });
+pool.query("CREATE INDEX idx_crypto_payment_user ON crypto_payment_requests(user_id)").catch(() => { });
+pool.query("CREATE INDEX idx_crypto_payment_status ON crypto_payment_requests(payment_status)").catch(() => { });
+pool.query("CREATE INDEX idx_crypto_payment_created ON crypto_payment_requests(created_at)").catch(() => { });
+
 module.exports = pool;

@@ -32,6 +32,7 @@ export default function UserAnalyticsPage() {
                     cartCount={0}
                     onOpenCart={() => { }}
                     onGoOrders={() => navigate("/orders")}
+                    onGoRenewals={() => navigate("/renewals")}
                     onGoWallet={() => navigate("/wallet")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}

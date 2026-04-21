@@ -2,10 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
-const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
-const { makeOrderCode } = require("../utils/orderCode");
-const { addDaysExact, isStoredDateOnlyExpired, parseDateTime, toSqlDateTime } = require("../utils/date");
+const { renewSubscription } = require("../services/renewal.service");
 
 const router = express.Router();
 
@@ -158,6 +155,7 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
         p.name AS platform_name,
         d.name AS duration_name,
         d.days,
+        pp.is_renewable,
         pa.email AS account_email,
         pa.password AS account_password,
         pa.pin AS account_pin,
@@ -166,6 +164,7 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
       JOIN durations d ON d.id = s.duration_id
+      LEFT JOIN platform_prices pp ON pp.id = s.platform_price_id
       LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
       WHERE s.id = ?
       LIMIT 1`,
@@ -195,264 +194,98 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-
-        // 1. Fetch subscription with duration days + price
-        const [rows] = await conn.query(
-            `SELECT s.id, s.user_id, s.platform_id, s.platform_price_id, s.platform_account_id,
-                    s.expires_at, pa.expires_at AS account_expires_at, s.price, s.currency, s.status, IFNULL(s.is_attended, 0) AS is_attended,
-                    d.days, p.name AS platform_name, u.email AS user_email
-             FROM subscriptions s
-             JOIN durations d ON d.id = s.duration_id
-             JOIN platforms p ON p.id = s.platform_id
-             JOIN users u ON u.id = s.user_id
-             LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
-             WHERE s.id = ?
-             LIMIT 1
-             FOR UPDATE`,
-            [orderId]
-        );
-
-        if (!rows.length) {
-            await conn.rollback();
-            return res.status(404).json({ message: "Pedido no encontrado." });
-        }
-
-        const sub = rows[0];
-        const days = Number(sub.days || 30);
-        const amount = Number(overridePrice !== undefined ? overridePrice : sub.price);
-        const userId = sub.user_id;
-        const isExpired = !sub.expires_at || isStoredDateOnlyExpired(sub.expires_at);
-
-        if (!Number.isFinite(amount) || amount < 0) {
-            await conn.rollback();
-            return res.status(400).json({ message: "El monto de renovación debe ser un número mayor o igual a 0." });
-        }
-
-        if (isExpired) {
-            await conn.rollback();
-            return res.status(400).json({
-                message: "Esta suscripción ya está vencida. No se puede renovar desde aquí porque la cuenta podría haber sido reasignada."
-            });
-        }
-
-        if (Number(sub.is_attended) === 1) {
-            await conn.rollback();
-            return res.status(400).json({
-                message: "Esta suscripción ya fue atendida desde Vencimientos. No se puede renovar para evitar choques con cuentas reasignadas."
-            });
-        }
-
-        // 2. Calculate new expiry: extend from MAX(now, current_expiry)
-        const currentAccountExpiry = parseDateTime(sub.account_expires_at);
-        const base = currentAccountExpiry && currentAccountExpiry > new Date()
-            ? currentAccountExpiry
-            : new Date();
-        const newExpiryDate = addDaysExact(base, days);
-        const newExpiry = toSqlDateTime(newExpiryDate);
-
-        const finalAccountId = newAccountId ? Number(newAccountId) : Number(sub.platform_account_id || 0);
-        let accountChanged = false;
-
-        if (newAccountId) {
-            if (!Number.isInteger(finalAccountId) || finalAccountId <= 0) {
-                await conn.rollback();
-                return res.status(400).json({ message: "La nueva cuenta seleccionada es inválida." });
-            }
-
-            if (finalAccountId !== Number(sub.platform_account_id || 0)) {
-                const [newAccountRows] = await conn.query(
-                    `SELECT id, platform_id, status
-                     FROM platform_accounts
-                     WHERE id = ?
-                     LIMIT 1
-                     FOR UPDATE`,
-                    [finalAccountId]
-                );
-
-                if (!newAccountRows.length) {
-                    await conn.rollback();
-                    return res.status(404).json({ message: "La nueva cuenta seleccionada no existe." });
-                }
-
-                const newAccount = newAccountRows[0];
-                if (Number(newAccount.platform_id) !== Number(sub.platform_id)) {
-                    await conn.rollback();
-                    return res.status(400).json({ message: "La nueva cuenta no pertenece a la misma plataforma." });
-                }
-
-                if (String(newAccount.status) !== "available") {
-                    await conn.rollback();
-                    return res.status(409).json({ message: "La nueva cuenta ya no está disponible." });
-                }
-
-                accountChanged = true;
-            }
-        }
-
-        // 3. Build update fields
-        const updateFields = ["expires_at = ?", "status = 'active'"];
-        const updateParams = [newExpiry];
-
-        if (accountChanged) {
-            updateFields.push("platform_account_id = ?");
-            updateParams.push(finalAccountId);
-        }
-        updateParams.push(orderId);
-
-        await conn.query(
-            `UPDATE subscriptions SET ${updateFields.join(", ")} WHERE id = ?`,
-            updateParams
-        );
-
-        if (Number(sub.platform_account_id)) {
-            if (accountChanged) {
-                await conn.query(
-                    `UPDATE platform_accounts
-                     SET assigned_to_user_id = NULL,
-                         assigned_at = NULL,
-                         expires_at = NULL,
-                         status = 'available'
-                     WHERE id = ?`,
-                    [sub.platform_account_id]
-                );
-
-                await conn.query(
-                    `UPDATE platform_accounts
-                     SET status = 'assigned',
-                         assigned_to_user_id = ?,
-                         assigned_at = NOW(),
-                         expires_at = ?
-                     WHERE id = ?`,
-                    [userId, newExpiry, finalAccountId]
-                );
-            } else {
-                await conn.query(
-                    `UPDATE platform_accounts
-                     SET expires_at = ?
-                     WHERE id = ?`,
-                    [newExpiry, sub.platform_account_id]
-                );
-            }
-        }
-
-        let newBalance = null;
-        let renewalOrderId = null;
-        let renewalOrderCode = null;
-
-        const finalChargedAmount = Number.isFinite(amount) ? amount : 0;
-
-        // 4. Registrar una nueva orden de renovación para mantener trazabilidad en historial
-        renewalOrderCode = makeOrderCode();
-        const [renewalOrderIns] = await conn.query(
-            `INSERT INTO orders (user_id, order_code, total, currency, created_at)
-             VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
-            [userId, renewalOrderCode, finalChargedAmount, sub.currency]
-        );
-        renewalOrderId = renewalOrderIns.insertId;
-
-        await conn.query(
-            `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price)
-             VALUES (?, ?, ?, ?, ?)`,
-            [renewalOrderId, orderId, sub.platform_id, sub.platform_price_id, finalChargedAmount]
-        );
-
-        // 5. Optionally deduct wallet
-        if (deductWallet) {
-            const [wrows] = await conn.query(
-                "SELECT id, balance, currency FROM wallets WHERE user_id = ? FOR UPDATE",
-                [userId]
-            );
-            if (!wrows.length) {
-                await conn.rollback();
-                return res.status(404).json({ message: "Billetera del usuario no encontrada." });
-            }
-
-            const walletId = wrows[0].id;
-            const balance = Number(wrows[0].balance);
-
-            if (balance < amount) {
-                await conn.rollback();
-                return res.status(400).json({
-                    message: `Saldo insuficiente. Tiene ${balance.toLocaleString("es-CO")} y se requieren ${amount.toLocaleString("es-CO")}.`
-                });
-            }
-
-            newBalance = balance - amount;
-
-            await conn.query("UPDATE wallets SET balance = ? WHERE id = ?", [newBalance, walletId]);
-
-            await conn.query(
-                `INSERT INTO wallet_transactions
-                    (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
-                 VALUES (?, 'purchase', ?, ?, 'order', ?, ?)`,
-                [walletId, -amount, newBalance, renewalOrderId, note || `Renovación pedido #${orderId}`]
-            );
-        }
+        const result = await renewSubscription({
+            conn,
+            subscriptionId: orderId,
+            actorUserId: req.user.id,
+            actorRole: "admin",
+            deductWallet: deductWallet !== false,
+            overridePrice,
+            note,
+            newAccountId,
+            allowAccountChange: true,
+        });
 
         await conn.commit();
 
-        // --- Build WhatsApp Receipt ---
-        let whatsappText = "";
-
-        if (finalAccountId) {
-            // Fetch account details
-            const [accRows] = await conn.query(
-                "SELECT email, password, profile_number, pin FROM platform_accounts WHERE id = ?",
-                [finalAccountId]
-            );
-
-            // Get newest token or create one using the shared util
-            const [tokRows] = await conn.query(
-                "SELECT token FROM credential_links WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
-                [orderId]
-            );
-
-            let token = tokRows.length > 0 ? tokRows[0].token : null;
-            if (!token) {
-                // ✅ Usa insertCredentialLinkWithRetry para consistencia y anti-colisión
-                token = await insertCredentialLinkWithRetry(pool, {
-                    subscriptionId: orderId,
-                    createdByUserId: req.user.id,
-                    showWhatsapp: false,
-                });
-            }
-
-            if (accRows.length > 0) {
-                const resultObj = {
-                    subscriptionId: orderId,
-                    plan: { platform_name: sub.platform_name },
-                    account: accRows[0],
-                    expiresAt: newExpiryDate,
-                    token: token
-                };
-
-                const orderCodeStr = `ORD-${String(orderId).padStart(6, "0")}`;
-
-                whatsappText = buildWhatsappMessage({
-                    orderCode: orderCodeStr,
-                    results: [resultObj],
-                    baseUrl: process.env.BASE_URL || "https://strbx.com.co"
-                });
-            }
-        }
-
-        return res.json({
-            ok: true,
-            orderId,
-            renewalOrderId,
-            renewalOrderCode,
-            newExpiry,
-            newAccountId: finalAccountId,
-            deducted: deductWallet ? amount : 0,
-            newBalance,
-            whatsappText
-        });
+        return res.json(result);
     } catch (err) {
         await conn.rollback();
         console.error("Error POST /admin/orders/:id/renew:", err);
-        return res.status(500).json({ message: "Error interno al renovar." });
+        return res.status(err?.status || 500).json({ message: err?.message || "Error interno al renovar." });
     } finally {
         conn.release();
+    }
+});
+
+router.get("/admin/renewals/logs", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
+        const offset = (page - 1) * limit;
+        const q = String(req.query.q || "").trim();
+        const actorRole = String(req.query.actorRole || "").trim();
+
+        const where = [];
+        const params = [];
+
+        if (q) {
+            const qq = `%${q}%`;
+            where.push(`(
+                srl.renewal_order_code LIKE ? OR
+                srl.previous_order_code LIKE ? OR
+                u.email LIKE ? OR
+                p.name LIKE ? OR
+                actor.email LIKE ?
+            )`);
+            params.push(qq, qq, qq, qq, qq);
+        }
+
+        if (actorRole) {
+            where.push("srl.actor_role = ?");
+            params.push(actorRole);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+        const [[countRow]] = await pool.query(
+            `SELECT COUNT(*) AS total
+             FROM subscription_renewal_logs srl
+             JOIN users u ON u.id = srl.user_id
+             LEFT JOIN users actor ON actor.id = srl.actor_user_id
+             LEFT JOIN platforms p ON p.id = srl.platform_id
+             ${whereSql}`,
+            params
+        );
+
+        const [rows] = await pool.query(
+            `SELECT
+                srl.*,
+                u.email AS user_email,
+                u.name AS user_name,
+                actor.email AS actor_email,
+                p.name AS platform_name
+             FROM subscription_renewal_logs srl
+             JOIN users u ON u.id = srl.user_id
+             LEFT JOIN users actor ON actor.id = srl.actor_user_id
+             LEFT JOIN platforms p ON p.id = srl.platform_id
+             ${whereSql}
+             ORDER BY srl.created_at DESC, srl.id DESC
+             LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
+        );
+
+        return res.json({
+            ok: true,
+            items: rows,
+            total: Number(countRow?.total || 0),
+            page,
+            limit,
+            totalPages: Math.max(Math.ceil(Number(countRow?.total || 0) / limit), 1),
+        });
+    } catch (err) {
+        console.error("Error GET /admin/renewals/logs:", err);
+        return res.status(500).json({ message: "Error cargando logs de renovaciones." });
     }
 });
 

@@ -46,13 +46,35 @@ function buildMailHaystack(parsed) {
 function parseEsCoMoney(value) {
     const cleaned = String(value || "").replace(/[^\d.,]/g, "").trim();
     if (!cleaned) return null;
-    if (cleaned.includes(",") && cleaned.includes(".")) {
-        return Number(cleaned.replace(/\./g, "").replace(",", "."));
+    const hasComma = cleaned.includes(",");
+    const hasDot = cleaned.includes(".");
+
+    if (hasComma && hasDot) {
+        const lastComma = cleaned.lastIndexOf(",");
+        const lastDot = cleaned.lastIndexOf(".");
+        if (lastComma > lastDot) {
+            return Number(cleaned.replace(/\./g, "").replace(",", "."));
+        }
+        return Number(cleaned.replace(/,/g, ""));
     }
-    if (cleaned.includes(",") && !cleaned.includes(".")) {
-        return Number(cleaned.replace(",", "."));
+
+    if (hasComma && !hasDot) {
+        const parts = cleaned.split(",");
+        if (parts.length === 2 && parts[1].length <= 2) {
+            return Number(cleaned.replace(",", "."));
+        }
+        return Number(cleaned.replace(/,/g, ""));
     }
-    return Number(cleaned.replace(/\./g, ""));
+
+    if (hasDot) {
+        const parts = cleaned.split(".");
+        if (parts.length === 2 && parts[1].length <= 2) {
+            return Number(cleaned);
+        }
+        return Number(cleaned.replace(/\./g, ""));
+    }
+
+    return Number(cleaned);
 }
 
 function parseSpanishDateTime(raw) {

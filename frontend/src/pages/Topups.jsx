@@ -226,6 +226,9 @@ export default function Topups() {
                 credentials: "include",
                 body: form,
             });
+            if (response.status === 413) {
+                throw new Error("El comprobante supera el tamaño permitido. Usa un archivo de máximo 5MB.");
+            }
             const data = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(data?.message || "No se pudo enviar la solicitud.");
 

@@ -131,7 +131,8 @@ function compareNames(expected, received) {
     const rightTokens = new Set(rhs.split(" ").filter(Boolean));
     const matched = leftTokens.filter((token) => rightTokens.has(token));
     const score = leftTokens.length ? matched.length / leftTokens.length : 0;
-    return { ok: score >= 0.6 && matched.length >= 1, score };
+    const strongMatch = matched.some((token) => token.length >= 4);
+    return { ok: (score >= 0.6 && matched.length >= 1) || strongMatch, score: strongMatch && score < 0.6 ? 0.6 : score };
 }
 
 function compareTimes(expectedDate, receivedDate) {

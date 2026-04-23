@@ -16,6 +16,7 @@ const STATUS_META = {
     approved: { label: "Aprobada", color: "#10b981" },
     rejected: { label: "Rechazada", color: "#ef4444" },
 };
+const HISTORY_PAGE_SIZE = 5;
 
 function resolveQrImageUrl(value) {
     const input = String(value || "").trim();
@@ -55,6 +56,9 @@ export default function Topups() {
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState("");
     const [formSuccess, setFormSuccess] = useState("");
+    const [historyStatus, setHistoryStatus] = useState("all");
+    const [historyQuery, setHistoryQuery] = useState("");
+    const [historyPage, setHistoryPage] = useState(1);
 
     async function loadWallet() {
         const response = await apiGet("/wallet");
@@ -97,6 +101,31 @@ export default function Topups() {
         const key = String(latestRequest?.status || "").toLowerCase();
         return STATUS_META[key] || null;
     }, [latestRequest?.status]);
+    const filteredRequests = useMemo(() => {
+        const query = String(historyQuery || "").trim().toLowerCase();
+        return requests.filter((item) => {
+            const status = String(item?.status || "").toLowerCase();
+            if (historyStatus !== "all" && status !== historyStatus) return false;
+            if (!query) return true;
+
+            const haystack = [
+                item?.requestCode,
+                item?.methodLabel,
+                item?.payerName,
+                item?.adminNote,
+                item?.autoValidationNote,
+            ]
+                .filter(Boolean)
+                .join(" ")
+                .toLowerCase();
+            return haystack.includes(query);
+        });
+    }, [requests, historyQuery, historyStatus]);
+    const totalHistoryPages = Math.max(Math.ceil(filteredRequests.length / HISTORY_PAGE_SIZE), 1);
+    const paginatedRequests = useMemo(() => {
+        const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+        return filteredRequests.slice(start, start + HISTORY_PAGE_SIZE);
+    }, [filteredRequests, historyPage]);
     const hasOpenRequests = requests.some((item) => {
         const status = String(item?.status || "").toLowerCase();
         return status === "submitted" || status === "reviewing";
@@ -107,6 +136,16 @@ export default function Topups() {
             setSelectedMethodKey(availableMethods[0].key);
         }
     }, [selectedMethod, availableMethods]);
+
+    useEffect(() => {
+        setHistoryPage(1);
+    }, [historyStatus, historyQuery]);
+
+    useEffect(() => {
+        if (historyPage > totalHistoryPages) {
+            setHistoryPage(totalHistoryPages);
+        }
+    }, [historyPage, totalHistoryPages]);
 
     useEffect(() => {
         if (!hasOpenRequests) return undefined;
@@ -506,10 +545,38 @@ export default function Topups() {
                     </section>
 
                     <section className="wallet-card">
-                        <div className="wallet-card__title">Historial de recargas</div>
-                        {requests.length ? (
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "end", flexWrap: "wrap" }}>
+                            <div>
+                                <div className="wallet-card__title">Historial de recargas</div>
+                                <div className="wallet-small" style={{ marginTop: 6 }}>
+                                    Mostrando 5 por página para que no se vuelva eterno.
+                                </div>
+                            </div>
+                            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "end" }}>
+                                <label className="wallet-label" style={{ minWidth: 160 }}>
+                                    <span>Estado</span>
+                                    <select className="wallet-input" value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                                        <option value="all">Todas</option>
+                                        <option value="submitted">Enviadas</option>
+                                        <option value="reviewing">Revisando</option>
+                                        <option value="approved">Aprobadas</option>
+                                        <option value="rejected">Rechazadas</option>
+                                    </select>
+                                </label>
+                                <label className="wallet-label" style={{ minWidth: 220 }}>
+                                    <span>Buscar</span>
+                                    <input
+                                        className="wallet-input"
+                                        placeholder="Código, método o girador"
+                                        value={historyQuery}
+                                        onChange={(event) => setHistoryQuery(event.target.value)}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                        {filteredRequests.length ? (
                             <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
-                                {requests.map((item) => {
+                                {paginatedRequests.map((item) => {
                                     const meta = STATUS_META[String(item.status || "").toLowerCase()] || { label: item.status, color: "#94a3b8" };
                                     return (
                                         <div key={item.id} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.02)", display: "grid", gap: 8 }}>
@@ -543,10 +610,23 @@ export default function Topups() {
                                         </div>
                                     );
                                 })}
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                                    <div className="wallet-small" style={{ marginTop: 0 }}>
+                                        Página {historyPage} de {totalHistoryPages} · {filteredRequests.length} resultado{filteredRequests.length === 1 ? "" : "s"}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 10 }}>
+                                        <button className="btn-ghost" disabled={historyPage <= 1} onClick={() => setHistoryPage((prev) => Math.max(prev - 1, 1))}>
+                                            Anterior
+                                        </button>
+                                        <button className="btn-ghost" disabled={historyPage >= totalHistoryPages} onClick={() => setHistoryPage((prev) => Math.min(prev + 1, totalHistoryPages))}>
+                                            Siguiente
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         ) : (
                             <div className="wallet-small" style={{ marginTop: 12 }}>
-                                Aún no has enviado recargas.
+                                No hay recargas para los filtros aplicados.
                             </div>
                         )}
                     </section>

@@ -384,4 +384,33 @@ pool.query("CREATE INDEX idx_manual_topup_user ON manual_topup_requests(user_id)
 pool.query("CREATE INDEX idx_manual_topup_status ON manual_topup_requests(status)").catch(() => { });
 pool.query("CREATE INDEX idx_manual_topup_created ON manual_topup_requests(created_at)").catch(() => { });
 
+pool.query(`
+    CREATE TABLE IF NOT EXISTS manual_topup_proof_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        token VARCHAR(64) NOT NULL,
+        topup_id INT NOT NULL,
+        proof_file_url VARCHAR(255) NOT NULL,
+        created_by_user_id INT NULL,
+        created_by_role VARCHAR(32) NULL,
+        opened_at DATETIME NULL,
+        revoked_at DATETIME NULL,
+        expires_at DATETIME NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_manual_topup_proof_token (token),
+        INDEX idx_manual_topup_proof_topup (topup_id),
+        INDEX idx_manual_topup_proof_expires (expires_at)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN token VARCHAR(64) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN topup_id INT NOT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN proof_file_url VARCHAR(255) NOT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN created_by_user_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN created_by_role VARCHAR(32) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN opened_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN revoked_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_proof_tokens ADD COLUMN expires_at DATETIME NOT NULL").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_manual_topup_proof_token ON manual_topup_proof_tokens(token)").catch(() => { });
+pool.query("CREATE INDEX idx_manual_topup_proof_topup ON manual_topup_proof_tokens(topup_id)").catch(() => { });
+pool.query("CREATE INDEX idx_manual_topup_proof_expires ON manual_topup_proof_tokens(expires_at)").catch(() => { });
+
 module.exports = pool;

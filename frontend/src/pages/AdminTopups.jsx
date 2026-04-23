@@ -111,6 +111,7 @@ export default function AdminTopups() {
     const [configError, setConfigError] = useState("");
     const [methods, setMethods] = useState([]);
     const [previewItem, setPreviewItem] = useState(null);
+    const [openingProofId, setOpeningProofId] = useState(null);
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -217,8 +218,23 @@ export default function AdminTopups() {
     const approvedCount = items.filter((item) => String(item.status || "").toLowerCase() === "approved").length;
     const rejectedCount = items.filter((item) => String(item.status || "").toLowerCase() === "rejected").length;
 
-    function proofIsPdf(url) {
-        return String(url || "").toLowerCase().includes(".pdf");
+    async function openProof(item, mode = "modal") {
+        setOpeningProofId(item.id);
+        try {
+            const response = await apiFetch(`/admin/manual-topups/${item.id}/proof-link`, { method: "POST" });
+            if (!response.ok || !response.data?.viewerUrl) {
+                throw new Error(response.data?.message || "No se pudo abrir el comprobante.");
+            }
+            if (mode === "modal") {
+                setPreviewItem({ ...item, viewerUrl: response.data.viewerUrl });
+            } else {
+                window.open(response.data.viewerUrl, "_blank", "noopener,noreferrer");
+            }
+        } catch (error) {
+            window.alert(error?.message || "No se pudo abrir el comprobante.");
+        } finally {
+            setOpeningProofId(null);
+        }
     }
 
     return (
@@ -598,9 +614,9 @@ export default function AdminTopups() {
                                                 </div>
                                                 <div>
                                                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Soporte</div>
-                                                    {item.proofFileUrl ? (
-                                                        <button className="btn" style={{ width: "auto" }} onClick={() => setPreviewItem(item)}>
-                                                            Ver comprobante
+                                                    {item.hasProof ? (
+                                                        <button className="btn" style={{ width: "auto" }} onClick={() => openProof(item, "modal")}>
+                                                            {openingProofId === item.id ? "Abriendo..." : "Ver comprobante"}
                                                         </button>
                                                     ) : (
                                                         <span style={{ color: "var(--muted)", fontSize: 13 }}>Correo Bre-B</span>
@@ -708,9 +724,9 @@ export default function AdminTopups() {
                                 </div>
                             </div>
                             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                                <a className="btn-ghost" style={{ width: "auto" }} href={previewItem.proofFileUrl} target="_blank" rel="noreferrer">
+                                <button className="btn-ghost" style={{ width: "auto" }} onClick={() => previewItem?.viewerUrl && window.open(previewItem.viewerUrl, "_blank", "noopener,noreferrer")}>
                                     Abrir aparte
-                                </a>
+                                </button>
                                 <button className="btn-ghost" style={{ width: "auto" }} onClick={() => setPreviewItem(null)}>
                                     Cerrar
                                 </button>
@@ -728,19 +744,13 @@ export default function AdminTopups() {
                                 placeItems: "center",
                             }}
                         >
-                            {proofIsPdf(previewItem.proofFileUrl) ? (
+                            {previewItem?.viewerUrl ? (
                                 <iframe
                                     title={`Comprobante ${previewItem.requestCode}`}
-                                    src={previewItem.proofFileUrl}
+                                    src={previewItem.viewerUrl}
                                     style={{ width: "100%", height: "70vh", border: 0, background: "#fff" }}
                                 />
-                            ) : (
-                                <img
-                                    alt={`Comprobante ${previewItem.requestCode}`}
-                                    src={previewItem.proofFileUrl}
-                                    style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain" }}
-                                />
-                            )}
+                            ) : null}
                         </div>
                     </div>
                 </div>

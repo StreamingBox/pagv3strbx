@@ -17,6 +17,11 @@ const STATUS_META = {
     rejected: { label: "Rechazada", color: "#ef4444" },
 };
 const HISTORY_PAGE_SIZE = 5;
+const HISTORY_TEXT_STYLE = {
+    marginTop: 0,
+    overflowWrap: "anywhere",
+    wordBreak: "break-word",
+};
 
 function displayTopupCurrency(value) {
     const normalized = String(value || "").trim().toUpperCase();
@@ -65,6 +70,7 @@ export default function Topups() {
     const [historyStatus, setHistoryStatus] = useState("all");
     const [historyQuery, setHistoryQuery] = useState("");
     const [historyPage, setHistoryPage] = useState(1);
+    const [openingProofId, setOpeningProofId] = useState(null);
 
     async function loadWallet() {
         const response = await apiGet("/wallet");
@@ -259,6 +265,26 @@ export default function Topups() {
             selectedMethod.holderName ? `Titular: ${selectedMethod.holderName}` : "",
         ].filter(Boolean).join("\n");
         await navigator.clipboard.writeText(lines);
+    }
+
+    async function openProof(itemId) {
+        setOpeningProofId(itemId);
+        try {
+            const response = await fetch(buildApiUrl(`/wallet/manual-topups/${itemId}/proof-link`), {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data?.viewerUrl) {
+                throw new Error(data?.message || "No se pudo abrir el comprobante.");
+            }
+            window.open(data.viewerUrl, "_blank", "noopener,noreferrer");
+        } catch (error) {
+            setFormError(error?.message || "No se pudo abrir el comprobante.");
+        } finally {
+            setOpeningProofId(null);
+        }
     }
 
     return (
@@ -645,11 +671,11 @@ export default function Topups() {
                                 {paginatedRequests.map((item) => {
                                     const meta = STATUS_META[String(item.status || "").toLowerCase()] || { label: item.status, color: "#94a3b8" };
                                     return (
-                                        <div key={item.id} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.02)", display: "grid", gap: 8 }}>
-                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                                                <div>
+                                        <div key={item.id} style={{ border: "1px solid var(--stroke)", borderRadius: 16, padding: 14, background: "rgba(255,255,255,.02)", display: "grid", gap: 8, minWidth: 0 }}>
+                                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                                <div style={{ minWidth: 0 }}>
                                                     <div style={{ fontWeight: 900 }}>{item.requestCode}</div>
-                                                    <div className="wallet-small" style={{ marginTop: 2 }}>
+                                                    <div className="wallet-small" style={{ ...HISTORY_TEXT_STYLE, marginTop: 2 }}>
                                                         {item.methodLabel} · {Number(item.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || currency)}
                                                     </div>
                                                 </div>
@@ -658,20 +684,28 @@ export default function Topups() {
                                                 </span>
                                             </div>
 
-                                            <div className="wallet-small" style={{ marginTop: 0 }}>
+                                            <div className="wallet-small" style={HISTORY_TEXT_STYLE}>
                                                 Creada: {new Date(item.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}
                                             </div>
                                             {item.payerName ? (
-                                                <div className="wallet-small" style={{ marginTop: 0 }}>Girador: {item.payerName}</div>
+                                                <div className="wallet-small" style={HISTORY_TEXT_STYLE}>Girador: {item.payerName}</div>
                                             ) : null}
                                             {item.autoValidationNote ? (
-                                                <div className="wallet-small" style={{ marginTop: 0 }}>Validación: {item.autoValidationNote}</div>
+                                                <div className="wallet-small" style={HISTORY_TEXT_STYLE}>Validación: {item.autoValidationNote}</div>
                                             ) : null}
                                             {item.adminNote ? (
-                                                <div className="wallet-small" style={{ marginTop: 0 }}>Nota admin: {item.adminNote}</div>
+                                                <div className="wallet-small" style={HISTORY_TEXT_STYLE}>Nota admin: {item.adminNote}</div>
                                             ) : null}
-                                            {item.proofFileUrl ? (
-                                                <a className="wallet-link" href={item.proofFileUrl} target="_blank" rel="noreferrer">Ver comprobante</a>
+                                            {item.hasProof ? (
+                                                <button
+                                                    type="button"
+                                                    className="wallet-link"
+                                                    style={{ background: "none", border: 0, padding: 0, textAlign: "left", cursor: "pointer" }}
+                                                    onClick={() => openProof(item.id)}
+                                                    disabled={openingProofId === item.id}
+                                                >
+                                                    {openingProofId === item.id ? "Abriendo..." : "Ver comprobante"}
+                                                </button>
                                             ) : null}
                                         </div>
                                     );

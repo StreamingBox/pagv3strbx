@@ -11,7 +11,12 @@ const {
 } = require("../services/mailService");
 const {
     mapManualTopupRow,
+    sanitizeManualTopupForClient,
     updateManualTopupStatus,
+    createManualTopupProofToken,
+    getManualTopupProofAccess,
+    markManualTopupProofTokenOpened,
+    revokeManualTopupProofToken,
 } = require("../services/manualTopups.service");
 const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
 const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
@@ -198,6 +203,25 @@ function saveProofFile({ file, requestCode }) {
     return `/topup-proofs/${filename}`;
 }
 
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+async function createProofLinkResponse({ topupId, proofFileUrl, actorUserId = null, actorRole = null }) {
+    const tokenInfo = await createManualTopupProofToken({
+        topupId,
+        proofFileUrl,
+        actorUserId,
+        actorRole,
+    });
+    return { ok: true, viewerUrl: tokenInfo?.viewerUrl || null };
+}
+
 router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
     try {
         const [[userRow]] = await pool.query(
@@ -231,7 +255,7 @@ router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
              LIMIT 20`,
             [userId]
         );
-        return res.json({ ok: true, items: rows.map(mapManualTopupRow) });
+        return res.json({ ok: true, items: rows.map(sanitizeManualTopupForClient) });
     } catch (err) {
         console.error("Error GET /wallet/manual-topups:", err);
         return res.status(500).json({ message: "No se pudieron cargar las recargas." });
@@ -337,7 +361,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
 
         return res.json({
             ok: true,
-            request: mapManualTopupRow({
+            request: sanitizeManualTopupForClient({
                 id: ins.insertId,
                 request_code: requestCode,
                 user_id: userId,
@@ -446,7 +470,7 @@ router.get("/admin/manual-topups", requireAuth, requireRole("admin"), async (req
 
         return res.json({
             ok: true,
-            items: rows.map(mapManualTopupRow),
+            items: rows.map(sanitizeManualTopupForClient),
             total,
             page: pageNum,
             limit: limitNum,
@@ -478,13 +502,160 @@ router.patch("/admin/manual-topups/:id/status", requireAuth, requireRole("admin"
         notifyManualTopupStatusChanged(item, { actor: req.user.email || req.user.name || "admin web" }).catch((tgErr) => {
             console.error("[TelegramBot] notifyManualTopupStatusChanged:", tgErr?.message || tgErr);
         });
-        return res.json({ ok: true, item });
+        return res.json({ ok: true, item: sanitizeManualTopupForClient(item) });
     } catch (err) {
         console.error("Error PATCH /admin/manual-topups/:id/status:", err);
         const message = err?.message || "No se pudo actualizar la solicitud.";
         if (/no encontrada/i.test(message)) return res.status(404).json({ message });
         if (/invalido|cerrada|wallet|estado/i.test(message)) return res.status(400).json({ message });
         return res.status(500).json({ message });
+    }
+});
+
+router.post("/wallet/manual-topups/:id/proof-link", requireAuth, async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "ID invalido." });
+        }
+        const [[row]] = await pool.query(
+            `SELECT id, user_id, proof_file_url
+             FROM manual_topup_requests
+             WHERE id = ?
+             LIMIT 1`,
+            [id]
+        );
+        if (!row || Number(row.user_id) !== Number(req.user.id)) {
+            return res.status(404).json({ message: "Comprobante no encontrado." });
+        }
+        if (!row.proof_file_url) {
+            return res.status(404).json({ message: "Esta recarga no tiene comprobante adjunto." });
+        }
+        return res.json(await createProofLinkResponse({
+            topupId: id,
+            proofFileUrl: row.proof_file_url,
+            actorUserId: req.user.id,
+            actorRole: "user",
+        }));
+    } catch (err) {
+        console.error("Error POST /wallet/manual-topups/:id/proof-link:", err);
+        return res.status(500).json({ message: "No se pudo abrir el comprobante." });
+    }
+});
+
+router.post("/admin/manual-topups/:id/proof-link", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isFinite(id) || id <= 0) {
+            return res.status(400).json({ message: "ID invalido." });
+        }
+        const [[row]] = await pool.query(
+            `SELECT id, proof_file_url
+             FROM manual_topup_requests
+             WHERE id = ?
+             LIMIT 1`,
+            [id]
+        );
+        if (!row) {
+            return res.status(404).json({ message: "Comprobante no encontrado." });
+        }
+        if (!row.proof_file_url) {
+            return res.status(404).json({ message: "Esta recarga no tiene comprobante adjunto." });
+        }
+        return res.json(await createProofLinkResponse({
+            topupId: id,
+            proofFileUrl: row.proof_file_url,
+            actorUserId: req.user.id,
+            actorRole: "admin",
+        }));
+    } catch (err) {
+        console.error("Error POST /admin/manual-topups/:id/proof-link:", err);
+        return res.status(500).json({ message: "No se pudo abrir el comprobante." });
+    }
+});
+
+router.get("/topup-proofs/view/:token", async (req, res) => {
+    try {
+        const access = await getManualTopupProofAccess(req.params.token);
+        if (!access) {
+            return res.status(404).send("Comprobante no disponible.");
+        }
+        await markManualTopupProofTokenOpened(req.params.token);
+        const isPdf = access.contentType === "application/pdf";
+        const fileUrl = `/api/topup-proofs/file/${encodeURIComponent(req.params.token)}`;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        return res.send(`<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Comprobante temporal</title>
+  <style>
+    body{margin:0;background:#0f172a;color:#fff;font-family:Arial,Helvetica,sans-serif}
+    .wrap{min-height:100vh;display:grid;grid-template-rows:auto 1fr}
+    .top{padding:14px 18px;border-bottom:1px solid rgba(148,163,184,.18);display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .btn{border:1px solid rgba(148,163,184,.25);background:#1e293b;color:#fff;border-radius:10px;padding:10px 14px;cursor:pointer;text-decoration:none}
+    .body{display:grid;place-items:center;padding:16px}
+    iframe,img{max-width:100%;max-height:calc(100vh - 96px);border:0;border-radius:14px;background:#fff}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>Comprobante temporal</div>
+      <button class="btn" onclick="window.close()">Cerrar</button>
+    </div>
+    <div class="body">
+      ${isPdf
+                ? `<iframe title="Comprobante" src="${escapeHtml(fileUrl)}" style="width:100%;height:calc(100vh - 110px)"></iframe>`
+                : `<img alt="Comprobante" src="${escapeHtml(fileUrl)}" />`}
+    </div>
+  </div>
+  <script>
+    let revoked = false;
+    function revoke() {
+      if (revoked) return;
+      revoked = true;
+      try {
+        navigator.sendBeacon('/api/topup-proofs/revoke/${encodeURIComponent(req.params.token)}');
+      } catch (_) {
+        fetch('/api/topup-proofs/revoke/${encodeURIComponent(req.params.token)}', { method: 'POST', keepalive: true }).catch(() => {});
+      }
+    }
+    window.addEventListener('pagehide', revoke);
+    window.addEventListener('beforeunload', revoke);
+  </script>
+</body>
+</html>`);
+    } catch (err) {
+        console.error("Error GET /topup-proofs/view/:token:", err);
+        return res.status(500).send("No se pudo abrir el comprobante.");
+    }
+});
+
+router.get("/topup-proofs/file/:token", async (req, res) => {
+    try {
+        const access = await getManualTopupProofAccess(req.params.token);
+        if (!access) {
+            return res.status(404).send("Comprobante no disponible.");
+        }
+        res.setHeader("Cache-Control", "no-store");
+        res.setHeader("Content-Type", access.contentType);
+        return res.sendFile(access.filePath);
+    } catch (err) {
+        console.error("Error GET /topup-proofs/file/:token:", err);
+        return res.status(500).send("No se pudo leer el comprobante.");
+    }
+});
+
+router.post("/topup-proofs/revoke/:token", async (req, res) => {
+    try {
+        await revokeManualTopupProofToken(req.params.token);
+        return res.status(204).end();
+    } catch (err) {
+        console.error("Error POST /topup-proofs/revoke/:token:", err);
+        return res.status(204).end();
     }
 });
 

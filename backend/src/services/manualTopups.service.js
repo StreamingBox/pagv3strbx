@@ -1,9 +1,15 @@
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+
 const pool = require("../db");
 const {
     sendTopupReviewingEmail,
     sendTopupApprovedEmail,
     sendTopupRejectedEmail,
 } = require("./mailService");
+
+const PROOF_TOKEN_TTL_MINUTES = 10;
 
 function mapManualTopupRow(row) {
     if (!row) return null;
@@ -44,6 +50,16 @@ function mapManualTopupRow(row) {
     };
 }
 
+function sanitizeManualTopupForClient(rowOrItem) {
+    const item = rowOrItem?.requestCode ? rowOrItem : mapManualTopupRow(rowOrItem);
+    if (!item) return null;
+    const { proofFileUrl, ...rest } = item;
+    return {
+        ...rest,
+        hasProof: Boolean(proofFileUrl),
+    };
+}
+
 async function ensureWalletForUser(conn, userId, currency) {
     const [rows] = await conn.query(
         "SELECT id, balance, currency FROM wallets WHERE user_id = ? LIMIT 1 FOR UPDATE",
@@ -68,10 +84,98 @@ function getPublicBaseUrl() {
     return String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
 }
 
-function buildTopupProofUrl(proofFileUrl) {
+function getProofStoragePath(proofFileUrl) {
+    const raw = String(proofFileUrl || "").trim();
+    if (!raw) return null;
+    const filename = path.basename(raw);
+    const baseDir = path.join(__dirname, "../../frontend");
+    const candidates = [
+        path.join(baseDir, "public/topup-proofs", filename),
+        path.join(baseDir, "dist/topup-proofs", filename),
+    ];
+    for (const filePath of candidates) {
+        if (fs.existsSync(filePath)) return filePath;
+    }
+    return null;
+}
+
+function getProofContentType(filePath) {
+    const ext = String(path.extname(filePath || "")).toLowerCase();
+    if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+    if (ext === ".png") return "image/png";
+    if (ext === ".webp") return "image/webp";
+    if (ext === ".pdf") return "application/pdf";
+    return "application/octet-stream";
+}
+
+async function cleanupManualTopupProofTokens() {
+    await pool.query(
+        "DELETE FROM manual_topup_proof_tokens WHERE revoked_at IS NOT NULL OR expires_at <= UTC_TIMESTAMP()"
+    );
+}
+
+async function createManualTopupProofToken({ topupId, proofFileUrl, actorUserId = null, actorRole = null }) {
     if (!proofFileUrl) return null;
-    if (/^https?:\/\//i.test(String(proofFileUrl))) return proofFileUrl;
-    return `${getPublicBaseUrl()}${String(proofFileUrl).startsWith("/") ? "" : "/"}${proofFileUrl}`;
+    await cleanupManualTopupProofTokens();
+    const token = crypto.randomUUID();
+    await pool.query(
+        `INSERT INTO manual_topup_proof_tokens
+            (token, topup_id, proof_file_url, created_by_user_id, created_by_role, expires_at)
+         VALUES (?, ?, ?, ?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE))`,
+        [token, topupId, proofFileUrl, actorUserId, actorRole, PROOF_TOKEN_TTL_MINUTES]
+    );
+    return {
+        token,
+        viewerUrl: `${getPublicBaseUrl()}/api/topup-proofs/view/${token}`,
+    };
+}
+
+async function getManualTopupProofAccess(token) {
+    const safeToken = String(token || "").trim();
+    if (!safeToken) return null;
+    const [rows] = await pool.query(
+        `SELECT token, topup_id, proof_file_url, opened_at, revoked_at, expires_at
+         FROM manual_topup_proof_tokens
+         WHERE token = ?
+           AND revoked_at IS NULL
+           AND expires_at > UTC_TIMESTAMP()
+         LIMIT 1`,
+        [safeToken]
+    );
+    if (!rows.length) return null;
+    const row = rows[0];
+    const filePath = getProofStoragePath(row.proof_file_url);
+    if (!filePath) return null;
+    return {
+        token: row.token,
+        topupId: row.topup_id,
+        proofFileUrl: row.proof_file_url,
+        filePath,
+        contentType: getProofContentType(filePath),
+    };
+}
+
+async function markManualTopupProofTokenOpened(token) {
+    await pool.query(
+        "UPDATE manual_topup_proof_tokens SET opened_at = COALESCE(opened_at, UTC_TIMESTAMP()) WHERE token = ?",
+        [String(token || "").trim()]
+    );
+}
+
+async function revokeManualTopupProofToken(token) {
+    await pool.query(
+        "UPDATE manual_topup_proof_tokens SET revoked_at = UTC_TIMESTAMP() WHERE token = ? AND revoked_at IS NULL",
+        [String(token || "").trim()]
+    );
+}
+
+function buildTopupProofUrl(proofFileUrl, topupId) {
+    if (!proofFileUrl || !topupId) return null;
+    return createManualTopupProofToken({
+        topupId: Number(topupId),
+        proofFileUrl,
+        actorRole: "telegram",
+    }).then((tokenInfo) => tokenInfo?.viewerUrl || null);
 }
 
 async function getManualTopupById(id, conn = pool) {
@@ -219,7 +323,12 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
 
 module.exports = {
     mapManualTopupRow,
+    sanitizeManualTopupForClient,
     buildTopupProofUrl,
+    createManualTopupProofToken,
+    getManualTopupProofAccess,
+    markManualTopupProofTokenOpened,
+    revokeManualTopupProofToken,
     getManualTopupById,
     updateManualTopupStatus,
 };

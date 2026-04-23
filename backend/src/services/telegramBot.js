@@ -63,8 +63,8 @@ function displayTopupCurrency(value) {
     return normalized || String(value || "").trim();
 }
 
-function buildTopupInlineKeyboard(item) {
-    const proofUrl = buildTopupProofUrl(item?.proofFileUrl);
+async function buildTopupInlineKeyboard(item) {
+    const proofUrl = await buildTopupProofUrl(item?.proofFileUrl, item?.id);
     const rows = [];
 
     if (proofUrl) {
@@ -139,7 +139,7 @@ async function notifyAuthorizedChats(text, options = {}, meta = {}) {
 }
 
 async function sendTopupProofPreview(chatId, item) {
-    const proofUrl = buildTopupProofUrl(item?.proofFileUrl);
+    const proofUrl = await buildTopupProofUrl(item?.proofFileUrl, item?.id);
     if (!proofUrl || !bot) return;
     try {
         if (/\.pdf($|\?)/i.test(proofUrl)) {
@@ -666,10 +666,11 @@ function setupCommands() {
                         adminUserId: null,
                         adminNote: null,
                     });
+                    const replyMarkup = await buildTopupInlineKeyboard(item);
                     await bot.editMessageText(buildTopupMessage(item, { actor }), {
                         chat_id: query.message.chat.id,
                         message_id: query.message.message_id,
-                        reply_markup: buildTopupInlineKeyboard(item),
+                        reply_markup: replyMarkup,
                     });
                     await notifyManualTopupStatusChanged(item, {
                         actor,
@@ -742,7 +743,7 @@ async function notifyManualTopupSubmitted(topupId) {
     if (!item) return;
 
     const sent = await notifyAuthorizedChats(buildTopupMessage(item), {
-        reply_markup: buildTopupInlineKeyboard(item),
+        reply_markup: await buildTopupInlineKeyboard(item),
     });
 
     await Promise.all(sent.map(({ chatId }) => sendTopupProofPreview(chatId, item)));
@@ -762,7 +763,7 @@ async function notifyManualTopupStatusChanged(itemOrId, extra = {}) {
             : "Recarga en revision";
 
     await notifyAuthorizedChats(`${title}\n\n${buildTopupMessage(item, extra)}`, {
-        reply_markup: buildTopupInlineKeyboard(item),
+        reply_markup: await buildTopupInlineKeyboard(item),
     }, {
         excludeChatIds: extra.excludeChatIds || [],
     });
@@ -777,7 +778,7 @@ async function notifyManualTopupAlert(itemOrId, extra = {}) {
 
     const title = extra.title || "Novedad de recarga";
     await notifyAuthorizedChats(`${title}\n\n${buildTopupMessage(item, extra)}`, {
-        reply_markup: buildTopupInlineKeyboard(item),
+        reply_markup: await buildTopupInlineKeyboard(item),
     });
 }
 

@@ -57,6 +57,12 @@ function getTopupStatusLabel(status) {
     return normalized || "Sin estado";
 }
 
+function displayTopupCurrency(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (normalized === "USD") return "USDT";
+    return normalized || String(value || "").trim();
+}
+
 function buildTopupInlineKeyboard(item) {
     const proofUrl = buildTopupProofUrl(item?.proofFileUrl);
     const rows = [];
@@ -82,7 +88,7 @@ function buildTopupMessage(item, extra = {}) {
         "Recarga manual",
         `Codigo: ${item.requestCode}`,
         `Usuario: ${item.userName || "-"}${item.userEmail ? ` | ${item.userEmail}` : ""}`,
-        `Monto: ${Number(item.amount || 0).toLocaleString("es-CO")} ${item.currency || ""}`.trim(),
+        `Monto: ${Number(item.amount || 0).toLocaleString("es-CO")} ${displayTopupCurrency(item.currency) || ""}`.trim(),
         `Metodo: ${item.methodLabel || "-"}`,
         `Estado: ${getTopupStatusLabel(item.status)}`,
     ];
@@ -99,7 +105,7 @@ function buildTopupMessage(item, extra = {}) {
         lines.push(`Creada: ${date.toLocaleString("es-CO", { timeZone: "America/Bogota" })}`);
     }
     if (item.balanceBefore != null && item.balanceAfter != null) {
-        lines.push(`Saldo: ${Number(item.balanceBefore).toLocaleString("es-CO")} -> ${Number(item.balanceAfter).toLocaleString("es-CO")} ${item.currency || ""}`.trim());
+        lines.push(`Saldo: ${Number(item.balanceBefore).toLocaleString("es-CO")} -> ${Number(item.balanceAfter).toLocaleString("es-CO")} ${displayTopupCurrency(item.currency) || ""}`.trim());
     }
     if (item.adminNote) {
         lines.push(`Nota: ${item.adminNote}`);

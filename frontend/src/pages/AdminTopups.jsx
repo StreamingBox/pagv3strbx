@@ -23,7 +23,11 @@ const STATUS_META = {
     rejected: { label: "Rechazada", color: "#ef4444" },
 };
 
-const CURRENCY_OPTIONS = ["COP", "USD", "MXN"];
+const CURRENCY_OPTIONS = [
+    { value: "COP", label: "COP" },
+    { value: "USD", label: "USDT" },
+    { value: "MXN", label: "MXN" },
+];
 let nextMethodRowId = 1;
 
 const ADMIN_FIELD_STYLE = {
@@ -67,6 +71,12 @@ function resolveQrImageUrl(value) {
     }
 
     return input;
+}
+
+function displayTopupCurrency(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (normalized === "USD") return "USDT";
+    return normalized || String(value || "").trim();
 }
 
 function emptyMethod() {
@@ -351,7 +361,7 @@ export default function AdminTopups() {
                                                             fontSize: 12,
                                                         }}
                                                     >
-                                                        {method.currency}
+                                                            {displayTopupCurrency(method.currency)}
                                                     </span>
                                                     <button className="btn-ghost" style={{ width: "auto", color: "#ef4444", borderColor: "rgba(239,68,68,.35)" }} onClick={() => removeMethod(index)}>
                                                         Quitar
@@ -380,7 +390,7 @@ export default function AdminTopups() {
                                                     <span>Moneda</span>
                                                     <select style={ADMIN_FIELD_STYLE} value={method.currency} onChange={(event) => updateMethod(index, "currency", event.target.value)}>
                                                         {CURRENCY_OPTIONS.map((currency) => (
-                                                            <option key={currency} value={currency}>{currency}</option>
+                                                            <option key={currency.value} value={currency.value}>{currency.label}</option>
                                                         ))}
                                                     </select>
                                                 </label>
@@ -576,7 +586,7 @@ export default function AdminTopups() {
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12, alignItems: "end" }}>
                                                 <div>
                                                     <div style={{ fontSize: 12, color: "var(--muted)" }}>Monto</div>
-                                                    <div style={{ fontWeight: 800 }}>{Number(item.amount || 0).toLocaleString("es-CO")} {item.currency || "COP"}</div>
+                                                    <div style={{ fontWeight: 800 }}>{Number(item.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || "COP")}</div>
                                                 </div>
                                                 <div>
                                                 <div style={{ fontSize: 12, color: "var(--muted)" }}>Metodo</div>
@@ -613,7 +623,7 @@ export default function AdminTopups() {
                                                 {item.payerName ? <div><span style={{ color: "var(--muted)" }}>Girador declarado:</span> {item.payerName}</div> : null}
                                                 {item.declaredPaidAt ? <div><span style={{ color: "var(--muted)" }}>Hora declarada:</span> {new Date(item.declaredPaidAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</div> : null}
                                                 {item.matchedSenderName ? <div><span style={{ color: "var(--muted)" }}>Correo Bre-B:</span> {item.matchedSenderName}</div> : null}
-                                                {item.matchedEmailAmount != null ? <div><span style={{ color: "var(--muted)" }}>Monto correo:</span> {Number(item.matchedEmailAmount).toLocaleString("es-CO")} {item.currency || "COP"}</div> : null}
+                                                {item.matchedEmailAmount != null ? <div><span style={{ color: "var(--muted)" }}>Monto correo:</span> {Number(item.matchedEmailAmount).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || "COP")}</div> : null}
                                                 {item.matchedEmailReceivedAt ? <div><span style={{ color: "var(--muted)" }}>Hora correo:</span> {new Date(item.matchedEmailReceivedAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</div> : null}
                                                 {item.autoValidationNote ? <div><span style={{ color: "var(--muted)" }}>Validación:</span> {item.autoValidationNote}</div> : null}
                                             </div>
@@ -621,7 +631,7 @@ export default function AdminTopups() {
 
                                         {item.balanceAfter != null ? (
                                             <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                                                Saldo: {Number(item.balanceBefore || 0).toLocaleString("es-CO")} → {Number(item.balanceAfter || 0).toLocaleString("es-CO")} {item.currency || "COP"}
+                                                Saldo: {Number(item.balanceBefore || 0).toLocaleString("es-CO")} → {Number(item.balanceAfter || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || "COP")}
                                             </div>
                                         ) : null}
 
@@ -694,7 +704,7 @@ export default function AdminTopups() {
                             <div>
                                 <div style={{ fontSize: 20, fontWeight: 900 }}>Comprobante de {previewItem.requestCode}</div>
                                 <div style={{ color: "var(--muted)", marginTop: 4 }}>
-                                    {previewItem.userName || previewItem.userEmail} · {Number(previewItem.amount || 0).toLocaleString("es-CO")} {previewItem.currency || "COP"}
+                                    {previewItem.userName || previewItem.userEmail} · {Number(previewItem.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(previewItem.currency || "COP")}
                                 </div>
                             </div>
                             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>

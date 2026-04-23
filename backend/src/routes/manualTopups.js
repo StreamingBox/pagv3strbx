@@ -66,7 +66,7 @@ function defaultPaymentMethods() {
             accountAlias: "SCREEN",
             accountType: "binance",
             minAmount: 10,
-            instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+            instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
         },
         {
             key: "binance",
@@ -78,7 +78,7 @@ function defaultPaymentMethods() {
             accountAlias: "SCREEN",
             accountType: "binance",
             minAmount: 10,
-            instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+            instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
         },
     ];
 }

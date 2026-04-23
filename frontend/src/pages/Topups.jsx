@@ -18,6 +18,12 @@ const STATUS_META = {
 };
 const HISTORY_PAGE_SIZE = 5;
 
+function displayTopupCurrency(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (normalized === "USD") return "USDT";
+    return normalized || String(value || "").trim();
+}
+
 function resolveQrImageUrl(value) {
     const input = String(value || "").trim();
     if (!input) return "";
@@ -95,6 +101,7 @@ export default function Topups() {
         : "";
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
+    const displayCurrency = displayTopupCurrency(currency);
     const isBreb = selectedMethod?.key === "breb";
     const isBinance = selectedMethod?.key === "binance";
 
@@ -322,14 +329,14 @@ export default function Topups() {
                             </div>
                             <div style={{ fontSize: 34, fontWeight: 900 }}>
                                 {Number(wallet?.balance || 0).toLocaleString("es-CO")}
-                                <span style={{ fontSize: 14, marginLeft: 8, color: "var(--muted)" }}>{wallet?.currency || "-"}</span>
+                                <span style={{ fontSize: 14, marginLeft: 8, color: "var(--muted)" }}>{displayTopupCurrency(wallet?.currency) || "-"}</span>
                             </div>
                             {latestRequest ? (
                                 <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: "rgba(15,23,42,.28)", border: "1px solid rgba(148,163,184,.18)" }}>
                                     <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Última solicitud</div>
                                     <div style={{ fontWeight: 800 }}>{latestRequest.requestCode}</div>
                                     <div style={{ margin: "6px 0 10px" }}>
-                                        {Number(latestRequest.amount || 0).toLocaleString("es-CO")} {latestRequest.currency || currency}
+                                        {Number(latestRequest.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(latestRequest.currency || currency)}
                                     </div>
                                     {highlightedStatus ? (
                                         <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 10px", border: `1px solid ${highlightedStatus.color}55`, background: `${highlightedStatus.color}18`, color: highlightedStatus.color, fontWeight: 800, fontSize: 12 }}>
@@ -368,7 +375,7 @@ export default function Topups() {
                                             >
                                                 <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 17 }}>{method.label}</div>
                                                 <div className="wallet-small" style={{ marginTop: 0 }}>
-                                                    Mínimo: {Number(method.minAmount || 0).toLocaleString("es-CO")} {method.currency}
+                                                    Mínimo: {Number(method.minAmount || 0).toLocaleString("es-CO")} {displayTopupCurrency(method.currency)}
                                                 </div>
                                             </button>
                                         );
@@ -379,7 +386,7 @@ export default function Topups() {
                                     <div className="topups-form-grid">
                                         <div style={{ display: "grid", gap: 12 }}>
                                             <label className="wallet-label">
-                                                <span>Monto a recargar ({currency || selectedMethod.currency})</span>
+                                                <span>Monto a recargar ({displayTopupCurrency(currency || selectedMethod.currency)})</span>
                                                 <input
                                                     className="wallet-input"
                                                     inputMode="numeric"
@@ -595,7 +602,7 @@ export default function Topups() {
                                     color: "var(--muted)",
                                 }}
                             >
-                                No hay medios de pago configurados para <b>{currency || "tu moneda"}</b>.
+                                No hay medios de pago configurados para <b>{displayTopupCurrency(currency) || "tu moneda"}</b>.
                             </div>
                         )}
                     </section>
@@ -640,7 +647,7 @@ export default function Topups() {
                                                 <div>
                                                     <div style={{ fontWeight: 900 }}>{item.requestCode}</div>
                                                     <div className="wallet-small" style={{ marginTop: 2 }}>
-                                                        {item.methodLabel} · {Number(item.amount || 0).toLocaleString("es-CO")} {item.currency || currency}
+                                                        {item.methodLabel} · {Number(item.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || currency)}
                                                     </div>
                                                 </div>
                                                 <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 10px", border: `1px solid ${meta.color}55`, background: `${meta.color}18`, color: meta.color, fontWeight: 800, fontSize: 12 }}>

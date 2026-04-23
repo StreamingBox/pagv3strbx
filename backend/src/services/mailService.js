@@ -146,6 +146,14 @@ function formatMoney(value, currency = "COP") {
     }).format(Number(value || 0));
 }
 
+function formatTopupAmount(value, currency) {
+    const normalized = String(currency || "").trim().toUpperCase();
+    if (normalized === "USD") {
+        return `${Number(value || 0).toLocaleString("es-CO")} USDT`;
+    }
+    return formatMoney(value, normalized || "COP");
+}
+
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -467,7 +475,7 @@ async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subti
     }
 
     const transporter = await getTransporter("topup");
-    const amountText = formatMoney(amount, currency || "USD");
+    const amountText = formatTopupAmount(amount, currency || "USD");
     const text = [
         `Hola ${greetingName || "cliente"},`,
         "",

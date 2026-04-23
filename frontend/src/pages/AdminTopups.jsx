@@ -51,6 +51,9 @@ function resolveQrImageUrl(value) {
     if (!input) return "";
 
     try {
+        if (input.startsWith("/")) {
+            return `${window.location.origin}${input}`;
+        }
         const url = new URL(input);
         if (url.hostname.includes("drive.google.com")) {
             const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
@@ -470,11 +473,20 @@ export default function AdminTopups() {
                                                                 placeItems: "center",
                                                             }}
                                                         >
+                                                            {(() => {
+                                                                const previewUrl = resolveQrImageUrl(method.qrImageUrl);
+                                                                const previewSrc = previewUrl
+                                                                    ? `${previewUrl}${previewUrl.includes("?") ? "&" : "?"}preview=${encodeURIComponent(method.qrImageUrl)}`
+                                                                    : "";
+                                                                return previewSrc ? (
                                                             <img
-                                                                src={resolveQrImageUrl(method.qrImageUrl)}
+                                                                key={previewSrc}
+                                                                src={previewSrc}
                                                                 alt={`QR ${method.label || index + 1}`}
                                                                 style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain", display: "block" }}
                                                             />
+                                                                ) : null;
+                                                            })()}
                                                         </div>
                                                     </div>
                                                 ) : null}

@@ -22,6 +22,9 @@ function resolveQrImageUrl(value) {
     if (!input) return "";
 
     try {
+        if (input.startsWith("/")) {
+            return `${window.location.origin}${input}`;
+        }
         const url = new URL(input);
         if (url.hostname.includes("drive.google.com")) {
             const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
@@ -82,6 +85,10 @@ export default function Topups() {
 
     const availableMethods = Array.isArray(topupConfig.methods) ? topupConfig.methods : [];
     const selectedMethod = availableMethods.find((item) => item.key === selectedMethodKey) || availableMethods[0] || null;
+    const selectedQrUrl = selectedMethod?.qrImageUrl ? resolveQrImageUrl(selectedMethod.qrImageUrl) : "";
+    const selectedQrSrc = selectedQrUrl
+        ? `${selectedQrUrl}${selectedQrUrl.includes("?") ? "&" : "?"}preview=${encodeURIComponent(selectedMethod?.qrImageUrl || "")}`
+        : "";
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
     const isBreb = selectedMethod?.key === "breb";
@@ -404,7 +411,8 @@ export default function Topups() {
                                                     }}
                                                 >
                                                     <img
-                                                        src={resolveQrImageUrl(selectedMethod.qrImageUrl)}
+                                                        key={selectedQrSrc}
+                                                        src={selectedQrSrc}
                                                         alt={`QR ${selectedMethod.label}`}
                                                         style={{ width: "100%", height: "auto", display: "block", borderRadius: 12 }}
                                                     />

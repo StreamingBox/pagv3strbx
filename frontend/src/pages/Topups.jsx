@@ -28,7 +28,6 @@ export default function Topups() {
     const [requests, setRequests] = useState([]);
     const [amount, setAmount] = useState("");
     const [payerName, setPayerName] = useState("");
-    const [declaredPaidAt, setDeclaredPaidAt] = useState("");
     const [proofFile, setProofFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState("");
@@ -98,10 +97,6 @@ export default function Topups() {
                 setFormError("Debes indicar el nombre de la persona que hizo el giro.");
                 return;
             }
-            if (!declaredPaidAt) {
-                setFormError("Debes indicar la fecha y hora del giro.");
-                return;
-            }
         } else if (!proofFile) {
             setFormError("Debes adjuntar el comprobante.");
             return;
@@ -112,8 +107,8 @@ export default function Topups() {
         form.append("methodKey", selectedMethod.key);
         if (isBreb) {
             form.append("payerName", payerName.trim());
-            form.append("declaredPaidAt", declaredPaidAt);
-        } else {
+        }
+        if (proofFile) {
             form.append("proof", proofFile);
         }
 
@@ -129,7 +124,6 @@ export default function Topups() {
 
             setAmount("");
             setPayerName("");
-            setDeclaredPaidAt("");
             setProofFile(null);
             setFormSuccess(
                 isBreb
@@ -301,14 +295,25 @@ export default function Topups() {
                                                         />
                                                     </label>
 
-                                                    <label className="wallet-label">
-                                                        <span>Fecha y hora del giro</span>
-                                                        <input
-                                                            className="wallet-input"
-                                                            type="datetime-local"
-                                                            value={declaredPaidAt}
-                                                            onChange={(event) => setDeclaredPaidAt(event.target.value)}
-                                                        />
+                                                    <label
+                                                        style={{
+                                                            border: "1px dashed rgba(148,163,184,.45)",
+                                                            borderRadius: 18,
+                                                            padding: 22,
+                                                            background: "rgba(255,255,255,.02)",
+                                                            cursor: "pointer",
+                                                            minHeight: 160,
+                                                            display: "grid",
+                                                            placeItems: "center",
+                                                            textAlign: "center",
+                                                        }}
+                                                    >
+                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                        <div>
+                                                            <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
+                                                            <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Adjunta tu soporte si lo tienes"}</div>
+                                                            <div className="wallet-small">Opcional. JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
+                                                        </div>
                                                     </label>
 
                                                     <div
@@ -322,7 +327,7 @@ export default function Topups() {
                                                             lineHeight: 1.5,
                                                         }}
                                                     >
-                                                        El registro inmediato solo aplica para pagos enviados por <b>llaves Bre-B</b>. Asegúrate de registrar correctamente el monto, el nombre del girador y la hora del giro.
+                                                        El registro inmediato solo aplica para pagos enviados por <b>llaves Bre-B</b>. Asegúrate de registrar correctamente el monto y el nombre del girador.
                                                     </div>
                                                 </>
                                             ) : (

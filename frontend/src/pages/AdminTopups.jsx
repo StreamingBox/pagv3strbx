@@ -407,22 +407,13 @@ export default function AdminTopups() {
                                                 </label>
                                             </div>
 
-                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14 }}>
+                                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
                                                 <label style={ADMIN_LABEL_STYLE}>
                                                     <span>Alias</span>
                                                     <input
                                                         style={ADMIN_FIELD_STYLE}
                                                         value={method.accountAlias}
                                                         onChange={(event) => updateMethod(index, "accountAlias", event.target.value)}
-                                                    />
-                                                </label>
-                                                <label style={ADMIN_LABEL_STYLE}>
-                                                    <span>URL QR</span>
-                                                    <input
-                                                        style={ADMIN_FIELD_STYLE}
-                                                        value={method.qrImageUrl || ""}
-                                                        onChange={(event) => updateMethod(index, "qrImageUrl", event.target.value)}
-                                                        placeholder="/images/payments/breb-qr.png"
                                                     />
                                                 </label>
                                                 <label style={ADMIN_LABEL_STYLE}>
@@ -433,6 +424,40 @@ export default function AdminTopups() {
                                                         onChange={(event) => updateMethod(index, "instructions", event.target.value)}
                                                     />
                                                 </label>
+                                            </div>
+
+                                            <div style={{ display: "grid", gridTemplateColumns: method.qrImageUrl ? "1.3fr .7fr" : "1fr", gap: 14, alignItems: "start" }}>
+                                                <label style={ADMIN_LABEL_STYLE}>
+                                                    <span>URL QR</span>
+                                                    <input
+                                                        style={ADMIN_FIELD_STYLE}
+                                                        value={method.qrImageUrl || ""}
+                                                        onChange={(event) => updateMethod(index, "qrImageUrl", event.target.value)}
+                                                        placeholder="https://... o /images/payments/breb-qr.png"
+                                                    />
+                                                </label>
+                                                {method.qrImageUrl ? (
+                                                    <div style={{ display: "grid", gap: 8 }}>
+                                                        <span style={{ ...ADMIN_LABEL_STYLE, gap: 0 }}>Vista previa QR</span>
+                                                        <div
+                                                            style={{
+                                                                border: "1px solid var(--stroke)",
+                                                                borderRadius: 16,
+                                                                background: "#fff",
+                                                                padding: 12,
+                                                                minHeight: 120,
+                                                                display: "grid",
+                                                                placeItems: "center",
+                                                            }}
+                                                        >
+                                                            <img
+                                                                src={method.qrImageUrl}
+                                                                alt={`QR ${method.label || index + 1}`}
+                                                                style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain", display: "block" }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         </div>
                                     ))}

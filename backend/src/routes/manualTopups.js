@@ -207,7 +207,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         const methodKey = String(req.body?.methodKey || "").trim().toLowerCase();
         const payerName = String(req.body?.payerName || "").trim();
         const declaredPaidAtRaw = String(req.body?.declaredPaidAt || "").trim();
-        const declaredPaidAt = declaredPaidAtRaw ? new Date(declaredPaidAtRaw) : null;
+        let declaredPaidAt = declaredPaidAtRaw ? new Date(declaredPaidAtRaw) : null;
         const methods = await getPaymentMethodsConfig();
 
         const [[userRow]] = await conn.query(
@@ -241,7 +241,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
                 return res.status(400).json({ message: "Debes indicar el nombre de la persona que hizo el giro." });
             }
             if (!declaredPaidAt || Number.isNaN(declaredPaidAt.getTime())) {
-                return res.status(400).json({ message: "Debes indicar la fecha y hora del giro." });
+                declaredPaidAt = new Date();
             }
         }
 

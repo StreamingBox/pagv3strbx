@@ -96,6 +96,7 @@ export default function Topups() {
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
     const isBreb = selectedMethod?.key === "breb";
+    const isBinance = selectedMethod?.key === "binance";
 
     const highlightedStatus = useMemo(() => {
         const key = String(latestRequest?.status || "").toLowerCase();
@@ -189,12 +190,14 @@ export default function Topups() {
             return;
         }
 
-        if (isBreb) {
+        if (isBreb || isBinance) {
             if (!payerName.trim()) {
-                setFormError("Debes indicar el nombre de la persona que hizo el giro.");
+                setFormError(isBreb ? "Debes indicar el nombre de la persona que hizo el giro." : "Debes indicar el usuario o nombre del remitente.");
                 return;
             }
-        } else if (!proofFile) {
+        }
+
+        if (!isBreb && !proofFile) {
             setFormError("Debes adjuntar el comprobante.");
             return;
         }
@@ -202,7 +205,7 @@ export default function Topups() {
         const form = new FormData();
         form.append("amount", String(normalizedAmount));
         form.append("methodKey", selectedMethod.key);
-        if (isBreb) {
+        if (isBreb || isBinance) {
             form.append("payerName", payerName.trim());
         }
         if (proofFile) {
@@ -225,6 +228,8 @@ export default function Topups() {
             setFormSuccess(
                 isBreb
                     ? "Solicitud Bre-B enviada. La recarga se validará según los datos del giro y el medio de pago usado."
+                    : isBinance
+                        ? "Solicitud Binance enviada. La recarga se validará según el monto, el remitente y el soporte cargado."
                     : "Comprobante cargado con éxito. Tu recarga quedó en revisión."
             );
             await loadRequests();
@@ -288,11 +293,15 @@ export default function Topups() {
                             <h2 style={{ margin: "8px 0 6px", fontSize: 30, lineHeight: 1, fontWeight: 900 }}>
                                 {isBreb
                                     ? "Paga por Bre-B y registramos la recarga automáticamente."
+                                    : isBinance
+                                        ? "Paga por Binance y validamos la recarga automáticamente."
                                     : "Carga tu comprobante y nosotros validamos la recarga."}
                             </h2>
                             <p style={{ margin: 0, color: "var(--muted)", maxWidth: 620 }}>
                                 {isBreb
                                     ? "Usa únicamente llaves Bre-B. Si el pago no se registra correctamente, la solicitud pasará a segunda validación."
+                                    : isBinance
+                                        ? "Registra el monto y el remitente tal como aparecen en Binance. Si no coincide, la solicitud pasará a revisión manual."
                                     : "Selecciona el medio disponible para tu moneda, realiza la transferencia y sube el soporte."}
                             </p>
                         </div>
@@ -427,6 +436,53 @@ export default function Topups() {
                                                         El registro inmediato solo aplica para pagos enviados por <b>llaves Bre-B</b>. Asegúrate de registrar correctamente el monto y el nombre del girador.
                                                     </div>
                                                 </>
+                                            ) : isBinance ? (
+                                                <>
+                                                    <label className="wallet-label">
+                                                        <span>Usuario o nombre del remitente</span>
+                                                        <input
+                                                            className="wallet-input"
+                                                            placeholder="Ej: Elysiu26"
+                                                            value={payerName}
+                                                            onChange={(event) => setPayerName(event.target.value)}
+                                                        />
+                                                    </label>
+
+                                                    <label
+                                                        style={{
+                                                            border: "1px dashed rgba(148,163,184,.45)",
+                                                            borderRadius: 18,
+                                                            padding: 22,
+                                                            background: "rgba(255,255,255,.02)",
+                                                            cursor: "pointer",
+                                                            minHeight: 180,
+                                                            display: "grid",
+                                                            placeItems: "center",
+                                                            textAlign: "center",
+                                                        }}
+                                                    >
+                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                        <div>
+                                                            <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
+                                                            <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Sube tu comprobante de Binance"}</div>
+                                                            <div className="wallet-small">JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
+                                                        </div>
+                                                    </label>
+
+                                                    <div
+                                                        style={{
+                                                            borderRadius: 16,
+                                                            border: "1px solid rgba(245,158,11,.32)",
+                                                            background: "rgba(245,158,11,.08)",
+                                                            color: "#fcd34d",
+                                                            padding: 14,
+                                                            fontSize: 13,
+                                                            lineHeight: 1.5,
+                                                        }}
+                                                    >
+                                                        El registro inmediato aplica cuando el correo de <b>Binance</b> coincide con el monto y el remitente que registraste. Si no coincide, la recarga pasará a revisión manual.
+                                                    </div>
+                                                </>
                                             ) : (
                                                 <label
                                                     style={{
@@ -451,7 +507,7 @@ export default function Topups() {
                                             )}
 
                                             <button className="btn" onClick={submitManualTopup} disabled={submitting}>
-                                                {submitting ? "Enviando..." : isBreb ? "Validar pago" : "Enviar recarga"}
+                                                {submitting ? "Enviando..." : (isBreb || isBinance) ? "Validar pago" : "Enviar recarga"}
                                             </button>
 
                                             {formError ? <div className="error" style={{ marginTop: 0 }}>{formError}</div> : null}

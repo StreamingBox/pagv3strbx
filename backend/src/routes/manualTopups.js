@@ -17,6 +17,7 @@ const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("
 const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
 
 const router = express.Router();
+const AUTO_RECONCILE_METHOD_KEYS = new Set(["breb", "binance"]);
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -59,6 +60,18 @@ function defaultPaymentMethods() {
             key: "binance",
             label: "Binance",
             currency: "USD",
+            holderName: "SCREEN",
+            accountLabel: "ID Binance",
+            accountValue: "920604097",
+            accountAlias: "SCREEN",
+            accountType: "binance",
+            minAmount: 10,
+            instructions: "Transfiere por Binance usando el ID o alias y luego sube el comprobante.",
+        },
+        {
+            key: "binance",
+            label: "Binance",
+            currency: "MXN",
             holderName: "SCREEN",
             accountLabel: "ID Binance",
             accountValue: "920604097",
@@ -111,6 +124,7 @@ async function getPaymentMethodsConfig() {
     await ensureSettingsTable();
     const defaults = defaultPaymentMethods();
     const defaultCopMethod = defaults.find((item) => item.currency === "COP");
+    const defaultNonCopMethods = defaults.filter((item) => item.currency !== "COP");
     const [[row]] = await pool.query(
         "SELECT setting_value FROM app_settings WHERE setting_key = 'topup_payment_methods_json' LIMIT 1"
     );
@@ -124,9 +138,14 @@ async function getPaymentMethodsConfig() {
 
         const nonCopMethods = methods.filter((item) => item.currency !== "COP");
         const brebCopMethod = methods.find((item) => item.currency === "COP" && item.key === "breb");
+        const existingCurrencies = new Set(nonCopMethods.map((item) => item.currency));
+        const completedNonCopMethods = [
+            ...nonCopMethods,
+            ...defaultNonCopMethods.filter((item) => !existingCurrencies.has(item.currency)),
+        ];
         return [
             ...(defaultCopMethod ? [brebCopMethod || defaultCopMethod] : []),
-            ...nonCopMethods,
+            ...completedNonCopMethods,
         ];
     } catch {
         return defaults;
@@ -255,14 +274,14 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         }
 
         const requiresProof = selectedMethod.key !== "breb";
+        const requiresPayerName = AUTO_RECONCILE_METHOD_KEYS.has(selectedMethod.key);
+        const usesAutoReconciliation = AUTO_RECONCILE_METHOD_KEYS.has(selectedMethod.key);
 
-        if (selectedMethod.key === "breb") {
-            if (!payerName) {
-                return res.status(400).json({ message: "Debes indicar el nombre de la persona que hizo el giro." });
-            }
-            if (!declaredPaidAt || Number.isNaN(declaredPaidAt.getTime())) {
-                declaredPaidAt = new Date();
-            }
+        if (requiresPayerName && !payerName) {
+            return res.status(400).json({ message: "Debes indicar el nombre o usuario del remitente." });
+        }
+        if (usesAutoReconciliation && (!declaredPaidAt || Number.isNaN(declaredPaidAt.getTime()))) {
+            declaredPaidAt = new Date();
         }
 
         if (requiresProof && !req.file) {
@@ -287,7 +306,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
                 proofFileUrl,
                 payerName || null,
                 declaredPaidAt && !Number.isNaN(declaredPaidAt.getTime()) ? declaredPaidAt : null,
-                selectedMethod.key === "breb" ? "pending" : "manual_review",
+                usesAutoReconciliation ? "pending" : "manual_review",
             ]
         );
         await conn.commit();
@@ -310,9 +329,9 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         notifyManualTopupSubmitted(ins.insertId).catch((tgErr) => {
             console.error("[TelegramBot] notifyManualTopupSubmitted:", tgErr?.message || tgErr);
         });
-        if (selectedMethod.key === "breb") {
+        if (usesAutoReconciliation) {
             attemptAutoReconcileManualTopup(ins.insertId).catch((brebErr) => {
-                console.error("[breb] attemptAutoReconcileManualTopup:", brebErr?.message || brebErr);
+                console.error("[topup] attemptAutoReconcileManualTopup:", brebErr?.message || brebErr);
             });
         }
 
@@ -329,8 +348,12 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
                 proof_file_url: proofFileUrl,
                 payer_name: payerName || null,
                 declared_paid_at: declaredPaidAt && !Number.isNaN(declaredPaidAt.getTime()) ? declaredPaidAt.toISOString() : null,
-                auto_validation_status: selectedMethod.key === "breb" ? "pending" : "manual_review",
-                auto_validation_note: selectedMethod.key === "breb" ? "Pendiente por conciliación automática Bre-B." : "Pendiente de revisión manual.",
+                auto_validation_status: usesAutoReconciliation ? "pending" : "manual_review",
+                auto_validation_note: usesAutoReconciliation
+                    ? (selectedMethod.key === "breb"
+                        ? "Pendiente por conciliación automática Bre-B."
+                        : "Pendiente por conciliación automática Binance.")
+                    : "Pendiente de revisión manual.",
                 status: "submitted",
                 created_at: new Date().toISOString(),
             }),

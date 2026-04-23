@@ -8,6 +8,7 @@ const { notifyManualTopupAlert } = require("./telegramBot");
 
 let running = false;
 const BOGOTA_UTC_OFFSET_HOURS = 5;
+const AUTO_TOPUP_METHOD_KEYS = new Set(["breb", "binance"]);
 
 function normalizeText(value) {
     return String(value || "")
@@ -121,6 +122,55 @@ function parseBrebEmail(parsed, attributes = {}) {
     };
 }
 
+function parseUtcDateTime(raw) {
+    const source = normalizeText(raw);
+    const match = source.match(/(\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?\s*\(UTC\)/i);
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const day = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] || 0);
+    const date = new Date(Date.UTC(year, month, day, hour, minute, second, 0));
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseBinanceEmail(parsed, attributes = {}) {
+    const subject = normalizeText(parsed?.subject || "");
+    if (!subject.toLowerCase().includes("[binance] pago recibido correctamente")) {
+        return null;
+    }
+
+    const haystack = buildMailHaystack(parsed);
+    const timeMatch = haystack.match(/Fecha\s+y\s+hora:\s*([0-9:\-\s()UTC]+)/i);
+    const senderMatch = haystack.match(/Remitente:\s*([^\n\r]+)/i);
+    const amountMatch = haystack.match(/Monto:\s*([0-9.,]+)\s*([A-Z]+)/i);
+
+    if (!timeMatch || !senderMatch || !amountMatch) {
+        return {
+            uid: String(attributes?.uid || ""),
+            subject,
+            receivedAt: safeToDate(attributes?.date) || null,
+            parsed: false,
+            rawText: haystack,
+        };
+    }
+
+    return {
+        uid: String(attributes?.uid || ""),
+        subject,
+        amount: parseEsCoMoney(amountMatch[1]),
+        asset: normalizeText(amountMatch[2] || ""),
+        senderName: normalizeName(senderMatch[1]),
+        senderNameRaw: normalizeText(senderMatch[1]),
+        receivedAt: parseUtcDateTime(timeMatch[1]) || safeToDate(attributes?.date) || null,
+        receivedAtRaw: normalizeText(timeMatch[1]),
+        parsed: true,
+        rawText: haystack,
+    };
+}
+
 function compareNames(expected, received) {
     const lhs = normalizeName(expected);
     const rhs = normalizeName(received);
@@ -188,6 +238,50 @@ async function fetchRecentBrebEmails(limit = 15) {
     }
 }
 
+async function fetchRecentBinanceEmails(limit = 15) {
+    const config = getImapConfig();
+    if (!config) {
+        return { items: [], status: "config_error" };
+    }
+
+    let conn;
+    try {
+        conn = await connectImapWithTlsFallback(config, "binanceReconciliation");
+        await conn.openBox("INBOX");
+        const sinceDate = new Date(Date.now() - 72 * 60 * 60 * 1000);
+        const messages = await conn.search([["SINCE", sinceDate]], { bodies: ["HEADER.FIELDS (SUBJECT DATE FROM)"], markSeen: false });
+        if (!messages?.length) return { items: [], status: "ok" };
+
+        messages.sort((a, b) => {
+            const da = safeToDate(a?.attributes?.date)?.getTime() ?? 0;
+            const db = safeToDate(b?.attributes?.date)?.getTime() ?? 0;
+            return db - da;
+        });
+
+        const picked = [];
+        for (const msg of messages) {
+            if (picked.length >= limit) break;
+            const headerPart = msg?.parts?.find((part) => part.which.includes("HEADER"));
+            const headers = headerPart?.body || {};
+            const subject = normalizeText(headers.subject?.[0] || "");
+            if (!subject.toLowerCase().includes("[binance] pago recibido correctamente")) continue;
+            const full = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
+            const raw = full?.[0]?.parts?.find((part) => part.which === "");
+            if (!raw?.body) continue;
+            const parsed = await simpleParser(raw.body);
+            picked.push(parseBinanceEmail(parsed, msg.attributes));
+        }
+        return { items: picked.filter(Boolean), status: "ok" };
+    } catch (err) {
+        console.error("[binance] Error leyendo correos:", err?.message || err);
+        return { items: [], status: "imap_error" };
+    } finally {
+        if (conn) {
+            try { await conn.end(); } catch { }
+        }
+    }
+}
+
 async function saveValidationResult(id, payload) {
     const fields = [];
     const values = [];
@@ -200,16 +294,18 @@ async function saveValidationResult(id, payload) {
 }
 
 async function findBestEmailForRequest(request) {
-    const result = await fetchRecentBrebEmails(20);
+    const methodKey = String(request.methodKey || "").toLowerCase();
+    const isBreb = methodKey === "breb";
+    const result = isBreb ? await fetchRecentBrebEmails(20) : await fetchRecentBinanceEmails(20);
     const emails = Array.isArray(result?.items) ? result.items : [];
     if (!emails.length) {
         if (result?.status === "config_error") {
-            return { email: null, reason: "No hay conexión IMAP configurada para leer los correos de Bre-B." };
+            return { email: null, reason: isBreb ? "No hay conexión IMAP configurada para leer los correos de Bre-B." : "No hay conexión IMAP configurada para leer los correos de Binance." };
         }
         if (result?.status === "imap_error") {
-            return { email: null, reason: "Hubo un error leyendo el buzón de Bre-B y la recarga quedó para validación manual." };
+            return { email: null, reason: isBreb ? "Hubo un error leyendo el buzón de Bre-B y la recarga quedó para validación manual." : "Hubo un error leyendo el buzón de Binance y la recarga quedó para validación manual." };
         }
-        return { email: null, reason: "No se encontró un correo reciente de Bre-B." };
+        return { email: null, reason: isBreb ? "No se encontró un correo reciente de Bre-B." : "No se encontró un correo reciente de Binance." };
     }
 
     const [usedRows] = await pool.query(
@@ -224,7 +320,9 @@ async function findBestEmailForRequest(request) {
     const expectedDate = request.declaredPaidAt || null;
 
     let best = null;
-    let bestReason = "No hubo coincidencia exacta con monto, nombre y hora.";
+    let bestReason = isBreb
+        ? "No hubo coincidencia exacta con monto, nombre y hora."
+        : "No hubo coincidencia exacta con monto, remitente y hora.";
 
     for (const email of emails) {
         if (!email?.parsed || used.has(String(email.uid || ""))) continue;
@@ -234,7 +332,7 @@ async function findBestEmailForRequest(request) {
         const timeMatch = compareTimes(expectedDate, email.receivedAt);
 
         if (nameMatch.ok && timeMatch.ok) {
-            return { email, reason: "Coincidencia automática Bre-B." };
+            return { email, reason: isBreb ? "Coincidencia automática Bre-B." : "Coincidencia automática Binance." };
         }
 
         if (!best) {
@@ -253,10 +351,13 @@ async function attemptAutoReconcileManualTopup(id) {
     const request = await getManualTopupById(id);
     if (!request) return null;
     if (String(request.status || "").toLowerCase() !== "submitted") return request;
-    if (String(request.methodKey || "").toLowerCase() !== "breb") return request;
-    if (String(request.currency || "").toUpperCase() !== "COP") return request;
+    if (!AUTO_TOPUP_METHOD_KEYS.has(String(request.methodKey || "").toLowerCase())) return request;
 
     const { email, reason, candidate } = await findBestEmailForRequest(request);
+    const isBreb = String(request.methodKey || "").toLowerCase() === "breb";
+    const autoTitle = isBreb ? "Bre-B validado automáticamente" : "Binance validado automáticamente";
+    const manualTitle = isBreb ? "Bre-B requiere validación manual" : "Binance requiere validación manual";
+    const autoAdminLabel = isBreb ? "Bre-B" : "Binance";
 
     if (!email) {
         const shouldNotify = request.autoValidationStatus !== "manual_review" || String(request.autoValidationNote || "") !== String(reason || "");
@@ -267,7 +368,7 @@ async function attemptAutoReconcileManualTopup(id) {
         const updated = await getManualTopupById(id);
         if (shouldNotify) {
             await notifyManualTopupAlert(updated, {
-                title: "Bre-B requiere validación manual",
+                title: manualTitle,
                 note: reason,
             });
         }
@@ -288,12 +389,12 @@ async function attemptAutoReconcileManualTopup(id) {
         id,
         status: "approved",
         adminUserId: null,
-        adminNote: `Aprobada automáticamente por Bre-B. Remitente: ${email.senderNameRaw || email.senderName}. Hora: ${email.receivedAtRaw || ""}`.trim(),
+        adminNote: `Aprobada automáticamente por ${autoAdminLabel}. Remitente: ${email.senderNameRaw || email.senderName}. Hora: ${email.receivedAtRaw || ""}`.trim(),
     });
 
     await saveValidationResult(id, {
         auto_validation_status: "auto_approved",
-        auto_validation_note: "Aprobada automáticamente por coincidencia Bre-B.",
+        auto_validation_note: isBreb ? "Aprobada automáticamente por coincidencia Bre-B." : "Aprobada automáticamente por coincidencia Binance.",
         matched_email_uid: email.uid || null,
         matched_email_subject: email.subject || null,
         matched_sender_name: email.senderNameRaw || email.senderName || null,
@@ -302,8 +403,8 @@ async function attemptAutoReconcileManualTopup(id) {
     });
 
     await notifyManualTopupAlert(approved, {
-        title: "Bre-B validado automáticamente",
-        note: `Coincidió con ${email.senderNameRaw || email.senderName} por ${Number(email.amount || 0).toLocaleString("es-CO")} COP.`,
+        title: autoTitle,
+        note: `Coincidió con ${email.senderNameRaw || email.senderName} por ${Number(email.amount || 0).toLocaleString("es-CO")} ${request.currency || ""}`.trim(),
     });
     return approved;
 }
@@ -316,8 +417,7 @@ async function processPendingBrebTopups() {
             `SELECT id
              FROM manual_topup_requests
              WHERE status = 'submitted'
-               AND method_key = 'breb'
-               AND currency = 'COP'
+               AND method_key IN ('breb', 'binance')
                AND (auto_validation_status IS NULL OR auto_validation_status IN ('pending', 'manual_review'))
              ORDER BY id DESC
              LIMIT 25`

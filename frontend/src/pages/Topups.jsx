@@ -97,12 +97,43 @@ export default function Topups() {
         const key = String(latestRequest?.status || "").toLowerCase();
         return STATUS_META[key] || null;
     }, [latestRequest?.status]);
+    const hasOpenRequests = requests.some((item) => {
+        const status = String(item?.status || "").toLowerCase();
+        return status === "submitted" || status === "reviewing";
+    });
 
     useEffect(() => {
         if (!selectedMethod && availableMethods.length) {
             setSelectedMethodKey(availableMethods[0].key);
         }
     }, [selectedMethod, availableMethods]);
+
+    useEffect(() => {
+        if (!hasOpenRequests) return undefined;
+
+        const refresh = () => {
+            void loadRequests();
+            void loadWallet();
+        };
+
+        const intervalId = window.setInterval(() => {
+            if (document.visibilityState === "visible") {
+                refresh();
+            }
+        }, 8000);
+
+        const handleVisibility = () => {
+            if (document.visibilityState === "visible") {
+                refresh();
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibility);
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener("visibilitychange", handleVisibility);
+        };
+    }, [hasOpenRequests]);
 
     async function submitManualTopup() {
         setFormError("");

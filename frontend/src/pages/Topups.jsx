@@ -17,6 +17,26 @@ const STATUS_META = {
     rejected: { label: "Rechazada", color: "#ef4444" },
 };
 
+function resolveQrImageUrl(value) {
+    const input = String(value || "").trim();
+    if (!input) return "";
+
+    try {
+        const url = new URL(input);
+        if (url.hostname.includes("drive.google.com")) {
+            const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
+            const directId = fileMatch?.[1] || url.searchParams.get("id");
+            if (directId) {
+                return `https://drive.google.com/uc?export=view&id=${directId}`;
+            }
+        }
+    } catch {
+        return input;
+    }
+
+    return input;
+}
+
 export default function Topups() {
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -384,7 +404,7 @@ export default function Topups() {
                                                     }}
                                                 >
                                                     <img
-                                                        src={selectedMethod.qrImageUrl}
+                                                        src={resolveQrImageUrl(selectedMethod.qrImageUrl)}
                                                         alt={`QR ${selectedMethod.label}`}
                                                         style={{ width: "100%", height: "auto", display: "block", borderRadius: 12 }}
                                                     />

@@ -46,6 +46,26 @@ const ADMIN_LABEL_STYLE = {
     fontWeight: 700,
 };
 
+function resolveQrImageUrl(value) {
+    const input = String(value || "").trim();
+    if (!input) return "";
+
+    try {
+        const url = new URL(input);
+        if (url.hostname.includes("drive.google.com")) {
+            const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
+            const directId = fileMatch?.[1] || url.searchParams.get("id");
+            if (directId) {
+                return `https://drive.google.com/uc?export=view&id=${directId}`;
+            }
+        }
+    } catch {
+        return input;
+    }
+
+    return input;
+}
+
 function emptyMethod() {
     return {
         _rowId: `method-row-${nextMethodRowId++}`,
@@ -451,7 +471,7 @@ export default function AdminTopups() {
                                                             }}
                                                         >
                                                             <img
-                                                                src={method.qrImageUrl}
+                                                                src={resolveQrImageUrl(method.qrImageUrl)}
                                                                 alt={`QR ${method.label || index + 1}`}
                                                                 style={{ maxWidth: "100%", maxHeight: 180, objectFit: "contain", display: "block" }}
                                                             />

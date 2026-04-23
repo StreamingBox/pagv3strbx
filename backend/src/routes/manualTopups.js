@@ -70,6 +70,26 @@ function defaultPaymentMethods() {
     ];
 }
 
+function normalizeQrImageUrl(value) {
+    const input = String(value || "").trim();
+    if (!input) return "";
+
+    try {
+        const url = new URL(input);
+        if (url.hostname.includes("drive.google.com")) {
+            const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
+            const directId = fileMatch?.[1] || url.searchParams.get("id");
+            if (directId) {
+                return `https://drive.google.com/uc?export=view&id=${directId}`;
+            }
+        }
+    } catch {
+        return input;
+    }
+
+    return input;
+}
+
 function normalizeMethod(input) {
     const raw = input && typeof input === "object" ? input : {};
     return {
@@ -82,7 +102,7 @@ function normalizeMethod(input) {
         accountAlias: String(raw.accountAlias || "").trim(),
         accountType: String(raw.accountType || "").trim(),
         minAmount: Number(raw.minAmount || 0),
-        qrImageUrl: String(raw.qrImageUrl || "").trim(),
+        qrImageUrl: normalizeQrImageUrl(raw.qrImageUrl),
         instructions: String(raw.instructions || "").trim(),
     };
 }

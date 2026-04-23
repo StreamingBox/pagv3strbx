@@ -7,6 +7,7 @@ const { getManualTopupById, updateManualTopupStatus } = require("./manualTopups.
 const { notifyManualTopupAlert } = require("./telegramBot");
 
 let running = false;
+const BOGOTA_UTC_OFFSET_HOURS = 5;
 
 function normalizeText(value) {
     return String(value || "")
@@ -85,7 +86,7 @@ function parseSpanishDateTime(raw) {
     if (suffix === "am" && hour === 12) hour = 0;
     if (!Number.isFinite(month)) return null;
 
-    const date = new Date(year, month, day, hour, minute, 0, 0);
+    const date = new Date(Date.UTC(year, month, day, hour + BOGOTA_UTC_OFFSET_HOURS, minute, 0, 0));
     return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -140,7 +141,7 @@ function compareTimes(expectedDate, receivedDate) {
     const received = safeToDate(receivedDate);
     if (!expected || !received) return { ok: false, minutesDiff: null };
     const diff = Math.abs(received.getTime() - expected.getTime()) / 1000 / 60;
-    return { ok: diff <= 90, minutesDiff: Math.round(diff) };
+    return { ok: diff <= 20, minutesDiff: Math.round(diff) };
 }
 
 async function fetchRecentBrebEmails(limit = 15) {

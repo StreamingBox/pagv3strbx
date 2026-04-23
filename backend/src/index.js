@@ -44,6 +44,7 @@ const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
+const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
 
 let instanceLockPath = null;
 const lockEnabled = String(process.env.BACKEND_SINGLE_INSTANCE || "true").toLowerCase() !== "false";
@@ -278,6 +279,10 @@ const port = process.env.PORT || 3000;
 const server = app.listen(port, () => {
     console.log(`API running on :${port}`);
     initBot();
+    processPendingBrebTopups().catch(() => { });
+    setInterval(() => {
+        processPendingBrebTopups().catch(() => { });
+    }, 60 * 1000).unref();
 });
 
 

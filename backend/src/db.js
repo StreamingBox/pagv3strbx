@@ -369,6 +369,16 @@ pool.query("ALTER TABLE manual_topup_requests ADD COLUMN balance_after DECIMAL(1
 pool.query("ALTER TABLE manual_topup_requests ADD COLUMN approved_at DATETIME NULL").catch(() => { });
 pool.query("ALTER TABLE manual_topup_requests ADD COLUMN rejected_at DATETIME NULL").catch(() => { });
 pool.query("ALTER TABLE manual_topup_requests ADD COLUMN reviewing_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN payer_name VARCHAR(160) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN declared_paid_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN auto_validation_status VARCHAR(32) NOT NULL DEFAULT 'pending'").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN auto_validation_note TEXT NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN last_auto_checked_at DATETIME NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN matched_email_uid VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN matched_email_subject VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN matched_sender_name VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN matched_email_amount DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE manual_topup_requests ADD COLUMN matched_email_received_at DATETIME NULL").catch(() => { });
 pool.query("CREATE UNIQUE INDEX uq_manual_topup_request_code ON manual_topup_requests(request_code)").catch(() => { });
 pool.query("CREATE INDEX idx_manual_topup_user ON manual_topup_requests(user_id)").catch(() => { });
 pool.query("CREATE INDEX idx_manual_topup_status ON manual_topup_requests(status)").catch(() => { });

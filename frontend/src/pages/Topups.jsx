@@ -27,6 +27,8 @@ export default function Topups() {
     const [selectedMethodKey, setSelectedMethodKey] = useState("");
     const [requests, setRequests] = useState([]);
     const [amount, setAmount] = useState("");
+    const [payerName, setPayerName] = useState("");
+    const [declaredPaidAt, setDeclaredPaidAt] = useState("");
     const [proofFile, setProofFile] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [formError, setFormError] = useState("");
@@ -41,9 +43,10 @@ export default function Topups() {
         const response = await apiGet("/wallet/manual-topups/config");
         if (response.ok) {
             const config = response.data?.config || { currency: "", methods: [] };
-            setTopupConfig(config);
-            const firstMethod = Array.isArray(config.methods) ? config.methods[0]?.key || "" : "";
-            setSelectedMethodKey((prev) => (config.methods.some((item) => item.key === prev) ? prev : firstMethod));
+            const methods = Array.isArray(config.methods) ? config.methods : [];
+            setTopupConfig({ ...config, methods });
+            const firstMethod = methods[0]?.key || "";
+            setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
         }
     }
 
@@ -62,6 +65,7 @@ export default function Topups() {
     const selectedMethod = availableMethods.find((item) => item.key === selectedMethodKey) || availableMethods[0] || null;
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
+    const isBreb = selectedMethod?.key === "breb";
 
     const highlightedStatus = useMemo(() => {
         const key = String(latestRequest?.status || "").toLowerCase();
@@ -83,21 +87,35 @@ export default function Topups() {
             return;
         }
 
-        if (!proofFile) {
-            setFormError("Debes adjuntar el comprobante.");
+        const normalizedAmount = Number(String(amount || "").replace(/[^\d.]/g, ""));
+        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+            setFormError("Ingresa un monto válido.");
             return;
         }
 
-        const normalizedAmount = Number(String(amount || "").replace(/[^\d.]/g, ""));
-        if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
-            setFormError("Ingresa un monto valido.");
+        if (isBreb) {
+            if (!payerName.trim()) {
+                setFormError("Debes indicar el nombre de la persona que hizo el giro.");
+                return;
+            }
+            if (!declaredPaidAt) {
+                setFormError("Debes indicar la fecha y hora del giro.");
+                return;
+            }
+        } else if (!proofFile) {
+            setFormError("Debes adjuntar el comprobante.");
             return;
         }
 
         const form = new FormData();
         form.append("amount", String(normalizedAmount));
         form.append("methodKey", selectedMethod.key);
-        form.append("proof", proofFile);
+        if (isBreb) {
+            form.append("payerName", payerName.trim());
+            form.append("declaredPaidAt", declaredPaidAt);
+        } else {
+            form.append("proof", proofFile);
+        }
 
         setSubmitting(true);
         try {
@@ -110,8 +128,14 @@ export default function Topups() {
             if (!response.ok) throw new Error(data?.message || "No se pudo enviar la solicitud.");
 
             setAmount("");
+            setPayerName("");
+            setDeclaredPaidAt("");
             setProofFile(null);
-            setFormSuccess("Comprobante cargado con exito. Tu recarga quedo en revision.");
+            setFormSuccess(
+                isBreb
+                    ? "Solicitud Bre-B enviada. La recarga se validará según los datos del giro y el medio de pago usado."
+                    : "Comprobante cargado con éxito. Tu recarga quedó en revisión."
+            );
             await loadRequests();
         } catch (error) {
             setFormError(error?.message || "No se pudo enviar la solicitud.");
@@ -171,10 +195,14 @@ export default function Topups() {
                                 Recargar saldo
                             </div>
                             <h2 style={{ margin: "8px 0 6px", fontSize: 30, lineHeight: 1, fontWeight: 900 }}>
-                                Carga tu comprobante y nosotros validamos la recarga.
+                                {isBreb
+                                    ? "Paga por Bre-B y registramos la recarga automáticamente."
+                                    : "Carga tu comprobante y nosotros validamos la recarga."}
                             </h2>
                             <p style={{ margin: 0, color: "var(--muted)", maxWidth: 620 }}>
-                                Selecciona el medio disponible para tu moneda, realiza la transferencia y sube el soporte.
+                                {isBreb
+                                    ? "Usa únicamente llaves Bre-B. Si el pago no se registra correctamente, la solicitud pasará a segunda validación."
+                                    : "Selecciona el medio disponible para tu moneda, realiza la transferencia y sube el soporte."}
                             </p>
                         </div>
 
@@ -198,7 +226,7 @@ export default function Topups() {
                             </div>
                             {latestRequest ? (
                                 <div style={{ marginTop: 8, padding: 12, borderRadius: 14, background: "rgba(15,23,42,.28)", border: "1px solid rgba(148,163,184,.18)" }}>
-                                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Ultima solicitud</div>
+                                    <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Última solicitud</div>
                                     <div style={{ fontWeight: 800 }}>{latestRequest.requestCode}</div>
                                     <div style={{ margin: "6px 0 10px" }}>
                                         {Number(latestRequest.amount || 0).toLocaleString("es-CO")} {latestRequest.currency || currency}
@@ -210,7 +238,7 @@ export default function Topups() {
                                     ) : null}
                                 </div>
                             ) : (
-                                <div style={{ color: "var(--muted)", fontSize: 13 }}>Aun no tienes solicitudes de recarga.</div>
+                                <div style={{ color: "var(--muted)", fontSize: 13 }}>Aún no tienes solicitudes de recarga.</div>
                             )}
                         </div>
                     </section>
@@ -240,7 +268,7 @@ export default function Topups() {
                                             >
                                                 <div style={{ fontWeight: 900, marginBottom: 6, fontSize: 17 }}>{method.label}</div>
                                                 <div className="wallet-small" style={{ marginTop: 0 }}>
-                                                    Minimo: {Number(method.minAmount || 0).toLocaleString("es-CO")} {method.currency}
+                                                    Mínimo: {Number(method.minAmount || 0).toLocaleString("es-CO")} {method.currency}
                                                 </div>
                                             </button>
                                         );
@@ -261,29 +289,67 @@ export default function Topups() {
                                                 />
                                             </label>
 
-                                            <label
-                                                style={{
-                                                    border: "1px dashed rgba(148,163,184,.45)",
-                                                    borderRadius: 18,
-                                                    padding: 22,
-                                                    background: "rgba(255,255,255,.02)",
-                                                    cursor: "pointer",
-                                                    minHeight: 180,
-                                                    display: "grid",
-                                                    placeItems: "center",
-                                                    textAlign: "center",
-                                                }}
-                                            >
-                                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
-                                                <div>
-                                                    <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
-                                                    <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Sube tu comprobante"}</div>
-                                                    <div className="wallet-small">JPG, PNG, WEBP o PDF. Maximo 5MB.</div>
-                                                </div>
-                                            </label>
+                                            {isBreb ? (
+                                                <>
+                                                    <label className="wallet-label">
+                                                        <span>Nombre de la persona que giró</span>
+                                                        <input
+                                                            className="wallet-input"
+                                                            placeholder="Ej: Natalia Ortiz"
+                                                            value={payerName}
+                                                            onChange={(event) => setPayerName(event.target.value)}
+                                                        />
+                                                    </label>
+
+                                                    <label className="wallet-label">
+                                                        <span>Fecha y hora del giro</span>
+                                                        <input
+                                                            className="wallet-input"
+                                                            type="datetime-local"
+                                                            value={declaredPaidAt}
+                                                            onChange={(event) => setDeclaredPaidAt(event.target.value)}
+                                                        />
+                                                    </label>
+
+                                                    <div
+                                                        style={{
+                                                            borderRadius: 16,
+                                                            border: "1px solid rgba(245,158,11,.32)",
+                                                            background: "rgba(245,158,11,.08)",
+                                                            color: "#fcd34d",
+                                                            padding: 14,
+                                                            fontSize: 13,
+                                                            lineHeight: 1.5,
+                                                        }}
+                                                    >
+                                                        El registro inmediato solo aplica para pagos enviados por <b>llaves Bre-B</b>. Asegúrate de registrar correctamente el monto, el nombre del girador y la hora del giro.
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                <label
+                                                    style={{
+                                                        border: "1px dashed rgba(148,163,184,.45)",
+                                                        borderRadius: 18,
+                                                        padding: 22,
+                                                        background: "rgba(255,255,255,.02)",
+                                                        cursor: "pointer",
+                                                        minHeight: 180,
+                                                        display: "grid",
+                                                        placeItems: "center",
+                                                        textAlign: "center",
+                                                    }}
+                                                >
+                                                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                    <div>
+                                                        <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
+                                                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Sube tu comprobante"}</div>
+                                                        <div className="wallet-small">JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
+                                                    </div>
+                                                </label>
+                                            )}
 
                                             <button className="btn" onClick={submitManualTopup} disabled={submitting}>
-                                                {submitting ? "Enviando..." : "Enviar recarga"}
+                                                {submitting ? "Enviando..." : isBreb ? "Validar pago" : "Enviar recarga"}
                                             </button>
 
                                             {formError ? <div className="error" style={{ marginTop: 0 }}>{formError}</div> : null}
@@ -302,9 +368,26 @@ export default function Topups() {
                                             }}
                                         >
                                             <div style={{ fontSize: 19, fontWeight: 900 }}>Datos para transferir</div>
+                                            {selectedMethod.qrImageUrl ? (
+                                                <div
+                                                    style={{
+                                                        borderRadius: 18,
+                                                        padding: 12,
+                                                        background: "#fff",
+                                                        justifySelf: "center",
+                                                        width: "min(100%, 320px)",
+                                                    }}
+                                                >
+                                                    <img
+                                                        src={selectedMethod.qrImageUrl}
+                                                        alt={`QR ${selectedMethod.label}`}
+                                                        style={{ width: "100%", height: "auto", display: "block", borderRadius: 12 }}
+                                                    />
+                                                </div>
+                                            ) : null}
                                             <div style={{ display: "grid", gap: 10, fontSize: 14 }}>
                                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                                                    <span style={{ color: "var(--muted)" }}>Metodo</span>
+                                                    <span style={{ color: "var(--muted)" }}>Método</span>
                                                     <strong>{selectedMethod.label}</strong>
                                                 </div>
                                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -381,15 +464,25 @@ export default function Topups() {
                                             <div className="wallet-small" style={{ marginTop: 0 }}>
                                                 Creada: {new Date(item.createdAt).toLocaleString("es-CO", { timeZone: "America/Bogota" })}
                                             </div>
-                                            {item.adminNote ? <div className="wallet-small" style={{ marginTop: 0 }}>Nota admin: {item.adminNote}</div> : null}
-                                            <a className="wallet-link" href={item.proofFileUrl} target="_blank" rel="noreferrer">Ver comprobante</a>
+                                            {item.payerName ? (
+                                                <div className="wallet-small" style={{ marginTop: 0 }}>Girador: {item.payerName}</div>
+                                            ) : null}
+                                            {item.autoValidationNote ? (
+                                                <div className="wallet-small" style={{ marginTop: 0 }}>Validación: {item.autoValidationNote}</div>
+                                            ) : null}
+                                            {item.adminNote ? (
+                                                <div className="wallet-small" style={{ marginTop: 0 }}>Nota admin: {item.adminNote}</div>
+                                            ) : null}
+                                            {item.proofFileUrl ? (
+                                                <a className="wallet-link" href={item.proofFileUrl} target="_blank" rel="noreferrer">Ver comprobante</a>
+                                            ) : null}
                                         </div>
                                     );
                                 })}
                             </div>
                         ) : (
                             <div className="wallet-small" style={{ marginTop: 12 }}>
-                                Aun no has enviado recargas.
+                                Aún no has enviado recargas.
                             </div>
                         )}
                     </section>

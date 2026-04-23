@@ -87,6 +87,13 @@ function buildTopupMessage(item, extra = {}) {
         `Estado: ${getTopupStatusLabel(item.status)}`,
     ];
 
+    if (item.payerName) {
+        lines.push(`Girador declarado: ${item.payerName}`);
+    }
+    if (item.declaredPaidAt) {
+        const declared = new Date(item.declaredPaidAt);
+        lines.push(`Hora declarada: ${declared.toLocaleString("es-CO", { timeZone: "America/Bogota" })}`);
+    }
     if (item.createdAt) {
         const date = new Date(item.createdAt);
         lines.push(`Creada: ${date.toLocaleString("es-CO", { timeZone: "America/Bogota" })}`);
@@ -97,8 +104,14 @@ function buildTopupMessage(item, extra = {}) {
     if (item.adminNote) {
         lines.push(`Nota: ${item.adminNote}`);
     }
+    if (item.autoValidationNote) {
+        lines.push(`Validacion: ${item.autoValidationNote}`);
+    }
     if (extra.actor) {
         lines.push(`Gestionado por: ${extra.actor}`);
+    }
+    if (extra.note) {
+        lines.push(`Detalle: ${extra.note}`);
     }
     return lines.join("\n");
 }
@@ -749,6 +762,19 @@ async function notifyManualTopupStatusChanged(itemOrId, extra = {}) {
     });
 }
 
+async function notifyManualTopupAlert(itemOrId, extra = {}) {
+    if (!bot || AUTHORIZED.size === 0) return;
+    const item = typeof itemOrId === "object" && itemOrId
+        ? itemOrId
+        : await getManualTopupById(Number(itemOrId));
+    if (!item) return;
+
+    const title = extra.title || "Novedad de recarga";
+    await notifyAuthorizedChats(`${title}\n\n${buildTopupMessage(item, extra)}`, {
+        reply_markup: buildTopupInlineKeyboard(item),
+    });
+}
+
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
     if (!BOT_ENABLED) {
@@ -774,4 +800,5 @@ module.exports = {
     notifySale,
     notifyManualTopupSubmitted,
     notifyManualTopupStatusChanged,
+    notifyManualTopupAlert,
 };

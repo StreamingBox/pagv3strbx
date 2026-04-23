@@ -14,6 +14,7 @@ const {
     updateManualTopupStatus,
 } = require("../services/manualTopups.service");
 const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
+const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
 
 const router = express.Router();
 
@@ -42,37 +43,17 @@ async function ensureSettingsTable() {
 function defaultPaymentMethods() {
     return [
         {
-            key: "nequi",
-            label: "Nequi",
+            key: "breb",
+            label: "Bre-B",
             currency: "COP",
-            holderName: "Leydis (KKK)",
-            accountLabel: "Numero",
-            accountValue: "3152749108",
-            accountType: "ahorro",
-            minAmount: 15000,
-            instructions: "Transfiere y sube el comprobante.",
-        },
-        {
-            key: "llave",
-            label: "Llave",
-            currency: "COP",
-            holderName: "Leydis (KKK)",
+            holderName: "ANGEL MORENO",
             accountLabel: "Llave",
-            accountValue: "@LEIDYSC7422",
-            accountType: "ahorro",
-            minAmount: 15000,
-            instructions: "Transfiere y sube el comprobante.",
-        },
-        {
-            key: "daviplata",
-            label: "Daviplata",
-            currency: "COP",
-            holderName: "Leydis (KKK)",
-            accountLabel: "Numero",
-            accountValue: "",
-            accountType: "ahorro",
-            minAmount: 15000,
-            instructions: "Transfiere y sube el comprobante.",
+            accountValue: "3006952221",
+            accountType: "llave",
+            accountAlias: "",
+            qrImageUrl: "",
+            minAmount: 3000,
+            instructions: "Envía por llaves Bre-B a la llave 3006952221. Si pagas por otro medio, la recarga pasará a segunda validación manual.",
         },
         {
             key: "binance",
@@ -101,6 +82,7 @@ function normalizeMethod(input) {
         accountAlias: String(raw.accountAlias || "").trim(),
         accountType: String(raw.accountType || "").trim(),
         minAmount: Number(raw.minAmount || 0),
+        qrImageUrl: String(raw.qrImageUrl || "").trim(),
         instructions: String(raw.instructions || "").trim(),
     };
 }
@@ -108,6 +90,7 @@ function normalizeMethod(input) {
 async function getPaymentMethodsConfig() {
     await ensureSettingsTable();
     const defaults = defaultPaymentMethods();
+    const defaultCopMethod = defaults.find((item) => item.currency === "COP");
     const [[row]] = await pool.query(
         "SELECT setting_value FROM app_settings WHERE setting_key = 'topup_payment_methods_json' LIMIT 1"
     );
@@ -117,7 +100,14 @@ async function getPaymentMethodsConfig() {
         const parsed = JSON.parse(row.setting_value);
         if (!Array.isArray(parsed)) return defaults;
         const methods = parsed.map(normalizeMethod).filter((item) => item.key && item.label && item.currency && item.accountValue);
-        return methods.length ? methods : defaults;
+        if (!methods.length) return defaults;
+
+        const nonCopMethods = methods.filter((item) => item.currency !== "COP");
+        const brebCopMethod = methods.find((item) => item.currency === "COP" && item.key === "breb");
+        return [
+            ...(defaultCopMethod ? [brebCopMethod || defaultCopMethod] : []),
+            ...nonCopMethods,
+        ];
     } catch {
         return defaults;
     }
@@ -215,6 +205,9 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         const userId = req.user.id;
         const amount = Number(req.body?.amount || 0);
         const methodKey = String(req.body?.methodKey || "").trim().toLowerCase();
+        const payerName = String(req.body?.payerName || "").trim();
+        const declaredPaidAtRaw = String(req.body?.declaredPaidAt || "").trim();
+        const declaredPaidAt = declaredPaidAtRaw ? new Date(declaredPaidAtRaw) : null;
         const methods = await getPaymentMethodsConfig();
 
         const [[userRow]] = await conn.query(
@@ -241,19 +234,41 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
             return res.status(400).json({ message: `La recarga minima para ${selectedMethod.label} es de ${Number(selectedMethod.minAmount || 0).toLocaleString("es-CO")} ${userCurrency}.` });
         }
 
-        if (!req.file) {
+        const requiresProof = selectedMethod.key !== "breb";
+
+        if (selectedMethod.key === "breb") {
+            if (!payerName) {
+                return res.status(400).json({ message: "Debes indicar el nombre de la persona que hizo el giro." });
+            }
+            if (!declaredPaidAt || Number.isNaN(declaredPaidAt.getTime())) {
+                return res.status(400).json({ message: "Debes indicar la fecha y hora del giro." });
+            }
+        }
+
+        if (requiresProof && !req.file) {
             return res.status(400).json({ message: "Debes adjuntar el comprobante." });
         }
 
         const requestCode = buildRequestCode();
-        const proofFileUrl = saveProofFile({ file: req.file, requestCode });
+        const proofFileUrl = req.file ? saveProofFile({ file: req.file, requestCode }) : "";
 
         await conn.beginTransaction();
         const [ins] = await conn.query(
             `INSERT INTO manual_topup_requests
-                (request_code, user_id, method_key, method_label, amount, currency, proof_file_url, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 'submitted')`,
-            [requestCode, userId, selectedMethod.key, selectedMethod.label, amount, userCurrency, proofFileUrl]
+                (request_code, user_id, method_key, method_label, amount, currency, proof_file_url, payer_name, declared_paid_at, auto_validation_status, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+            [
+                requestCode,
+                userId,
+                selectedMethod.key,
+                selectedMethod.label,
+                amount,
+                userCurrency,
+                proofFileUrl,
+                payerName || null,
+                declaredPaidAt && !Number.isNaN(declaredPaidAt.getTime()) ? declaredPaidAt : null,
+                selectedMethod.key === "breb" ? "pending" : "manual_review",
+            ]
         );
         await conn.commit();
 
@@ -275,6 +290,11 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         notifyManualTopupSubmitted(ins.insertId).catch((tgErr) => {
             console.error("[TelegramBot] notifyManualTopupSubmitted:", tgErr?.message || tgErr);
         });
+        if (selectedMethod.key === "breb") {
+            attemptAutoReconcileManualTopup(ins.insertId).catch((brebErr) => {
+                console.error("[breb] attemptAutoReconcileManualTopup:", brebErr?.message || brebErr);
+            });
+        }
 
         return res.json({
             ok: true,
@@ -287,6 +307,10 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
                 method_key: selectedMethod.key,
                 method_label: selectedMethod.label,
                 proof_file_url: proofFileUrl,
+                payer_name: payerName || null,
+                declared_paid_at: declaredPaidAt && !Number.isNaN(declaredPaidAt.getTime()) ? declaredPaidAt.toISOString() : null,
+                auto_validation_status: selectedMethod.key === "breb" ? "pending" : "manual_review",
+                auto_validation_note: selectedMethod.key === "breb" ? "Pendiente por conciliación automática Bre-B." : "Pendiente de revisión manual.",
                 status: "submitted",
                 created_at: new Date().toISOString(),
             }),
@@ -322,6 +346,10 @@ router.put("/admin/manual-topups/config", requireAuth, requireRole("admin"), asy
             if (!Number.isFinite(method.minAmount) || method.minAmount <= 0) {
                 return res.status(400).json({ message: `El monto minimo de ${method.label} debe ser mayor a 0.` });
             }
+        }
+        const copMethods = methods.filter((item) => item.currency === "COP");
+        if (copMethods.length !== 1 || copMethods[0]?.key !== "breb") {
+            return res.status(400).json({ message: "Para COP solo se permite un medio y debe ser Bre-B." });
         }
 
         await savePaymentMethodsConfig(methods);

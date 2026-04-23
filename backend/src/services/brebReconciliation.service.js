@@ -96,7 +96,7 @@ function parseBrebEmail(parsed, attributes = {}) {
     }
 
     const haystack = buildMailHaystack(parsed);
-    const match = haystack.match(/Recibiste\s+\$?\s*([0-9.,]+)\s+de\s+(.+?)\s+-\s+el\s+(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}\s+a\s+las\s+\d{1,2}:\d{2}\s*[ap]\.?\s*m\.?)/i);
+    const match = haystack.match(/Recibiste\s+\$?\s*([0-9.,]+)\s+de\s+(.+?)(?:\s*-\s*|\s+)el\s+(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}\s+a\s+las\s+\d{1,2}:\d{2}\s*[ap]\.?\s*m\.?)/i);
     if (!match) {
         return {
             uid: String(attributes?.uid || ""),

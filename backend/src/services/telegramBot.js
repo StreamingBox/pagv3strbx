@@ -658,7 +658,7 @@ function setupCommands() {
                         id: Number(rawId),
                         status,
                         adminUserId: null,
-                        adminNote: `Gestionado desde Telegram por ${actor}`,
+                        adminNote: null,
                     });
                     await bot.editMessageText(buildTopupMessage(item, { actor }), {
                         chat_id: query.message.chat.id,

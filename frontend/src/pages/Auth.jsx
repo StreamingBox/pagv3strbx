@@ -6,17 +6,14 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { countries } from "../utils/countries";
 import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
 import { getApiBase } from "../config/apiBase.js";
-import {
-    authenticateWithBiometrics,
-    enableBiometricForUser,
-    getBiometricAvailability,
-    isBiometricEnabledForUser,
-    isNativeAndroidApp,
-} from "../native/biometricAuth.js";
+import { isNativeAndroidApp } from "../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
 const WA_NUMBER = "573152485340";
+const APP_REMEMBER_LOGIN_KEY = "sb-app-remember-login";
+const APP_SAVED_EMAIL_KEY = "sb-app-saved-email";
+const APP_SAVED_PASSWORD_KEY = "sb-app-saved-password";
 
 function getTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
@@ -59,6 +56,7 @@ export default function Auth() {
     const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
+    const [rememberLogin, setRememberLogin] = useState(isNativeAndroidApp());
 
     // Country
     const [country, setCountry] = useState({ code: "+57", flag: "🇨🇴", name: "Colombia" });
@@ -81,6 +79,20 @@ export default function Auth() {
         setError("");
     }, [location.pathname]);
 
+    useEffect(() => {
+        if (!isNativeAndroidApp()) return;
+        try {
+            const savedRemember = localStorage.getItem(APP_REMEMBER_LOGIN_KEY);
+            const nextRemember = savedRemember === null ? true : savedRemember === "1";
+            setRememberLogin(nextRemember);
+            if (location.pathname !== "/") return;
+            setEmail(localStorage.getItem(APP_SAVED_EMAIL_KEY) || "");
+            setPassword(nextRemember ? (localStorage.getItem(APP_SAVED_PASSWORD_KEY) || "") : "");
+        } catch {
+            setRememberLogin(true);
+        }
+    }, [location.pathname]);
+
     // Close countries on outside click
     useEffect(() => {
         const handler = (e) => {
@@ -99,29 +111,18 @@ export default function Auth() {
         navigate(next ? "/register" : "/");
     };
 
-    async function maybeEnableBiometricAccess(nextUser) {
-        if (!nextUser?.id || !isNativeAndroidApp() || isBiometricEnabledForUser(nextUser.id)) {
-            return;
-        }
-
-        const availability = await getBiometricAvailability();
-        if (!availability.available) return;
-
-        const confirmEnable = window.confirm("¿Quieres activar ingreso con huella en esta app Android?");
-        if (!confirmEnable) return;
-
-        const result = await authenticateWithBiometrics({
-            title: "Streaming Box",
-            subtitle: "Activar ingreso con huella",
-            reason: "Confirma tu identidad para habilitar el acceso biométrico en esta app",
-        });
-
-        if (result.ok) {
-            enableBiometricForUser(nextUser.id);
-            return;
-        }
-
-        throw new Error(result.message || "No se pudo activar el ingreso con huella.");
+    function persistNativeAppCredentials(nextEmail, nextPassword, shouldRemember) {
+        if (!isNativeAndroidApp()) return;
+        try {
+            localStorage.setItem(APP_REMEMBER_LOGIN_KEY, shouldRemember ? "1" : "0");
+            if (shouldRemember) {
+                localStorage.setItem(APP_SAVED_EMAIL_KEY, nextEmail.trim().toLowerCase());
+                localStorage.setItem(APP_SAVED_PASSWORD_KEY, nextPassword);
+            } else {
+                localStorage.removeItem(APP_SAVED_EMAIL_KEY);
+                localStorage.removeItem(APP_SAVED_PASSWORD_KEY);
+            }
+        } catch { }
     }
 
     async function handleLogin(e) {
@@ -135,8 +136,8 @@ export default function Auth() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "Error al iniciar sesión.");
+            persistNativeAppCredentials(email, password, rememberLogin);
             setUser(data?.user || null);
-            await maybeEnableBiometricAccess(data?.user || null);
             navigate(data?.user?.role === "admin" ? "/admin" : "/dashboard", { replace: true });
         } catch (err) { setError(err.message); }
         finally { setLoading(false); }
@@ -606,6 +607,17 @@ export default function Auth() {
                             Olvidé mi contraseña
                         </button>
                         {error && !isRegister && <div style={S.err}>{error}</div>}
+                        {isNativeAndroidApp() && (
+                            <label style={S.checkboxRow}>
+                                <input
+                                    style={S.checkbox}
+                                    type="checkbox"
+                                    checked={rememberLogin}
+                                    onChange={e => setRememberLogin(e.target.checked)}
+                                />
+                                <span style={S.checkboxText}>Guardar acceso en esta app</span>
+                            </label>
+                        )}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>
                             {loading ? "Cargando..." : "Ingresar"}
                         </motion.button>

@@ -122,6 +122,10 @@ export default function BiometricGate({ children }) {
         if (!ready || !available || !enabledForUser || !user?.id) return;
 
         function handleVisibility() {
+            if (promptRef.current || busy) {
+                return;
+            }
+
             if (document.hidden) {
                 resumePendingRef.current = true;
                 return;
@@ -136,7 +140,7 @@ export default function BiometricGate({ children }) {
 
         document.addEventListener("visibilitychange", handleVisibility);
         return () => document.removeEventListener("visibilitychange", handleVisibility);
-    }, [available, enabledForUser, ready, user?.id]);
+    }, [available, busy, enabledForUser, ready, user?.id]);
 
     async function handleDisableAndLogout() {
         clearBiometricPreference();

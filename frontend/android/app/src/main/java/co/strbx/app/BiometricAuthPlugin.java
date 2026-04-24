@@ -33,37 +33,52 @@ public class BiometricAuthPlugin extends Plugin {
     @PluginMethod
     public void authenticate(PluginCall call) {
         if (getActivity() == null) {
-            call.reject("No se encontró la actividad Android.");
+            call.reject("No se encontro la actividad Android.");
             return;
         }
 
         BiometricManager biometricManager = BiometricManager.from(getActivity());
         int status = biometricManager.canAuthenticate(AUTHENTICATORS);
         if (status != BiometricManager.BIOMETRIC_SUCCESS) {
-            call.reject("La biometría no está disponible en este dispositivo.", mapStatus(status));
+            call.reject("La biometria no esta disponible en este dispositivo.", mapStatus(status));
             return;
         }
+
+        saveCall(call);
+        String callbackId = call.getCallbackId();
 
         Executor executor = ContextCompat.getMainExecutor(getActivity());
         BiometricPrompt.AuthenticationCallback callback = new BiometricPrompt.AuthenticationCallback() {
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
+                PluginCall savedCall = getSavedCall(callbackId);
+                if (savedCall == null) return;
+
                 JSObject payload = new JSObject();
                 payload.put("authenticated", true);
-                call.resolve(payload);
+                savedCall.resolve(payload);
+                releaseCall(savedCall);
             }
 
             @Override
             public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                call.reject(errString.toString(), String.valueOf(errorCode));
+                PluginCall savedCall = getSavedCall(callbackId);
+                if (savedCall == null) return;
+
+                savedCall.reject(errString.toString(), String.valueOf(errorCode));
+                releaseCall(savedCall);
             }
 
             @Override
             public void onAuthenticationFailed() {
+                PluginCall savedCall = getSavedCall(callbackId);
+                if (savedCall == null) return;
+
                 JSObject payload = new JSObject();
                 payload.put("authenticated", false);
-                payload.put("message", "La verificación biométrica no coincidió.");
-                call.resolve(payload);
+                payload.put("message", "La verificacion biometrica no coincidio.");
+                savedCall.resolve(payload);
+                releaseCall(savedCall);
             }
         };
 

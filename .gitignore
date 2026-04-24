@@ -15,6 +15,7 @@ frontend/build/
 frontend/android/keystore.properties
 frontend/android/keystores/
 frontend/android/release-signing.txt
+frontend/android/.gradle-user-home/
 output/
 
 # Environment Variables

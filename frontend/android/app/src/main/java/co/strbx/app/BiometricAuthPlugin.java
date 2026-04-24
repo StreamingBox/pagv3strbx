@@ -44,41 +44,41 @@ public class BiometricAuthPlugin extends Plugin {
             return;
         }
 
-        saveCall(call);
+        bridge.saveCall(call);
         String callbackId = call.getCallbackId();
 
         Executor executor = ContextCompat.getMainExecutor(getActivity());
         BiometricPrompt.AuthenticationCallback callback = new BiometricPrompt.AuthenticationCallback() {
             @Override
             public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
-                PluginCall savedCall = getSavedCall(callbackId);
+                PluginCall savedCall = bridge.getSavedCall(callbackId);
                 if (savedCall == null) return;
 
                 JSObject payload = new JSObject();
                 payload.put("authenticated", true);
                 savedCall.resolve(payload);
-                releaseCall(savedCall);
+                savedCall.release(bridge);
             }
 
             @Override
             public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
-                PluginCall savedCall = getSavedCall(callbackId);
+                PluginCall savedCall = bridge.getSavedCall(callbackId);
                 if (savedCall == null) return;
 
                 savedCall.reject(errString.toString(), String.valueOf(errorCode));
-                releaseCall(savedCall);
+                savedCall.release(bridge);
             }
 
             @Override
             public void onAuthenticationFailed() {
-                PluginCall savedCall = getSavedCall(callbackId);
+                PluginCall savedCall = bridge.getSavedCall(callbackId);
                 if (savedCall == null) return;
 
                 JSObject payload = new JSObject();
                 payload.put("authenticated", false);
                 payload.put("message", "La verificacion biometrica no coincidio.");
                 savedCall.resolve(payload);
-                releaseCall(savedCall);
+                savedCall.release(bridge);
             }
         };
 

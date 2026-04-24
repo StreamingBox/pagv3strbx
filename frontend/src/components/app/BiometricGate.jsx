@@ -48,6 +48,8 @@ export default function BiometricGate({ children }) {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const promptRef = useRef(false);
+    const resumePendingRef = useRef(false);
+    const [promptNonce, setPromptNonce] = useState(0);
 
     const enabledForUser = useMemo(
         () => isBiometricEnabledForUser(user?.id),
@@ -108,25 +110,28 @@ export default function BiometricGate({ children }) {
         }
 
         setLocked(true);
+        setPromptNonce((value) => value + 1);
     }, [authLoading, available, enabledForUser, ready, user?.id]);
 
     useEffect(() => {
         if (!locked || !user?.id || !available || !enabledForUser) return;
         unlockWithBiometrics();
-    }, [available, enabledForUser, locked, unlockWithBiometrics, user?.id]);
+    }, [available, enabledForUser, locked, promptNonce, unlockWithBiometrics, user?.id]);
 
     useEffect(() => {
         if (!ready || !available || !enabledForUser || !user?.id) return;
 
         function handleVisibility() {
             if (document.hidden) {
-                setLocked(true);
+                resumePendingRef.current = true;
                 return;
             }
 
-            setTimeout(() => {
-                setLocked(true);
-            }, 120);
+            if (!resumePendingRef.current) return;
+
+            resumePendingRef.current = false;
+            setLocked(true);
+            setPromptNonce((value) => value + 1);
         }
 
         document.addEventListener("visibilitychange", handleVisibility);

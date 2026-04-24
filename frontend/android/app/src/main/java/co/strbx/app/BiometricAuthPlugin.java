@@ -16,7 +16,7 @@ import java.util.concurrent.Executor;
 @CapacitorPlugin(name = "BiometricAuth")
 public class BiometricAuthPlugin extends Plugin {
     private static final int AUTHENTICATORS =
-        BiometricManager.Authenticators.BIOMETRIC_STRONG |
+        BiometricManager.Authenticators.BIOMETRIC_WEAK |
         BiometricManager.Authenticators.DEVICE_CREDENTIAL;
 
     @PluginMethod

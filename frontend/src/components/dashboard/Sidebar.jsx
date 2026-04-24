@@ -12,7 +12,7 @@ const API_BASE = getApiBase();
 const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 const MotionButton = motion.button;
 const MotionSpan = motion.span;
-const APK_RELEASE_ID = typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "dev";
+const APK_RELEASE_ID = typeof __APK_RELEASE_ID__ !== "undefined" ? __APK_RELEASE_ID__ : "dev";
 const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 
 const NAV_ITEMS = [

@@ -70,7 +70,7 @@ function defaultPaymentMethods() {
             accountValue: "920604097",
             accountAlias: "SCREEN",
             accountType: "binance",
-            minAmount: 10,
+            minAmount: 1,
             instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
         },
         {
@@ -82,7 +82,7 @@ function defaultPaymentMethods() {
             accountValue: "920604097",
             accountAlias: "SCREEN",
             accountType: "binance",
-            minAmount: 10,
+            minAmount: 1,
             instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
         },
     ];
@@ -110,16 +110,25 @@ function normalizeQrImageUrl(value) {
 
 function normalizeMethod(input) {
     const raw = input && typeof input === "object" ? input : {};
+    const key = String(raw.key || "").trim().toLowerCase();
+    const currency = String(raw.currency || "").trim().toUpperCase();
+    const parsedMinAmount = Number(raw.minAmount || 0);
+    const normalizedMinAmount = key === "binance"
+        ? 1
+        : Number.isFinite(parsedMinAmount)
+            ? parsedMinAmount
+            : 0;
+
     return {
-        key: String(raw.key || "").trim().toLowerCase(),
+        key,
         label: String(raw.label || "").trim(),
-        currency: String(raw.currency || "").trim().toUpperCase(),
+        currency,
         holderName: String(raw.holderName || "").trim(),
         accountLabel: String(raw.accountLabel || "").trim(),
         accountValue: String(raw.accountValue || "").trim(),
         accountAlias: String(raw.accountAlias || "").trim(),
         accountType: String(raw.accountType || "").trim(),
-        minAmount: Number(raw.minAmount || 0),
+        minAmount: normalizedMinAmount,
         qrImageUrl: normalizeQrImageUrl(raw.qrImageUrl),
         instructions: String(raw.instructions || "").trim(),
     };

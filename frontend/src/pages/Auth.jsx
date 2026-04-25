@@ -13,7 +13,7 @@ const LOGO_URL = "/api/branding/logo";
 const WA_NUMBER = "573152485340";
 const APP_REMEMBER_LOGIN_KEY = "sb-app-remember-login";
 const APP_SAVED_EMAIL_KEY = "sb-app-saved-email";
-const APP_SAVED_PASSWORD_KEY = "sb-app-saved-password";
+const APP_LEGACY_SAVED_PASSWORD_KEY = "sb-app-saved-password";
 
 function getTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
@@ -85,9 +85,10 @@ export default function Auth() {
             const savedRemember = localStorage.getItem(APP_REMEMBER_LOGIN_KEY);
             const nextRemember = savedRemember === null ? true : savedRemember === "1";
             setRememberLogin(nextRemember);
+            localStorage.removeItem(APP_LEGACY_SAVED_PASSWORD_KEY);
             if (location.pathname !== "/") return;
-            setEmail(localStorage.getItem(APP_SAVED_EMAIL_KEY) || "");
-            setPassword(nextRemember ? (localStorage.getItem(APP_SAVED_PASSWORD_KEY) || "") : "");
+            setEmail(nextRemember ? (localStorage.getItem(APP_SAVED_EMAIL_KEY) || "") : "");
+            setPassword("");
         } catch {
             setRememberLogin(true);
         }
@@ -111,16 +112,15 @@ export default function Auth() {
         navigate(next ? "/register" : "/");
     };
 
-    function persistNativeAppCredentials(nextEmail, nextPassword, shouldRemember) {
+    function persistNativeAppCredentials(nextEmail, shouldRemember) {
         if (!isNativeAndroidApp()) return;
         try {
             localStorage.setItem(APP_REMEMBER_LOGIN_KEY, shouldRemember ? "1" : "0");
+            localStorage.removeItem(APP_LEGACY_SAVED_PASSWORD_KEY);
             if (shouldRemember) {
                 localStorage.setItem(APP_SAVED_EMAIL_KEY, nextEmail.trim().toLowerCase());
-                localStorage.setItem(APP_SAVED_PASSWORD_KEY, nextPassword);
             } else {
                 localStorage.removeItem(APP_SAVED_EMAIL_KEY);
-                localStorage.removeItem(APP_SAVED_PASSWORD_KEY);
             }
         } catch { }
     }
@@ -136,7 +136,7 @@ export default function Auth() {
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "Error al iniciar sesión.");
-            persistNativeAppCredentials(email, password, rememberLogin);
+            persistNativeAppCredentials(email, rememberLogin);
             setUser(data?.user || null);
             navigate(data?.user?.role === "admin" ? "/admin" : "/dashboard", { replace: true });
         } catch (err) { setError(err.message); }
@@ -615,7 +615,7 @@ export default function Auth() {
                                     checked={rememberLogin}
                                     onChange={e => setRememberLogin(e.target.checked)}
                                 />
-                                <span style={S.checkboxText}>Guardar acceso en esta app</span>
+                                <span style={S.checkboxText}>Guardar correo en esta app</span>
                             </label>
                         )}
                         <motion.button type="submit" style={S.btn} whileHover={{ y: -2, boxShadow: "0 8px 24px rgba(37,99,235,.45)" }} whileTap={{ scale: .97 }} disabled={loading}>

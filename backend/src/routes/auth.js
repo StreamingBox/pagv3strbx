@@ -64,7 +64,21 @@ function getFrontendBaseUrl(req) {
         process.env.FRONTEND_URL ||
         process.env.APP_URL ||
         process.env.CLIENT_URL;
-    if (envBase) return String(envBase).replace(/\/+$/, "");
+    if (envBase) {
+        try {
+            const url = new URL(String(envBase).trim());
+            if (!["http:", "https:"].includes(url.protocol)) {
+                throw new Error("frontend URL protocol must be http(s)");
+            }
+            return url.origin;
+        } catch {
+            throw new Error("FRONTEND_URL invalido.");
+        }
+    }
+
+    if (process.env.NODE_ENV === "production") {
+        throw new Error("FRONTEND_URL requerido en produccion.");
+    }
 
     const origin = String(req.headers.origin || "").trim();
     if (origin) return origin.replace(/\/+$/, "");

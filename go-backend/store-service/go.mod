@@ -2,6 +2,8 @@ module pagv2strbx-store
 
 go 1.25.0
 
+toolchain go1.26.2
+
 require (
 	github.com/gofiber/fiber/v2 v2.52.12
 	github.com/joho/godotenv v1.5.1

@@ -77,8 +77,10 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
     }
 });
 
-router.get("/test-v3", (req, res) => {
-    res.json({ ok: true, message: "Router de códigos V3 montado correctamente" });
-});
+if (process.env.NODE_ENV !== "production") {
+    router.get("/test-v3", (req, res) => {
+        res.json({ ok: true, message: "Router de códigos V3 montado correctamente" });
+    });
+}
 
 module.exports = router;

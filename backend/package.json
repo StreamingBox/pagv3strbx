@@ -22,13 +22,15 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
     "helmet": "^8.1.0",
-    "imap-simple": "^5.1.0",
+    "imap-simple": "^1.6.3",
     "jsonwebtoken": "^9.0.3",
     "mailparser": "^3.9.3",
     "multer": "^2.1.0",
     "mysql2": "^3.16.3",
-    "node-telegram-bot-api": "^0.67.0",
     "nodemailer": "^8.0.2"
+  },
+  "overrides": {
+    "imap": "0.8.17"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

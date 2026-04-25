@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"log"
 	"os"
 
@@ -12,9 +13,44 @@ import (
 	"pagv2strbx-store/handlers"
 )
 
+func isProduction() bool {
+	return os.Getenv("GO_ENV") == "production"
+}
+
+func requireInternalToken(c *fiber.Ctx) error {
+	expected := os.Getenv("INTERNAL_SERVICE_TOKEN")
+	if expected == "" && !isProduction() {
+		return c.Next()
+	}
+	if expected == "" {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"ok": false, "message": "Servicio no configurado."})
+	}
+	received := c.Get("X-Internal-Service-Token")
+	if subtle.ConstantTimeCompare([]byte(received), []byte(expected)) != 1 {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"ok": false, "message": "No autorizado."})
+	}
+	return c.Next()
+}
+
+func listenAddress(defaultPort string) string {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = defaultPort
+	}
+	bind := os.Getenv("GO_SERVICE_BIND_ADDR")
+	if bind == "" {
+		bind = "127.0.0.1"
+	}
+	return bind + ":" + port
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found in store-service, using system vars")
+	}
+
+	if isProduction() && os.Getenv("INTERNAL_SERVICE_TOKEN") == "" {
+		log.Fatal("INTERNAL_SERVICE_TOKEN is required in production")
 	}
 
 	config.ConnectDB()
@@ -29,6 +65,7 @@ func main() {
 	})
 
 	api := app.Group("/api")
+	api.Use(requireInternalToken)
 
 	api.Post("/checkout", handlers.CheckoutHandler)
 
@@ -42,11 +79,7 @@ func main() {
 		return c.JSON(fiber.Map{"ok": true, "data": []string{}})
 	})
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8002" // Different port for store
-	}
-
-	log.Printf("Starting Store Service on port %s", port)
-	log.Fatal(app.Listen(":" + port))
+	addr := listenAddress("8002")
+	log.Printf("Starting Store Service on %s", addr)
+	log.Fatal(app.Listen(addr))
 }

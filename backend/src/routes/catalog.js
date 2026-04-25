@@ -1,6 +1,7 @@
 const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
+const requireRole = require("../middleware/requireRole");
 
 const router = express.Router();
 
@@ -90,7 +91,10 @@ router.get("/catalog", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/debug-catalog", async (req, res) => {
+router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res.status(404).json({ message: "Ruta no encontrada." });
+  }
   try {
     const [rows] = await pool.query(
       `SELECT

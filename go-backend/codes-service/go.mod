@@ -2,6 +2,8 @@ module pagv2strbx-codes
 
 go 1.25.0
 
+toolchain go1.26.2
+
 require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.15.0

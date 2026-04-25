@@ -13,14 +13,13 @@
     "android:run": "npm run build && npx cap run android"
   },
   "dependencies": {
-    "@chenglou/pretext": "^0.0.4",
+    "@e965/xlsx": "^0.20.3",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
-    "recharts": "^3.7.0",
-    "xlsx": "^0.18.5"
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
     "@capacitor/android": "^8.3.0",

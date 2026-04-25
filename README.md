@@ -66,6 +66,20 @@ Entre las variables importantes están:
 - `GMAIL_IMAP_PASS`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_IDS`
+- `INTERNAL_SERVICE_TOKEN` (obligatoria si los microservicios Go corren en produccion)
+- `GO_SERVICE_BIND_ADDR` (por defecto `127.0.0.1`)
+
+Para rotar el token interno, genera un valor nuevo fuera del repositorio:
+
+```bash
+openssl rand -hex 32
+```
+
+Luego actualiza `INTERNAL_SERVICE_TOKEN` en el entorno del VPS/PM2 y reinicia con:
+
+```bash
+pm2 restart ecosystem.config.cjs --env production --update-env
+```
 
 ## Desarrollo local
 
@@ -175,6 +189,7 @@ El repo incluye:
 
 - `deploy.sh`
 - `ecosystem.config.cjs`
+- `.github/workflows/security-validation.yml`
 
 Según el entorno, normalmente el flujo es:
 
@@ -182,6 +197,8 @@ Según el entorno, normalmente el flujo es:
 2. instalar dependencias
 3. compilar frontend
 4. reiniciar procesos del backend
+
+El despliegue ahora valida Go `1.26.2+`, exige `INTERNAL_SERVICE_TOKEN`, audita dependencias y recompila los binarios Go antes de reiniciar PM2.
 
 ## Notas
 

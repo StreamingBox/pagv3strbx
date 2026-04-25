@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { layoutWithLines, prepareWithSegments } from "@chenglou/pretext";
 
 function getCanvasFont(style) {
     const fontStyle = style.fontStyle || "normal";
@@ -9,14 +8,38 @@ function getCanvasFont(style) {
     return `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`;
 }
 
-function getLineHeight(style) {
-    if (style.lineHeight && style.lineHeight !== "normal") {
-        const px = Number.parseFloat(style.lineHeight);
-        if (Number.isFinite(px)) return px;
+function getMeasureContext(font) {
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.font = font;
+    return context;
+}
+
+function splitText(text) {
+    return String(text).trim().split(/\s+/).filter(Boolean);
+}
+
+function measureText(context, value) {
+    return context.measureText(value).width;
+}
+
+function layoutText(context, words, maxWidth) {
+    const lines = [];
+    let current = "";
+
+    for (const word of words) {
+        const next = current ? `${current} ${word}` : word;
+        if (current && measureText(context, next) > maxWidth) {
+            lines.push(current);
+            current = word;
+        } else {
+            current = next;
+        }
     }
 
-    const fontSize = Number.parseFloat(style.fontSize || "16");
-    return Number.isFinite(fontSize) ? fontSize * 1.25 : 20;
+    if (current) lines.push(current);
+    return lines;
 }
 
 export default function BalancedText({
@@ -65,11 +88,17 @@ export default function BalancedText({
                 return;
             }
 
-            const prepared = prepareWithSegments(String(text), getCanvasFont(style));
-            const lineHeight = getLineHeight(style);
-            const initial = layoutWithLines(prepared, maxWidth, lineHeight);
+            const context = getMeasureContext(getCanvasFont(style));
+            if (!context) {
+                setBalancedLines(null);
+                return;
+            }
 
-            if (initial.lineCount <= 1 || initial.lineCount > maxLines) {
+            const words = splitText(text);
+            const initialLines = layoutText(context, words, maxWidth);
+            const initialLineCount = initialLines.length;
+
+            if (initialLineCount <= 1 || initialLineCount > maxLines) {
                 setBalancedLines(null);
                 return;
             }
@@ -78,17 +107,17 @@ export default function BalancedText({
             let bestWidth = maxWidth;
 
             for (let width = maxWidth - 6; width >= minWidth; width -= 6) {
-                const next = layoutWithLines(prepared, width, lineHeight);
-                if (next.lineCount === initial.lineCount) {
+                const next = layoutText(context, words, width);
+                if (next.length === initialLineCount) {
                     bestWidth = width;
                     continue;
                 }
                 break;
             }
 
-            const balanced = layoutWithLines(prepared, bestWidth, lineHeight);
+            const balanced = layoutText(context, words, bestWidth);
             if (!cancelled) {
-                setBalancedLines(balanced.lines.map((line) => line.text));
+                setBalancedLines(balanced);
             }
         };
 

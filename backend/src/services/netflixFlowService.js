@@ -6,7 +6,7 @@ const https = require("https");
 const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
 function getNetflixAxiosOptions() {
-    const insecureTls = getEnvBool("NETFLIX_TLS_INSECURE");
+    const insecureTls = process.env.NODE_ENV !== "production" && getEnvBool("NETFLIX_TLS_INSECURE");
 
     return {
         headers: {

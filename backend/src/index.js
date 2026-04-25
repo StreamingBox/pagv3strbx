@@ -1,6 +1,7 @@
 require("dotenv").config({ override: true });
 const fs = require("fs");
 const path = require("path");
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -45,6 +46,55 @@ const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
+
+function envBool(name) {
+    return String(process.env[name] || "").trim().toLowerCase() === "true";
+}
+
+function requireProdEnv(name, { minLength = 1 } = {}) {
+    const value = String(process.env[name] || "").trim();
+    if (!value || value.length < minLength) {
+        throw new Error(`[config] ${name} requerido en produccion.`);
+    }
+    return value;
+}
+
+function validatePublicUrl(name) {
+    const value = requireProdEnv(name);
+    try {
+        const url = new URL(value);
+        if (!["https:"].includes(url.protocol)) {
+            throw new Error("must use https");
+        }
+        return url.origin;
+    } catch {
+        throw new Error(`[config] ${name} debe ser una URL HTTPS valida.`);
+    }
+}
+
+function validateProductionConfig() {
+    if (process.env.NODE_ENV !== "production") return;
+
+    requireProdEnv("JWT_ACCESS_SECRET", { minLength: 32 });
+    requireProdEnv("JWT_REFRESH_SECRET", { minLength: 32 });
+    validatePublicUrl("FRONTEND_URL");
+    validatePublicUrl("PUBLIC_BASE_URL");
+
+    if (envBool("WASENDER_SKIP_SIGNATURE")) {
+        throw new Error("[config] WASENDER_SKIP_SIGNATURE no puede estar activo en produccion.");
+    }
+
+    if (process.env.NOWPAYMENTS_API_KEY) {
+        requireProdEnv("NOWPAYMENTS_IPN_SECRET", { minLength: 16 });
+    }
+}
+
+try {
+    validateProductionConfig();
+} catch (error) {
+    console.error(error?.message || error);
+    process.exit(1);
+}
 
 let instanceLockPath = null;
 const lockEnabled = String(process.env.BACKEND_SINGLE_INSTANCE || "true").toLowerCase() !== "false";
@@ -202,7 +252,12 @@ app.use(express.json({
         req.rawBody = buf.toString("utf8");
     },
 }));
-app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+app.use(express.urlencoded({
+    extended: true,
+    limit: "5mb",
+    parameterLimit: 200,
+    depth: 5,
+}));
 
 // ✅ Sanitización de inputs (trim + anti prototype pollution)
 app.use(sanitize);
@@ -275,8 +330,33 @@ app.use("/api", whatsappRoutes);
 app.use("/api", nowpaymentsRoutes);
 app.use("/api", manualTopupsRoutes);
 
+app.use((req, res) => {
+    return res.status(404).json({ ok: false, message: "Ruta no encontrada." });
+});
+
+app.use((err, req, res, _next) => {
+    const status = Number(err?.status || err?.statusCode || 500);
+    if (status >= 500) {
+        console.error("[http] error", {
+            method: req.method,
+            path: req.originalUrl,
+            message: err?.message || String(err),
+        });
+    }
+    return res.status(status).json({
+        ok: false,
+        message: status >= 500 ? "Error interno." : (err?.message || "Solicitud invalida."),
+    });
+});
+
 const port = process.env.PORT || 3000;
-const server = app.listen(port, () => {
+const server = http.createServer(app);
+server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 30000);
+server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 35000);
+server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5000);
+server.maxHeadersCount = Number(process.env.HTTP_MAX_HEADERS_COUNT || 100);
+
+server.listen(port, () => {
     console.log(`API running on :${port}`);
     initBot();
     processPendingBrebTopups().catch(() => { });

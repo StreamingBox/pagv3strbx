@@ -199,7 +199,7 @@ export default function AdminAccounts() {
             // 1) leer excel
             const buffer = await file.arrayBuffer();
             const XLSX = await loadXlsx();
-            const wb = XLSX.read(buffer);
+            const wb = await XLSX.read(buffer);
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 

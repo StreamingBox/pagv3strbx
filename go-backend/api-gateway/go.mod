@@ -2,6 +2,8 @@ module pagv2strbx-gateway
 
 go 1.25.0
 
+toolchain go1.26.2
+
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/gofiber/fiber/v2 v2.52.12 // indirect

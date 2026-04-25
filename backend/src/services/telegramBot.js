@@ -14,7 +14,8 @@
  *   /comprar <platform_slug> <duracion_días> @usuario → Registrar compra a un usuario
  */
 
-const TelegramBot = require("node-telegram-bot-api");
+const axios = require("axios");
+const { EventEmitter } = require("events");
 const pool = require("../db");
 const { createAccountOne } = require("./accounts.service");
 const {
@@ -35,6 +36,107 @@ const buySessions = new Map();
 const stockSessions = new Map();
 let bot = null;
 let botDisabledByConflict = false;
+
+class TelegramBotClient extends EventEmitter {
+    constructor(token, { polling = false } = {}) {
+        super();
+        this.token = token;
+        this.baseUrl = `https://api.telegram.org/bot${token}`;
+        this.textHandlers = [];
+        this.polling = false;
+        this.stopped = false;
+        this.offset = 0;
+        this.http = axios.create({ baseURL: this.baseUrl, timeout: 35000 });
+        if (polling) {
+            this.startPolling();
+        }
+    }
+
+    async request(method, payload = {}) {
+        const { data } = await this.http.post(`/${method}`, payload);
+        if (!data?.ok) {
+            throw new Error(data?.description || `Telegram ${method} failed`);
+        }
+        return data.result;
+    }
+
+    setMyCommands(commands) {
+        return this.request("setMyCommands", { commands });
+    }
+
+    sendMessage(chatId, text, options = {}) {
+        return this.request("sendMessage", { chat_id: chatId, text, ...options });
+    }
+
+    sendDocument(chatId, document, options = {}) {
+        return this.request("sendDocument", { chat_id: chatId, document, ...options });
+    }
+
+    sendPhoto(chatId, photo, options = {}) {
+        return this.request("sendPhoto", { chat_id: chatId, photo, ...options });
+    }
+
+    editMessageText(text, options = {}) {
+        return this.request("editMessageText", { text, ...options });
+    }
+
+    answerCallbackQuery(callbackQueryId, options = {}) {
+        return this.request("answerCallbackQuery", { callback_query_id: callbackQueryId, ...options });
+    }
+
+    onText(regex, handler) {
+        this.textHandlers.push({ regex, handler });
+    }
+
+    async stopPolling() {
+        this.stopped = true;
+        this.polling = false;
+    }
+
+    startPolling() {
+        if (this.polling) return;
+        this.polling = true;
+        this.stopped = false;
+        void this.pollLoop();
+    }
+
+    async pollLoop() {
+        while (!this.stopped) {
+            try {
+                const updates = await this.request("getUpdates", {
+                    offset: this.offset,
+                    timeout: 30,
+                    allowed_updates: ["message", "callback_query"],
+                });
+                for (const update of updates || []) {
+                    this.offset = Math.max(this.offset, Number(update.update_id || 0) + 1);
+                    await this.dispatchUpdate(update);
+                }
+            } catch (err) {
+                this.emit("polling_error", err);
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+            }
+        }
+    }
+
+    async dispatchUpdate(update) {
+        if (update.message) {
+            const msg = update.message;
+            if (typeof msg.text === "string") {
+                for (const item of this.textHandlers) {
+                    const match = msg.text.match(item.regex);
+                    if (match) {
+                        await item.handler(msg, match);
+                    }
+                }
+            }
+            this.emit("message", msg);
+        }
+        if (update.callback_query) {
+            this.emit("callback_query", update.callback_query);
+        }
+    }
+}
 
 /* ─── Formateo ────────────────────────────────────────────────── */
 function money(n) {
@@ -794,7 +896,7 @@ function initBot() {
     }
 
     try {
-        bot = new TelegramBot(TOKEN, { polling: true });
+        bot = new TelegramBotClient(TOKEN, { polling: true });
         setupCommands();
         console.log("[TelegramBot] ✅ Bot iniciado en modo polling.");
     } catch (e) {

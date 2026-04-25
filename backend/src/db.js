@@ -269,57 +269,6 @@ pool.query("CREATE INDEX idx_renewal_logs_platform ON subscription_renewal_logs(
 pool.query("CREATE INDEX idx_renewal_logs_order ON subscription_renewal_logs(renewal_order_id)").catch(() => { });
 
 pool.query(`
-    CREATE TABLE IF NOT EXISTS crypto_payment_requests (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id INT NOT NULL,
-        provider VARCHAR(32) NOT NULL DEFAULT 'nowpayments',
-        provider_payment_id BIGINT NULL,
-        provider_invoice_id VARCHAR(64) NULL,
-        order_id VARCHAR(128) NULL,
-        payment_status VARCHAR(32) NOT NULL DEFAULT 'waiting',
-        price_amount DECIMAL(12,2) NOT NULL,
-        price_currency VARCHAR(16) NOT NULL DEFAULT 'COP',
-        pay_amount DECIMAL(24,8) NULL,
-        pay_currency VARCHAR(32) NOT NULL DEFAULT 'usdtbsc',
-        pay_address VARCHAR(255) NULL,
-        payin_extra_id VARCHAR(255) NULL,
-        provider_payload_json LONGTEXT NULL,
-        wallet_id INT NULL,
-        balance_before DECIMAL(12,2) NULL,
-        balance_after DECIMAL(12,2) NULL,
-        credited_at DATETIME NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_crypto_payment_provider_payment (provider, provider_payment_id),
-        UNIQUE KEY uq_crypto_payment_order (provider, order_id),
-        INDEX idx_crypto_payment_user (user_id),
-        INDEX idx_crypto_payment_status (payment_status),
-        INDEX idx_crypto_payment_created (created_at)
-    )
-`).catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_payment_id BIGINT NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_invoice_id VARCHAR(64) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN order_id VARCHAR(128) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN payment_status VARCHAR(32) NOT NULL DEFAULT 'waiting'").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN price_amount DECIMAL(12,2) NOT NULL DEFAULT 0").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN price_currency VARCHAR(16) NOT NULL DEFAULT 'COP'").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_amount DECIMAL(24,8) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_currency VARCHAR(32) NOT NULL DEFAULT 'usdtbsc'").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN pay_address VARCHAR(255) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN payin_extra_id VARCHAR(255) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN provider_payload_json LONGTEXT NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN wallet_id INT NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN balance_before DECIMAL(12,2) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN balance_after DECIMAL(12,2) NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN credited_at DATETIME NULL").catch(() => { });
-pool.query("ALTER TABLE crypto_payment_requests ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
-pool.query("CREATE UNIQUE INDEX uq_crypto_payment_provider_payment ON crypto_payment_requests(provider, provider_payment_id)").catch(() => { });
-pool.query("CREATE UNIQUE INDEX uq_crypto_payment_order ON crypto_payment_requests(provider, order_id)").catch(() => { });
-pool.query("CREATE INDEX idx_crypto_payment_user ON crypto_payment_requests(user_id)").catch(() => { });
-pool.query("CREATE INDEX idx_crypto_payment_status ON crypto_payment_requests(payment_status)").catch(() => { });
-pool.query("CREATE INDEX idx_crypto_payment_created ON crypto_payment_requests(created_at)").catch(() => { });
-
-pool.query(`
     CREATE TABLE IF NOT EXISTS manual_topup_requests (
         id INT AUTO_INCREMENT PRIMARY KEY,
         request_code VARCHAR(32) NOT NULL,

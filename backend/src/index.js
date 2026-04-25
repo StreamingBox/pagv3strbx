@@ -40,7 +40,6 @@ const authRoutes = require("./routes/auth");
 const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
 const whatsappRoutes = require("./routes/whatsapp");
-const nowpaymentsRoutes = require("./routes/payments.nowpayments");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
@@ -84,9 +83,6 @@ function validateProductionConfig() {
         throw new Error("[config] WASENDER_SKIP_SIGNATURE no puede estar activo en produccion.");
     }
 
-    if (process.env.NOWPAYMENTS_API_KEY) {
-        requireProdEnv("NOWPAYMENTS_IPN_SECRET", { minLength: 16 });
-    }
 }
 
 try {
@@ -327,7 +323,6 @@ app.use("/api", analyticsRoutes);
 
 // WhatsApp (WaSender)
 app.use("/api", whatsappRoutes);
-app.use("/api", nowpaymentsRoutes);
 app.use("/api", manualTopupsRoutes);
 
 app.use((req, res) => {

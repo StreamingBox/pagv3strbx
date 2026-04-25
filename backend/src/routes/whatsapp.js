@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
@@ -133,6 +134,28 @@ async function readWaToken() {
         "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
     );
     return String(row?.setting_value || "").trim();
+}
+
+async function readWebhookSecret() {
+    await ensureSettingsTable();
+    const [[row]] = await pool.query(
+        "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_webhook_secret'"
+    );
+    const storedSecret = String(row?.setting_value || "").trim();
+    return storedSecret || String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
+}
+
+function previewSecret(value) {
+    const secret = String(value || "");
+    if (!secret) return "";
+    if (secret.length <= 8) return "*".repeat(secret.length);
+    return "*".repeat(secret.length - 6) + secret.slice(-6);
+}
+
+function secretsMatch(received, expected) {
+    const left = Buffer.from(String(received || "").trim(), "utf8");
+    const right = Buffer.from(String(expected || "").trim(), "utf8");
+    return left.length === right.length && crypto.timingSafeEqual(left, right);
 }
 
 
@@ -451,6 +474,58 @@ router.put("/admin/whatsapp/token", requireAuth, requireRole("admin"), async (re
     }
 });
 
+// GET /admin/whatsapp/webhook-secret
+router.get("/admin/whatsapp/webhook-secret", requireAuth, requireRole("admin"), async (_req, res) => {
+    try {
+        await ensureSettingsTable();
+        const [[row]] = await pool.query(
+            "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_webhook_secret'"
+        );
+        const storedSecret = String(row?.setting_value || "").trim();
+        const envSecret = String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
+        const activeSecret = storedSecret || envSecret;
+
+        return res.json({
+            ok: true,
+            preview: previewSecret(activeSecret),
+            hasSecret: !!activeSecret,
+            source: storedSecret ? "database" : envSecret ? "env" : "none",
+        });
+    } catch (e) {
+        return res.status(500).json({
+            ok: false,
+            message: "Error al leer webhook secret: " + (e?.message || "desconocido"),
+        });
+    }
+});
+
+// PUT /admin/whatsapp/webhook-secret
+router.put("/admin/whatsapp/webhook-secret", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        await ensureSettingsTable();
+        const { secret } = req.body || {};
+        if (!secret || typeof secret !== "string" || secret.trim().length < 10) {
+            return res.status(400).json({
+                ok: false,
+                message: "Webhook secret invalido (minimo 10 caracteres).",
+            });
+        }
+
+        await pool.query(
+            `INSERT INTO app_settings (setting_key, setting_value)
+             VALUES ('wasender_webhook_secret', ?)
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+            [secret.trim()]
+        );
+        return res.json({ ok: true, message: "Webhook secret guardado correctamente." });
+    } catch (e) {
+        return res.status(500).json({
+            ok: false,
+            message: "Error al guardar webhook secret: " + (e?.message || "desconocido"),
+        });
+    }
+});
+
 // POST /whatsapp/send
 router.post("/whatsapp/send", requireAuth, async (req, res) => {
     let traceId = null;
@@ -546,11 +621,16 @@ router.post("/whatsapp/send", requireAuth, async (req, res) => {
 router.post("/whatsapp/webhook", async (req, res) => {
     try {
         cleanupExpiredWebhookDedupe().catch(() => { });
-        const configuredSecret = String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
+        const configuredSecret = await readWebhookSecret();
         const receivedSignature = String(req.get("X-Webhook-Signature") || "").trim();
         const skipSignature = String(process.env.WASENDER_SKIP_SIGNATURE || "false").toLowerCase() === "true";
 
-        if (!skipSignature && configuredSecret && receivedSignature !== configuredSecret) {
+        if (!skipSignature && !configuredSecret) {
+            console.warn("[whatsapp.webhook] signature_not_configured");
+            return res.status(503).json({ ok: false, message: "Webhook secret no configurado." });
+        }
+
+        if (!skipSignature && !secretsMatch(receivedSignature, configuredSecret)) {
             console.warn("[whatsapp.webhook] signature_invalid");
             return res.status(401).json({ ok: false, message: "Webhook signature inválida." });
         }

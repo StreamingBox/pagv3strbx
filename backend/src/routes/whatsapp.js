@@ -200,9 +200,9 @@ function setSession(phone, patch) {
 
 function helpText() {
     return [
-        "✨ *Menu Streaming Box*",
-        "🧩 Unica opcion disponible:",
-        "👉 Marca *1* para SOLICITUD CODIGO",
+        "Menú Streaming Box",
+        "Única opción disponible:",
+        "Marca *1* para SOLICITUD CODIGO",
         "",
         "Escribe el numero 1 para iniciar.",
     ].join("\n");
@@ -216,18 +216,18 @@ function renderCodeReply(result) {
 
     if (result.body?.type === "approval") {
         return [
-            "✅ *Aprobación encontrada*",
-            `📦 *Pedido:* ${result.body.orderNumber}`,
-            `📺 *Plataforma:* ${result.body.platform}`,
-            `📱 *Dispositivo:* ${result.body.deviceName || "N/A"}`,
+            "*Aprobación encontrada*",
+            `*Pedido:* ${result.body.orderNumber}`,
+            `*Plataforma:* ${result.body.platform}`,
+            `*Dispositivo:* ${result.body.deviceName || "N/A"}`,
         ].join("\n");
     }
 
     return [
-        "✅ *Código encontrado*",
-        `📦 *Pedido:* ${result.body.orderNumber}`,
-        `📺 *Plataforma:* ${result.body.platform}`,
-        `🔑 *Código:* ${result.body.code || "N/A"}`,
+        "*Código encontrado*",
+        `*Pedido:* ${result.body.orderNumber}`,
+        `*Plataforma:* ${result.body.platform}`,
+        `*Código:* ${result.body.code || "N/A"}`,
     ].join("\n");
 }
 
@@ -274,7 +274,7 @@ async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
         const sent = await sendWaText({
             token,
             to,
-            text: "Ocurrió un error consultando el codigo. Intenta nuevamente en unos segundos.",
+            text: "Ocurrió un error consultando el código. Intenta nuevamente en unos segundos.",
         });
         return { handled: true, sent: sent.ok, reason: "execute_failed" };
     }
@@ -399,7 +399,7 @@ async function tryHandleIncomingCodeRequest(body) {
         const ackPromise = sendWaText({
             token,
             to: incoming.from,
-            text: "Perfecto. Estoy buscando tu cÃ³digo. Espera un momento...",
+            text: "Perfecto. Estoy buscando tu código. Espera un momento...",
             context: "whatsapp_lookup_ack_numeric",
         });
 

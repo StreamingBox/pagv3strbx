@@ -1,5 +1,6 @@
 const pool = require("../db");
 const { sendWaText } = require("./wasenderClient");
+const { readWaToken } = require("./whatsappSettings");
 
 let lastSentTime = 0;
 let isProcessing = false;
@@ -124,11 +125,8 @@ async function processWhatsAppQueue() {
 
         const job = rows[0];
 
-        const [[tokenRow]] = await pool.query(
-            "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
-        );
-
-        if (!tokenRow?.setting_value) {
+        const token = await readWaToken();
+        if (!token) {
             await updateTraceResult({
                 traceId: job.id,
                 ok: false,
@@ -141,7 +139,7 @@ async function processWhatsAppQueue() {
         }
 
         const wa = await sendWaText({
-            token: tokenRow.setting_value,
+            token,
             to: job.phone,
             text: job.message,
             context: "queue",

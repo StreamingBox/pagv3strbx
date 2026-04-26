@@ -15,22 +15,19 @@ const {
     cleanupExpiredWebhookDedupe,
     reserveWebhookEvent,
 } = require("../services/whatsappWebhookDedupe");
+const {
+    ensureSettingsTable,
+    readWaToken,
+    readWebhookSecret,
+    setSetting,
+    getSetting,
+} = require("../services/whatsappSettings");
 const { getSubscriptionWithAccount } = require("../services/codeQueries");
 const { toCodeSlug } = require("../utils/platformSlugMap");
 
 const router = express.Router();
 const flowSessions = new Map(); // phone -> { step, orderNumber, platforms, updatedAt }
 const FLOW_TTL_MS = 15 * 60 * 1000;
-
-async function ensureSettingsTable() {
-    await pool.query(`
-        CREATE TABLE IF NOT EXISTS app_settings (
-            setting_key   VARCHAR(128) PRIMARY KEY,
-            setting_value TEXT         NOT NULL,
-            updated_at    TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-        )
-    `);
-}
 
 function normalizeDigits(input) {
     return String(input || "").replace(/\D/g, "");
@@ -126,23 +123,6 @@ function makeIncomingFingerprint(body) {
 
     const normalizedText = meta.text.toLowerCase().replace(/\s+/g, " ").trim();
     return `fallback:${meta.from}:${normalizedText}`;
-}
-
-async function readWaToken() {
-    await ensureSettingsTable();
-    const [[row]] = await pool.query(
-        "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
-    );
-    return String(row?.setting_value || "").trim();
-}
-
-async function readWebhookSecret() {
-    await ensureSettingsTable();
-    const [[row]] = await pool.query(
-        "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_webhook_secret'"
-    );
-    const storedSecret = String(row?.setting_value || "").trim();
-    return storedSecret || String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
 }
 
 function previewSecret(value) {
@@ -414,6 +394,31 @@ async function tryHandleIncomingCodeRequest(body) {
         return { handled: true, sent: sent.ok, reason: "await_order" };
     }
 
+    if (/^\d+$/.test(String(incoming.text || "").trim())) {
+        const orderNumber = Number(String(incoming.text || "").trim());
+        const ackPromise = sendWaText({
+            token,
+            to: incoming.from,
+            text: "Perfecto. Estoy buscando tu cÃ³digo. Espera un momento...",
+            context: "whatsapp_lookup_ack_numeric",
+        });
+
+        processOrderLookupInBackground({
+            token,
+            to: incoming.from,
+            orderNumber,
+        }).catch((error) => {
+            console.error("[whatsapp.code] numeric_lookup_unhandled", {
+                to: normalizePhone(incoming.from),
+                orderNumber,
+                message: error?.message || String(error),
+            });
+        });
+
+        const sent = await ackPromise;
+        return { handled: true, sent: sent.ok, reason: "order_lookup_started_numeric" };
+    }
+
     if (cmd.type === "help" || cmd.type === "unknown") {
         const sent = await sendWaText({ token, to: incoming.from, text: helpText() });
         return { handled: true, sent: sent.ok, reason: cmd.type };
@@ -431,11 +436,7 @@ async function tryHandleIncomingCodeRequest(body) {
 // GET /admin/whatsapp/token
 router.get("/admin/whatsapp/token", requireAuth, requireRole("admin"), async (_req, res) => {
     try {
-        await ensureSettingsTable();
-        const [[row]] = await pool.query(
-            "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'"
-        );
-        const token = row?.setting_value || "";
+        const token = await readWaToken();
         const preview = token.length > 6
             ? "*".repeat(token.length - 6) + token.slice(-6)
             : token;
@@ -459,12 +460,7 @@ router.put("/admin/whatsapp/token", requireAuth, requireRole("admin"), async (re
                 message: "Token inválido (mínimo 10 caracteres).",
             });
         }
-        await pool.query(
-            `INSERT INTO app_settings (setting_key, setting_value)
-             VALUES ('wasender_token', ?)
-             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-            [token.trim()]
-        );
+        await setSetting("wasender_token", token.trim());
         return res.json({ ok: true, message: "Token guardado correctamente." });
     } catch (e) {
         return res.status(500).json({
@@ -477,11 +473,7 @@ router.put("/admin/whatsapp/token", requireAuth, requireRole("admin"), async (re
 // GET /admin/whatsapp/webhook-secret
 router.get("/admin/whatsapp/webhook-secret", requireAuth, requireRole("admin"), async (_req, res) => {
     try {
-        await ensureSettingsTable();
-        const [[row]] = await pool.query(
-            "SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_webhook_secret'"
-        );
-        const storedSecret = String(row?.setting_value || "").trim();
+        const storedSecret = await getSetting("wasender_webhook_secret");
         const envSecret = String(process.env.WASENDER_WEBHOOK_SECRET || "").trim();
         const activeSecret = storedSecret || envSecret;
 
@@ -511,12 +503,7 @@ router.put("/admin/whatsapp/webhook-secret", requireAuth, requireRole("admin"), 
             });
         }
 
-        await pool.query(
-            `INSERT INTO app_settings (setting_key, setting_value)
-             VALUES ('wasender_webhook_secret', ?)
-             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
-            [secret.trim()]
-        );
+        await setSetting("wasender_webhook_secret", secret.trim());
         return res.json({ ok: true, message: "Webhook secret guardado correctamente." });
     } catch (e) {
         return res.status(500).json({

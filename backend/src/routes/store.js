@@ -5,6 +5,7 @@ const pool = require("../db");
 const { checkoutService } = require("../services/checkoutService");
 const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
 const { addToQueue } = require("../services/whatsappQueue");
+const { readWaToken } = require("../services/whatsappSettings");
 const { renewSubscription } = require("../services/renewal.service");
 
 const router = express.Router();
@@ -228,9 +229,8 @@ router.post("/orders/:id/remind-whatsapp", requireAuth, async (req, res) => {
             return res.status(400).json({ message: "Se requiere un número de WhatsApp para enviar el recordatorio." });
         }
 
-        // Obtener WaSender token
-        const [[tokenRow]] = await pool.query("SELECT setting_value FROM app_settings WHERE setting_key = 'wasender_token'");
-        if (!tokenRow || !tokenRow.setting_value) return res.status(503).json({ message: "WhatsApp no configurado en ajustes." });
+        const token = await readWaToken();
+        if (!token) return res.status(503).json({ message: "WhatsApp no configurado en ajustes." });
 
         const phoneStr = phoneToUse.replace(/\\s|-/g, "");
         const finalPhone = phoneStr.startsWith("+") ? phoneStr : "+" + phoneStr;

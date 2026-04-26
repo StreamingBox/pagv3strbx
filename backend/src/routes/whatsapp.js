@@ -5,6 +5,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { requestCodeForOrder } = require("../services/codesService");
 const {
+    addToQueue,
     createTrace,
     updateTraceResult,
     updateTraceByMsgId,
@@ -231,6 +232,14 @@ function renderCodeReply(result) {
     ].join("\n");
 }
 
+async function deliverBotText({ token, to, text, context = "whatsapp_bot", queued = false }) {
+    if (queued) {
+        const traceId = await addToQueue(to, text, { source: context });
+        return { ok: true, queued: true, traceId };
+    }
+    return sendWaText({ token, to, text, context });
+}
+
 async function resolveRequestUser(phone) {
     const allowAnyWhatsapp = String(process.env.WHATSAPP_ALLOW_ANY_NUMBER_FOR_CODES || "false").toLowerCase() === "true";
     if (allowAnyWhatsapp) return { ok: true, user: { id: 0, role: "admin" } };
@@ -242,14 +251,16 @@ async function resolveRequestUser(phone) {
     return { ok: true, user: { id: user.id, role: user.role } };
 }
 
-async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
+async function executeCodeRequest({ token, to, orderNumber, platformSlug, queued = false }) {
     try {
         const userResolution = await resolveRequestUser(to);
         if (!userResolution.ok) {
-            const sent = await sendWaText({
+            const sent = await deliverBotText({
                 token,
                 to,
                 text: userResolution.message,
+                context: "whatsapp_user_not_active",
+                queued,
             });
             return { handled: true, sent: sent.ok, reason: "user_not_active" };
         }
@@ -262,8 +273,20 @@ async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
         });
 
         const reply = renderCodeReply(result);
-        const sent = await sendWaText({ token, to, text: reply });
-        return { handled: true, sent: sent.ok, reason: "code_query" };
+        const sent = await deliverBotText({
+            token,
+            to,
+            text: reply,
+            context: "whatsapp_code_reply",
+            queued,
+        });
+        return {
+            handled: true,
+            sent: sent.ok,
+            queued: !!sent.queued,
+            traceId: sent.traceId || null,
+            reason: "code_query",
+        };
     } catch (error) {
         console.error("[whatsapp.code] execute_failed", {
             to: normalizePhone(to),
@@ -271,43 +294,75 @@ async function executeCodeRequest({ token, to, orderNumber, platformSlug }) {
             platformSlug,
             message: error?.message || String(error),
         });
-        const sent = await sendWaText({
+        const sent = await deliverBotText({
             token,
             to,
             text: "Ocurrió un error consultando el código. Intenta nuevamente en unos segundos.",
+            context: "whatsapp_code_execute_failed",
+            queued,
         });
         return { handled: true, sent: sent.ok, reason: "execute_failed" };
     }
 }
 
-async function processOrderLookupInBackground({ token, to, orderNumber }) {
+async function processOrderLookupInBackground({ token, to, orderNumber, queued = true, source = "numeric" }) {
     try {
+        console.log("[whatsapp.code] order_lookup_started", {
+            to: normalizePhone(to),
+            orderNumber,
+            source,
+            queued,
+        });
+
         const sub = await getSubscriptionWithAccount(orderNumber);
 
         if (!sub) {
-            await sendWaText({
+            const sent = await deliverBotText({
                 token,
                 to,
                 text: "No se encontró ningún pedido con ese número. Verifica y vuelve a escribir SOLICITUD CODIGO.",
                 context: "whatsapp_order_not_found",
+                queued,
             });
-            return { handled: true, sent: true, reason: "order_not_found" };
+            return {
+                handled: true,
+                sent: sent.ok,
+                queued: !!sent.queued,
+                traceId: sent.traceId || null,
+                reason: "order_not_found",
+            };
         }
 
         const platformNameOrSlug = sub.platformSlug || sub.platform_slug || sub.platformName || sub.platform_name || sub.name || "";
         const platformSlug = toCodeSlug(platformNameOrSlug);
 
         if (!platformSlug) {
-            await sendWaText({
+            const sent = await deliverBotText({
                 token,
                 to,
                 text: "Error al identificar la plataforma de tu pedido. Contacta a soporte.",
                 context: "whatsapp_platform_not_identified",
+                queued,
             });
-            return { handled: true, sent: true, reason: "platform_not_identified" };
+            return {
+                handled: true,
+                sent: sent.ok,
+                queued: !!sent.queued,
+                traceId: sent.traceId || null,
+                reason: "platform_not_identified",
+            };
         }
 
-        return executeCodeRequest({ token, to, orderNumber, platformSlug });
+        const result = await executeCodeRequest({ token, to, orderNumber, platformSlug, queued });
+        console.log("[whatsapp.code] order_lookup_finished", {
+            to: normalizePhone(to),
+            orderNumber,
+            platformSlug,
+            reason: result.reason,
+            queued: !!result.queued,
+            traceId: result.traceId || null,
+        });
+        return result;
     } catch (error) {
         console.error("[whatsapp.code] background_order_lookup_failed", {
             to: normalizePhone(to),
@@ -315,13 +370,20 @@ async function processOrderLookupInBackground({ token, to, orderNumber }) {
             message: error?.message || String(error),
         });
 
-        await sendWaText({
+        const sent = await deliverBotText({
             token,
             to,
             text: "Ocurrió un error consultando tu pedido. Intenta nuevamente en unos segundos.",
             context: "whatsapp_order_lookup_failed",
+            queued,
         });
-        return { handled: true, sent: false, reason: "background_order_lookup_failed" };
+        return {
+            handled: true,
+            sent: sent.ok,
+            queued: !!sent.queued,
+            traceId: sent.traceId || null,
+            reason: "background_order_lookup_failed",
+        };
     }
 }
 
@@ -352,6 +414,8 @@ async function tryHandleIncomingCodeRequest(body) {
             token,
             to: incoming.from,
             orderNumber,
+            queued: true,
+            source: "session",
         }).catch((error) => {
             console.error("[whatsapp.code] background_lookup_unhandled", {
                 to: normalizePhone(incoming.from),
@@ -392,6 +456,8 @@ async function tryHandleIncomingCodeRequest(body) {
             token,
             to: incoming.from,
             orderNumber,
+            queued: true,
+            source: "numeric_fallback",
         }).catch((error) => {
             console.error("[whatsapp.code] numeric_lookup_unhandled", {
                 to: normalizePhone(incoming.from),
@@ -633,6 +699,8 @@ router.post("/whatsapp/webhook", async (req, res) => {
         console.log("[whatsapp.webhook] event_received", {
             event: eventName,
             hasMsgId: !!msgIdToTrack,
+            incomingFrom: incomingMeta.from || null,
+            incomingText: incomingMeta.text || null,
             isDuplicate,
             duplicateReason,
             dedupeKey: dedupe.eventKey,

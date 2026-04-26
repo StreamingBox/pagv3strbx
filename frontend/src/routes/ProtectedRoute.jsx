@@ -1,11 +1,12 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import FullPageLoader from "../components/app/FullPageLoader.jsx";
 
 export default function ProtectedRoute({ children, role, roles }) {
     const { user, authLoading } = useAuth();
 
     // ⏳ Mientras se consulta /auth/me (cookies)
-    if (authLoading) return null; // o un loader si quieres
+    if (authLoading) return <FullPageLoader label="Validando sesion..." />;
 
     // ❌ Sin sesión
     if (!user?.id) return <Navigate to="/" replace />;

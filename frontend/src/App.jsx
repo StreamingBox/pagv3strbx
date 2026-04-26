@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import InstallAppPrompt from "./components/app/InstallAppPrompt.jsx";
+import FullPageLoader from "./components/app/FullPageLoader.jsx";
 
 import Auth from "./pages/Auth.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
@@ -47,7 +48,7 @@ const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
 function RedirectByRole() {
     const { user, authLoading } = useAuth();
 
-    if (authLoading) return null;
+    if (authLoading) return <FullPageLoader label="Validando sesion..." />;
 
     if (!user?.id) return <Navigate to="/" replace />;
 
@@ -68,9 +69,7 @@ export default function App() {
             {showInstallPrompt ? <InstallAppPrompt /> : null}
             <Suspense
                 fallback={
-                    <div className="page-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-                        <div className="spinner" aria-label="Cargando" role="status" />
-                    </div>
+                    <FullPageLoader />
                 }
             >
                 <Routes>

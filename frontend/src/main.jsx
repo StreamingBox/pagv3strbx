@@ -25,6 +25,16 @@ clearLegacySession();
 const initialTheme = getInitialTheme();
 document.documentElement.setAttribute("data-theme", initialTheme);
 
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+        registrations.forEach((registration) => {
+            if (registration.scope === `${window.location.origin}/`) {
+                registration.unregister().catch(() => {});
+            }
+        });
+    }).catch(() => {});
+}
+
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
     window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sw.js").catch((error) => {

@@ -1,6 +1,7 @@
 import { getApiBase } from "../config/apiBase.js";
 
 const API_BASE = getApiBase();
+const DEFAULT_TIMEOUT_MS = 30000;
 
 /** Lee JSON de manera segura */
 async function safeJson(res) {
@@ -8,6 +9,23 @@ async function safeJson(res) {
         return await res.json();
     } catch {
         return {};
+    }
+}
+
+async function fetchWithTimeout(url, options = {}) {
+    const { timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...fetchOptions } = options;
+    const controller = signal ? null : new AbortController();
+    const timeout = controller
+        ? window.setTimeout(() => controller.abort(), timeoutMs)
+        : null;
+
+    try {
+        return await fetch(url, {
+            ...fetchOptions,
+            signal: signal || controller.signal,
+        });
+    } finally {
+        if (timeout) window.clearTimeout(timeout);
     }
 }
 
@@ -39,12 +57,13 @@ export function clearLegacySession() {
 }
 
 /** Refresh cookies HttpOnly */
-async function tryRefresh() {
+async function tryRefresh(timeoutMs = DEFAULT_TIMEOUT_MS) {
     try {
-        const r = await fetch(buildApiUrl("/auth/refresh"), {
+        const r = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
+            timeoutMs,
         });
         return r.ok;
     } catch {
@@ -57,14 +76,16 @@ async function tryRefresh() {
  */
 export async function apiFetch(path, options = {}) {
     const url = buildApiUrl(path);
+    const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
 
-    const res1 = await fetch(url, {
-        ...options,
+    const res1 = await fetchWithTimeout(url, {
+        ...requestOptions,
         credentials: "include",
         headers: {
             "Content-Type": "application/json",
-            ...(options.headers || {}),
+            ...(requestOptions.headers || {}),
         },
+        timeoutMs,
     });
 
     if (res1.status !== 401) {
@@ -72,19 +93,20 @@ export async function apiFetch(path, options = {}) {
         return { ok: res1.ok, status: res1.status, data };
     }
 
-    const refreshed = await tryRefresh();
+    const refreshed = await tryRefresh(timeoutMs);
     if (!refreshed) {
         const data = await safeJson(res1);
         return { ok: false, status: 401, data: data?.message ? data : { message: "No autorizado" } };
     }
 
-    const res2 = await fetch(url, {
-        ...options,
+    const res2 = await fetchWithTimeout(url, {
+        ...requestOptions,
         credentials: "include",
         headers: {
             "Content-Type": "application/json",
-            ...(options.headers || {}),
+            ...(requestOptions.headers || {}),
         },
+        timeoutMs,
     });
 
     const data2 = await safeJson(res2);
@@ -92,8 +114,8 @@ export async function apiFetch(path, options = {}) {
 }
 
 /* Helpers */
-export async function apiGet(path) {
-    return apiFetch(path, { method: "GET" });
+export async function apiGet(path, options = {}) {
+    return apiFetch(path, { ...options, method: "GET" });
 }
 
 export async function apiPost(path, body) {
@@ -115,7 +137,7 @@ export async function apiDelete(path) {
 }
 
 export async function apiLogout() {
-    const res = await fetch(buildApiUrl("/auth/logout"), {
+    const res = await fetchWithTimeout(buildApiUrl("/auth/logout"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

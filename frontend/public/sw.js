@@ -1,4 +1,4 @@
-const VERSION = "strbx-pwa-v1";
+const VERSION = "strbx-pwa-v2";
 const ASSET_CACHE = `${VERSION}-assets`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/app-icon.svg", "/app-icon-maskable.svg", "/favicon.svg"];
@@ -24,6 +24,14 @@ self.addEventListener("fetch", (event) => {
     if (request.method !== "GET") return;
     if (url.origin !== self.location.origin) return;
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/s/")) return;
+    if (
+        url.pathname.startsWith("/src/") ||
+        url.pathname.startsWith("/@vite") ||
+        url.pathname.startsWith("/node_modules/.vite/")
+    ) {
+        event.respondWith(fetch(request));
+        return;
+    }
 
     if (request.mode === "navigate") {
         event.respondWith(

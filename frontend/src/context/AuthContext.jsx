@@ -12,7 +12,7 @@ export function AuthProvider({ children }) {
     // Cargar sesión desde cookies (HttpOnly)
     const loadMe = useCallback(async () => {
         try {
-            const res = await apiGet("/auth/me");
+            const res = await apiGet("/auth/me", { timeoutMs: 8000 });
             if (res.ok && res.data?.user) {
                 setUser(res.data.user);
             } else {

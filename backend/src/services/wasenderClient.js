@@ -21,6 +21,11 @@ function isRateLimited(status, data) {
         || text.includes("rate");
 }
 
+function isOneMinuteTrialLimit(data) {
+    const text = String(data?.message || data?.error || "").toLowerCase();
+    return text.includes("only send 1 message") || text.includes("free trial");
+}
+
 let globalSendChain = Promise.resolve();
 let lastGlobalSentAt = 0;
 
@@ -79,7 +84,10 @@ async function sendWaText({ token, to, text, context = "whatsapp" }) {
                 }
 
                 retryCount += 1;
-                const backoffMs = retryBaseMs * Math.pow(2, retryCount - 1);
+                const configuredBackoffMs = retryBaseMs * Math.pow(2, retryCount - 1);
+                const backoffMs = isOneMinuteTrialLimit(data)
+                    ? Math.max(configuredBackoffMs, 65000)
+                    : configuredBackoffMs;
                 console.warn("[whatsapp.send] rate_limited_retry", {
                     context,
                     to: normalizedTo,

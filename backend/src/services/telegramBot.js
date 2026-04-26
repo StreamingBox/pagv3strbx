@@ -794,9 +794,14 @@ function setupCommands() {
     // Errores de polling
     bot.on("polling_error", (err) => {
         const msg = String(err?.message || err || "");
-        const isConflict = err?.code === "ETELEGRAM" && /409|another getUpdates request|terminated by other getUpdates/i.test(msg);
+        const status = Number(err?.response?.status || err?.status || 0);
+        const description = String(err?.response?.data?.description || err?.description || "");
+        const isConflict = status === 409
+            || /409|another getUpdates request|terminated by other getUpdates/i.test(`${msg} ${description}`);
         if (isConflict) {
-            console.warn("[TelegramBot] Polling disabled by 409 conflict (another instance is active).");
+            if (!botDisabledByConflict) {
+                console.warn("[TelegramBot] Polling desactivado: hay otra instancia activa usando el mismo bot.");
+            }
             botDisabledByConflict = true;
             bot.stopPolling().catch(() => { });
             return;

@@ -348,13 +348,6 @@ async function tryHandleIncomingCodeRequest(body) {
         const orderNumber = Number(raw);
         flowSessions.delete(incoming.from);
 
-        const ackPromise = sendWaText({
-            token,
-            to: incoming.from,
-            text: "Perfecto. Estoy buscando tu código. Espera un momento...",
-            context: "whatsapp_lookup_ack",
-        });
-
         processOrderLookupInBackground({
             token,
             to: incoming.from,
@@ -367,8 +360,7 @@ async function tryHandleIncomingCodeRequest(body) {
             });
         });
 
-        const sent = await ackPromise;
-        return { handled: true, sent: sent.ok, reason: "order_lookup_started" };
+        return { handled: true, sent: true, reason: "order_lookup_started" };
     }
 
     // El bloque de await_platform ya no es estrictamente necesario, pero se puede dejar por precaucion / retrocompatibilidad
@@ -396,13 +388,6 @@ async function tryHandleIncomingCodeRequest(body) {
 
     if (/^\d+$/.test(String(incoming.text || "").trim())) {
         const orderNumber = Number(String(incoming.text || "").trim());
-        const ackPromise = sendWaText({
-            token,
-            to: incoming.from,
-            text: "Perfecto. Estoy buscando tu código. Espera un momento...",
-            context: "whatsapp_lookup_ack_numeric",
-        });
-
         processOrderLookupInBackground({
             token,
             to: incoming.from,
@@ -415,8 +400,7 @@ async function tryHandleIncomingCodeRequest(body) {
             });
         });
 
-        const sent = await ackPromise;
-        return { handled: true, sent: sent.ok, reason: "order_lookup_started_numeric" };
+        return { handled: true, sent: true, reason: "order_lookup_started_numeric" };
     }
 
     if (cmd.type === "help" || cmd.type === "unknown") {

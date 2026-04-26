@@ -24,6 +24,13 @@ function safeJsonString(value, max = 60000) {
     }
 }
 
+function safeText(value, fallback = null) {
+    if (value === undefined || value === null || value === "") return fallback;
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return safeJsonString(value, 2000);
+}
+
 function extractWaResult(data) {
     const payload = data?.data && typeof data.data === "object" ? data.data : data;
     const msgId = payload?.msgId || payload?.id || null;
@@ -222,7 +229,7 @@ async function updateTraceByMsgId(msgId, update = {}) {
             statusLabel,
             sentAt ? 1 : 0,
             statusLabel,
-            update.errorMessage || null,
+            safeText(update.errorMessage),
             String(msgId),
         ]
     );

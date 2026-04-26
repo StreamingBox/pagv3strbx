@@ -16,7 +16,9 @@ function getEnvInt(name, fallback) {
 function isRateLimited(status, data) {
     if (Number(status) === 429) return true;
     const text = String(data?.message || data?.error || "").toLowerCase();
-    return text.includes("only send 1 message every 5 seconds") || text.includes("rate");
+    return text.includes("only send 1 message")
+        || text.includes("free trial")
+        || text.includes("rate");
 }
 
 let globalSendChain = Promise.resolve();
@@ -25,7 +27,7 @@ let lastGlobalSentAt = 0;
 async function sendWaText({ token, to, text, context = "whatsapp" }) {
     const minGapMs = getEnvInt("WA_GLOBAL_MIN_GAP_MS", 5500);
     const maxRetries = getEnvInt("WA_RATE_LIMIT_MAX_RETRIES", 2);
-    const retryBaseMs = getEnvInt("WA_RATE_LIMIT_RETRY_BASE_MS", 6000);
+    const retryBaseMs = getEnvInt("WA_RATE_LIMIT_RETRY_BASE_MS", 65000);
 
     const work = async () => {
         const normalizedTo = normalizePhone(to);

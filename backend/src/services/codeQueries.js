@@ -54,6 +54,9 @@ async function countDeliveredByFingerprint({
     platformSlugLower,
     credentialFingerprint,
     requireCodeValue = false,
+    requireEmptyCode = false,
+    messageLike = null,
+    messageNotLike = null,
 }) {
     const where = [
         "order_id = ?",
@@ -66,6 +69,17 @@ async function countDeliveredByFingerprint({
     if (requireCodeValue) {
         where.push("delivered_code IS NOT NULL");
         where.push("delivered_code <> ''");
+    }
+    if (requireEmptyCode) {
+        where.push("(delivered_code IS NULL OR delivered_code = '')");
+    }
+    if (messageLike) {
+        where.push("message LIKE ?");
+        params.push(String(messageLike));
+    }
+    if (messageNotLike) {
+        where.push("(message IS NULL OR message NOT LIKE ?)");
+        params.push(String(messageNotLike));
     }
 
     const [[row]] = await pool.query(

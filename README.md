@@ -211,6 +211,7 @@ El despliegue ahora valida Go `1.26.2+`, exige `INTERNAL_SERVICE_TOKEN`, audita 
 - En soporte y en inventario, un reemplazo puede usar la siguiente cuenta disponible o una cuenta específica seleccionada manualmente.
 - Los links compartidos de credenciales vencidos se depuran automáticamente al iniciar el backend, cada hora y también al intentar abrir un token expirado.
 - Los logs de códigos ya incluyen diagnóstico por motivo para facilitar soporte.
+- Netflix tiene tres flujos separados en códigos: código de inicio, aprobación de nueva solicitud de inicio y acceso temporal. Los correos se consideran válidos solo durante 15 minutos; inicio y aprobación se bloquean entre sí por pedido/credencial, y acceso temporal solo permite 1 entrega OK por pedido/credencial. El log queda en `code_deliveries.message` como `OK:code`, `OK:approve` u `OK:temporary`.
 
 ## Estado del repo
 

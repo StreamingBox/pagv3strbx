@@ -61,11 +61,15 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
             return res.status(result.http).json(result.body);
         }
 
+        const normalizedAction = ["temporary", "approve"].includes(String(action || "").toLowerCase())
+            ? String(action).toLowerCase()
+            : "code";
+
         await saveLog({
             ...baseLog,
             delivered_code: result.body.code,
             status: "delivered",
-            message: "OK",
+            message: `OK:${normalizedAction}`,
         });
 
         return res.json(result.body);

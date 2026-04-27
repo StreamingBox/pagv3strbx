@@ -337,9 +337,10 @@ export default function Codes() {
                                                     {isLoading ? "..." : p.label}
                                                 </span>
                                                 {isNetflix ? (
-                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%", marginTop: 2 }}>
+                                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6, width: "100%", marginTop: 2 }}>
                                                         {[
                                                             { action: "code", label: "Inicio" },
+                                                            { action: "approve", label: "Aprobar" },
                                                             { action: "temporary", label: "Temporal" },
                                                         ].map(item => {
                                                             const activeAction = loadingSlug === `${p.slug}:${item.action}`;

@@ -98,6 +98,86 @@ function getRequestLimitRule({ policyPlatform, action }) {
     };
 }
 
+function normalizeCodeAction(action) {
+    const value = String(action || "code").trim().toLowerCase();
+    if (value === "temporary" || value === "approve") return value;
+    return "code";
+}
+
+async function enforceNetflixActionRules({ orderNumber, requestedSlug, fingerprint, action }) {
+    const normalizedAction = normalizeCodeAction(action);
+    if (requestedSlug !== "netflix") return { blocked: false };
+
+    const base = {
+        orderId: orderNumber,
+        platformSlugLower: requestedSlug,
+        credentialFingerprint: fingerprint,
+    };
+
+    if (normalizedAction === "temporary") {
+        const deliveredCount = await countDeliveredByFingerprint({
+            ...base,
+            requireCodeValue: true,
+            messageLike: "OK:temporary%",
+        });
+        if (deliveredCount >= 1) {
+            return {
+                blocked: true,
+                deliveredCount,
+                limit: 1,
+                message: "Netflix acceso temporal solo permite 1 código por pedido mientras la contraseña actual siga siendo la misma.",
+            };
+        }
+        return { blocked: false };
+    }
+
+    const loginCodeCount = await countDeliveredByFingerprint({
+        ...base,
+        requireCodeValue: true,
+        messageNotLike: "OK:temporary%",
+    });
+    const approvalCount = await countDeliveredByFingerprint({
+        ...base,
+        requireEmptyCode: true,
+        messageLike: "OK:approve%",
+    });
+
+    if (normalizedAction === "code" && approvalCount >= 1) {
+        return {
+            blocked: true,
+            deliveredCount: approvalCount,
+            limit: 1,
+            message: "Netflix ya tiene una solicitud de inicio de sesión aprobada para este pedido. No se puede solicitar código de inicio.",
+        };
+    }
+    if (normalizedAction === "approve" && loginCodeCount >= 1) {
+        return {
+            blocked: true,
+            deliveredCount: loginCodeCount,
+            limit: 1,
+            message: "Netflix ya entregó código de inicio de sesión para este pedido. No se puede aprobar nueva solicitud de inicio.",
+        };
+    }
+    if (normalizedAction === "code" && loginCodeCount >= 1) {
+        return {
+            blocked: true,
+            deliveredCount: loginCodeCount,
+            limit: 1,
+            message: "Netflix permite 1 código de inicio de sesión por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+    if (normalizedAction === "approve" && approvalCount >= 1) {
+        return {
+            blocked: true,
+            deliveredCount: approvalCount,
+            limit: 1,
+            message: "Netflix permite aprobar 1 nueva solicitud de inicio de sesión por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+
+    return { blocked: false };
+}
+
 async function withTimeout(promise, ms, timeoutMessage) {
     let timer = null;
     try {
@@ -118,6 +198,7 @@ async function withTimeout(promise, ms, timeoutMessage) {
 
 async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "code" }) {
     const requestedSlug = toCodeSlug(platformSlug);
+    const normalizedAction = normalizeCodeAction(action);
 
     let plat;
     if (requestedSlug === "chatgpt") {
@@ -217,8 +298,29 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    const limitRule = getRequestLimitRule({ policyPlatform, action });
-    if (limitRule.limited) {
+    const netflixRule = await enforceNetflixActionRules({
+        orderNumber,
+        requestedSlug,
+        fingerprint,
+        action: normalizedAction,
+    });
+    if (netflixRule.blocked) {
+        return {
+            http: 429,
+            body: {
+                ok: false,
+                status: "blocked",
+                message: netflixRule.message,
+                limit: netflixRule.limit,
+                deliveredCount: netflixRule.deliveredCount,
+                resetRule: "El contador se reinicia cuando cambia la contraseña o PIN de la cuenta.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, deliveredCount: netflixRule.deliveredCount },
+        };
+    }
+
+    const limitRule = getRequestLimitRule({ policyPlatform, action: normalizedAction });
+    if (limitRule.limited && requestedSlug !== "netflix") {
         const deliveredCount = await countDeliveredByFingerprint({
             orderId: orderNumber,
             platformSlugLower: requestedSlug,
@@ -250,8 +352,8 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             fetchingResult = await withTimeout(
                 fetchNetflixFlow({
                     toEmail: soldAccountEmail,
-                    maxAgeMinutes: Number(plat.max_age_minutes) || 15,
-                    action,
+                    maxAgeMinutes: 15,
+                    action: normalizedAction,
                 }),
                 20000,
                 "Tiempo de espera agotado consultando Netflix/Gmail."

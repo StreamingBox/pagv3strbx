@@ -191,15 +191,23 @@ function OrderDetailPanel({ order, onClose }) {
                             <AnimatePresence>
                                 {result && (
                                     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ marginTop: 14 }}>
-                                        {result.ok && result.data?.code ? (
+                                        {result.ok && (result.data?.code || result.data?.type === "approval") ? (
                                             <div style={{ background: "rgba(16,185,129,.08)", border: "1px solid rgba(16,185,129,.25)", borderRadius: 12, padding: "14px 16px" }}>
-                                                <div style={{ fontSize: 11, color: "#10b981", fontWeight: 700, marginBottom: 8 }}>✅ CÓDIGO OBTENIDO</div>
-                                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                                    <code style={{ flex: 1, fontSize: 20, fontWeight: 900, color: "#0da6f2", letterSpacing: 2, fontFamily: "monospace" }}>{result.data.code}</code>
-                                                    <button onClick={() => copy(result.data.code)} style={{ background: "rgba(13,166,242,.12)", border: "1px solid rgba(13,166,242,.25)", borderRadius: 8, padding: "6px 14px", color: "#0da6f2", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                                                        {copied ? "✓ Copiado" : "Copiar"}
-                                                    </button>
+                                                <div style={{ fontSize: 11, color: "#10b981", fontWeight: 700, marginBottom: 8 }}>
+                                                    {result.data?.type === "approval" ? "✅ SOLICITUD APROBADA" : "✅ CÓDIGO OBTENIDO"}
                                                 </div>
+                                                {result.data?.type === "approval" ? (
+                                                    <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>
+                                                        {result.data.deviceName || "Dispositivo aprobado"}
+                                                    </div>
+                                                ) : (
+                                                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                                        <code style={{ flex: 1, fontSize: 20, fontWeight: 900, color: "#0da6f2", letterSpacing: 2, fontFamily: "monospace" }}>{result.data.code}</code>
+                                                        <button onClick={() => copy(result.data.code)} style={{ background: "rgba(13,166,242,.12)", border: "1px solid rgba(13,166,242,.25)", borderRadius: 8, padding: "6px 14px", color: "#0da6f2", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                                                            {copied ? "✓ Copiado" : "Copiar"}
+                                                        </button>
+                                                    </div>
+                                                )}
                                                 {result.data.message && <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>{result.data.message}</div>}
                                             </div>
                                         ) : (

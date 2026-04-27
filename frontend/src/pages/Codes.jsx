@@ -171,9 +171,9 @@ export default function Codes() {
         if (!canSearch) return;
         setError(""); setData(null);
         setActivePlatform(slug);
-        setLoadingSlug(slug);
+        setLoadingSlug(`${slug}:${action}`);
         try {
-            const body = { orderNumber: orderNumber.trim() };
+            const body = { orderNumber: orderNumber.trim(), action };
             const r = await apiPost(`/api/codes/${slug}/request`, body);
             if (!r.ok) {
                 const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
@@ -193,9 +193,9 @@ export default function Codes() {
         }
     }
 
-    function handlePlatformClick(slug) {
+    function handlePlatformClick(slug, action = "code") {
         if (!canSearch) return;
-        requestCode(slug, "code");
+        requestCode(slug, action);
     }
 
     const activeMeta = useMemo(() => PLATFORMS.find(p => p.slug === activePlatform), [activePlatform]);
@@ -300,13 +300,13 @@ export default function Codes() {
                                 <div style={{ display: "grid", gridTemplateColumns: isTinyPhone ? "1fr" : "1fr 1fr", gap: 8 }}>
                                     {PLATFORMS.map(p => {
                                         const isActive = activePlatform === p.slug;
-                                        const isLoading = loadingSlug === p.slug;
+                                        const isNetflix = p.slug === "netflix";
+                                        const isLoading = String(loadingSlug || "").startsWith(`${p.slug}:`);
                                         return (
-                                            <motion.button key={p.slug}
+                                            <motion.div key={p.slug}
                                                 whileHover={canSearch ? { scale: 1.03, boxShadow: `0 0 20px ${p.accent}40`, borderColor: p.accent } : {}}
                                                 whileTap={{ scale: canSearch ? 0.97 : 1 }}
-                                                disabled={!canSearch}
-                                                onClick={() => handlePlatformClick(p.slug)}
+                                                onClick={() => !isNetflix && handlePlatformClick(p.slug)}
                                                 style={{
                                                     display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
                                                     padding: "16px 8px", borderRadius: 14,
@@ -336,8 +336,42 @@ export default function Codes() {
                                                 <span style={{ fontSize: 12, fontWeight: 800, color: isActive ? p.accent : "var(--text)", lineHeight: 1.15, letterSpacing: "0.2px", textAlign: "center" }}>
                                                     {isLoading ? "..." : p.label}
                                                 </span>
+                                                {isNetflix ? (
+                                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, width: "100%", marginTop: 2 }}>
+                                                        {[
+                                                            { action: "code", label: "Inicio" },
+                                                            { action: "temporary", label: "Temporal" },
+                                                        ].map(item => {
+                                                            const activeAction = loadingSlug === `${p.slug}:${item.action}`;
+                                                            return (
+                                                                <button
+                                                                    key={item.action}
+                                                                    type="button"
+                                                                    disabled={!canSearch}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handlePlatformClick(p.slug, item.action);
+                                                                    }}
+                                                                    style={{
+                                                                        height: 30,
+                                                                        borderRadius: 9,
+                                                                        border: `1px solid ${activeAction ? p.accent : p.border}`,
+                                                                        background: activeAction ? "rgba(229,9,20,0.18)" : "rgba(255,255,255,0.03)",
+                                                                        color: activeAction ? p.accent : "var(--text)",
+                                                                        fontFamily: "var(--font)",
+                                                                        fontSize: 10,
+                                                                        fontWeight: 900,
+                                                                        cursor: canSearch ? "pointer" : "default",
+                                                                    }}
+                                                                >
+                                                                    {item.label}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : null}
                                                 {isLoading && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${p.accent}40`, borderTopColor: p.accent, display: "block", animation: "spin 0.7s linear infinite", position: "absolute", bottom: 12 }} />}
-                                            </motion.button>
+                                            </motion.div>
                                         );
                                     })}
                                 </div>

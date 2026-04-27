@@ -61,7 +61,7 @@ function StatusBadge({ status }) {
 function OrderDetailPanel({ order, onClose }) {
     const [loading, setLoading]   = useState(false);
     const [result, setResult]     = useState(null);
-    const [action, setAction]     = useState("code"); // "code" o "approve"
+    const [action, setAction]     = useState("code"); // "code", "temporary" o "approve"
     const [copied, setCopied]     = useState(false);
 
     const slug = order.platformSlug || String(order.platformName || "").toLowerCase().replace(/\s+/g, "-");
@@ -158,16 +158,16 @@ function OrderDetailPanel({ order, onClose }) {
                         <div style={{ background: "rgba(13,166,242,.06)", border: "1px solid rgba(13,166,242,.2)", borderRadius: 14, padding: "16px 18px" }}>
                             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>🔑 Obtener Código</div>
 
-                            {/* Selector de acción: SOLO Netflix muestra 'Aprobar Login' */}
+                            {/* Selector de acción: SOLO Netflix muestra variantes */}
                             {isNetflix ? (
                                 <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                                    {["code", "approve"].map(a => (
+                                    {["code", "temporary", "approve"].map(a => (
                                         <button key={a} onClick={() => setAction(a)} style={{
                                             flex: 1, height: 36, borderRadius: 10, border: `1px solid ${action === a ? "#0da6f2" : "var(--stroke)"}`,
                                             background: action === a ? "rgba(13,166,242,.12)" : "transparent",
                                             color: action === a ? "#0da6f2" : "var(--muted)", fontSize: 13, fontWeight: 600, cursor: "pointer"
                                         }}>
-                                            {a === "code" ? "📋 Obtener Código" : "✅ Aprobar Login"}
+                                            {a === "code" ? "Código inicio" : a === "temporary" ? "Acceso temporal" : "Aprobar login"}
                                         </button>
                                     ))}
                                 </div>

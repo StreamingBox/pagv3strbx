@@ -6,12 +6,12 @@ const https = require("https");
 const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
 function getNetflixAxiosOptions() {
-    const insecureTls = process.env.NODE_ENV !== "production" && getEnvBool("NETFLIX_TLS_INSECURE");
+    const insecureTls = getEnvBool("NETFLIX_TLS_INSECURE");
 
     return {
         headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9",
+            "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
         },
         httpsAgent: new https.Agent({
             rejectUnauthorized: !insecureTls,
@@ -60,6 +60,53 @@ async function scrapeTemporalCode(link) {
         }
         return { ok: false, status: "network_error", message: "Error al leer el enlace de Netflix." };
     }
+}
+
+function stripDiacritics(value) {
+    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeText(value) {
+    return stripDiacritics(value).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function subjectMatchesAction(subject, action) {
+    const s = normalizeText(subject);
+    const normalizedAction = String(action || "code").toLowerCase();
+
+    if (normalizedAction === "temporary") {
+        return s.includes("codigo de acceso temporal") || s.includes("temporary access code");
+    }
+
+    if (normalizedAction === "approve") {
+        return s.includes("solicitud de inicio de sesion")
+            || s.includes("aprueba la nueva solicitud")
+            || s.includes("approve")
+            || s.includes("request");
+    }
+
+    if (s.includes("codigo de acceso temporal") || s.includes("temporary access code")) {
+        return false;
+    }
+
+    return s.includes("codigo")
+        || s.includes("iniciar sesion")
+        || s.includes("login")
+        || s.includes("sign in")
+        || s.includes("code");
+}
+
+function findNetflixButtonLink(html, textNeedles = [], hrefNeedles = []) {
+    const $ = cheerio.load(String(html || ""));
+    const links = $("a").toArray();
+    for (const el of links) {
+        const label = normalizeText($(el).text());
+        const href = String($(el).attr("href") || "");
+        const labelMatch = textNeedles.some((needle) => label.includes(normalizeText(needle)));
+        const hrefMatch = hrefNeedles.some((needle) => href.toLowerCase().includes(String(needle).toLowerCase()));
+        if (href && (labelMatch || hrefMatch)) return href;
+    }
+    return "";
 }
 
 /**
@@ -171,11 +218,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             const subject = (headers.subject && headers.subject[0]) ? String(headers.subject[0]).toLowerCase() : "";
 
-            // ¿Coincide el subject con lo que buscamos?
-            let isTarget = false;
-            // Aceptar "código de acceso temporal" o "código para iniciar sesión" u "código", e incluso correos de "hogar" y variaciones en inglés
-            if (action === "code" && (subject.includes("código") || subject.includes("codigo") || subject.includes("iniciar sesión") || subject.includes("hogar") || subject.includes("actualizaci") || subject.includes("code"))) isTarget = true;
-            if (action === "approve" && (subject.includes("solicitud de inicio de sesión") || subject.includes("aprueba la nueva solicitud") || subject.includes("hogar") || subject.includes("approve") || subject.includes("request"))) isTarget = true;
+            const isTarget = subjectMatchesAction(subject, action);
 
             if (!isTarget) continue;
             sawTargetMatch = true;
@@ -194,11 +237,12 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             const text = String(parsed.text || "");
 
             // 1. FLUJO: CÓDIGO TEMPORAL
-            if (action === "code") {
-                const $ = cheerio.load(html);
-                const buttonLink = $("a").filter((i, el) => {
-                    return $(el).text().toLowerCase().includes("obtener") || $(el).attr("href")?.includes("netflix.com/account/travel/verify");
-                }).attr("href");
+            if (action === "temporary") {
+                const buttonLink = findNetflixButtonLink(
+                    html,
+                    ["obtener codigo", "obtener código", "get code"],
+                    ["netflix.com/account/travel/verify", "travel/verify"]
+                );
 
                 if (buttonLink) {
                     stage = "open_netflix_code_link";
@@ -237,12 +281,30 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                 }
             }
 
-            // 2. FLUJO: APROBAR DISPOSITIVO
+            // 2. FLUJO: CÓDIGO DE INICIO DE SESIÓN
+            if (action === "code") {
+                const htmlText = cheerio.load(html)("body").text() || "";
+                const haystack = `${subject}\n${text}\n${htmlText}`;
+                const patterns = [
+                    /(?:codigo|c[oó]digo|code)[^0-9]{0,60}([0-9]{4,8})/i,
+                    /\b([0-9]{4,8})\b/,
+                ];
+
+                for (const pattern of patterns) {
+                    const match = haystack.match(pattern);
+                    if (match?.[1] && !["2023", "2024", "2025", "2026"].includes(match[1])) {
+                        return { ok: true, type: "code", code: match[1], emailDate: msgDate };
+                    }
+                }
+            }
+
+            // 3. FLUJO: APROBAR DISPOSITIVO
             if (action === "approve") {
-                const $ = cheerio.load(html);
-                const buttonLink = $("a").filter((i, el) => {
-                    return $(el).text().toLowerCase().includes("aprobar") || $(el).attr("href")?.includes("netflix.com/account/approve");
-                }).attr("href");
+                const buttonLink = findNetflixButtonLink(
+                    html,
+                    ["aprobar", "approve"],
+                    ["netflix.com/account/approve", "account/approve"]
+                );
 
                 if (!buttonLink) continue;
 
@@ -269,7 +331,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         }
 
         if (!sawTargetMatch) {
-            return { ok: false, status: "netflix_flow_miss", message: "No se encontraron correos nuevos con códigos o aprobaciones." };
+            return { ok: false, status: "netflix_flow_miss", message: "No se encontraron correos nuevos de Netflix para el tipo de solicitud seleccionado." };
         }
 
         return { ok: false, status: "netflix_flow_miss", message: "Se detectó el correo de Netflix, pero no se pudo completar el flujo." };

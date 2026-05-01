@@ -596,7 +596,7 @@ export default function AdminTopups() {
                     <section
                         style={{
                             display: "grid",
-                            gridTemplateColumns: "220px minmax(260px, 1fr) 140px auto",
+                            gridTemplateColumns: "220px minmax(260px, 1fr) 140px",
                             gap: 12,
                             alignItems: "end",
                             marginBottom: 16,
@@ -617,28 +617,64 @@ export default function AdminTopups() {
 
                         <label className="wallet-label" style={{ minWidth: 0 }}>
                             <span>Buscar</span>
-                            <div style={{ position: "relative" }}>
-                                <span
-                                    aria-hidden="true"
-                                    style={{
-                                        position: "absolute",
-                                        left: 14,
-                                        top: "50%",
-                                        transform: "translateY(-50%)",
-                                        color: "var(--muted)",
-                                        pointerEvents: "none",
-                                        fontSize: 14,
-                                    }}
+                            <div
+                                className={`dash-search2 ${query.trim() ? "has-text" : ""}`}
+                                style={{
+                                    width: "100%",
+                                    height: 44,
+                                    padding: "0 12px",
+                                    borderRadius: 14,
+                                    borderColor: query.trim() ? "rgba(124, 92, 255, .42)" : "rgba(255,255,255,.12)",
+                                    boxShadow: query.trim() ? "0 0 0 1px rgba(124, 92, 255, .18)" : "none",
+                                }}
+                            >
+                                <button
+                                    type="button"
+                                    className="dash-search2__btn"
+                                    onClick={loadItems}
+                                    aria-label="Buscar"
+                                    title="Buscar"
                                 >
-                                    ⌕
-                                </span>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path
+                                            d="M10.5 18.5C14.9183 18.5 18.5 14.9183 18.5 10.5C18.5 6.08172 14.9183 2.5 10.5 2.5C6.08172 2.5 2.5 6.08172 2.5 10.5C2.5 14.9183 6.08172 18.5 10.5 18.5Z"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                        />
+                                        <path
+                                            d="M16.5 16.5L21.5 21.5"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                        />
+                                    </svg>
+                                </button>
                                 <input
-                                    className="wallet-input"
-                                    style={{ width: "100%", paddingLeft: 38 }}
+                                    className="dash-search2__input"
                                     placeholder="Código, nombre, correo o método"
                                     value={query}
                                     onChange={(event) => setQuery(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            loadItems();
+                                        }
+                                    }}
                                 />
+                                {query.trim() ? (
+                                    <button
+                                        type="button"
+                                        className="dash-search2__clear"
+                                        onClick={() => {
+                                            setQuery("");
+                                            setTimeout(() => loadItems(), 0);
+                                        }}
+                                        aria-label="Limpiar búsqueda"
+                                        title="Limpiar"
+                                    >
+                                        ×
+                                    </button>
+                                ) : null}
                             </div>
                         </label>
 
@@ -650,39 +686,6 @@ export default function AdminTopups() {
                                 <option value="20">20</option>
                             </select>
                         </label>
-
-                        <button
-                            type="button"
-                            onClick={loadItems}
-                            style={{
-                                width: "auto",
-                                minWidth: 110,
-                                height: 44,
-                                padding: "0 22px",
-                                borderRadius: 14,
-                                border: "1px solid rgba(13,166,242,.38)",
-                                background: "linear-gradient(135deg, #0da6f2 0%, #2563eb 55%, #1d4ed8 100%)",
-                                color: "#fff",
-                                fontWeight: 800,
-                                fontSize: 14,
-                                cursor: "pointer",
-                                boxShadow: "0 10px 24px rgba(13,166,242,.22), inset 0 1px 0 rgba(255,255,255,.14)",
-                                transition: "transform .18s ease, box-shadow .18s ease, filter .18s ease",
-                                alignSelf: "end",
-                            }}
-                            onMouseEnter={(event) => {
-                                event.currentTarget.style.transform = "translateY(-1px)";
-                                event.currentTarget.style.boxShadow = "0 14px 28px rgba(13,166,242,.28), inset 0 1px 0 rgba(255,255,255,.18)";
-                                event.currentTarget.style.filter = "brightness(1.04)";
-                            }}
-                            onMouseLeave={(event) => {
-                                event.currentTarget.style.transform = "translateY(0)";
-                                event.currentTarget.style.boxShadow = "0 10px 24px rgba(13,166,242,.22), inset 0 1px 0 rgba(255,255,255,.14)";
-                                event.currentTarget.style.filter = "brightness(1)";
-                            }}
-                        >
-                            Buscar
-                        </button>
                     </section>
 
                     <div style={{ marginBottom: 14, color: "var(--muted)", fontSize: 13 }}>

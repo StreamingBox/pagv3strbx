@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -26,6 +26,16 @@ function bogotaDateOnly(value) {
     }).format(new Date(value));
 }
 
+function formatBogotaDateTime(value) {
+    if (!value) return "—";
+    return new Date(value).toLocaleString("es-CO", { timeZone: "America/Bogota" });
+}
+
+function formatBogotaDate(value) {
+    if (!value) return "—";
+    return new Date(value).toLocaleDateString("es-CO", { timeZone: "America/Bogota" });
+}
+
 export default function AdminRenewals() {
     const navigate = useNavigate();
     const location = useLocation();
@@ -49,7 +59,7 @@ export default function AdminRenewals() {
 
     const [logs, setLogs] = useState([]);
     const [logsPage, setLogsPage] = useState(1);
-    const [logsLimit] = useState(10);
+    const [logsLimit, setLogsLimit] = useState(5);
     const [logsTotalPages, setLogsTotalPages] = useState(1);
     const [logsTotal, setLogsTotal] = useState(0);
     const [logsLoading, setLogsLoading] = useState(true);
@@ -63,7 +73,9 @@ export default function AdminRenewals() {
             localStorage.removeItem("user");
             localStorage.removeItem("accessToken");
             localStorage.removeItem("refreshToken");
-        } catch { /* ignore */ }
+        } catch {
+            // ignore
+        }
         navigate("/", { replace: true });
     }
 
@@ -179,6 +191,22 @@ export default function AdminRenewals() {
         fontFamily: "var(--font)",
     };
 
+    const sectionStyle = {
+        background: "var(--card)",
+        border: "1px solid var(--stroke)",
+        borderRadius: 16,
+        padding: 20,
+        marginBottom: 24,
+        boxShadow: "0 10px 40px rgba(0,0,0,0.12)",
+    };
+
+    const responsiveGrid = useMemo(() => ({
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+        gap: 12,
+        alignItems: "end",
+    }), []);
+
     const renewalBlockedReason = order?.renewal?.block_reason
         || (Number(order?.is_renewable) !== 1 ? "Este plan no tiene renovación habilitada." : "")
         || (order?.expires_at && bogotaDateOnly(order.expires_at) < bogotaDateOnly(new Date())
@@ -187,6 +215,40 @@ export default function AdminRenewals() {
 
     return (
         <div className="page-shell">
+            <style>{`
+                .admin-renewals-tableWrap { display: block; }
+                .admin-renewals-mobileList { display: none; }
+                @media (max-width: 960px) {
+                    .admin-renewals-tableWrap { display: none; }
+                    .admin-renewals-mobileList { display: grid; }
+                }
+                @media (max-width: 640px) {
+                    .admin-renewals-main { padding: 16px 14px 28px !important; }
+                    .admin-renewals-header {
+                        align-items: flex-start !important;
+                        padding-bottom: 18px !important;
+                        margin-bottom: 18px !important;
+                    }
+                    .admin-renewals-heroIcon {
+                        width: 42px !important;
+                        height: 42px !important;
+                        font-size: 20px !important;
+                    }
+                    .admin-renewals-searchButton {
+                        width: 100% !important;
+                    }
+                    .admin-renewals-resultHeader {
+                        align-items: flex-start !important;
+                    }
+                    .admin-renewals-submitRow {
+                        justify-content: stretch !important;
+                    }
+                    .admin-renewals-submitButton {
+                        width: 100% !important;
+                    }
+                }
+            `}</style>
+
             <div className="page-shell-bg" aria-hidden>
                 <div className="bg-orb orb-1" />
                 <div className="bg-orb orb-2" />
@@ -204,21 +266,31 @@ export default function AdminRenewals() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "20px 24px 32px" }}>
+                <main className="main admin-renewals-main" style={{ padding: "20px 24px 32px" }}>
                     <motion.div
+                        className="admin-renewals-header"
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 24, gap: 20, flexWrap: "wrap", borderBottom: "1px solid var(--stroke)", paddingBottom: 24 }}
                     >
                         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                            <div style={{
-                                width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-                                background: "rgba(13,166,242,0.1)",
-                                border: "1px solid rgba(13,166,242,0.3)",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 24, boxShadow: "0 4px 16px rgba(13,166,242,0.2)",
-                            }}>
-                                Renovar
+                            <div
+                                className="admin-renewals-heroIcon"
+                                style={{
+                                    width: 48,
+                                    height: 48,
+                                    borderRadius: 14,
+                                    flexShrink: 0,
+                                    background: "rgba(13,166,242,0.1)",
+                                    border: "1px solid rgba(13,166,242,0.3)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: 24,
+                                    boxShadow: "0 4px 16px rgba(13,166,242,0.2)",
+                                }}
+                            >
+                                ↻
                             </div>
                             <div>
                                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>
@@ -235,27 +307,55 @@ export default function AdminRenewals() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 }}
-                        style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 20, marginBottom: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.12)" }}
+                        style={sectionStyle}
                     >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
-                            <div>
-                                <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Log de renovaciones</div>
-                                <div style={{ color: "var(--muted)", fontSize: 13 }}>Qué se renovó, quién lo hizo y cuánto se cobró.</div>
-                            </div>
-                            <input
-                                value={logsQuery}
-                                onChange={(e) => {
-                                    setLogsQuery(e.target.value);
-                                    setLogsPage(1);
-                                }}
-                                placeholder="Buscar por orden, usuario o plataforma"
-                                style={{ ...inputStyle, width: 280, height: 40 }}
-                            />
+                        <div style={{ marginBottom: 16 }}>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Log de renovaciones</div>
+                            <div style={{ color: "var(--muted)", fontSize: 13 }}>Qué se renovó, quién lo hizo y cuánto se cobró.</div>
                         </div>
 
-                        {logsError ? <div className="error" style={{ marginBottom: 12 }}>{logsError}</div> : null}
+                        <div style={responsiveGrid}>
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    Buscar
+                                </div>
+                                <input
+                                    value={logsQuery}
+                                    onChange={(e) => {
+                                        setLogsQuery(e.target.value);
+                                        setLogsPage(1);
+                                    }}
+                                    placeholder="Orden, usuario o plataforma"
+                                    style={{ ...inputStyle, height: 42 }}
+                                />
+                            </div>
 
-                        <div style={{ overflowX: "auto" }}>
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 6, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                    Mostrar
+                                </div>
+                                <select
+                                    value={String(logsLimit)}
+                                    onChange={(e) => {
+                                        setLogsPage(1);
+                                        setLogsLimit(Number(e.target.value) || 5);
+                                    }}
+                                    style={{ ...inputStyle, height: 42, cursor: "pointer" }}
+                                >
+                                    <option value="5">5</option>
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {logsError ? <div className="error" style={{ marginTop: 12 }}>{logsError}</div> : null}
+
+                        <div style={{ color: "var(--muted)", fontSize: 13, marginTop: 14, marginBottom: 12 }}>
+                            Mostrando {logsLimit} por página, ordenadas de la más reciente a la más antigua.
+                        </div>
+
+                        <div className="admin-renewals-tableWrap" style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,0.2)", textAlign: "left" }}>
@@ -271,7 +371,7 @@ export default function AdminRenewals() {
                                         <tr><td colSpan={7} style={{ padding: "30px 14px", color: "var(--muted)", textAlign: "center" }}>No hay renovaciones registradas.</td></tr>
                                     ) : logs.map((log) => (
                                         <tr key={log.id} style={{ borderTop: "1px solid var(--stroke2)" }}>
-                                            <td style={{ padding: "12px 14px", color: "var(--muted)" }}>{new Date(log.created_at).toLocaleString("es-CO", { timeZone: "America/Bogota" })}</td>
+                                            <td style={{ padding: "12px 14px", color: "var(--muted)" }}>{formatBogotaDateTime(log.created_at)}</td>
                                             <td style={{ padding: "12px 14px" }}>
                                                 <div style={{ fontWeight: 700, color: "var(--text)" }}>{log.renewal_order_code}</div>
                                                 <div style={{ fontSize: 12, color: "var(--muted)" }}>Anterior: {log.previous_order_code || "—"}</div>
@@ -287,8 +387,8 @@ export default function AdminRenewals() {
                                                 <div style={{ fontSize: 12, color: "var(--muted)" }}>{Number(log.deduct_wallet) === 1 ? "Descontado de wallet" : "Sin descuento"}</div>
                                             </td>
                                             <td style={{ padding: "12px 14px" }}>
-                                                <div style={{ fontSize: 12, color: "var(--muted)" }}>Antes: {log.previous_expires_at ? new Date(log.previous_expires_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota" }) : "—"}</div>
-                                                <div style={{ fontWeight: 700, color: "#10b981" }}>Nuevo: {new Date(log.new_expires_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}</div>
+                                                <div style={{ fontSize: 12, color: "var(--muted)" }}>Antes: {formatBogotaDate(log.previous_expires_at)}</div>
+                                                <div style={{ fontWeight: 700, color: "#10b981" }}>Nuevo: {formatBogotaDate(log.new_expires_at)}</div>
                                             </td>
                                         </tr>
                                     ))}
@@ -296,8 +396,59 @@ export default function AdminRenewals() {
                             </table>
                         </div>
 
+                        <div className="admin-renewals-mobileList" style={{ display: "grid", gap: 12 }}>
+                            {logsLoading ? (
+                                <div style={{ padding: "18px 16px", color: "var(--muted)", textAlign: "center", border: "1px solid var(--stroke2)", borderRadius: 14 }}>
+                                    Cargando renovaciones...
+                                </div>
+                            ) : logs.length === 0 ? (
+                                <div style={{ padding: "18px 16px", color: "var(--muted)", textAlign: "center", border: "1px solid var(--stroke2)", borderRadius: 14 }}>
+                                    No hay renovaciones registradas.
+                                </div>
+                            ) : logs.map((log) => (
+                                <div key={`mobile-${log.id}`} style={{ border: "1px solid var(--stroke2)", borderRadius: 14, padding: 14, background: "rgba(255,255,255,0.02)" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+                                        <div>
+                                            <div style={{ fontWeight: 900, color: "var(--text)", fontSize: 15 }}>{log.renewal_order_code}</div>
+                                            <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{formatBogotaDateTime(log.created_at)}</div>
+                                        </div>
+                                        <div style={{ color: "#10b981", fontWeight: 800, fontSize: 13 }}>
+                                            {Number(log.amount_charged || 0).toLocaleString("es-CO")} {log.currency}
+                                        </div>
+                                    </div>
+
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginTop: 12 }}>
+                                        <div>
+                                            <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Usuario</div>
+                                            <div style={{ color: "var(--text)", fontWeight: 700 }}>{log.user_email}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Plataforma</div>
+                                            <div style={{ color: "var(--text)", fontWeight: 700 }}>{log.platform_name || "—"}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Actor</div>
+                                            <div style={{ color: "var(--text)", fontWeight: 700 }}>{log.actor_email || `#${log.actor_user_id}`}</div>
+                                            <div style={{ color: "var(--muted)", fontSize: 12 }}>{log.actor_role}</div>
+                                        </div>
+                                        <div>
+                                            <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", marginBottom: 4 }}>Vencimiento</div>
+                                            <div style={{ color: "var(--muted)", fontSize: 12 }}>Antes: {formatBogotaDate(log.previous_expires_at)}</div>
+                                            <div style={{ color: "#10b981", fontWeight: 800 }}>Nuevo: {formatBogotaDate(log.new_expires_at)}</div>
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
+                                        Anterior: {log.previous_order_code || "—"} · {Number(log.deduct_wallet) === 1 ? "Descontado de wallet" : "Sin descuento"}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 12, flexWrap: "wrap" }}>
-                            <div style={{ color: "var(--muted)", fontSize: 13 }}>Total registros: {logsTotal}</div>
+                            <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                                Total registros: {logsTotal} · Página {logsPage} de {logsTotalPages}
+                            </div>
                             <div style={{ display: "flex", gap: 8 }}>
                                 <button className="btn-ghost" disabled={logsPage <= 1} onClick={() => setLogsPage((p) => Math.max(1, p - 1))} style={{ width: "auto", padding: "6px 14px", fontSize: 13 }}>Anterior</button>
                                 <button className="btn-ghost" disabled={logsPage >= logsTotalPages} onClick={() => setLogsPage((p) => Math.min(logsTotalPages, p + 1))} style={{ width: "auto", padding: "6px 14px", fontSize: 13 }}>Siguiente</button>
@@ -309,10 +460,15 @@ export default function AdminRenewals() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.1 }}
-                        style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 20, marginBottom: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
+                        style={{ ...sectionStyle, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
                     >
-                        <form onSubmit={handleSearch} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                            <div style={{ position: "relative", flex: 1, minWidth: 280, maxWidth: 400 }}>
+                        <div style={{ marginBottom: 14 }}>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Buscar suscripción</div>
+                            <div style={{ color: "var(--muted)", fontSize: 13 }}>Consulta una suscripción puntual y ejecuta la renovación manual.</div>
+                        </div>
+
+                        <form onSubmit={handleSearch} style={responsiveGrid}>
+                            <div style={{ minWidth: 0 }}>
                                 <input
                                     value={orderId}
                                     onChange={(e) => setOrderId(e.target.value)}
@@ -322,17 +478,23 @@ export default function AdminRenewals() {
                                     min="1"
                                 />
                             </div>
-                            <button type="submit" disabled={searching} style={{ height: 44, padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>
+                            <button
+                                type="submit"
+                                disabled={searching}
+                                className="admin-renewals-searchButton"
+                                style={{ height: 44, width: "100%", padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                            >
                                 {searching ? "Buscando..." : "Buscar suscripción"}
                             </button>
                         </form>
+
                         {searchErr ? <div className="error" style={{ marginTop: 16 }}>{searchErr}</div> : null}
                     </motion.div>
 
                     {order ? (
                         <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}>
                             <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 24, marginBottom: 20, boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid var(--stroke2)" }}>
+                                <div className="admin-renewals-resultHeader" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid var(--stroke2)" }}>
                                     <h2 style={{ margin: 0, fontSize: 16, fontWeight: 900, color: "var(--text)" }}>
                                         Suscripción #{order.id}
                                     </h2>
@@ -347,7 +509,7 @@ export default function AdminRenewals() {
                                         ["Plataforma", order.platform_name],
                                         ["Duración", `${order.duration_name} (${order.days} días)`],
                                         ["Precio actual", `${Number(overridePrice || order.price || 0).toLocaleString("es-CO")} ${order.currency}`],
-                                        ["Vencimiento", order.expires_at ? new Date(order.expires_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota" }) : "—"],
+                                        ["Vencimiento", order.expires_at ? formatBogotaDate(order.expires_at) : "—"],
                                         ["Atención", order.is_attended ? "Atendida" : "Pendiente"],
                                         ["Cuenta", order.account_email || "Usuario local"],
                                     ].map(([label, val]) => (
@@ -367,7 +529,7 @@ export default function AdminRenewals() {
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
                                         {[
                                             ["Orden de renovación", result.renewalOrderCode || (result.renewalOrderId ? `#${result.renewalOrderId}` : "—")],
-                                            ["Nuevo vencimiento", new Date(result.newExpiry).toLocaleString("es-CO", { timeZone: "America/Bogota" })],
+                                            ["Nuevo vencimiento", formatBogotaDateTime(result.newExpiry)],
                                             ["Descontado", `${Number(result.deducted || 0).toLocaleString("es-CO")} ${result.currency || ""}`.trim()],
                                             ["Saldo resultante", result.newBalance !== null ? `${Number(result.newBalance).toLocaleString("es-CO")} ${result.currency || ""}`.trim() : "—"],
                                         ].map(([label, val]) => (
@@ -463,8 +625,13 @@ export default function AdminRenewals() {
 
                                         {renewErr ? <div className="error" style={{ marginTop: 16 }}>{renewErr}</div> : null}
 
-                                        <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
-                                            <button type="submit" disabled={renewing || !!renewalBlockedReason} style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: (renewing || renewalBlockedReason) ? "not-allowed" : "pointer", opacity: (renewing || renewalBlockedReason) ? 0.55 : 1 }}>
+                                        <div className="admin-renewals-submitRow" style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                                            <button
+                                                type="submit"
+                                                disabled={renewing || !!renewalBlockedReason}
+                                                className="admin-renewals-submitButton"
+                                                style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: (renewing || renewalBlockedReason) ? "not-allowed" : "pointer", opacity: (renewing || renewalBlockedReason) ? 0.55 : 1 }}
+                                            >
                                                 {renewing ? "Procesando..." : "Confirmar renovación"}
                                             </button>
                                         </div>

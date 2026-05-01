@@ -236,7 +236,10 @@ export default function AdminTopups() {
                 throw new Error(response.data?.message || "No se pudo abrir el comprobante.");
             }
             if (mode === "modal") {
-                const proofResponse = await fetch(response.data.viewerUrl, {
+                const viewerUrl = response.data.viewerUrl;
+                const fileUrl = String(viewerUrl).replace("/topup-proofs/view/", "/topup-proofs/file/");
+                const revokeUrl = String(viewerUrl).replace("/topup-proofs/view/", "/topup-proofs/revoke/");
+                const proofResponse = await fetch(fileUrl, {
                     method: "GET",
                     credentials: "include",
                 });
@@ -252,7 +255,8 @@ export default function AdminTopups() {
                 previewObjectUrlRef.current = objectUrl;
                 setPreviewItem({
                     ...item,
-                    viewerUrl: response.data.viewerUrl,
+                    viewerUrl,
+                    revokeUrl,
                     inlineUrl: objectUrl,
                     inlineType: contentType,
                 });
@@ -763,6 +767,13 @@ export default function AdminTopups() {
                                         if (previewObjectUrlRef.current) {
                                             URL.revokeObjectURL(previewObjectUrlRef.current);
                                             previewObjectUrlRef.current = "";
+                                        }
+                                        if (previewItem?.revokeUrl) {
+                                            fetch(previewItem.revokeUrl, {
+                                                method: "POST",
+                                                credentials: "include",
+                                                keepalive: true,
+                                            }).catch(() => { });
                                         }
                                         setPreviewItem(null);
                                     }}

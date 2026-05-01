@@ -27,6 +27,8 @@ pool.query('UPDATE wallet_transactions SET type="profit_adj" WHERE reference_typ
 pool.query('ALTER TABLE subscriptions ADD COLUMN whatsapp_phone VARCHAR(50) DEFAULT NULL').catch(() => { });
 pool.query('ALTER TABLE subscriptions ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0').catch(() => { });
 pool.query('ALTER TABLE users ADD COLUMN whatsapp VARCHAR(50) DEFAULT NULL').catch(() => { });
+pool.query("ALTER TABLE platforms ADD COLUMN is_promo TINYINT(1) NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE platforms ADD COLUMN promo_color VARCHAR(24) NULL DEFAULT NULL").catch(() => { });
 
 pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (

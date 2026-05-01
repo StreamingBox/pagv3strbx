@@ -29,6 +29,15 @@ const inputStyle = {
 };
 
 const selStyle = { ...inputStyle, cursor: "pointer", paddingRight: 30 };
+const DEFAULT_PROMO_COLOR = "#22D3EE";
+
+function normalizePromoColor(value) {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!match) return DEFAULT_PROMO_COLOR;
+    const hex = match[1];
+    return `#${hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex}`.toUpperCase();
+}
 
 export default function AdminPlatforms() {
     const navigate = useNavigate();
@@ -45,6 +54,8 @@ export default function AdminPlatforms() {
     const [slugManual, setSlugManual] = useState(false);
     const [categoryId, setCategoryId] = useState("");
     const [type, setType] = useState("normal");
+    const [isPromo, setIsPromo] = useState(false);
+    const [promoColor, setPromoColor] = useState(DEFAULT_PROMO_COLOR);
     const [whatsappInstructions, setWhatsappInstructions] = useState("");
 
     // Toggles Options
@@ -98,6 +109,8 @@ export default function AdminPlatforms() {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
                 type,
+                is_promo: isPromo,
+                promo_color: isPromo ? normalizePromoColor(promoColor) : null,
                 whatsapp_instructions: whatsappInstructions,
                 wa_show_id: waShowId,
                 wa_show_email: waShowEmail,
@@ -109,6 +122,7 @@ export default function AdminPlatforms() {
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setType("normal"); setWhatsappInstructions(""); setSlugManual(false);
+            setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR);
             setWaShowId(true); setWaShowEmail(true); setWaShowPass(true); setWaShowProfile(true); setWaShowPin(true); setWaShowExpire(true); setWaShowUrl(true);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
@@ -149,6 +163,10 @@ export default function AdminPlatforms() {
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
                 type: editingPlatform.type || 'normal',
+                is_promo: editingPlatform.is_promo === 1 || editingPlatform.is_promo === true,
+                promo_color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
+                    ? normalizePromoColor(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)
+                    : null,
                 whatsapp_instructions: editingPlatform.whatsapp_instructions,
                 wa_show_id: editingPlatform.wa_show_id !== 0,
                 wa_show_email: editingPlatform.wa_show_email !== 0,
@@ -345,6 +363,20 @@ export default function AdminPlatforms() {
                                     <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 9, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                 </div>
                             </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Promoción</label>
+                                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, height: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${isPromo ? `${promoColor}66` : "var(--stroke)"}`, background: isPromo ? `${promoColor}14` : "var(--bg0)", boxShadow: isPromo ? `0 0 18px ${promoColor}22` : "none", cursor: "pointer" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: isPromo ? promoColor : "var(--text)" }}>Resaltar como promo</span>
+                                    <input type="checkbox" checked={isPromo} onChange={e => setIsPromo(e.target.checked)} />
+                                </label>
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Color Neon</label>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, height: 42, padding: "0 10px", background: "var(--bg0)", border: `1px solid ${isPromo ? `${promoColor}88` : "var(--stroke)"}`, borderRadius: 10, boxShadow: isPromo ? `0 0 16px ${promoColor}22 inset` : "none", opacity: isPromo ? 1 : 0.5 }}>
+                                    <input type="color" value={normalizePromoColor(promoColor)} disabled={!isPromo} onChange={e => setPromoColor(e.target.value.toUpperCase())} style={{ width: 34, height: 24, padding: 0, border: "none", background: "transparent", cursor: isPromo ? "pointer" : "not-allowed" }} />
+                                    <input style={{ ...inputStyle, height: 30, padding: "0 10px", border: "none", background: "transparent", boxShadow: "none" }} disabled={!isPromo} value={promoColor} onChange={e => setPromoColor(e.target.value.toUpperCase())} placeholder="#22D3EE" />
+                                </div>
+                            </div>
                         </div>
                         <div style={{ marginTop: 10 }}>
                             <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
@@ -423,18 +455,18 @@ export default function AdminPlatforms() {
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                                        {["ID", "Nombre", "Slug", "Modo", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
+                                        {["ID", "Nombre", "Slug", "Modo", "Promo", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
                                             <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={7} style={{ padding: "60px 20px", textAlign: "center" }}>
+                                        <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center" }}>
                                             <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                                         </td></tr>
                                     ) : filtered.length === 0 ? (
-                                        <tr><td colSpan={7} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                        <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                             <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
                                             {q ? "Sin resultados." : "No hay plataformas aún."}
                                         </td></tr>
@@ -482,6 +514,29 @@ export default function AdminPlatforms() {
                                                     }}>
                                                         {p.type === "correo" ? "A CORREO" : "NORMAL"}
                                                     </span>
+                                                </td>
+
+                                                <td style={{ padding: "12px 16px" }}>
+                                                    {p.is_promo ? (
+                                                        <span style={{
+                                                            display: "inline-flex",
+                                                            alignItems: "center",
+                                                            gap: 8,
+                                                            padding: "5px 10px",
+                                                            borderRadius: 999,
+                                                            fontSize: 11,
+                                                            fontWeight: 900,
+                                                            color: p.promo_color || DEFAULT_PROMO_COLOR,
+                                                            background: `${p.promo_color || DEFAULT_PROMO_COLOR}18`,
+                                                            border: `1px solid ${(p.promo_color || DEFAULT_PROMO_COLOR)}66`,
+                                                            boxShadow: `0 0 16px ${(p.promo_color || DEFAULT_PROMO_COLOR)}22`
+                                                        }}>
+                                                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.promo_color || DEFAULT_PROMO_COLOR, boxShadow: `0 0 12px ${p.promo_color || DEFAULT_PROMO_COLOR}` }} />
+                                                            Promo
+                                                        </span>
+                                                    ) : (
+                                                        <span style={{ fontSize: 11, color: "var(--muted)" }}>--</span>
+                                                    )}
                                                 </td>
 
                                                 {/* Categoría inline select */}
@@ -608,6 +663,22 @@ export default function AdminPlatforms() {
                                         <option value="normal">Normal (Control de stock)</option>
                                         <option value="correo">A Correo (Sin Stock, Automático)</option>
                                     </select>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                    <div>
+                                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Promoción</label>
+                                        <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, height: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? `${editingPlatform.promo_color || DEFAULT_PROMO_COLOR}66` : "var(--stroke)"}`, background: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? `${editingPlatform.promo_color || DEFAULT_PROMO_COLOR}14` : "var(--bg0)", boxShadow: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? `0 0 18px ${(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)}22` : "none", cursor: "pointer" }}>
+                                            <span style={{ fontSize: 13, fontWeight: 700, color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? (editingPlatform.promo_color || DEFAULT_PROMO_COLOR) : "var(--text)" }}>Activar promo</span>
+                                            <input type="checkbox" checked={editingPlatform.is_promo === 1 || editingPlatform.is_promo === true} onChange={e => setEditingPlatform({ ...editingPlatform, is_promo: e.target.checked ? 1 : 0, promo_color: e.target.checked ? normalizePromoColor(editingPlatform.promo_color || DEFAULT_PROMO_COLOR) : editingPlatform.promo_color })} />
+                                        </label>
+                                    </div>
+                                    <div>
+                                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Color Neon</label>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 10, height: 42, padding: "0 10px", background: "var(--bg0)", border: `1px solid ${(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? `${editingPlatform.promo_color || DEFAULT_PROMO_COLOR}88` : "var(--stroke)"}`, borderRadius: 10, boxShadow: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? `0 0 16px ${(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)}22 inset` : "none", opacity: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? 1 : 0.5 }}>
+                                            <input type="color" disabled={!(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)} value={normalizePromoColor(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)} onChange={e => setEditingPlatform({ ...editingPlatform, promo_color: e.target.value.toUpperCase() })} style={{ width: 34, height: 24, padding: 0, border: "none", background: "transparent", cursor: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? "pointer" : "not-allowed" }} />
+                                            <input style={{ ...inputStyle, height: 30, padding: "0 10px", border: "none", background: "transparent", boxShadow: "none" }} disabled={!(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)} value={editingPlatform.promo_color || DEFAULT_PROMO_COLOR} onChange={e => setEditingPlatform({ ...editingPlatform, promo_color: e.target.value.toUpperCase() })} placeholder="#22D3EE" />
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
                                     <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>

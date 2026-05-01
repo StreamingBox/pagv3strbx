@@ -5,6 +5,15 @@ const requireRole = require("../middleware/requireRole");
 
 const router = express.Router();
 
+function normalizePromoColor(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const match = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!match) return null;
+    const hex = match[1];
+    return `#${hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex}`.toUpperCase();
+}
+
 // GET /admin/platforms
 // Devuelve plataformas + info de categoría (si existe)
 router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
@@ -26,7 +35,8 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, type, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
+        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
+        is_promo, promo_color
     } = req.body || {};
 
     if (!name || !slug) {
@@ -40,14 +50,17 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const showPin = wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : 1;
     const showExpire = wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : 1;
     const showUrl = wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : 1;
+    const promoEnabled = is_promo ? 1 : 0;
+    const promoColor = promoEnabled ? (normalizePromoColor(promo_color) || "#22D3EE") : null;
 
     const [r] = await pool.query(
         `INSERT INTO platforms (
             name, slug, category_id, type, is_active, allowed_currencies, 
-            whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
+            whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
+            is_promo, promo_color
          )
-         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, slug, category_id ?? null, type ?? 'normal', whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl]
+         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [name, slug, category_id ?? null, type ?? 'normal', whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl, promoEnabled, promoColor]
     );
 
     res.status(201).json({
@@ -65,7 +78,9 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         wa_show_profile: showProfile,
         wa_show_pin: showPin,
         wa_show_expire: showExpire,
-        wa_show_url: showUrl
+        wa_show_url: showUrl,
+        is_promo: promoEnabled,
+        promo_color: promoColor
     });
 });
 
@@ -75,7 +90,8 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, type, allowed_currencies, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url
+        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
+        is_promo, promo_color
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -102,6 +118,9 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
         allowedCurrenciesCSV = clean.join(",");
     }
 
+    const promoFlag = is_promo !== undefined ? (is_promo ? 1 : 0) : null;
+    const normalizedPromoColor = promo_color !== undefined ? normalizePromoColor(promo_color) : null;
+
     await pool.query(
         `UPDATE platforms
      SET name = COALESCE(?, name),
@@ -117,7 +136,13 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          wa_show_profile = COALESCE(?, wa_show_profile),
          wa_show_pin = COALESCE(?, wa_show_pin),
          wa_show_expire = COALESCE(?, wa_show_expire),
-         wa_show_url = COALESCE(?, wa_show_url)
+         wa_show_url = COALESCE(?, wa_show_url),
+         is_promo = COALESCE(?, is_promo),
+         promo_color = CASE
+            WHEN ? = 0 THEN NULL
+            WHEN ? = 1 THEN COALESCE(?, promo_color, '#22D3EE')
+            ELSE promo_color
+         END
      WHERE id = ?`,
         [
             name ?? null,
@@ -134,6 +159,10 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : null,
             wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : null,
             wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : null,
+            promoFlag,
+            promoFlag,
+            promoFlag,
+            normalizedPromoColor,
             id,
         ]
     );

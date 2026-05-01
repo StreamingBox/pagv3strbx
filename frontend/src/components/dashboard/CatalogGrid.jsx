@@ -37,6 +37,23 @@ function getPlatformColor(slug, name) {
     return PLATFORM_COLORS.default;
 }
 
+function normalizePromoColor(value) {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!match) return "#22D3EE";
+    const hex = match[1];
+    return `#${hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex}`.toUpperCase();
+}
+
+function hexToRgba(hex, alpha) {
+    const clean = normalizePromoColor(hex).replace("#", "");
+    const value = clean.length === 3 ? clean.split("").map((c) => c + c).join("") : clean;
+    const r = parseInt(value.slice(0, 2), 16);
+    const g = parseInt(value.slice(2, 4), 16);
+    const b = parseInt(value.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
@@ -69,11 +86,22 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const stockReached = !isUnlimited && inCartCount >= stock;
                 const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
                 const color = getPlatformColor(item.platformSlug, item.platformName);
+                const isPromo = item.platformPromo === 1 || item.platformPromo === true;
+                const promoColor = normalizePromoColor(item.platformPromoColor);
+                const promoRing = hexToRgba(promoColor, 0.62);
+                const promoGlow = hexToRgba(promoColor, 0.28);
+                const promoGlowStrong = hexToRgba(promoColor, 0.44);
+                const promoBadgeText = item.is_renewable === 1 ? "Promoción" : "Promo";
 
                 return (
                     <MotionDiv
                         key={item.platformPriceId}
-                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}`}
+                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}${isPromo ? " catalog-card--promo" : ""}`}
+                        style={isPromo ? {
+                            "--promo-color": promoColor,
+                            "--promo-ring": promoRing,
+                            "--promo-glow": promoGlow,
+                        } : undefined}
                         initial={{ opacity: 0, y: 16, scale: 0.96 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         transition={{
@@ -84,7 +112,9 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                         }}
                         whileHover={!outOfStock ? {
                             y: -5,
-                            boxShadow: "0 18px 48px rgba(13,166,242,.22), 0 0 0 1px rgba(13,166,242,.28)"
+                            boxShadow: isPromo
+                                ? `0 18px 48px ${promoGlowStrong}, 0 0 0 1px ${promoRing}, 0 0 26px ${promoGlowStrong}`
+                                : "0 18px 48px rgba(13,166,242,.22), 0 0 0 1px rgba(13,166,242,.28)"
                         } : {}}
                     >
                         {/* Solo SIN STOCK va arriba a la derecha */}
@@ -129,6 +159,19 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 />
                                 {item.is_renewable === 1 && !outOfStock && (
                                     <span className="badge badge--renovable">Renovable</span>
+                                )}
+                                {isPromo && (
+                                    <span
+                                        className="badge badge--promo"
+                                        style={{
+                                            color: promoColor,
+                                            background: hexToRgba(promoColor, 0.14),
+                                            border: `1px solid ${promoRing}`,
+                                            boxShadow: `0 0 14px ${promoGlow}`,
+                                        }}
+                                    >
+                                        {promoBadgeText}
+                                    </span>
                                 )}
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>

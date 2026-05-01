@@ -651,7 +651,38 @@ export default function AdminTopups() {
                             </select>
                         </label>
 
-                        <button className="btn" style={{ width: "auto" }} onClick={loadItems}>Buscar</button>
+                        <button
+                            type="button"
+                            onClick={loadItems}
+                            style={{
+                                width: "auto",
+                                minWidth: 110,
+                                height: 44,
+                                padding: "0 22px",
+                                borderRadius: 14,
+                                border: "1px solid rgba(13,166,242,.38)",
+                                background: "linear-gradient(135deg, #0da6f2 0%, #2563eb 55%, #1d4ed8 100%)",
+                                color: "#fff",
+                                fontWeight: 800,
+                                fontSize: 14,
+                                cursor: "pointer",
+                                boxShadow: "0 10px 24px rgba(13,166,242,.22), inset 0 1px 0 rgba(255,255,255,.14)",
+                                transition: "transform .18s ease, box-shadow .18s ease, filter .18s ease",
+                                alignSelf: "end",
+                            }}
+                            onMouseEnter={(event) => {
+                                event.currentTarget.style.transform = "translateY(-1px)";
+                                event.currentTarget.style.boxShadow = "0 14px 28px rgba(13,166,242,.28), inset 0 1px 0 rgba(255,255,255,.18)";
+                                event.currentTarget.style.filter = "brightness(1.04)";
+                            }}
+                            onMouseLeave={(event) => {
+                                event.currentTarget.style.transform = "translateY(0)";
+                                event.currentTarget.style.boxShadow = "0 10px 24px rgba(13,166,242,.22), inset 0 1px 0 rgba(255,255,255,.14)";
+                                event.currentTarget.style.filter = "brightness(1)";
+                            }}
+                        >
+                            Buscar
+                        </button>
                     </section>
 
                     <div style={{ marginBottom: 14, color: "var(--muted)", fontSize: 13 }}>

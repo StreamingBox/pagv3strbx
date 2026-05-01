@@ -5,6 +5,8 @@ import { apiGet, apiPost } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
+import { copyText } from "../utils/platform.js";
+import { saveLastWhatsappPayload } from "../utils/lastWhatsappPayload.js";
 
 export default function Orders() {
     const { user } = useAuth();
@@ -33,6 +35,7 @@ export default function Orders() {
     const [renewSubmitting, setRenewSubmitting] = useState(false);
     const [renewError, setRenewError] = useState("");
     const [renewSuccess, setRenewSuccess] = useState("");
+    const [renewWhatsappMessage, setRenewWhatsappMessage] = useState("");
 
     function formatBogota(dt) {
         if (!dt) return "-";
@@ -132,6 +135,7 @@ export default function Orders() {
         setRenewLoadingWallet(true);
         setRenewError("");
         setRenewSuccess("");
+        setRenewWhatsappMessage("");
         try {
             const res = await apiGet("/wallet");
             if (!res.ok) throw new Error(res.data?.message || "No se pudo cargar tu saldo.");
@@ -148,10 +152,20 @@ export default function Orders() {
         setRenewSubmitting(true);
         setRenewError("");
         setRenewSuccess("");
+        setRenewWhatsappMessage("");
         try {
             const res = await apiPost(`/orders/${renewModal.subscription_id}/renew`, {});
             if (!res.ok) throw new Error(res.data?.message || "No se pudo renovar la suscripción.");
             setRenewSuccess(res.data?.message || "Renovación completada.");
+            setRenewWhatsappMessage(res.data?.whatsappText || "");
+            saveLastWhatsappPayload({
+                message: res.data?.whatsappText || "",
+                orderCode: res.data?.renewalOrderCode || "",
+                orderId: res.data?.renewalOrderId || null,
+                total: res.data?.amountCharged ?? null,
+                currency: res.data?.currency || "",
+                count: 1,
+            });
             const walletRes = await apiGet("/wallet");
             if (walletRes.ok) setRenewWallet(walletRes.data);
             await loadOrders(page);
@@ -511,6 +525,37 @@ export default function Orders() {
                                         Nuevo saldo: {Number(renewWallet.balance || 0).toLocaleString("es-CO")} {renewWallet.currency || "COP"}
                                     </div>
                                 ) : null}
+                            </div>
+                        ) : null}
+
+                        {renewWhatsappMessage ? (
+                            <div style={{ marginTop: 14 }}>
+                                <div style={{ color: "var(--muted)", fontSize: 13, marginBottom: 8 }}>
+                                    Mensaje para copiar y enviar al cliente
+                                </div>
+                                <pre
+                                    style={{
+                                        margin: 0,
+                                        whiteSpace: "pre-wrap",
+                                        background: "rgba(0,0,0,.25)",
+                                        padding: 12,
+                                        borderRadius: 12,
+                                        border: "1px solid rgba(124,92,255,.22)",
+                                        color: "var(--text)",
+                                        fontFamily: "inherit",
+                                    }}
+                                >
+                                    {renewWhatsappMessage}
+                                </pre>
+                                <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                                    <button
+                                        className="btn"
+                                        onClick={() => copyText(renewWhatsappMessage)}
+                                        style={{ width: "auto", padding: "8px 16px" }}
+                                    >
+                                        Copiar mensaje
+                                    </button>
+                                </div>
                             </div>
                         ) : null}
 

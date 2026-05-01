@@ -844,6 +844,36 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
     }
 }
 
+async function notifyRenewalSale({ seller, platform, total, currency, newBalance, orderCode, deliveryMessage }) {
+    if (!bot || AUTHORIZED.size === 0) return;
+
+    const totalLabel = `${Number(total || 0).toLocaleString("es-CO")} ${currency || ""}`.trim();
+    const balanceLabel = newBalance == null
+        ? "No disponible"
+        : `${Number(newBalance || 0).toLocaleString("es-CO")} ${currency || ""}`.trim();
+
+    await notifyAuthorizedChats(
+        [
+            "🔁 Renovación registrada",
+            `👤 Cliente: ${seller || "-"}`,
+            `🖥️ Plataforma: ${platform || "-"}`,
+            `💰 Valor: ${totalLabel}`,
+            `💳 Saldo restante: ${balanceLabel}`,
+            `🧾 Orden: ${orderCode || "-"}`,
+        ].join("\n")
+    );
+
+    if (deliveryMessage) {
+        await notifyAuthorizedChats(
+            [
+                "📋 Texto para copiar al cliente",
+                "",
+                deliveryMessage,
+            ].join("\n")
+        );
+    }
+}
+
 async function notifyManualTopupSubmitted(topupId) {
     if (!bot || AUTHORIZED.size === 0) return;
     const item = await getManualTopupById(Number(topupId));
@@ -912,6 +942,7 @@ function initBot() {
 module.exports = {
     initBot,
     notifySale,
+    notifyRenewalSale,
     notifyManualTopupSubmitted,
     notifyManualTopupStatusChanged,
     notifyManualTopupAlert,

@@ -7,6 +7,7 @@ const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHisto
 const { addToQueue } = require("../services/whatsappQueue");
 const { readWaToken } = require("../services/whatsappSettings");
 const { renewSubscription } = require("../services/renewal.service");
+const { notifyRenewalSale } = require("../services/telegramBot");
 
 const router = express.Router();
 
@@ -290,6 +291,22 @@ router.post("/orders/:id/renew", requireAuth, async (req, res) => {
         });
 
         await conn.commit();
+
+        const [userRows] = await pool.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
+            [result.userId]
+        );
+        const buyer = userRows?.[0] || null;
+        notifyRenewalSale({
+            seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
+            platform: result.platformName,
+            total: result.amountCharged,
+            currency: result.currency,
+            newBalance: result.newBalance,
+            orderCode: result.renewalOrderCode,
+            deliveryMessage: result.whatsappText,
+        }).catch((e) => console.error("[TelegramBot] notifyRenewalSale error:", e?.message || e));
+
         return res.json({
             ok: true,
             message: `Se te descontó ${Number(result.deducted || 0).toLocaleString("es-CO")} ${result.currency || ""}`.trim(),

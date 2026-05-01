@@ -1,23 +1,6 @@
 import { useState } from "react";
 import { apiPost } from "../api/api";
-
-function saveLastWhatsappPayload({ data, cartTotal, cartCurrency, cartCount }) {
-    try {
-        const payload = {
-            message: data?.message || "",
-            orderCode: data?.orderCode || data?.order_code || "",
-            orderId: data?.orderId || data?.order_id || null,
-            createdAt: new Date().toISOString(),
-            total: data?.total ?? cartTotal ?? null,
-            currency: data?.currency || cartCurrency || "",
-            count: cartCount ?? null,
-        };
-        localStorage.setItem("lastWhatsappPayload", JSON.stringify(payload));
-        window.dispatchEvent(new Event("lastWhatsappPayloadUpdated"));
-    } catch {
-        // ignore
-    }
-}
+import { saveLastWhatsappPayload } from "../utils/lastWhatsappPayload.js";
 
 export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setWallet, onPurchaseSuccess }) {
     const [buyLoading, setBuyLoading] = useState(false);
@@ -65,10 +48,12 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
             clearCart();
 
             saveLastWhatsappPayload({
-                data,
-                cartTotal,
-                cartCurrency,
-                cartCount: Array.isArray(cart) ? cart.length : null,
+                message: data?.message || "",
+                orderCode: data?.orderCode || data?.order_code || "",
+                orderId: data?.orderId || data?.order_id || null,
+                total: data?.total ?? cartTotal ?? null,
+                currency: data?.currency || cartCurrency || "",
+                count: Array.isArray(cart) ? cart.length : null,
             });
 
             // ✅ Llama al callback de éxito para cerrar el modal y recargar el catálogo

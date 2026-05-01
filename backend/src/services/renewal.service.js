@@ -20,6 +20,9 @@ async function renewSubscription({
                 s.duration_id, s.expires_at, s.price AS subscription_price, s.currency,
                 s.status, IFNULL(s.is_attended, 0) AS is_attended,
                 d.days, p.name AS platform_name, p.slug AS platform_slug, u.email AS user_email,
+                p.type AS platform_type, p.whatsapp_instructions,
+                p.wa_show_id, p.wa_show_email, p.wa_show_pass, p.wa_show_profile,
+                p.wa_show_pin, p.wa_show_expire, p.wa_show_url,
                 pa.expires_at AS account_expires_at,
                 pp.is_renewable,
                 pp.price AS renewable_price
@@ -198,7 +201,7 @@ async function renewSubscription({
         }
     }
 
-    const renewalOrderCode = makeOrderCode();
+    const renewalOrderCode = makeOrderCode().replace(/^ORD-/, "RENO-");
     const [renewalOrderIns] = await conn.query(
         `INSERT INTO orders (user_id, order_code, total, currency, created_at)
          VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
@@ -300,10 +303,21 @@ async function renewSubscription({
 
         if (accRows.length > 0) {
             whatsappText = buildWhatsappMessage({
-                orderCode: `ORD-${String(subscriptionId).padStart(6, "0")}`,
+                orderCode: renewalOrderCode,
                 results: [{
                     subscriptionId,
-                    plan: { platform_name: sub.platform_name },
+                    plan: {
+                        platform_name: sub.platform_name,
+                        type: sub.platform_type,
+                        whatsapp_instructions: sub.whatsapp_instructions,
+                        wa_show_id: sub.wa_show_id,
+                        wa_show_email: sub.wa_show_email,
+                        wa_show_pass: sub.wa_show_pass,
+                        wa_show_profile: sub.wa_show_profile,
+                        wa_show_pin: sub.wa_show_pin,
+                        wa_show_expire: sub.wa_show_expire,
+                        wa_show_url: sub.wa_show_url,
+                    },
                     account: accRows[0],
                     expiresAt: newExpiryDate,
                     token,
@@ -317,6 +331,7 @@ async function renewSubscription({
         ok: true,
         subscriptionId,
         userId: sub.user_id,
+        platformName: sub.platform_name,
         renewalOrderId,
         renewalOrderCode,
         previousOrderId,

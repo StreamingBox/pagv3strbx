@@ -8,6 +8,10 @@ const {
     sendTopupApprovedEmail,
     sendTopupRejectedEmail,
 } = require("./mailService");
+const {
+    sanitizeAdminNote,
+    sanitizeMatchedSenderName,
+} = require("../utils/manualTopupText");
 
 const PROOF_TOKEN_TTL_MINUTES = 10;
 
@@ -27,13 +31,13 @@ function mapManualTopupRow(row) {
         payerName: row.payer_name || "",
         declaredPaidAt: row.declared_paid_at,
         status: row.status,
-        adminNote: row.admin_note || "",
+        adminNote: sanitizeAdminNote(row.admin_note || ""),
         autoValidationStatus: row.auto_validation_status || "pending",
         autoValidationNote: row.auto_validation_note || "",
         lastAutoCheckedAt: row.last_auto_checked_at,
         matchedEmailUid: row.matched_email_uid || null,
         matchedEmailSubject: row.matched_email_subject || null,
-        matchedSenderName: row.matched_sender_name || null,
+        matchedSenderName: sanitizeMatchedSenderName(row.matched_sender_name || "") || null,
         matchedEmailAmount: row.matched_email_amount != null ? Number(row.matched_email_amount) : null,
         matchedEmailReceivedAt: row.matched_email_received_at || null,
         adminUserId: row.admin_user_id || null,
@@ -88,10 +92,11 @@ function getProofStoragePath(proofFileUrl) {
     const raw = String(proofFileUrl || "").trim();
     if (!raw) return null;
     const filename = path.basename(raw);
-    const baseDir = path.join(__dirname, "../../frontend");
     const candidates = [
-        path.join(baseDir, "public/topup-proofs", filename),
-        path.join(baseDir, "dist/topup-proofs", filename),
+        path.join(__dirname, "../../../frontend/public/topup-proofs", filename),
+        path.join(__dirname, "../../../frontend/dist/topup-proofs", filename),
+        path.join(__dirname, "../../frontend/public/topup-proofs", filename),
+        path.join(__dirname, "../../frontend/dist/topup-proofs", filename),
     ];
     for (const filePath of candidates) {
         if (fs.existsSync(filePath)) return filePath;

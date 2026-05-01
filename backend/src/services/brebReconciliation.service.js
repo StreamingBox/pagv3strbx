@@ -5,6 +5,7 @@ const pool = require("../db");
 const { connectImapWithTlsFallback, getImapConfig, safeToDate } = require("../utils/imapConfig");
 const { getManualTopupById, updateManualTopupStatus } = require("./manualTopups.service");
 const { notifyManualTopupAlert } = require("./telegramBot");
+const { extractSenderName } = require("../utils/manualTopupText");
 
 let running = false;
 const BOGOTA_UTC_OFFSET_HOURS = 5;
@@ -166,7 +167,7 @@ function parseBinanceEmail(parsed, attributes = {}) {
 
     const haystack = buildMailHaystack(parsed);
     const timeMatch = haystack.match(/Fecha\s+y\s+hora:\s*([0-9:\-\s()UTC]+)/i);
-    const senderMatch = haystack.match(/Remitente:\s*([^\n\r]+)/i);
+    const senderMatch = haystack.match(/Remitente:\s*(.+?)(?=\s+Monto:|\s+Fecha\s+y\s+hora:|\s+Nota:|\s+Ver historial|\s+Todos los derechos|\s+https?:\/\/|$)/i);
     const amountMatch = haystack.match(/Monto:\s*([0-9.,]+)\s*([A-Z]+)/i);
 
     if (!timeMatch || !senderMatch || !amountMatch) {
@@ -184,8 +185,8 @@ function parseBinanceEmail(parsed, attributes = {}) {
         subject,
         amount: parseEsCoMoney(amountMatch[1]),
         asset: normalizeText(amountMatch[2] || ""),
-        senderName: normalizeName(senderMatch[1]),
-        senderNameRaw: normalizeText(senderMatch[1]),
+        senderName: normalizeName(extractSenderName(senderMatch[1])),
+        senderNameRaw: extractSenderName(senderMatch[1]),
         receivedAt: parseUtcDateTime(timeMatch[1]) || safeToDate(attributes?.date) || null,
         receivedAtRaw: normalizeText(timeMatch[1]),
         parsed: true,
@@ -397,12 +398,14 @@ async function attemptAutoReconcileManualTopup(id) {
         return updated;
     }
 
+    const safeSenderName = extractSenderName(email.senderNameRaw || email.senderName || "");
+
     await saveValidationResult(id, {
         auto_validation_status: "matched",
         auto_validation_note: reason,
         matched_email_uid: email.uid || null,
         matched_email_subject: email.subject || null,
-        matched_sender_name: email.senderNameRaw || email.senderName || null,
+        matched_sender_name: safeSenderName || null,
         matched_email_amount: Number(email.amount || 0),
         matched_email_received_at: email.receivedAt || null,
     });
@@ -411,7 +414,7 @@ async function attemptAutoReconcileManualTopup(id) {
         id,
         status: "approved",
         adminUserId: null,
-        adminNote: `Aprobada automáticamente por ${autoAdminLabel}. Remitente: ${email.senderNameRaw || email.senderName}. Hora: ${email.receivedAtRaw || ""}`.trim(),
+        adminNote: `Aprobada automáticamente por ${autoAdminLabel}. Remitente: ${safeSenderName || "No disponible"}. Hora: ${email.receivedAtRaw || ""}`.trim(),
     });
 
     await saveValidationResult(id, {
@@ -419,14 +422,14 @@ async function attemptAutoReconcileManualTopup(id) {
         auto_validation_note: isBreb ? "Aprobada automáticamente por coincidencia Bre-B." : "Aprobada automáticamente por coincidencia Binance.",
         matched_email_uid: email.uid || null,
         matched_email_subject: email.subject || null,
-        matched_sender_name: email.senderNameRaw || email.senderName || null,
+        matched_sender_name: safeSenderName || null,
         matched_email_amount: Number(email.amount || 0),
         matched_email_received_at: email.receivedAt || null,
     });
 
     await notifyManualTopupAlert(approved, {
         title: autoTitle,
-        note: `Coincidió con ${email.senderNameRaw || email.senderName} por ${Number(email.amount || 0).toLocaleString("es-CO")} ${request.currency || ""}`.trim(),
+        note: `Coincidió con ${safeSenderName || "remitente no disponible"} por ${Number(email.amount || 0).toLocaleString("es-CO")} ${request.currency || ""}`.trim(),
     });
     return approved;
 }

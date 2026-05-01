@@ -167,7 +167,7 @@ function parseBinanceEmail(parsed, attributes = {}) {
 
     const haystack = buildMailHaystack(parsed);
     const timeMatch = haystack.match(/Fecha\s+y\s+hora:\s*([0-9:\-\s()UTC]+)/i);
-    const senderMatch = haystack.match(/Remitente:\s*(.+?)(?=\s+Monto:|\s+Fecha\s+y\s+hora:|\s+Nota:|\s+Ver historial|\s+Todos los derechos|\s+https?:\/\/|$)/i);
+    const senderMatch = haystack.match(/Remitente:\s*(.+?)(?=\s+Monto:|\s+Fecha\s+y\s+hora:|\s+Hora:|\s+Nota:|\s+Ver\s+Hist(?:orial|orico)|\s+Transacoes?|\s+No\s+respondas|\s+Todos\s+los\s+derechos|\s+https?:\/\/|$)/i);
     const amountMatch = haystack.match(/Monto:\s*([0-9.,]+)\s*([A-Z]+)/i);
 
     if (!timeMatch || !senderMatch || !amountMatch) {

@@ -16,6 +16,11 @@ function stripTrackingNoise(value) {
 
 function cleanSenderCandidate(value) {
     return stripTrackingNoise(value)
+        .replace(/\b(?:Monto|Hora|Fecha y hora|Nota):.*$/i, " ")
+        .replace(/\bVer\s+Hist(?:orial|orico).*$/i, " ")
+        .replace(/\bTransacoes?\b.*$/i, " ")
+        .replace(/\bNo\s+respondas.*$/i, " ")
+        .replace(/\bTodos\s+los\s+derechos.*$/i, " ")
         .replace(/[|[\]{}<>]+/g, " ")
         .replace(/\s*[;:,.-]+\s*$/g, "")
         .replace(/\s+/g, " ")
@@ -29,7 +34,7 @@ function extractSenderName(value) {
     if (!source) return "";
 
     const patterns = [
-        /Remitente:\s*(.+?)(?=\s+Monto:|\s+Fecha\s+y\s+hora:|\s+Hora:|\s+Nota:|\s+Ver historial|\s+Todos los derechos|\s+https?:\/\/|$)/i,
+        /Remitente:\s*(.+?)(?=\s+Monto:|\s+Fecha\s+y\s+hora:|\s+Hora:|\s+Nota:|\s+Ver\s+Hist(?:orial|orico)|\s+Transacoes?|\s+No\s+respondas|\s+Todos\s+los\s+derechos|\s+https?:\/\/|$)/i,
         /Recibiste\s+\$?\s*[0-9.,]+\s+de\s+(.+?)(?=\s+-\s+el\s+\d{1,2}\s+de\s+|\s+el\s+\d{1,2}\s+de\s+|$)/i,
     ];
 

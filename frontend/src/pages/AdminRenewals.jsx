@@ -431,7 +431,7 @@ export default function AdminRenewals() {
                             </table>
                         </div>
 
-                        <div className="admin-renewals-mobileList" style={{ display: "grid", gap: 12 }}>
+                        <div className="admin-renewals-mobileList" style={{ gap: 12 }}>
                             {logsLoading ? (
                                 <div style={{ padding: "18px 16px", color: "var(--muted)", textAlign: "center", border: "1px solid var(--stroke2)", borderRadius: 14 }}>
                                     Cargando renovaciones...

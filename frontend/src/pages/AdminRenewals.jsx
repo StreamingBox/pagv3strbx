@@ -307,6 +307,41 @@ export default function AdminRenewals() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.05 }}
+                        style={{ ...sectionStyle, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
+                    >
+                        <div style={{ marginBottom: 14 }}>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Buscar suscripción</div>
+                            <div style={{ color: "var(--muted)", fontSize: 13 }}>Consulta una suscripción puntual y ejecuta la renovación manual.</div>
+                        </div>
+
+                        <form onSubmit={handleSearch} style={responsiveGrid}>
+                            <div style={{ minWidth: 0 }}>
+                                <input
+                                    value={orderId}
+                                    onChange={(e) => setOrderId(e.target.value)}
+                                    placeholder="ID de suscripción"
+                                    style={inputStyle}
+                                    type="number"
+                                    min="1"
+                                />
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={searching}
+                                className="admin-renewals-searchButton"
+                                style={{ height: 44, width: "100%", padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+                            >
+                                {searching ? "Buscando..." : "Buscar suscripción"}
+                            </button>
+                        </form>
+
+                        {searchErr ? <div className="error" style={{ marginTop: 16 }}>{searchErr}</div> : null}
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.08 }}
                         style={sectionStyle}
                     >
                         <div style={{ marginBottom: 16 }}>
@@ -454,41 +489,6 @@ export default function AdminRenewals() {
                                 <button className="btn-ghost" disabled={logsPage >= logsTotalPages} onClick={() => setLogsPage((p) => Math.min(logsTotalPages, p + 1))} style={{ width: "auto", padding: "6px 14px", fontSize: 13 }}>Siguiente</button>
                             </div>
                         </div>
-                    </motion.div>
-
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        style={{ ...sectionStyle, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}
-                    >
-                        <div style={{ marginBottom: 14 }}>
-                            <div style={{ fontSize: 18, fontWeight: 900, color: "var(--text)" }}>Buscar suscripción</div>
-                            <div style={{ color: "var(--muted)", fontSize: 13 }}>Consulta una suscripción puntual y ejecuta la renovación manual.</div>
-                        </div>
-
-                        <form onSubmit={handleSearch} style={responsiveGrid}>
-                            <div style={{ minWidth: 0 }}>
-                                <input
-                                    value={orderId}
-                                    onChange={(e) => setOrderId(e.target.value)}
-                                    placeholder="ID de suscripción"
-                                    style={inputStyle}
-                                    type="number"
-                                    min="1"
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                disabled={searching}
-                                className="admin-renewals-searchButton"
-                                style={{ height: 44, width: "100%", padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
-                            >
-                                {searching ? "Buscando..." : "Buscar suscripción"}
-                            </button>
-                        </form>
-
-                        {searchErr ? <div className="error" style={{ marginTop: 16 }}>{searchErr}</div> : null}
                     </motion.div>
 
                     {order ? (

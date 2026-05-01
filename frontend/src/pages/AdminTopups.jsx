@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext.jsx";
@@ -112,6 +112,7 @@ export default function AdminTopups() {
     const [methods, setMethods] = useState([]);
     const [previewItem, setPreviewItem] = useState(null);
     const [openingProofId, setOpeningProofId] = useState(null);
+    const previewObjectUrlRef = useRef("");
 
     async function logout() {
         try { await apiLogout(); } catch { }
@@ -159,6 +160,15 @@ export default function AdminTopups() {
 
     useEffect(() => {
         void loadConfig();
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (previewObjectUrlRef.current) {
+                URL.revokeObjectURL(previewObjectUrlRef.current);
+                previewObjectUrlRef.current = "";
+            }
+        };
     }, []);
 
     function updateMethod(index, field, value) {
@@ -226,7 +236,26 @@ export default function AdminTopups() {
                 throw new Error(response.data?.message || "No se pudo abrir el comprobante.");
             }
             if (mode === "modal") {
-                setPreviewItem({ ...item, viewerUrl: response.data.viewerUrl });
+                const proofResponse = await fetch(response.data.viewerUrl, {
+                    method: "GET",
+                    credentials: "include",
+                });
+                if (!proofResponse.ok) {
+                    throw new Error("No se pudo cargar el comprobante dentro de la página.");
+                }
+                const proofBlob = await proofResponse.blob();
+                const contentType = String(proofBlob.type || "").toLowerCase();
+                const objectUrl = URL.createObjectURL(proofBlob);
+                if (previewObjectUrlRef.current) {
+                    URL.revokeObjectURL(previewObjectUrlRef.current);
+                }
+                previewObjectUrlRef.current = objectUrl;
+                setPreviewItem({
+                    ...item,
+                    viewerUrl: response.data.viewerUrl,
+                    inlineUrl: objectUrl,
+                    inlineType: contentType,
+                });
             } else {
                 window.open(response.data.viewerUrl, "_blank", "noopener,noreferrer");
             }
@@ -727,7 +756,17 @@ export default function AdminTopups() {
                                 <button className="btn-ghost" style={{ width: "auto" }} onClick={() => previewItem?.viewerUrl && window.open(previewItem.viewerUrl, "_blank", "noopener,noreferrer")}>
                                     Abrir aparte
                                 </button>
-                                <button className="btn-ghost" style={{ width: "auto" }} onClick={() => setPreviewItem(null)}>
+                                <button
+                                    className="btn-ghost"
+                                    style={{ width: "auto" }}
+                                    onClick={() => {
+                                        if (previewObjectUrlRef.current) {
+                                            URL.revokeObjectURL(previewObjectUrlRef.current);
+                                            previewObjectUrlRef.current = "";
+                                        }
+                                        setPreviewItem(null);
+                                    }}
+                                >
                                     Cerrar
                                 </button>
                             </div>
@@ -744,12 +783,25 @@ export default function AdminTopups() {
                                 placeItems: "center",
                             }}
                         >
-                            {previewItem?.viewerUrl ? (
-                                <iframe
-                                    title={`Comprobante ${previewItem.requestCode}`}
-                                    src={previewItem.viewerUrl}
-                                    style={{ width: "100%", height: "70vh", border: 0, background: "#fff" }}
-                                />
+                            {previewItem?.inlineUrl ? (
+                                previewItem.inlineType.includes("pdf") ? (
+                                    <object
+                                        data={previewItem.inlineUrl}
+                                        type="application/pdf"
+                                        aria-label={`Comprobante ${previewItem.requestCode}`}
+                                        style={{ width: "100%", height: "70vh", background: "#fff" }}
+                                    >
+                                        <div style={{ padding: 18, color: "var(--muted)" }}>
+                                            No se pudo mostrar el PDF aquí. Usa <b>Abrir aparte</b>.
+                                        </div>
+                                    </object>
+                                ) : (
+                                    <img
+                                        src={previewItem.inlineUrl}
+                                        alt={`Comprobante ${previewItem.requestCode}`}
+                                        style={{ maxWidth: "100%", maxHeight: "70vh", width: "auto", height: "auto", display: "block", background: "#fff" }}
+                                    />
+                                )
                             ) : null}
                         </div>
                     </div>

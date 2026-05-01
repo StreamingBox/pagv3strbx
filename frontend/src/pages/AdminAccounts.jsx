@@ -135,7 +135,11 @@ export default function AdminAccounts() {
         try {
             const data = await apiFetch(`/admin/platforms`);
             if (!data) return;
-            setPlatforms(Array.isArray(data) ? data : []);
+            setPlatforms(
+                Array.isArray(data)
+                    ? data.filter((platform) => Number(platform?.is_active) === 1)
+                    : []
+            );
         } catch (e) {
             setError(e?.message || "Error cargando plataformas.");
         } finally {

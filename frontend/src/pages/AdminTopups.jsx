@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext.jsx";
@@ -103,6 +103,8 @@ export default function AdminTopups() {
     const [status, setStatus] = useState("");
     const [query, setQuery] = useState("");
     const [loading, setLoading] = useState(true);
+    const [pageSize, setPageSize] = useState(5);
+    const [currentPage, setCurrentPage] = useState(1);
     const [savingId, setSavingId] = useState(null);
     const [adminNoteDrafts, setAdminNoteDrafts] = useState({});
     const [configLoading, setConfigLoading] = useState(true);
@@ -157,6 +159,10 @@ export default function AdminTopups() {
     useEffect(() => {
         void loadItems();
     }, [status]);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [status, query, pageSize]);
 
     useEffect(() => {
         void loadConfig();
@@ -227,6 +233,21 @@ export default function AdminTopups() {
     const reviewingCount = items.filter((item) => String(item.status || "").toLowerCase() === "reviewing").length;
     const approvedCount = items.filter((item) => String(item.status || "").toLowerCase() === "approved").length;
     const rejectedCount = items.filter((item) => String(item.status || "").toLowerCase() === "rejected").length;
+    const sortedItems = useMemo(
+        () => [...items].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()),
+        [items]
+    );
+    const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
+    const visibleItems = useMemo(() => {
+        const start = (currentPage - 1) * pageSize;
+        return sortedItems.slice(start, start + pageSize);
+    }, [currentPage, pageSize, sortedItems]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) {
+            setCurrentPage(totalPages);
+        }
+    }, [currentPage, totalPages]);
 
     async function openProof(item, mode = "modal") {
         setOpeningProofId(item.id);
@@ -572,8 +593,20 @@ export default function AdminTopups() {
                         </div>
                     </section>
 
-                    <section style={{ display: "grid", gridTemplateColumns: "220px 1fr auto", gap: 12, alignItems: "end", marginBottom: 16 }}>
-                        <label className="wallet-label">
+                    <section
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "220px minmax(260px, 1fr) 140px auto",
+                            gap: 12,
+                            alignItems: "end",
+                            marginBottom: 16,
+                            border: "1px solid var(--stroke)",
+                            borderRadius: 18,
+                            background: "linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.015))",
+                            padding: 14,
+                        }}
+                    >
+                        <label className="wallet-label" style={{ minWidth: 0 }}>
                             <span>Estado</span>
                             <select className="wallet-input" value={status} onChange={(event) => setStatus(event.target.value)}>
                                 {STATUS_OPTIONS.map((option) => (
@@ -582,19 +615,54 @@ export default function AdminTopups() {
                             </select>
                         </label>
 
-                        <label className="wallet-label">
+                        <label className="wallet-label" style={{ minWidth: 0 }}>
                             <span>Buscar</span>
-                            <input className="wallet-input" placeholder="Codigo, nombre, correo o metodo" value={query} onChange={(event) => setQuery(event.target.value)} />
+                            <div style={{ position: "relative" }}>
+                                <span
+                                    aria-hidden="true"
+                                    style={{
+                                        position: "absolute",
+                                        left: 14,
+                                        top: "50%",
+                                        transform: "translateY(-50%)",
+                                        color: "var(--muted)",
+                                        pointerEvents: "none",
+                                        fontSize: 14,
+                                    }}
+                                >
+                                    ⌕
+                                </span>
+                                <input
+                                    className="wallet-input"
+                                    style={{ width: "100%", paddingLeft: 38 }}
+                                    placeholder="Código, nombre, correo o método"
+                                    value={query}
+                                    onChange={(event) => setQuery(event.target.value)}
+                                />
+                            </div>
+                        </label>
+
+                        <label className="wallet-label" style={{ minWidth: 0 }}>
+                            <span>Mostrar</span>
+                            <select className="wallet-input" value={String(pageSize)} onChange={(event) => setPageSize(Number(event.target.value) || 5)}>
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="20">20</option>
+                            </select>
                         </label>
 
                         <button className="btn" style={{ width: "auto" }} onClick={loadItems}>Buscar</button>
                     </section>
 
+                    <div style={{ marginBottom: 14, color: "var(--muted)", fontSize: 13 }}>
+                        Mostrando {pageSize} por página, ordenadas de la más reciente a la más antigua.
+                    </div>
+
                     {loading ? (
                         <div style={{ padding: 40, color: "var(--muted)" }}>Cargando solicitudes...</div>
                     ) : (
                         <div style={{ display: "grid", gap: 12 }}>
-                            {items.map((item) => {
+                            {visibleItems.map((item) => {
                                 const meta = STATUS_META[String(item.status || "").toLowerCase()] || { label: item.status, color: "#94a3b8" };
                                 const closed = item.status === "approved" || item.status === "rejected";
                                 const isSubmitted = String(item.status || "").toLowerCase() === "submitted";
@@ -708,9 +776,44 @@ export default function AdminTopups() {
                                 );
                             })}
 
-                            {!items.length ? (
+                            {!sortedItems.length ? (
                                 <div style={{ padding: 28, color: "var(--muted)" }}>
                                     No hay solicitudes con los filtros aplicados.
+                                </div>
+                            ) : null}
+
+                            {sortedItems.length ? (
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        gap: 12,
+                                        flexWrap: "wrap",
+                                        paddingTop: 4,
+                                    }}
+                                >
+                                    <div style={{ color: "var(--muted)", fontSize: 13 }}>
+                                        Página {currentPage} de {totalPages} · {sortedItems.length} registro{sortedItems.length === 1 ? "" : "s"}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ width: "auto" }}
+                                            disabled={currentPage <= 1}
+                                            onClick={() => setCurrentPage((value) => Math.max(1, value - 1))}
+                                        >
+                                            Anterior
+                                        </button>
+                                        <button
+                                            className="btn-ghost"
+                                            style={{ width: "auto" }}
+                                            disabled={currentPage >= totalPages}
+                                            onClick={() => setCurrentPage((value) => Math.min(totalPages, value + 1))}
+                                        >
+                                            Siguiente
+                                        </button>
+                                    </div>
                                 </div>
                             ) : null}
                         </div>

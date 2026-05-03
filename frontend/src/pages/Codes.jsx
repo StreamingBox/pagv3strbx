@@ -15,6 +15,14 @@ const PLATFORMS = [
     { slug: "prime", logoSlug: "prime-video", label: "Prime Video", icon: "📦", accent: "#00a8e1", bg: "rgba(0,168,225,0.12)", border: "rgba(0,168,225,0.3)" },
 ];
 
+const DISPLAY_PLATFORMS = PLATFORMS
+    .filter((platform) => platform.slug !== "chatgpt-business")
+    .map((platform) => (
+        platform.slug === "chatgpt"
+            ? { ...platform, label: "ChatGpt Cuenta Personal" }
+            : platform
+    ));
+
 /* ─── Estilos globales del componente (fuera del render para no recrear en cada update) ─── */
 const S = {
     card: {
@@ -198,7 +206,7 @@ export default function Codes() {
         requestCode(slug, action);
     }
 
-    const activeMeta = useMemo(() => PLATFORMS.find(p => p.slug === activePlatform), [activePlatform]);
+    const activeMeta = useMemo(() => DISPLAY_PLATFORMS.find(p => p.slug === activePlatform), [activePlatform]);
     const isMobile = viewportWidth <= 900;
     const isPhone = viewportWidth <= 640;
     const isTinyPhone = viewportWidth <= 420;
@@ -298,7 +306,7 @@ export default function Codes() {
                                     Plataforma
                                 </label>
                                 <div style={{ display: "grid", gridTemplateColumns: isTinyPhone ? "1fr" : "1fr 1fr", gap: 8 }}>
-                                    {PLATFORMS.map(p => {
+                                    {DISPLAY_PLATFORMS.map(p => {
                                         const isActive = activePlatform === p.slug;
                                         const isNetflix = p.slug === "netflix";
                                         const isLoading = String(loadingSlug || "").startsWith(`${p.slug}:`);

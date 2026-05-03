@@ -303,7 +303,8 @@ router.post(
             // Swap en subscription (MISMA orden, MISMA expiraciÃ³n)
             await conn.query(
                 `UPDATE subscriptions
-            SET platform_account_id = ?
+            SET platform_account_id = ?,
+                is_attended = 1
           WHERE id = ?`,
                 [newAcc.id, subscriptionId]
             );

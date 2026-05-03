@@ -154,7 +154,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     as="div"
                                     className="catalog-card__name"
                                     text={item.platformName}
-                                    maxLines={2}
+                                    maxLines={4}
                                     minWidthRatio={0.76}
                                 />
                                 {item.is_renewable === 1 && !outOfStock && (

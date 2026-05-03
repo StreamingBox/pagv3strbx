@@ -70,6 +70,84 @@ function normalizeText(value) {
     return stripDiacritics(value).toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function pageLooksExpired(content) {
+    const normalized = normalizeText(content);
+    return [
+        "este enlace ya no es valido",
+        "this link is no longer valid",
+        "link has expired",
+        "this link has expired",
+        "solicita uno nuevo",
+    ].some((needle) => normalized.includes(needle));
+}
+
+function extractNetflixTemporaryCode(content) {
+    const source = String(content || "");
+    const patterns = [
+        /(?:codigo|code)[^0-9]{0,40}([0-9]{4})/i,
+        /\b([0-9]{4})\b/,
+    ];
+
+    for (const pattern of patterns) {
+        const match = source.match(pattern);
+        if (match?.[1] && !["2023", "2024", "2025", "2026"].includes(match[1])) {
+            return match[1];
+        }
+    }
+
+    return "";
+}
+
+async function scrapeTemporalCode(link, depth = 0, visited = new Set()) {
+    try {
+        const safeLink = String(link || "").trim();
+        if (!safeLink) {
+            return { ok: false, status: "not_found", message: "Netflix no envió un enlace válido para obtener el código." };
+        }
+        if (visited.has(safeLink)) {
+            return { ok: false, status: "not_found", message: "Netflix devolvió un enlace repetido y no se pudo avanzar al código." };
+        }
+        visited.add(safeLink);
+
+        const { data } = await axios.get(safeLink, getNetflixAxiosOptions());
+        const $ = cheerio.load(data);
+        const textContent = $("body").text() || "";
+        const combinedContent = `${data}\n${textContent}`;
+
+        if (pageLooksExpired(combinedContent)) {
+            return { ok: false, status: "expired", message: "El enlace del código de Netflix ya venció. Solicita uno nuevo." };
+        }
+
+        const directCode = extractNetflixTemporaryCode(combinedContent);
+        if (directCode) {
+            return { ok: true, type: "code", code: directCode };
+        }
+
+        if (depth < 2) {
+            const nestedLink = findNetflixButtonLink(
+                data,
+                ["obtener codigo", "obtener código", "get code", "continuar", "continue"],
+                ["netflix.com/account/travel/verify", "travel/verify", "netflix.com/account/travel"]
+            );
+            if (nestedLink && nestedLink !== safeLink) {
+                return scrapeTemporalCode(nestedLink, depth + 1, visited);
+            }
+        }
+
+        return { ok: false, status: "not_found", message: "No se encontró el código de 4 dígitos en la página de Netflix." };
+    } catch (err) {
+        console.error("Error scraping temporal code:", err.message);
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: "tls_error",
+                message: "Error TLS al abrir el enlace de Netflix. Revisa certificados o activa NETFLIX_TLS_INSECURE=true temporalmente.",
+            };
+        }
+        return { ok: false, status: "network_error", message: "Error al leer el enlace de Netflix." };
+    }
+}
+
 function subjectMatchesAction(subject, action) {
     const s = normalizeText(subject);
     const normalizedAction = String(action || "code").toLowerCase();
@@ -251,6 +329,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                         return { ...result, emailDate: msgDate };
                     }
                 } else {
+                    const $ = cheerio.load(html || "<body></body>");
                     let extractedCode = null;
 
                     // 1. Buscar en HTML con Cheerio dentro de cualquier etiqueta

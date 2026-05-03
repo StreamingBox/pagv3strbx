@@ -190,9 +190,18 @@ function findNetflixButtonLink(html, textNeedles = [], hrefNeedles = []) {
 /**
  * Entra al link de "Aprobar" dispositivo
  */
-async function scrapeApproveLink(link, deviceName) {
+async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set()) {
     try {
-        const { data } = await axios.get(link, getNetflixAxiosOptions());
+        const safeLink = String(link || "").trim();
+        if (!safeLink) {
+            return { ok: false, status: "not_found", message: "Netflix no envió un enlace válido de aprobación." };
+        }
+        if (visited.has(safeLink)) {
+            return { ok: false, status: "not_found", message: "Netflix devolvió un enlace repetido y no se pudo confirmar la aprobación." };
+        }
+        visited.add(safeLink);
+
+        const { data } = await axios.get(safeLink, getNetflixAxiosOptions());
 
         // Netflix suele aprobarlo al abrir o confirmar. 
         // Asumiremos que el GET es suficiente, basándonos en cómo funciona el deep link en los correos recientes de Netflix.
@@ -200,9 +209,21 @@ async function scrapeApproveLink(link, deviceName) {
 
         const $ = cheerio.load(data);
         const textContent = $("body").text() || "";
+        const combinedContent = `${data}\n${textContent}`;
 
-        if (textContent.includes("Este enlace ya no es válido") || textContent.includes("expired")) {
+        if (pageLooksExpired(combinedContent)) {
             return { ok: false, status: "expired", message: "El enlace de aprobación de Netflix ya venció." };
+        }
+
+        if (depth < 2) {
+            const nestedLink = findNetflixButtonLink(
+                data,
+                ["aprobar", "approve", "continuar", "continue"],
+                ["netflix.com/account/approve", "account/approve"]
+            );
+            if (nestedLink && nestedLink !== safeLink) {
+                return scrapeApproveLink(nestedLink, deviceName, depth + 1, visited);
+            }
         }
 
         return { ok: true, type: "approval", deviceName: deviceName || "Dispositivo Desconocido" };

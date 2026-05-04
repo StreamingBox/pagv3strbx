@@ -21,47 +21,6 @@ function getNetflixAxiosOptions() {
     };
 }
 
-/**
- * Entra al link de "Obtener código"
- */
-async function scrapeTemporalCode(link) {
-    try {
-        const { data } = await axios.get(link, getNetflixAxiosOptions());
-
-        const $ = cheerio.load(data);
-        const textContent = $("body").text() || "";
-
-        // Si el enlace expiró
-        if (textContent.includes("Este enlace ya no es válido") || textContent.includes("expired")) {
-            return { ok: false, status: "expired", message: "El enlace del código de Netflix ya venció. Solicita uno nuevo." };
-        }
-
-        // Buscar el código de 4 dígitos en el texto renderizado.
-        // Usualmente Netflix lo pone grande.
-        // Buscamos un bloque de 4 dígitos rodeado de espacios o al final, pero es riesgoso sin contexto.
-        // Haremos un regex específico: código de 4 números.
-        const codeMatch = textContent.match(/\b(\d{4})\b/);
-
-        if (codeMatch && codeMatch[1]) {
-            return { ok: true, type: "code", code: codeMatch[1] };
-        }
-
-        // Si no lo encuentra por regex a lo bruto, intentamos ver si hay una caja con el código
-        return { ok: false, status: "not_found", message: "No se encontró el código de 4 dígitos en la página de Netflix." };
-
-    } catch (err) {
-        console.error("Error scraping temporal code:", err.message);
-        if (isTlsCertificateError(err)) {
-            return {
-                ok: false,
-                status: "tls_error",
-                message: "Error TLS al abrir el enlace de Netflix. Revisa certificados o activa NETFLIX_TLS_INSECURE=true temporalmente.",
-            };
-        }
-        return { ok: false, status: "network_error", message: "Error al leer el enlace de Netflix." };
-    }
-}
-
 function stripDiacritics(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -83,15 +42,20 @@ function pageLooksExpired(content) {
 
 function extractNetflixTemporaryCode(content) {
     const source = String(content || "");
+    const textOnly = cheerio.load(`<body>${source}</body>`)("body").text().replace(/\s+/g, " ").trim();
     const patterns = [
+        /usa este codigo para ver netflix en tu dispositivo[\s\S]{0,180}?ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*([0-9]{4})/i,
+        /ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*([0-9]{4})/i,
+        /([0-9]{4})\s*(?:este codigo vence despues de 15 minutos|vence despues de 15 minutos)/i,
         /(?:codigo|code)[^0-9]{0,40}([0-9]{4})/i,
-        /\b([0-9]{4})\b/,
     ];
 
-    for (const pattern of patterns) {
-        const match = source.match(pattern);
-        if (match?.[1] && !["2023", "2024", "2025", "2026"].includes(match[1])) {
-            return match[1];
+    for (const haystack of [textOnly, source]) {
+        for (const pattern of patterns) {
+            const match = haystack.match(pattern);
+            if (match?.[1] && !["0000", "2023", "2024", "2025", "2026"].includes(match[1])) {
+                return match[1];
+            }
         }
     }
 

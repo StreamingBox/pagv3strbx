@@ -85,6 +85,139 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 });
 
 /**
+ * Monthly sales leaderboard for admins.
+ * GET /admin/analytics/sales-top?year=&month=
+ */
+router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const { year, month } = req.query;
+
+        const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
+        const targetYear = parseInt(year, 10) || now.getUTCFullYear();
+        const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1);
+
+        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+            return res.status(400).json({ error: "Parámetros year/month inválidos" });
+        }
+
+        const [salesRows] = await pool.query(`
+            SELECT
+                u.id AS user_id,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS user_name,
+                u.email,
+                COUNT(o.id) AS orders_count,
+                SUM(o.total) AS revenue
+            FROM orders o
+            JOIN users u ON u.id = o.user_id
+            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+            GROUP BY u.id, u.email, user_name
+            ORDER BY revenue DESC, orders_count DESC, user_name ASC
+        `, [targetYear, targetMonth]);
+
+        const [platformRows] = await pool.query(`
+            SELECT
+                o.user_id,
+                p.name AS platform_name,
+                COUNT(oi.id) AS platform_sales_count,
+                SUM(oi.price) AS platform_revenue,
+                SUM(COALESCE(oi.cost_amount, pa.unit_cost, 0)) AS platform_cost
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            JOIN platforms p ON p.id = oi.platform_id
+            LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+            LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+            GROUP BY o.user_id, p.id, p.name
+            ORDER BY o.user_id ASC, platform_sales_count DESC, platform_revenue DESC, p.name ASC
+        `, [targetYear, targetMonth]);
+
+        const platformStatsByUser = new Map();
+        let globalTopPlatform = { name: "—", salesCount: 0, revenue: 0 };
+
+        for (const row of platformRows) {
+            const userId = Number(row.user_id);
+            if (!platformStatsByUser.has(userId)) {
+                platformStatsByUser.set(userId, {
+                    costTotal: 0,
+                    itemsCount: 0,
+                    topPlatform: { name: "—", salesCount: 0, revenue: 0 },
+                });
+            }
+
+            const entry = platformStatsByUser.get(userId);
+            const salesCount = Number(row.platform_sales_count || 0);
+            const platformRevenue = Number(row.platform_revenue || 0);
+            const platformCost = Number(row.platform_cost || 0);
+
+            entry.costTotal += platformCost;
+            entry.itemsCount += salesCount;
+
+            if (
+                salesCount > entry.topPlatform.salesCount ||
+                (salesCount === entry.topPlatform.salesCount && platformRevenue > entry.topPlatform.revenue)
+            ) {
+                entry.topPlatform = {
+                    name: row.platform_name || "—",
+                    salesCount,
+                    revenue: platformRevenue,
+                };
+            }
+
+            if (
+                salesCount > globalTopPlatform.salesCount ||
+                (salesCount === globalTopPlatform.salesCount && platformRevenue > globalTopPlatform.revenue)
+            ) {
+                globalTopPlatform = {
+                    name: row.platform_name || "—",
+                    salesCount,
+                    revenue: platformRevenue,
+                };
+            }
+        }
+
+        const items = salesRows.map((row, index) => {
+            const userId = Number(row.user_id);
+            const stats = platformStatsByUser.get(userId) || {
+                costTotal: 0,
+                itemsCount: 0,
+                topPlatform: { name: "—", salesCount: 0, revenue: 0 },
+            };
+
+            return {
+                rank: index + 1,
+                userId,
+                userName: row.user_name || row.email,
+                email: row.email,
+                monthRevenue: Number(row.revenue || 0),
+                ordersCount: Number(row.orders_count || 0),
+                itemsCount: Number(stats.itemsCount || 0),
+                costTotal: Number(stats.costTotal || 0),
+                topPlatform: stats.topPlatform,
+            };
+        });
+
+        const summary = {
+            monthRevenue: items.reduce((sum, item) => sum + item.monthRevenue, 0),
+            ordersCount: items.reduce((sum, item) => sum + item.ordersCount, 0),
+            costTotal: items.reduce((sum, item) => sum + item.costTotal, 0),
+            topPlatform: globalTopPlatform,
+            topSeller: items[0] || null,
+        };
+
+        return res.json({
+            month: { year: targetYear, month: targetMonth },
+            summary,
+            items,
+        });
+    } catch (err) {
+        console.error("Error GET /admin/analytics/sales-top:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
+    }
+});
+
+/**
  * User-scoped sales analytics: GET /analytics/sales?year=&month=
  */
 router.get("/analytics/sales", requireAuth, async (req, res) => {

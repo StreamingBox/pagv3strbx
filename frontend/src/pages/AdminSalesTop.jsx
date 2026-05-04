@@ -101,6 +101,12 @@ export default function AdminSalesTop() {
     return (
         <div className="page-shell">
             <style>{`
+                .admin-sales-top-head {
+                    display: grid;
+                    grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+                    gap: 14px 18px;
+                    align-items: start;
+                }
                 .admin-sales-top-grid {
                     display: grid;
                     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -113,9 +119,38 @@ export default function AdminSalesTop() {
                 .admin-sales-top-mobileList {
                     display: none;
                 }
+                .admin-sales-top-toolbar {
+                    display: grid;
+                    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+                    gap: 10px;
+                    align-items: end;
+                }
+                .admin-sales-top-orderHint {
+                    min-height: 44px;
+                    padding: 0 14px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(14,165,233,0.18);
+                    background: linear-gradient(180deg, rgba(14,165,233,0.08), rgba(139,92,246,0.06));
+                    color: var(--text);
+                    display: flex;
+                    align-items: center;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
                 @media (max-width: 1120px) {
                     .admin-sales-top-grid {
                         grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                }
+                @media (max-width: 1040px) {
+                    .admin-sales-top-head {
+                        grid-template-columns: 1fr;
+                    }
+                    .admin-sales-top-toolbar {
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                    }
+                    .admin-sales-top-orderHint {
+                        grid-column: 1 / -1;
                     }
                 }
                 @media (max-width: 920px) {
@@ -136,6 +171,10 @@ export default function AdminSalesTop() {
                     }
                     .admin-sales-top-toolbar {
                         grid-template-columns: 1fr !important;
+                    }
+                    .admin-sales-top-orderHint {
+                        min-height: unset;
+                        padding: 12px 14px;
                     }
                 }
             `}</style>
@@ -176,13 +215,13 @@ export default function AdminSalesTop() {
                         display: "grid",
                         gap: 18,
                     }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+                        <div className="admin-sales-top-head">
                             <div>
                                 <h1 className="title" style={{ margin: 0, fontSize: 26 }}>Top de ventas</h1>
                                 <p className="subtitle" style={{ marginTop: 6 }}>Resumen mensual por vendedor con ranking, costo y plataforma líder.</p>
                             </div>
 
-                            <div className="admin-sales-top-toolbar" style={{ display: "grid", gridTemplateColumns: "180px auto", gap: 10, alignItems: "end" }}>
+                            <div className="admin-sales-top-toolbar">
                                 <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
                                     Mes
                                     <input
@@ -202,18 +241,7 @@ export default function AdminSalesTop() {
                                         }}
                                     />
                                 </label>
-                                <div style={{
-                                    minHeight: 44,
-                                    padding: "0 14px",
-                                    borderRadius: 12,
-                                    border: "1px solid rgba(14,165,233,0.18)",
-                                    background: "linear-gradient(180deg, rgba(14,165,233,0.08), rgba(139,92,246,0.06))",
-                                    color: "var(--text)",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                }}>
+                                <div className="admin-sales-top-orderHint">
                                     Ordenado por ventas del mes, de mayor a menor.
                                 </div>
                             </div>

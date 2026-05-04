@@ -103,7 +103,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
         const [salesRows] = await pool.query(`
             SELECT
                 u.id AS user_id,
-                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS user_name,
+                COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS user_name,
                 u.email,
                 COUNT(o.id) AS orders_count,
                 SUM(o.total) AS revenue
@@ -111,7 +111,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             JOIN users u ON u.id = o.user_id
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-            GROUP BY u.id, u.email, user_name
+            GROUP BY u.id, u.name, u.email
             ORDER BY revenue DESC, orders_count DESC, user_name ASC
         `, [targetYear, targetMonth]);
 

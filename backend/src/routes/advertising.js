@@ -4,28 +4,9 @@ const requireAuth = require("../middleware/requireAuth");
 const pool = require("../db");
 const driveService = require("../services/googleDriveService");
 
-function normalizeImageRow(row) {
-    return {
-        id: row.id || null,
-        fileId: row.file_id,
-        name: row.file_name,
-        mimeType: row.mime_type,
-        webViewLink: row.web_view_link || null,
-        thumbnailLink: row.thumbnail_link || null,
-        previewLink: driveService.getPreviewLink(row.file_id),
-        downloadLink: driveService.getDownloadLink(row.file_id),
-        size: Number(row.image_size || 0),
-        folderName: row.folder_name,
-        folderId: row.folder_id,
-        isActive: Boolean(row.is_active),
-        sortOrder: Number(row.sort_order || 0),
-        createdAt: row.created_at || null,
-    };
-}
-
 async function getFolderMetaMap() {
     const [rows] = await pool.query(
-        `SELECT folder_id, folder_name, file_id, file_name, mime_type, web_view_link, thumbnail_link, image_size,
+        `SELECT id, folder_id, folder_name, file_id, file_name, mime_type, web_view_link, thumbnail_link, image_size,
                 is_active, sort_order, created_at
            FROM advertising_images`
     );
@@ -38,7 +19,7 @@ async function getFolderMetaMap() {
             metaByFolder.set(row.folder_id, row.folder_name);
         }
         if (row.file_id) {
-            metaByFile.set(row.file_id, normalizeImageRow(row));
+            metaByFile.set(row.file_id, row);
         }
     }
 
@@ -47,34 +28,14 @@ async function getFolderMetaMap() {
 
 async function getFolderImages(folderId, metaByFile) {
     const driveFiles = await driveService.listImagesInFolder(folderId);
-    const merged = driveFiles
-        .map((file) => {
-            const dbMeta = metaByFile.get(file.id);
-            return {
-                id: dbMeta?.id || null,
-                fileId: file.id,
-                name: dbMeta?.name || file.name,
-                mimeType: dbMeta?.mimeType || file.mimeType,
-                webViewLink: dbMeta?.webViewLink || file.webViewLink || null,
-                thumbnailLink: dbMeta?.thumbnailLink || file.thumbnailLink || null,
-                previewLink: driveService.getPreviewLink(file.id),
-                downloadLink: driveService.getDownloadLink(file.id),
-                size: dbMeta?.size ?? Number(file.size || 0),
-                folderName: dbMeta?.folderName || "",
-                folderId,
-                isActive: dbMeta ? Boolean(dbMeta.isActive) : true,
-                sortOrder: dbMeta?.sortOrder ?? 0,
-                createdAt: dbMeta?.createdAt || file.createdTime || null,
-            };
-        })
+    return driveFiles
+        .map((file) => driveService.normalizeImage(file, metaByFile.get(file.id)))
         .filter((item) => item.isActive)
         .sort((a, b) => {
             const sortDiff = a.sortOrder - b.sortOrder;
             if (sortDiff !== 0) return sortDiff;
             return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         });
-
-    return merged;
 }
 
 router.get("/advertising/folders", requireAuth, async (_req, res) => {

@@ -74,17 +74,27 @@ async function tryRefresh(timeoutMs = DEFAULT_TIMEOUT_MS) {
 /**
  * apiFetch: fetch con cookies + retry si 401
  */
+function buildHeaders(requestOptions) {
+    const isFormData = requestOptions.body && requestOptions.body instanceof FormData;
+    if (isFormData) {
+        // El navegador setea Content-Type con el boundary correcto
+        return { ...(requestOptions.headers || {}) };
+    }
+    return {
+        "Content-Type": "application/json",
+        ...(requestOptions.headers || {}),
+    };
+}
+
 export async function apiFetch(path, options = {}) {
     const url = buildApiUrl(path);
     const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
+    const headers = buildHeaders(requestOptions);
 
     const res1 = await fetchWithTimeout(url, {
         ...requestOptions,
         credentials: "include",
-        headers: {
-            "Content-Type": "application/json",
-            ...(requestOptions.headers || {}),
-        },
+        headers,
         timeoutMs,
     });
 
@@ -102,15 +112,16 @@ export async function apiFetch(path, options = {}) {
     const res2 = await fetchWithTimeout(url, {
         ...requestOptions,
         credentials: "include",
-        headers: {
-            "Content-Type": "application/json",
-            ...(requestOptions.headers || {}),
-        },
+        headers,
         timeoutMs,
     });
 
     const data2 = await safeJson(res2);
     return { ok: res2.ok, status: res2.status, data: data2 };
+}
+
+export async function apiPostFormData(path, formData, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    return apiFetch(path, { method: "POST", body: formData, timeoutMs });
 }
 
 /* Helpers */

@@ -177,6 +177,7 @@ app.options(/.*/, cors(corsOptions));
 app.use(
     helmet({
         crossOriginResourcePolicy: { policy: "cross-origin" },
+        crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
         contentSecurityPolicy: {
             useDefaults: true,
             directives: {
@@ -231,6 +232,20 @@ const codesRateLimit = rateLimit({
     legacyHeaders: false,
 });
 
+// Rate limit para forgot-password / reset-password: 3 req/min
+const forgotPasswordRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, message: "Demasiadas solicitudes de recuperacion. Intenta de nuevo en un minuto." },
+    skip: (req) => {
+        if (req.method !== "POST") return true;
+        const p = req.path || "";
+        return !p.endsWith("/forgot-password") && !p.endsWith("/reset-password");
+    },
+});
+
 // Rate limit para links compartidos: 30 req/min
 const shareRateLimit = rateLimit({
     windowMs: 60 * 1000,
@@ -269,6 +284,7 @@ app.get("/health", (_, res) => res.json({ ok: true }));
 app.get("/api/health", (_, res) => res.json({ ok: true }));
 
 // Auth — con rate limit específico en login
+app.use("/api/auth", forgotPasswordRateLimit);
 app.use("/api/auth", loginRateLimit);
 app.use("/api/auth", authRoutes);
 
@@ -352,8 +368,8 @@ app.use((err, req, res, _next) => {
 
 const port = process.env.PORT || 3000;
 const server = http.createServer(app);
-server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 30000);
-server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 35000);
+server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS || 120000);
+server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 125000);
 server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5000);
 server.maxHeadersCount = Number(process.env.HTTP_MAX_HEADERS_COUNT || 100);
 

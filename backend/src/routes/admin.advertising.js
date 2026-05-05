@@ -8,6 +8,21 @@ const requireRole = require("../middleware/requireRole");
 const pool = require("../db");
 const driveService = require("../services/googleDriveService");
 
+function sanitizeFilename(name) {
+    let ext = "";
+    const dot = name.lastIndexOf(".");
+    if (dot > 0) {
+        ext = name.slice(dot);
+        name = name.slice(0, dot);
+    }
+    name = name
+        .replace(/[/\\]/g, "_")
+        .replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ\s._-]/g, "")
+        .replace(/\s+/g, "_")
+        .slice(0, 200);
+    return name + ext;
+}
+
 const TMP_DIR = path.join(__dirname, "..", "..", ".tmp-uploads");
 if (!fs.existsSync(TMP_DIR)) fs.mkdirSync(TMP_DIR, { recursive: true });
 
@@ -102,8 +117,8 @@ router.put("/admin/advertising/folders/:id", async (req, res) => {
 router.delete("/admin/advertising/folders/:id", async (req, res) => {
     try {
         const folderId = req.params.id;
-        await pool.query("DELETE FROM advertising_images WHERE folder_id = ?", [folderId]);
         await driveService.deleteFolder(folderId);
+        await pool.query("DELETE FROM advertising_images WHERE folder_id = ?", [folderId]);
         res.json({ ok: true, message: "Carpeta eliminada." });
     } catch (err) {
         console.error("[admin/advertising/folders DELETE]", err.message);
@@ -127,20 +142,7 @@ router.get("/admin/advertising/images/:folderId", async (req, res) => {
 
         const images = driveFiles.map((file) => {
             const dbMeta = dbMap[file.id] || {};
-            return {
-                id: file.id,
-                fileId: file.id,
-                name: file.name,
-                mimeType: file.mimeType,
-                webViewLink: file.webViewLink,
-                thumbnailLink: file.thumbnailLink,
-                previewLink: driveService.getPreviewLink(file.id),
-                size: file.size,
-                downloadLink: driveService.getDownloadLink(file.id),
-                isActive: dbMeta.is_active !== undefined ? Boolean(dbMeta.is_active) : true,
-                sortOrder: dbMeta.sort_order || 0,
-                dbId: dbMeta.id || null,
-            };
+            return driveService.normalizeImage(file, dbMeta);
         });
 
         res.json({ ok: true, data: images });
@@ -159,7 +161,8 @@ router.post("/admin/advertising/images/:folderId", upload.array("images", 20), a
             return res.status(400).json({ ok: false, message: "Selecciona al menos una imagen." });
         }
 
-        const uploaded = await driveService.uploadImages(folderId, files);
+        files.forEach((f) => { f.originalname = sanitizeFilename(f.originalname); });
+        const { results: uploaded, errors } = await driveService.uploadImages(folderId, files);
 
         for (const file of uploaded) {
             await pool.query(
@@ -180,10 +183,14 @@ router.post("/admin/advertising/images/:folderId", upload.array("images", 20), a
             );
         }
 
+        const message = errors
+            ? `${uploaded.length} subida(s), ${errors.length} error(es): ${errors.map(e => e.file).join(', ')}`
+            : `${uploaded.length} imagen(es) subida(s).`;
+
         res.json({
             ok: true,
             data: uploaded,
-            message: `${uploaded.length} imagen(es) subida(s).`,
+            message,
         });
     } catch (err) {
         console.error("[admin/advertising/images POST]", err.message);
@@ -223,8 +230,8 @@ router.patch("/admin/advertising/images/:fileId/sort", async (req, res) => {
 router.delete("/admin/advertising/images/:fileId", async (req, res) => {
     try {
         const { fileId } = req.params;
-        await pool.query("DELETE FROM advertising_images WHERE file_id = ?", [fileId]);
         await driveService.deleteFile(fileId);
+        await pool.query("DELETE FROM advertising_images WHERE file_id = ?", [fileId]);
         res.json({ ok: true, message: "Imagen eliminada." });
     } catch (err) {
         console.error("[admin/advertising/images DELETE]", err.message);

@@ -185,7 +185,7 @@ export default function Advertising() {
                                                 onClick={() => setPreviewImage(img)}
                                             >
                                                 <img
-                                                    src={img.thumbnailLink || img.previewLink || img.webViewLink || img.downloadLink}
+                                                    src={img.thumbnailLink || img.previewLink || img.downloadLink}
                                                     alt={img.name}
                                                     style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.3s" }}
                                                     loading="lazy"
@@ -241,7 +241,7 @@ export default function Advertising() {
                                         ✕
                                     </button>
                                     <img
-                                        src={previewImage.previewLink || previewImage.webViewLink || previewImage.downloadLink}
+                                        src={previewImage.previewLink || previewImage.downloadLink}
                                         alt={previewImage.name}
                                         style={{ maxWidth: "100%", maxHeight: "85vh", borderRadius: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
                                     />

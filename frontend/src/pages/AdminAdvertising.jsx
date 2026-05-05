@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiDelete, apiFetch, apiGet, apiLogout, apiPost, buildApiUrl } from "../api/api";
+import useAppLogout from "../hooks/useAppLogout.js";
+import { apiDelete, apiFetch, apiGet, apiPost, apiPostFormData } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
@@ -29,7 +30,7 @@ function formatDate(dateStr) {
 }
 
 export default function AdminAdvertising() {
-    const { user, setUser } = useAuth();
+    const { user } = useAuth();
     const fileInputRef = useRef(null);
 
     const [folders, setFolders] = useState([]);
@@ -57,12 +58,7 @@ export default function AdminAdvertising() {
         typeof window !== "undefined" ? window.innerWidth <= 980 : false
     );
 
-    async function logout() {
-        try { await apiLogout(); } catch { }
-        setUser(null);
-        try { localStorage.removeItem("user"); localStorage.removeItem("accessToken"); localStorage.removeItem("refreshToken"); } catch { }
-        window.location.href = "/";
-    }
+    const logout = useAppLogout();
 
     const loadFolders = useCallback(async () => {
         setLoading(true);
@@ -200,13 +196,9 @@ export default function AdminAdvertising() {
             formData.append("folder_name", selectedFolder.name);
             formData.append("folder_id", selectedFolder.id);
 
-            const res = await fetch(buildApiUrl("/admin/advertising/images/" + selectedFolder.id), {
-                method: "POST",
-                body: formData,
-                credentials: "include",
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(json?.message || "Error subiendo imágenes.");
+            const r = await apiPostFormData("/admin/advertising/images/" + selectedFolder.id, formData);
+            if (!r.ok) throw new Error(r.data?.message || "Error subiendo imágenes.");
+            const json = r.data;
             setSuccessMsg(`✅ ${json?.data?.length || files.length} imagen(es) subida(s).`);
             setTimeout(() => setSuccessMsg(""), 4000);
             await loadImages(selectedFolder.id);
@@ -466,7 +458,7 @@ export default function AdminAdvertising() {
                                                     >
                                                         <div style={{ position: "relative", aspectRatio: "16/10", background: "#111", overflow: "hidden" }}>
                                                             <img
-                                                                src={img.thumbnailLink || img.previewLink || img.webViewLink || img.downloadLink}
+                                                                src={img.thumbnailLink || img.previewLink || img.downloadLink}
                                                                 alt={img.name}
                                                                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
                                                                 loading="lazy"

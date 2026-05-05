@@ -24,7 +24,6 @@ const NAV_ITEMS = [
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
     { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
-    { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
     { key: "support", label: "Soporte", icon: "🛠️", path: null },
 ];
 

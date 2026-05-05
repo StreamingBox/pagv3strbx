@@ -22,7 +22,7 @@ function cookieOpts(req, maxAgeMs, path = "/") {
     return {
         httpOnly: true,
         secure: isProd,   // 🔥 SOLO secure en producción real
-        sameSite: "strict",
+        sameSite: "lax",
         path,
         maxAge: maxAgeMs,
     };
@@ -317,7 +317,7 @@ router.post("/login", async (req, res) => {
         await pool.query("UPDATE users SET last_login_at = NOW() WHERE id = ?", [user.id]);
 
         // Cookies
-        res.cookie("accessToken", accessToken, cookieOpts(req, 15 * 60 * 1000, "/"));
+        res.cookie("accessToken", accessToken, cookieOpts(req, 15 * 60 * 1000, "/api"));
         res.cookie(
             "refreshToken",
             refreshToken,
@@ -413,7 +413,7 @@ router.post("/refresh", async (req, res) => {
         conn.release();
 
         // ✅ Set cookies (después de commit)
-        res.cookie("accessToken", newAccessToken, cookieOpts(req, 15 * 60 * 1000, "/"));
+        res.cookie("accessToken", newAccessToken, cookieOpts(req, 15 * 60 * 1000, "/api"));
         res.cookie(
             "refreshToken",
             newRefreshToken,

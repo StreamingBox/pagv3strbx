@@ -167,21 +167,29 @@ async function renameFolder(folderId, newName) {
  */
 async function uploadImage(folderId, filePath, originalName, mimeType) {
     const drive = getDrive();
-
-    const res = await drive.files.create({
-        supportsAllDrives: true,
-        requestBody: {
-            name: originalName,
-            parents: [folderId],
-        },
-        media: {
-            mimeType: mimeType || "image/jpeg",
-            body: fs.createReadStream(filePath),
-        },
-        fields: "id, name, mimeType, webViewLink, thumbnailLink, size",
-    });
-    await makeFilePublic(res.data.id);
-    return getFileInfo(res.data.id);
+    let fileId = null;
+    try {
+        const res = await drive.files.create({
+            supportsAllDrives: true,
+            requestBody: {
+                name: originalName,
+                parents: [folderId],
+            },
+            media: {
+                mimeType: mimeType || "image/jpeg",
+                body: fs.createReadStream(filePath),
+            },
+            fields: "id, name, mimeType, webViewLink, thumbnailLink, size",
+        });
+        fileId = res.data.id;
+        await makeFilePublic(fileId);
+        return await getFileInfo(fileId);
+    } catch (err) {
+        if (fileId) {
+            try { await drive.files.delete({ fileId, supportsAllDrives: true }); } catch {}
+        }
+        throw err;
+    }
 }
 
 /**
@@ -192,16 +200,39 @@ async function deleteFile(fileId) {
     await drive.files.delete({ fileId, supportsAllDrives: true });
 }
 
-/**
- * Genera un enlace de descarga directa para un fileId de Drive.
- * Usa el webContentLink que permite descarga.
- */
 function getDownloadLink(fileId) {
     return `https://drive.google.com/uc?export=download&id=${fileId}`;
 }
 
 function getPreviewLink(fileId) {
     return `https://drive.google.com/uc?export=view&id=${fileId}`;
+}
+
+function getThumbnailLink(fileId) {
+    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+}
+
+/**
+ * Normaliza un archivo de Drive + metadata opcional de DB en un objeto
+ * consistente con URLs seguras (sin autenticación) para thumbnail, preview y descarga.
+ * Nunca expone webViewLink ni el thumbnailLink crudo de la API de Drive.
+ */
+function normalizeImage(file, dbMeta = null) {
+    return {
+        id: dbMeta?.id || null,
+        fileId: file.id,
+        name: dbMeta?.file_name || file.name,
+        mimeType: dbMeta?.mime_type || file.mimeType,
+        thumbnailLink: getThumbnailLink(file.id),
+        previewLink: getPreviewLink(file.id),
+        downloadLink: getDownloadLink(file.id),
+        size: Number(file.size || 0),
+        folderName: dbMeta?.folder_name || "",
+        folderId: dbMeta?.folder_id || "",
+        isActive: dbMeta ? Boolean(dbMeta.is_active) : true,
+        sortOrder: Number(dbMeta?.sort_order || 0),
+        createdAt: dbMeta?.created_at || file.createdTime || null,
+    };
 }
 
 /**
@@ -222,6 +253,7 @@ async function getFileInfo(fileId) {
  */
 async function uploadImages(folderId, files) {
     const results = [];
+    const errors = [];
     for (const file of files) {
         try {
             const uploaded = await uploadImage(
@@ -233,12 +265,15 @@ async function uploadImages(folderId, files) {
             results.push(uploaded);
         } catch (err) {
             console.error(`[GoogleDrive] Error subiendo ${file.originalname}:`, err.message);
+            errors.push({ file: file.originalname, error: err.message });
         } finally {
-            // Limpiar archivo temporal
-            try { fs.unlinkSync(file.path); } catch { }
+            try { fs.unlinkSync(file.path); } catch {}
         }
     }
-    return results;
+    if (errors.length > 0 && results.length === 0) {
+        throw new Error(`No se pudo subir ninguna imagen: ${errors.map(e => e.file).join(', ')}`);
+    }
+    return { results, errors: errors.length ? errors : null };
 }
 
 module.exports = {
@@ -252,6 +287,8 @@ module.exports = {
     deleteFile,
     getDownloadLink,
     getPreviewLink,
+    getThumbnailLink,
+    normalizeImage,
     getFileInfo,
     formatDriveError,
 };

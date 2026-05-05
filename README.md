@@ -74,13 +74,20 @@ Entre las variables importantes están:
 
 ### Publicidad con Google Drive
 
-El modulo de `Publicidad` usa Google Drive para guardar y servir imagenes sin cargar el hosting principal.
+El sistema de publicidad permite almacenar imágenes promocionales de alta calidad en un Google Drive externo (de otro correo distinto al del hosting), sin recargar el servidor principal. Las imágenes se organizan por carpetas, se administran desde el panel admin y se muestran a los usuarios en una galería con descarga directa.
 
-Flujo recomendado:
+**Configuración en Google Cloud:**
 
-1. Crear una `Service Account` en Google Cloud y habilitar `Google Drive API`.
-2. Compartir desde el correo dueno del Drive la carpeta raiz con el correo de la service account como `Editor`.
-3. Guardar en `backend/.env`:
+1. Creá una `Service Account` en Google Cloud Console.
+2. Habilitá la `Google Drive API` en el proyecto.
+3. En las credenciales de la Service Account, generá una clave JSON. De ese JSON necesitás:
+   - `client_email` → va en `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL`
+   - `private_key` → va en `GOOGLE_DRIVE_PRIVATE_KEY`
+4. Creá una carpeta raíz en el Google Drive del otro correo (donde estarán las imágenes).
+5. Compartí esa carpeta raíz con el `client_email` de la Service Account, con rol **Editor**.
+6. Copiá el ID de la carpeta (está en la URL: `https://drive.google.com/drive/folders/XXXXXX`) y ponelo en `GOOGLE_DRIVE_PARENT_FOLDER_ID`.
+
+**Variables en `backend/.env`:**
 
 ```env
 GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL=tu-service-account@tu-proyecto.iam.gserviceaccount.com
@@ -88,12 +95,25 @@ GOOGLE_DRIVE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY
 GOOGLE_DRIVE_PARENT_FOLDER_ID=xxxxxxxxxxxxxxxxxxxx
 ```
 
-Notas:
+> **Importante sobre la private key:** En plataformas como Railway o Render, los saltos de línea se escapan con `\\n`. El servicio los convierte automáticamente a `\n` reales. Si configurás localmente, asegurate de que la variable contenga saltos de línea reales o escapados — el código maneja ambos casos.
 
-- Las carpetas e imagenes se administran desde `/admin/advertising`.
-- El usuario final lo ve en `/advertising`.
-- Las imagenes subidas desde el admin quedan con enlace publico de lectura para previsualizar y descargar.
-- Si subes archivos manualmente al Drive compartido, el modulo tambien los detecta al listar carpetas e imagenes.
+**Funcionamiento del módulo:**
+
+| Ruta | Rol | Descripción |
+|---|---|---|
+| `/admin/advertising` | Admin | Panel CRUD: crear/renombrar/eliminar carpetas, subir/eliminar/ocultar imágenes, ver thumbnails |
+| `/advertising` | Admin, User | Galería pública: explorar carpetas, previsualizar imágenes y descargar con un clic |
+
+**Características clave:**
+
+- **Sin carga en el hosting:** Las imágenes se almacenan y sirven directamente desde Google Drive (enlace `webViewLink` y `thumbnailLink`). El frontend solo muestra thumbnails optimizados vía los links de Drive.
+- **Descarga directa:** Cada imagen tiene un botón de descarga que usa el enlace `https://drive.google.com/uc?export=download&id=FILE_ID`, permitiendo bajar la imagen en calidad original sin intermediarios.
+- **Visibilidad controlada:** El admin puede activar o desactivar imágenes individualmente. Las imágenes ocultas no aparecen en la vista de usuario.
+- **Detección automática:** Si subís archivos manualmente al Drive compartido, el módulo los detecta al listar carpetas e imágenes (merge Drive + DB).
+- **Persistencia de metadatos:** Los links de Drive, tamaños y estados se guardan en la tabla `advertising_images` de MySQL para evitar consultas redundantes a la API de Google.
+- **Limpieza de temporales:** Los archivos subidos vía multer se almacenan en `.tmp-uploads/` y se eliminan automáticamente al terminar la carga a Drive.
+
+**Diseño técnico detallado:** Ver [DESIGN.md](./DESIGN.md).
 
 Para rotar el token interno, genera un valor nuevo fuera del repositorio:
 

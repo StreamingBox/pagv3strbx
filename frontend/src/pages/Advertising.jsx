@@ -30,7 +30,7 @@ export default function Advertising() {
         setLoading(true);
         try {
             const r = await apiGet("/advertising/folders");
-            if (r.ok) setFolders(Array.isArray(r.data) ? r.data : []);
+            if (r.ok) setFolders(Array.isArray(r.data?.data) ? r.data.data : []);
         } catch { } finally {
             setLoading(false);
         }
@@ -42,7 +42,7 @@ export default function Advertising() {
         try {
             const r = await apiGet(`/advertising/images/${folderId}`);
             if (!r.ok) throw new Error(r.data?.message || "Error");
-            setImages(Array.isArray(r.data) ? r.data : []);
+            setImages(Array.isArray(r.data?.data) ? r.data.data : []);
         } catch (e) {
             setError(e?.message || "Error cargando imágenes.");
         } finally {

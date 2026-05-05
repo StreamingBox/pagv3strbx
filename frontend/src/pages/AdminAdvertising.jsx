@@ -70,7 +70,7 @@ export default function AdminAdvertising() {
         try {
             const r = await apiGet("/admin/advertising/folders");
             if (!r.ok) throw new Error(r.data?.message || "Error cargando carpetas.");
-            setFolders(Array.isArray(r.data) ? r.data : []);
+            setFolders(Array.isArray(r.data?.data) ? r.data.data : []);
         } catch (e) {
             setError(e?.message || "Error cargando carpetas.");
         } finally {
@@ -85,7 +85,7 @@ export default function AdminAdvertising() {
         try {
             const r = await apiGet(`/admin/advertising/images/${folderId}`);
             if (!r.ok) throw new Error(r.data?.message || "Error cargando imágenes.");
-            setImages(Array.isArray(r.data) ? r.data : []);
+            setImages(Array.isArray(r.data?.data) ? r.data.data : []);
         } catch (e) {
             setError(e?.message || "Error cargando imágenes.");
         } finally {

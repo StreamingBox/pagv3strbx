@@ -133,6 +133,7 @@ async function createFolder(folderName) {
         },
         fields: "id, name, createdTime",
     });
+    await makeFilePublic(res.data.id);
     return res.data;
 }
 

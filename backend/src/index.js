@@ -39,6 +39,8 @@ const adminBrandingRoutes = require("./routes/admin.branding");
 const authRoutes = require("./routes/auth");
 const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
+const adminAdvertisingRoutes = require("./routes/admin.advertising");
+const advertisingRoutes = require("./routes/advertising");
 const whatsappRoutes = require("./routes/whatsapp");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
@@ -320,6 +322,10 @@ app.use("/api", adminDurations);
 
 // Analytics
 app.use("/api", analyticsRoutes);
+
+// Publicidad / Advertising (Google Drive)
+app.use("/api", adminAdvertisingRoutes);
+app.use("/api", advertisingRoutes);
 
 // WhatsApp (WaSender)
 app.use("/api", whatsappRoutes);

@@ -23,6 +23,8 @@ const NAV_ITEMS = [
     { key: "analytics", label: "Mis Estadísticas", icon: "📊", path: "/analytics" },
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
+    { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
+    { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
     { key: "support", label: "Soporte", icon: "🛠️", path: null },
 ];
 
@@ -38,6 +40,7 @@ export default function Sidebar({
     onGoAdmin,
     onGoCodes,
     onGoExpirations,
+    onGoAdvertising,
     onGoHome,
     onLogout,
 }) {
@@ -121,6 +124,7 @@ export default function Sidebar({
         orders: onGoOrders,
         renewals: onGoRenewals,
         analytics: onGoAnalytics,
+        advertising: onGoAdvertising,
         expirations: onGoExpirations,
         codes: onGoCodes,
         support: null,
@@ -300,7 +304,9 @@ export default function Sidebar({
                         <div className="sb-divider" />
 
                         <nav className="sb-nav">
-                            {NAV_ITEMS.map((item) => {
+                            {NAV_ITEMS
+                                .filter((item, index, arr) => arr.findIndex((x) => x.key === item.key) === index)
+                                .map((item) => {
                                 const isActive = activePath === item.path;
                                 const handler = actionMap[item.key];
                                 return (

@@ -364,4 +364,34 @@ pool.query("CREATE UNIQUE INDEX uq_manual_topup_proof_token ON manual_topup_proo
 pool.query("CREATE INDEX idx_manual_topup_proof_topup ON manual_topup_proof_tokens(topup_id)").catch(() => { });
 pool.query("CREATE INDEX idx_manual_topup_proof_expires ON manual_topup_proof_tokens(expires_at)").catch(() => { });
 
+// ──────────────────────────────────────────────────────────────
+// Tabla de publicidad / advertising (Google Drive)
+// ──────────────────────────────────────────────────────────────
+pool.query(`
+    CREATE TABLE IF NOT EXISTS advertising_images (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        folder_name VARCHAR(255) NOT NULL,
+        folder_id VARCHAR(255) NULL,
+        file_name VARCHAR(255) NOT NULL,
+        file_id VARCHAR(255) NOT NULL,
+        mime_type VARCHAR(100) NULL DEFAULT 'image/jpeg',
+        web_view_link TEXT NULL,
+        thumbnail_link TEXT NULL,
+        image_size INT NULL DEFAULT 0,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_advertising_folder (folder_name),
+        INDEX idx_advertising_active (is_active),
+        INDEX idx_advertising_sort (sort_order)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE advertising_images ADD COLUMN folder_id VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE advertising_images ADD COLUMN image_size INT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE advertising_images ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
+pool.query("CREATE INDEX idx_advertising_folder ON advertising_images(folder_name)").catch(() => { });
+pool.query("CREATE INDEX idx_advertising_active ON advertising_images(is_active)").catch(() => { });
+pool.query("CREATE INDEX idx_advertising_sort ON advertising_images(sort_order)").catch(() => { });
+
 module.exports = pool;

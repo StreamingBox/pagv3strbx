@@ -68,6 +68,32 @@ Entre las variables importantes están:
 - `TELEGRAM_CHAT_IDS`
 - `INTERNAL_SERVICE_TOKEN` (obligatoria si los microservicios Go corren en produccion)
 - `GO_SERVICE_BIND_ADDR` (por defecto `127.0.0.1`)
+- `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL`
+- `GOOGLE_DRIVE_PRIVATE_KEY`
+- `GOOGLE_DRIVE_PARENT_FOLDER_ID`
+
+### Publicidad con Google Drive
+
+El modulo de `Publicidad` usa Google Drive para guardar y servir imagenes sin cargar el hosting principal.
+
+Flujo recomendado:
+
+1. Crear una `Service Account` en Google Cloud y habilitar `Google Drive API`.
+2. Compartir desde el correo dueno del Drive la carpeta raiz con el correo de la service account como `Editor`.
+3. Guardar en `backend/.env`:
+
+```env
+GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL=tu-service-account@tu-proyecto.iam.gserviceaccount.com
+GOOGLE_DRIVE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+GOOGLE_DRIVE_PARENT_FOLDER_ID=xxxxxxxxxxxxxxxxxxxx
+```
+
+Notas:
+
+- Las carpetas e imagenes se administran desde `/admin/advertising`.
+- El usuario final lo ve en `/advertising`.
+- Las imagenes subidas desde el admin quedan con enlace publico de lectura para previsualizar y descargar.
+- Si subes archivos manualmente al Drive compartido, el modulo tambien los detecta al listar carpetas e imagenes.
 
 Para rotar el token interno, genera un valor nuevo fuera del repositorio:
 

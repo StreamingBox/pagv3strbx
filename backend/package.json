@@ -21,6 +21,7 @@
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
+    "googleapis": "^171.4.0",
     "helmet": "^8.1.0",
     "imap-simple": "^1.6.3",
     "jsonwebtoken": "^9.0.3",

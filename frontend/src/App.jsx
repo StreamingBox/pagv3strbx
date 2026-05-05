@@ -34,6 +34,8 @@ const AdminStockNotify = lazy(() => import("./pages/AdminStockNotify.jsx"));
 const AdminWhatsapp = lazy(() => import("./pages/AdminWhatsapp.jsx"));
 const AdminWhatsappTrace = lazy(() => import("./pages/AdminWhatsappTrace.jsx"));
 const AdminUploadLogs = lazy(() => import("./pages/AdminUploadLogs.jsx"));
+const AdminAdvertising = lazy(() => import("./pages/AdminAdvertising.jsx"));
+const Advertising = lazy(() => import("./pages/Advertising.jsx"));
 const AdminTopups = lazy(() => import("./pages/AdminTopups.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
@@ -357,6 +359,16 @@ export default function App() {
                     }
                 />
 
+
+                <Route
+                    path="/admin/advertising"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminAdvertising />
+                        </ProtectedRoute>
+                    }
+                />
+
                 <Route
                     path="/expirations"
                     element={
@@ -365,6 +377,18 @@ export default function App() {
                         </ProtectedRoute>
                     }
                 />
+
+
+                {/* ================= Advertising / Publicidad ================= */}
+                <Route
+                    path="/advertising"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Advertising />
+                        </ProtectedRoute>
+                    }
+                />
+
 
                 {/* ================= Shared Credentials (Redirección al Backend) ================= */}
                 <Route path="/s/:token" element={<CredentialRedirect />} />

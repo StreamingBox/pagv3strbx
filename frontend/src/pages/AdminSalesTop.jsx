@@ -40,6 +40,9 @@ export default function AdminSalesTop() {
     const { user, setUser } = useAuth();
     const [monthValue, setMonthValue] = useState(currentMonthValue);
     const [currency, setCurrency] = useState("COP");
+    const [showEmails, setShowEmails] = useState(true);
+    const [pageSize, setPageSize] = useState(5);
+    const [page, setPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [summary, setSummary] = useState(null);
@@ -69,11 +72,13 @@ export default function AdminSalesTop() {
                 if (cancelled) return;
                 setSummary(response.data?.summary || null);
                 setItems(Array.isArray(response.data?.items) ? response.data.items : []);
+                setPage(1);
             } catch (err) {
                 if (cancelled) return;
                 setError(err?.message || "No se pudo cargar el top de ventas.");
                 setSummary(null);
                 setItems([]);
+                setPage(1);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -84,6 +89,9 @@ export default function AdminSalesTop() {
     }, [monthValue, currency]);
 
     const activeCurrency = displayCurrency(summary?.currency || currency);
+    const totalPages = Math.max(Math.ceil(items.length / pageSize), 1);
+    const currentPage = Math.min(page, totalPages);
+    const visibleItems = items.slice((currentPage - 1) * pageSize, currentPage * pageSize);
     const cards = useMemo(() => ([
         {
             label: "Ventas del mes",
@@ -126,6 +134,13 @@ export default function AdminSalesTop() {
                 .admin-sales-top-mobileList {
                     display: none;
                 }
+                .admin-sales-top-sectionControls {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    flex-wrap: wrap;
+                    justify-content: flex-end;
+                }
                 .admin-sales-top-toolbar {
                     display: grid;
                     grid-template-columns: minmax(180px, 220px) minmax(140px, 160px);
@@ -162,6 +177,10 @@ export default function AdminSalesTop() {
                     .admin-sales-top-mobileList {
                         display: grid;
                         gap: 12px;
+                    }
+                    .admin-sales-top-sectionControls {
+                        width: 100%;
+                        justify-content: flex-start;
                     }
                 }
                 @media (max-width: 640px) {
@@ -320,8 +339,43 @@ export default function AdminSalesTop() {
                                     <h2 style={{ margin: 0, fontSize: 22, color: "var(--text)" }}>Ranking mensual</h2>
                                     <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>Valor en ventas, cantidad y plataforma más vendida por usuario.</p>
                                 </div>
-                                <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
-                                    {loading ? "Cargando..." : `${items.length} vendedores con ventas en ${activeCurrency}`}
+                                <div className="admin-sales-top-sectionControls">
+                                    <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                                        Mostrar
+                                        <select
+                                            value={pageSize}
+                                            onChange={(event) => {
+                                                setPageSize(Number(event.target.value));
+                                                setPage(1);
+                                            }}
+                                            style={{
+                                                height: 40,
+                                                minWidth: 88,
+                                                padding: "0 12px",
+                                                background: "var(--input-bg)",
+                                                color: "var(--text)",
+                                                border: "1px solid var(--stroke)",
+                                                borderRadius: 12,
+                                                fontSize: 14,
+                                                fontWeight: 600,
+                                                fontFamily: "var(--font)",
+                                            }}
+                                        >
+                                            {[5, 10, 15, 20].map((size) => (
+                                                <option key={size} value={size}>{size}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <button
+                                        className="btn-ghost"
+                                        onClick={() => setShowEmails((prev) => !prev)}
+                                        style={{ minHeight: 40, padding: "0 14px", borderRadius: 12, fontSize: 13, fontWeight: 700 }}
+                                    >
+                                        {showEmails ? "Omitir correos" : "Mostrar correos"}
+                                    </button>
+                                    <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                                        {loading ? "Cargando..." : `${items.length} vendedores con ventas en ${activeCurrency}`}
+                                    </div>
                                 </div>
                             </div>
 
@@ -337,7 +391,7 @@ export default function AdminSalesTop() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {items.map((item) => (
+                                        {visibleItems.map((item) => (
                                             <tr key={item.userId} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top" }}>
                                                     <div style={{
@@ -356,7 +410,7 @@ export default function AdminSalesTop() {
                                                 </td>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top" }}>
                                                     <div style={{ color: "var(--text)", fontWeight: 800, fontSize: 15 }}>{item.userName}</div>
-                                                    <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{item.email}</div>
+                                                    {showEmails ? <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{item.email}</div> : null}
                                                 </td>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top", color: "#0ea5e9", fontWeight: 900, fontSize: 18 }}>
                                                     ${formatMoney(item.monthRevenue)} {activeCurrency}
@@ -378,7 +432,7 @@ export default function AdminSalesTop() {
                             </div>
 
                             <div className="admin-sales-top-mobileList">
-                                {items.map((item) => (
+                                {visibleItems.map((item) => (
                                     <div key={item.userId} style={{
                                         border: "1px solid var(--stroke)",
                                         borderRadius: 16,
@@ -390,7 +444,7 @@ export default function AdminSalesTop() {
                                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
                                             <div>
                                                 <div style={{ color: "var(--text)", fontWeight: 900 }}>{item.userName}</div>
-                                                <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{item.email}</div>
+                                                {showEmails ? <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{item.email}</div> : null}
                                             </div>
                                             <div style={{ color: item.rank === 1 ? "#f59e0b" : "var(--text)", fontWeight: 900 }}>#{item.rank}</div>
                                         </div>
@@ -422,6 +476,32 @@ export default function AdminSalesTop() {
                                     fontWeight: 700,
                                 }}>
                                     No hay ventas registradas para {activeCurrency} en el mes seleccionado.
+                                </div>
+                            ) : null}
+
+                            {!loading && items.length > 0 ? (
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                    <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                                        Página {currentPage} de {totalPages} · Mostrando {visibleItems.length} de {items.length}
+                                    </div>
+                                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                        <button
+                                            className="btn-ghost"
+                                            onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                                            disabled={currentPage <= 1}
+                                            style={{ minHeight: 40, padding: "0 14px", borderRadius: 12, opacity: currentPage <= 1 ? 0.55 : 1 }}
+                                        >
+                                            Anterior
+                                        </button>
+                                        <button
+                                            className="btn-ghost"
+                                            onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
+                                            disabled={currentPage >= totalPages}
+                                            style={{ minHeight: 40, padding: "0 14px", borderRadius: 12, opacity: currentPage >= totalPages ? 0.55 : 1 }}
+                                        >
+                                            Siguiente
+                                        </button>
+                                    </div>
                                 </div>
                             ) : null}
                         </section>

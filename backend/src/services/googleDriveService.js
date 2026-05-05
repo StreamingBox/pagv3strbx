@@ -36,6 +36,37 @@ function getDrive() {
 
 const PARENT_FOLDER_ID = () => process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || "root";
 
+function getDriveRequestDefaults() {
+    return {
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+    };
+}
+
+function formatDriveError(error) {
+    const details = error?.response?.data?.error;
+    const status = Number(error?.code || error?.response?.status || 500);
+    const message = String(
+        details?.message ||
+        error?.message ||
+        "Error desconocido de Google Drive."
+    );
+
+    if (status === 404) {
+        return "La carpeta raiz de Drive no existe o no fue compartida con la service account.";
+    }
+    if (status === 403) {
+        return "La service account no tiene permisos de Editor sobre la carpeta de Drive.";
+    }
+    if (/invalid_grant|invalid jwt|malformed/i.test(message)) {
+        return "La private key o el email de la service account no son validos.";
+    }
+    if (/File not found/i.test(message)) {
+        return "No se encontro la carpeta raiz indicada en GOOGLE_DRIVE_PARENT_FOLDER_ID.";
+    }
+    return `Google Drive: ${message}`;
+}
+
 /**
  * Lista las carpetas dentro de la carpeta raíz (un nivel).
  */
@@ -44,6 +75,7 @@ async function listFolders() {
     const parentId = PARENT_FOLDER_ID();
 
     const res = await drive.files.list({
+        ...getDriveRequestDefaults(),
         q: `'${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
         fields: "files(id, name, createdTime)",
         orderBy: "name",
@@ -56,6 +88,7 @@ async function makeFilePublic(fileId) {
     try {
         await drive.permissions.create({
             fileId,
+            supportsAllDrives: true,
             requestBody: {
                 role: "reader",
                 type: "anyone",
@@ -76,6 +109,7 @@ async function listImagesInFolder(folderId) {
     const drive = getDrive();
 
     const res = await drive.files.list({
+        ...getDriveRequestDefaults(),
         q: `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`,
         fields: "files(id, name, mimeType, webViewLink, thumbnailLink, size, createdTime)",
         orderBy: "name",
@@ -91,6 +125,7 @@ async function createFolder(folderName) {
     const parentId = PARENT_FOLDER_ID();
 
     const res = await drive.files.create({
+        supportsAllDrives: true,
         requestBody: {
             name: folderName,
             mimeType: "application/vnd.google-apps.folder",
@@ -106,7 +141,7 @@ async function createFolder(folderName) {
  */
 async function deleteFolder(folderId) {
     const drive = getDrive();
-    await drive.files.delete({ fileId: folderId });
+    await drive.files.delete({ fileId: folderId, supportsAllDrives: true });
 }
 
 /**
@@ -116,6 +151,7 @@ async function renameFolder(folderId, newName) {
     const drive = getDrive();
     const res = await drive.files.update({
         fileId: folderId,
+        supportsAllDrives: true,
         requestBody: { name: newName },
         fields: "id, name",
     });
@@ -133,6 +169,7 @@ async function uploadImage(folderId, filePath, originalName, mimeType) {
     const drive = getDrive();
 
     const res = await drive.files.create({
+        supportsAllDrives: true,
         requestBody: {
             name: originalName,
             parents: [folderId],
@@ -152,7 +189,7 @@ async function uploadImage(folderId, filePath, originalName, mimeType) {
  */
 async function deleteFile(fileId) {
     const drive = getDrive();
-    await drive.files.delete({ fileId });
+    await drive.files.delete({ fileId, supportsAllDrives: true });
 }
 
 /**
@@ -174,6 +211,7 @@ async function getFileInfo(fileId) {
     const drive = getDrive();
     const res = await drive.files.get({
         fileId,
+        supportsAllDrives: true,
         fields: "id, name, mimeType, webViewLink, thumbnailLink, size, webContentLink",
     });
     return res.data;
@@ -215,4 +253,5 @@ module.exports = {
     getDownloadLink,
     getPreviewLink,
     getFileInfo,
+    formatDriveError,
 };

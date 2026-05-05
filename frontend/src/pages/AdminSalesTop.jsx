@@ -98,12 +98,6 @@ export default function AdminSalesTop() {
             tone: "#10b981",
         },
         {
-            label: "Dinero comprado",
-            value: `$${formatMoney(summary?.costTotal)} ${activeCurrency}`,
-            hint: `Costo invertido en las ventas del mes en ${activeCurrency}`,
-            tone: "#f59e0b",
-        },
-        {
             label: "Plataforma más vendida",
             value: summary?.topPlatform?.name || "—",
             hint: summary?.topPlatform?.salesCount ? `${formatMoney(summary.topPlatform.salesCount)} ventas` : "Sin ventas registradas",
@@ -226,7 +220,7 @@ export default function AdminSalesTop() {
                         <div className="admin-sales-top-head">
                             <div>
                                 <h1 className="title" style={{ margin: 0, fontSize: 26 }}>Top de ventas</h1>
-                                <p className="subtitle" style={{ marginTop: 6 }}>Resumen mensual por vendedor con ranking, costo y plataforma líder.</p>
+                                <p className="subtitle" style={{ marginTop: 6 }}>Resumen mensual por vendedor con ranking, ventas y plataforma líder.</p>
                             </div>
 
                             <div className="admin-sales-top-toolbar">
@@ -324,7 +318,7 @@ export default function AdminSalesTop() {
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                                 <div>
                                     <h2 style={{ margin: 0, fontSize: 22, color: "var(--text)" }}>Ranking mensual</h2>
-                                    <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>Valor en ventas, cantidad, dinero comprado y plataforma más vendida por usuario.</p>
+                                    <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>Valor en ventas, cantidad y plataforma más vendida por usuario.</p>
                                 </div>
                                 <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
                                     {loading ? "Cargando..." : `${items.length} vendedores con ventas en ${activeCurrency}`}
@@ -335,7 +329,7 @@ export default function AdminSalesTop() {
                                 <table className="admin-sales-top-table">
                                     <thead>
                                         <tr style={{ borderBottom: "1px solid var(--stroke)" }}>
-                                            {["Top", "Usuario", `Ventas del mes (${activeCurrency})`, "Cantidad ventas", `Dinero comprado (${activeCurrency})`, "Plataforma más vendida"].map((label) => (
+                                            {["Top", "Usuario", `Ventas del mes (${activeCurrency})`, "Cantidad ventas", "Plataforma más vendida"].map((label) => (
                                                 <th key={label} style={{ textAlign: "left", padding: "0 14px 14px 0", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.8 }}>
                                                     {label}
                                                 </th>
@@ -370,9 +364,6 @@ export default function AdminSalesTop() {
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top" }}>
                                                     <div style={{ color: "var(--text)", fontWeight: 800 }}>{formatMoney(item.ordersCount)}</div>
                                                     <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{formatMoney(item.itemsCount)} items</div>
-                                                </td>
-                                                <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top", color: "#f59e0b", fontWeight: 800 }}>
-                                                    ${formatMoney(item.costTotal)} {activeCurrency}
                                                 </td>
                                                 <td style={{ padding: "14px 0 14px 0", verticalAlign: "top" }}>
                                                     <div style={{ color: "var(--text)", fontWeight: 800 }}>{item.topPlatform?.name || "—"}</div>
@@ -411,10 +402,6 @@ export default function AdminSalesTop() {
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Cantidad ventas</div>
                                                 <div style={{ color: "var(--text)", fontWeight: 900, marginTop: 4 }}>{formatMoney(item.ordersCount)}</div>
-                                            </div>
-                                            <div>
-                                                <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Dinero comprado</div>
-                                                <div style={{ color: "#f59e0b", fontWeight: 900, marginTop: 4 }}>${formatMoney(item.costTotal)} {activeCurrency}</div>
                                             </div>
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Plataforma top</div>

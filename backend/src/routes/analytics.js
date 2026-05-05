@@ -91,6 +91,7 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { year, month } = req.query;
+        const targetCurrency = String(req.query.currency || "COP").trim().toUpperCase();
 
         const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
@@ -98,6 +99,10 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
 
         if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) || targetMonth < 1 || targetMonth > 12) {
             return res.status(400).json({ error: "Parámetros year/month inválidos" });
+        }
+
+        if (!["COP", "MXN", "USD"].includes(targetCurrency)) {
+            return res.status(400).json({ error: "ParÃ¡metro currency invÃ¡lido" });
         }
 
         const [salesRows] = await pool.query(`
@@ -111,9 +116,10 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             JOIN users u ON u.id = o.user_id
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND o.currency = ?
             GROUP BY u.id, u.name, u.email
             ORDER BY revenue DESC, orders_count DESC, user_name ASC
-        `, [targetYear, targetMonth]);
+        `, [targetYear, targetMonth, targetCurrency]);
 
         const [platformRows] = await pool.query(`
             SELECT
@@ -129,9 +135,10 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND o.currency = ?
             GROUP BY o.user_id, p.id, p.name
             ORDER BY o.user_id ASC, platform_sales_count DESC, platform_revenue DESC, p.name ASC
-        `, [targetYear, targetMonth]);
+        `, [targetYear, targetMonth, targetCurrency]);
 
         const platformStatsByUser = new Map();
         let globalTopPlatform = { name: "—", salesCount: 0, revenue: 0 };
@@ -190,6 +197,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                 userId,
                 userName: row.user_name || row.email,
                 email: row.email,
+                currency: targetCurrency,
                 monthRevenue: Number(row.revenue || 0),
                 ordersCount: Number(row.orders_count || 0),
                 itemsCount: Number(stats.itemsCount || 0),
@@ -199,6 +207,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
         });
 
         const summary = {
+            currency: targetCurrency,
             monthRevenue: items.reduce((sum, item) => sum + item.monthRevenue, 0),
             ordersCount: items.reduce((sum, item) => sum + item.ordersCount, 0),
             costTotal: items.reduce((sum, item) => sum + item.costTotal, 0),
@@ -207,7 +216,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
         };
 
         return res.json({
-            month: { year: targetYear, month: targetMonth },
+            month: { year: targetYear, month: targetMonth, currency: targetCurrency },
             summary,
             items,
         });

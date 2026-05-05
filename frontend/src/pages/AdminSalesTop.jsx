@@ -7,6 +7,11 @@ import { useAuth } from "../context/AuthContext.jsx";
 import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
+const CURRENCY_OPTIONS = [
+    { value: "COP", label: "COP" },
+    { value: "MXN", label: "MXN" },
+    { value: "USD", label: "USDT" },
+];
 
 function currentMonthValue() {
     const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -24,10 +29,17 @@ function formatMoney(value) {
     return new Intl.NumberFormat("es-CO").format(Number(value || 0));
 }
 
+function displayCurrency(value) {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (normalized === "USD") return "USDT";
+    return normalized || "COP";
+}
+
 export default function AdminSalesTop() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
     const [monthValue, setMonthValue] = useState(currentMonthValue);
+    const [currency, setCurrency] = useState("COP");
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [summary, setSummary] = useState(null);
@@ -52,7 +64,7 @@ export default function AdminSalesTop() {
             setError("");
             try {
                 const [year, month] = monthValue.split("-");
-                const response = await apiFetch(`/admin/analytics/sales-top?year=${year}&month=${month}`, { method: "GET" });
+                const response = await apiFetch(`/admin/analytics/sales-top?year=${year}&month=${month}&currency=${currency}`, { method: "GET" });
                 if (!response.ok) throw new Error(response.data?.error || response.data?.message || "No se pudo cargar el top de ventas.");
                 if (cancelled) return;
                 setSummary(response.data?.summary || null);
@@ -69,25 +81,26 @@ export default function AdminSalesTop() {
 
         void loadData();
         return () => { cancelled = true; };
-    }, [monthValue]);
+    }, [monthValue, currency]);
 
+    const activeCurrency = displayCurrency(summary?.currency || currency);
     const cards = useMemo(() => ([
         {
             label: "Ventas del mes",
-            value: `$${formatMoney(summary?.monthRevenue)} COP`,
-            hint: "Facturación total del mes seleccionado",
+            value: `$${formatMoney(summary?.monthRevenue)} ${activeCurrency}`,
+            hint: `Facturación total del mes seleccionado en ${activeCurrency}`,
             tone: "#0ea5e9",
         },
         {
             label: "Cantidad de ventas",
             value: formatMoney(summary?.ordersCount),
-            hint: "Órdenes cerradas en el mes",
+            hint: `Órdenes cerradas en ${activeCurrency}`,
             tone: "#10b981",
         },
         {
             label: "Dinero comprado",
-            value: `$${formatMoney(summary?.costTotal)} COP`,
-            hint: "Costo invertido en las ventas del mes",
+            value: `$${formatMoney(summary?.costTotal)} ${activeCurrency}`,
+            hint: `Costo invertido en las ventas del mes en ${activeCurrency}`,
             tone: "#f59e0b",
         },
         {
@@ -96,14 +109,14 @@ export default function AdminSalesTop() {
             hint: summary?.topPlatform?.salesCount ? `${formatMoney(summary.topPlatform.salesCount)} ventas` : "Sin ventas registradas",
             tone: "#8b5cf6",
         },
-    ]), [summary]);
+    ]), [summary, activeCurrency]);
 
     return (
         <div className="page-shell">
             <style>{`
                 .admin-sales-top-head {
                     display: grid;
-                    grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+                    grid-template-columns: minmax(0, 1fr) minmax(320px, 540px);
                     gap: 14px 18px;
                     align-items: start;
                 }
@@ -121,7 +134,7 @@ export default function AdminSalesTop() {
                 }
                 .admin-sales-top-toolbar {
                     display: grid;
-                    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+                    grid-template-columns: minmax(180px, 220px) minmax(140px, 160px);
                     gap: 10px;
                     align-items: end;
                 }
@@ -136,6 +149,7 @@ export default function AdminSalesTop() {
                     align-items: center;
                     font-size: 12px;
                     font-weight: 700;
+                    grid-column: 1 / -1;
                 }
                 @media (max-width: 1120px) {
                     .admin-sales-top-grid {
@@ -145,12 +159,6 @@ export default function AdminSalesTop() {
                 @media (max-width: 1040px) {
                     .admin-sales-top-head {
                         grid-template-columns: 1fr;
-                    }
-                    .admin-sales-top-toolbar {
-                        grid-template-columns: repeat(2, minmax(0, 1fr));
-                    }
-                    .admin-sales-top-orderHint {
-                        grid-column: 1 / -1;
                     }
                 }
                 @media (max-width: 920px) {
@@ -241,8 +249,30 @@ export default function AdminSalesTop() {
                                         }}
                                     />
                                 </label>
+                                <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
+                                    Moneda
+                                    <select
+                                        value={currency}
+                                        onChange={(event) => setCurrency(event.target.value)}
+                                        style={{
+                                            height: 44,
+                                            padding: "0 14px",
+                                            background: "var(--input-bg)",
+                                            color: "var(--text)",
+                                            border: "1px solid var(--stroke)",
+                                            borderRadius: 12,
+                                            fontSize: 14,
+                                            fontWeight: 600,
+                                            fontFamily: "var(--font)",
+                                        }}
+                                    >
+                                        {CURRENCY_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                        ))}
+                                    </select>
+                                </label>
                                 <div className="admin-sales-top-orderHint">
-                                    Ordenado por ventas del mes, de mayor a menor.
+                                    Ordenado por ventas del mes, de mayor a menor, dentro de {activeCurrency}.
                                 </div>
                             </div>
                         </div>
@@ -297,7 +327,7 @@ export default function AdminSalesTop() {
                                     <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>Valor en ventas, cantidad, dinero comprado y plataforma más vendida por usuario.</p>
                                 </div>
                                 <div style={{ color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
-                                    {loading ? "Cargando..." : `${items.length} vendedores con ventas en el mes`}
+                                    {loading ? "Cargando..." : `${items.length} vendedores con ventas en ${activeCurrency}`}
                                 </div>
                             </div>
 
@@ -305,7 +335,7 @@ export default function AdminSalesTop() {
                                 <table className="admin-sales-top-table">
                                     <thead>
                                         <tr style={{ borderBottom: "1px solid var(--stroke)" }}>
-                                            {["Top", "Usuario", "Ventas del mes", "Cantidad ventas", "Dinero comprado", "Plataforma más vendida"].map((label) => (
+                                            {["Top", "Usuario", `Ventas del mes (${activeCurrency})`, "Cantidad ventas", `Dinero comprado (${activeCurrency})`, "Plataforma más vendida"].map((label) => (
                                                 <th key={label} style={{ textAlign: "left", padding: "0 14px 14px 0", fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.8 }}>
                                                     {label}
                                                 </th>
@@ -335,14 +365,14 @@ export default function AdminSalesTop() {
                                                     <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{item.email}</div>
                                                 </td>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top", color: "#0ea5e9", fontWeight: 900, fontSize: 18 }}>
-                                                    ${formatMoney(item.monthRevenue)} COP
+                                                    ${formatMoney(item.monthRevenue)} {activeCurrency}
                                                 </td>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top" }}>
                                                     <div style={{ color: "var(--text)", fontWeight: 800 }}>{formatMoney(item.ordersCount)}</div>
                                                     <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 4 }}>{formatMoney(item.itemsCount)} items</div>
                                                 </td>
                                                 <td style={{ padding: "14px 14px 14px 0", verticalAlign: "top", color: "#f59e0b", fontWeight: 800 }}>
-                                                    ${formatMoney(item.costTotal)} COP
+                                                    ${formatMoney(item.costTotal)} {activeCurrency}
                                                 </td>
                                                 <td style={{ padding: "14px 0 14px 0", verticalAlign: "top" }}>
                                                     <div style={{ color: "var(--text)", fontWeight: 800 }}>{item.topPlatform?.name || "—"}</div>
@@ -376,7 +406,7 @@ export default function AdminSalesTop() {
                                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Ventas del mes</div>
-                                                <div style={{ color: "#0ea5e9", fontWeight: 900, marginTop: 4 }}>${formatMoney(item.monthRevenue)} COP</div>
+                                                <div style={{ color: "#0ea5e9", fontWeight: 900, marginTop: 4 }}>${formatMoney(item.monthRevenue)} {activeCurrency}</div>
                                             </div>
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Cantidad ventas</div>
@@ -384,7 +414,7 @@ export default function AdminSalesTop() {
                                             </div>
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Dinero comprado</div>
-                                                <div style={{ color: "#f59e0b", fontWeight: 900, marginTop: 4 }}>${formatMoney(item.costTotal)} COP</div>
+                                                <div style={{ color: "#f59e0b", fontWeight: 900, marginTop: 4 }}>${formatMoney(item.costTotal)} {activeCurrency}</div>
                                             </div>
                                             <div>
                                                 <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Plataforma top</div>
@@ -404,7 +434,7 @@ export default function AdminSalesTop() {
                                     textAlign: "center",
                                     fontWeight: 700,
                                 }}>
-                                    No hay ventas registradas para el mes seleccionado.
+                                    No hay ventas registradas para {activeCurrency} en el mes seleccionado.
                                 </div>
                             ) : null}
                         </section>

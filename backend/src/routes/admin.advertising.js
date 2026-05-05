@@ -38,11 +38,20 @@ const upload = multer({
     },
 });
 
-function driveErrorMessage(err, fallback) {
+function driveErrorMessage(err, fallback, context) {
     if (typeof driveService.formatDriveError === "function") {
-        return driveService.formatDriveError(err);
+        return driveService.formatDriveError(err, context);
     }
     return fallback;
+}
+
+function driveErrorStatus(err) {
+    const code = Number(err?.code || err?.response?.status || 0);
+    if (code === 404) return 404;
+    if (code === 403) return 403;
+    if (code === 400) return 400;
+    if (/no es valido|no existe|no fue compartida|no tiene permisos/i.test(err.message)) return 404;
+    return 500;
 }
 
 router.use(requireAuth, requireRole("admin"));
@@ -148,7 +157,11 @@ router.get("/admin/advertising/images/:folderId", async (req, res) => {
         res.json({ ok: true, data: images });
     } catch (err) {
         console.error("[admin/advertising/images]", err.message);
-        res.status(500).json({ ok: false, message: driveErrorMessage(err, "Error listando imagenes.") });
+        const status = driveErrorStatus(err);
+        res.status(status).json({
+            ok: false,
+            message: driveErrorMessage(err, "Error listando imagenes.", req.params.folderId),
+        });
     }
 });
 

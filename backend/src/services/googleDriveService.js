@@ -43,7 +43,7 @@ function getDriveRequestDefaults() {
     };
 }
 
-function formatDriveError(error) {
+function formatDriveError(error, context = "") {
     const details = error?.response?.data?.error;
     const status = Number(error?.code || error?.response?.status || 500);
     const message = String(
@@ -52,19 +52,27 @@ function formatDriveError(error) {
         "Error desconocido de Google Drive."
     );
 
-    if (status === 404) {
+    const ctxPrefix = context ? `[${context}] ` : "";
+
+    if (/invalid_grant|invalid jwt|malformed/i.test(message)) {
+        return `${ctxPrefix}La private key o el email de la service account no son validos.`;
+    }
+    if (status === 404 || /File not found|fileNotFound/i.test(message)) {
+        if (context) {
+            return `${ctxPrefix}La carpeta no existe, fue eliminada o no esta compartida con la service account.`;
+        }
         return "La carpeta raiz de Drive no existe o no fue compartida con la service account.";
     }
     if (status === 403) {
+        if (context) {
+            return `${ctxPrefix}La service account no tiene permisos para acceder a esta carpeta.`;
+        }
         return "La service account no tiene permisos de Editor sobre la carpeta de Drive.";
     }
-    if (/invalid_grant|invalid jwt|malformed/i.test(message)) {
-        return "La private key o el email de la service account no son validos.";
+    if (status === 400) {
+        return `${ctxPrefix}El ID proporcionado no es valido para Google Drive.`;
     }
-    if (/File not found/i.test(message)) {
-        return "No se encontro la carpeta raiz indicada en GOOGLE_DRIVE_PARENT_FOLDER_ID.";
-    }
-    return `Google Drive: ${message}`;
+    return `${ctxPrefix}Google Drive: ${message}`;
 }
 
 /**
@@ -103,10 +111,35 @@ async function makeFilePublic(fileId) {
 }
 
 /**
+ * Verifica que una carpeta exista y sea accesible para la service account.
+ * Lanza error descriptivo si no se puede acceder.
+ */
+async function verifyFolderAccess(folderId) {
+    const drive = getDrive();
+    try {
+        await drive.files.get({
+            fileId: folderId,
+            supportsAllDrives: true,
+            fields: "id, mimeType, trashed",
+        });
+    } catch (err) {
+        const ctx = `carpeta ${folderId}`;
+        throw new Error(formatDriveError(err, ctx));
+    }
+}
+
+/**
  * Lista las imágenes dentro de una carpeta de Drive.
+ * Verifica acceso a la carpeta antes de listar.
  */
 async function listImagesInFolder(folderId) {
     const drive = getDrive();
+
+    if (!folderId || typeof folderId !== "string" || folderId.length < 20) {
+        throw new Error("El ID de carpeta no es valido.");
+    }
+
+    await verifyFolderAccess(folderId);
 
     const res = await drive.files.list({
         ...getDriveRequestDefaults(),
@@ -280,6 +313,7 @@ async function uploadImages(folderId, files) {
 module.exports = {
     listFolders,
     listImagesInFolder,
+    verifyFolderAccess,
     createFolder,
     deleteFolder,
     renameFolder,

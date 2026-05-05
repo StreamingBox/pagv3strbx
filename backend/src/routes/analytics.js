@@ -118,6 +118,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND o.currency = ?
             GROUP BY u.id, u.name, u.email
+            HAVING SUM(o.total) > 0
             ORDER BY revenue DESC, orders_count DESC, user_name ASC
         `, [targetYear, targetMonth, targetCurrency]);
 
@@ -136,6 +137,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND o.currency = ?
+              AND oi.price > 0
             GROUP BY o.user_id, p.id, p.name
             ORDER BY o.user_id ASC, platform_sales_count DESC, platform_revenue DESC, p.name ASC
         `, [targetYear, targetMonth, targetCurrency]);

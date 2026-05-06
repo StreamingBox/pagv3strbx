@@ -8,7 +8,6 @@ import Sidebar from "../components/dashboard/Sidebar.jsx";
 import { apiGet } from "../api/api";
 import { buildApiUrl } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import useAppLogout from "../hooks/useAppLogout.js";
 
 const STATUS_META = {
     submitted: { label: "Enviada", color: "#f59e0b" },
@@ -55,7 +54,6 @@ function resolveQrImageUrl(value) {
 export default function Topups() {
     const navigate = useNavigate();
     const { user } = useAuth();
-    const logout = useAppLogout();
 
     const [wallet, setWallet] = useState(null);
     const [topupConfig, setTopupConfig] = useState({ currency: "", methods: [] });
@@ -72,19 +70,9 @@ export default function Topups() {
     const [historyPage, setHistoryPage] = useState(1);
     const [openingProofId, setOpeningProofId] = useState(null);
 
-    function isAuthFailure(response) {
-        return Number(response?.status) === 401 || Number(response?.status) === 403;
-    }
-
     async function loadWallet() {
         const response = await apiGet("/wallet");
-        if (response.ok) {
-            setWallet(response.data);
-            return;
-        }
-        if (isAuthFailure(response)) {
-            await logout();
-        }
+        if (response.ok) setWallet(response.data);
     }
 
     async function loadTopupConfig() {
@@ -95,22 +83,12 @@ export default function Topups() {
             setTopupConfig({ ...config, methods });
             const firstMethod = methods[0]?.key || "";
             setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
-            return;
-        }
-        if (isAuthFailure(response)) {
-            await logout();
         }
     }
 
     async function loadRequests() {
         const response = await apiGet("/wallet/manual-topups");
-        if (response.ok) {
-            setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
-            return;
-        }
-        if (isAuthFailure(response)) {
-            await logout();
-        }
+        if (response.ok) setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
     }
 
     useEffect(() => {

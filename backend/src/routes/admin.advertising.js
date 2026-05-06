@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const pool = require("../db");
@@ -21,6 +22,57 @@ function sanitizeFilename(name) {
         .replace(/\s+/g, "_")
         .slice(0, 200);
     return name + ext;
+}
+
+function sanitizeExtension(name, mimeType = "") {
+    const ext = String(path.extname(name || "") || "").toLowerCase();
+    if ([".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) return ext;
+    if (mimeType.includes("png")) return ".png";
+    if (mimeType.includes("webp")) return ".webp";
+    if (mimeType.includes("gif")) return ".gif";
+    return ".jpg";
+}
+
+function buildAdvertisingFileName(file) {
+    const ext = sanitizeExtension(file.originalname, file.mimetype);
+    const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
+    const random = crypto.randomBytes(4).toString("hex").toUpperCase();
+    return `PUB-${stamp}-${random}${ext}`;
+}
+
+function hashUpload(filePath) {
+    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function cleanupTemp(file) {
+    try { if (file?.path) fs.unlinkSync(file.path); } catch {}
+}
+
+function parsePagination(query) {
+    const page = Math.max(1, parseInt(query.page || "1", 10) || 1);
+    const rawLimit = parseInt(query.limit || "10", 10) || 10;
+    const limit = Math.min(50, Math.max(1, rawLimit));
+    return { page, limit };
+}
+
+function paginate(items, query) {
+    const { page, limit } = parsePagination(query);
+    const total = items.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    return {
+        data: items.slice(start, start + limit),
+        pagination: { page: safePage, limit, total, totalPages },
+    };
+}
+
+function sortImages(items) {
+    return items.sort((a, b) => {
+        const sortDiff = Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+        if (sortDiff !== 0) return sortDiff;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    });
 }
 
 const TMP_DIR = path.join(__dirname, "..", "..", ".tmp-uploads");
@@ -54,11 +106,48 @@ function driveErrorStatus(err) {
     return 500;
 }
 
+async function getFolderMetaMap() {
+    let rows = [];
+    try {
+        [rows] = await pool.query("SELECT folder_id, folder_name, is_active FROM advertising_folders");
+    } catch {
+        rows = [];
+    }
+    const map = new Map();
+    rows.forEach((row) => {
+        map.set(row.folder_id, {
+            name: row.folder_name,
+            isActive: Boolean(row.is_active),
+        });
+    });
+    return map;
+}
+
+async function upsertFolderMeta(folderId, folderName, isActive = 1) {
+    await pool.query(
+        `INSERT INTO advertising_folders (folder_id, folder_name, is_active)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE folder_name = VALUES(folder_name), updated_at = CURRENT_TIMESTAMP`,
+        [folderId, folderName, isActive ? 1 : 0]
+    );
+}
+
+async function notifyUsersAdvertisingUpload(folderName, count) {
+    if (!count) return;
+    const message = `Nueva publicidad disponible en ${folderName}.`;
+    await pool.query(
+        `INSERT INTO user_notifications (user_id, message)
+         SELECT id, ? FROM users WHERE COALESCE(role, 'user') <> 'admin'`,
+        [message]
+    );
+}
+
 router.use(requireAuth, requireRole("admin"));
 
 router.get("/admin/advertising/folders", async (_req, res) => {
     try {
         const folders = await driveService.listFolders();
+        const folderMeta = await getFolderMetaMap();
         const [rows] = await pool.query(
             "SELECT folder_id, COUNT(*) as count FROM advertising_images WHERE is_active = 1 GROUP BY folder_id"
         );
@@ -71,8 +160,9 @@ router.get("/admin/advertising/folders", async (_req, res) => {
             ok: true,
             data: folders.map((folder) => ({
                 id: folder.id,
-                name: folder.name,
+                name: folderMeta.get(folder.id)?.name || folder.name,
                 createdTime: folder.createdTime,
+                isActive: folderMeta.has(folder.id) ? folderMeta.get(folder.id).isActive : true,
                 imageCount: countMap[folder.id] || 0,
             })),
         });
@@ -90,12 +180,14 @@ router.post("/admin/advertising/folders", async (req, res) => {
         }
 
         const folder = await driveService.createFolder(String(name).trim());
+        await upsertFolderMeta(folder.id, folder.name, 1);
         res.json({
             ok: true,
             data: {
                 id: folder.id,
                 name: folder.name,
                 createdTime: folder.createdTime,
+                isActive: true,
             },
         });
     } catch (err) {
@@ -112,6 +204,7 @@ router.put("/admin/advertising/folders/:id", async (req, res) => {
         }
 
         const folder = await driveService.renameFolder(req.params.id, String(name).trim());
+        await upsertFolderMeta(req.params.id, String(name).trim(), 1);
         await pool.query("UPDATE advertising_images SET folder_name = ? WHERE folder_id = ?", [
             String(name).trim(),
             req.params.id,
@@ -123,11 +216,33 @@ router.put("/admin/advertising/folders/:id", async (req, res) => {
     }
 });
 
+router.patch("/admin/advertising/folders/:id/toggle", async (req, res) => {
+    try {
+        const folderId = req.params.id;
+        const folderName = String(req.body?.name || req.body?.folder_name || "Publicidad").trim();
+        const [rows] = await pool.query("SELECT is_active FROM advertising_folders WHERE folder_id = ?", [folderId]);
+        const newActive = rows.length ? (rows[0].is_active ? 0 : 1) : 0;
+
+        await pool.query(
+            `INSERT INTO advertising_folders (folder_id, folder_name, is_active)
+             VALUES (?, ?, ?)
+             ON DUPLICATE KEY UPDATE is_active = VALUES(is_active), folder_name = VALUES(folder_name), updated_at = CURRENT_TIMESTAMP`,
+            [folderId, folderName, newActive]
+        );
+
+        res.json({ ok: true, is_active: Boolean(newActive) });
+    } catch (err) {
+        console.error("[admin/advertising/folders/toggle]", err.message);
+        res.status(500).json({ ok: false, message: "Error actualizando carpeta." });
+    }
+});
+
 router.delete("/admin/advertising/folders/:id", async (req, res) => {
     try {
         const folderId = req.params.id;
         await driveService.deleteFolder(folderId);
         await pool.query("DELETE FROM advertising_images WHERE folder_id = ?", [folderId]);
+        await pool.query("DELETE FROM advertising_folders WHERE folder_id = ?", [folderId]);
         res.json({ ok: true, message: "Carpeta eliminada." });
     } catch (err) {
         console.error("[admin/advertising/folders DELETE]", err.message);
@@ -149,12 +264,13 @@ router.get("/admin/advertising/images/:folderId", async (req, res) => {
             dbMap[row.file_id] = row;
         });
 
-        const images = driveFiles.map((file) => {
+        const images = sortImages(driveFiles.map((file) => {
             const dbMeta = dbMap[file.id] || {};
             return driveService.normalizeImage(file, dbMeta);
-        });
+        }));
+        const page = paginate(images, req.query);
 
-        res.json({ ok: true, data: images });
+        res.json({ ok: true, data: page.data, pagination: page.pagination });
     } catch (err) {
         console.error("[admin/advertising/images]", err.message);
         const status = driveErrorStatus(err);
@@ -174,18 +290,52 @@ router.post("/admin/advertising/images/:folderId", upload.array("images", 20), a
             return res.status(400).json({ ok: false, message: "Selecciona al menos una imagen." });
         }
 
-        files.forEach((f) => { f.originalname = sanitizeFilename(f.originalname); });
-        const { results: uploaded, errors } = await driveService.uploadImages(folderId, files);
+        const prepared = [];
+        const duplicates = [];
+        const seenHashes = new Set();
+        const uploadMeta = new Map();
+
+        for (const file of files) {
+            const originalName = file.originalname;
+            const fileHash = hashUpload(file.path);
+            const [existing] = await pool.query(
+                "SELECT id, file_name FROM advertising_images WHERE file_hash = ? LIMIT 1",
+                [fileHash]
+            );
+
+            if (seenHashes.has(fileHash) || existing.length) {
+                duplicates.push(originalName);
+                cleanupTemp(file);
+                continue;
+            }
+
+            seenHashes.add(fileHash);
+            const generatedName = buildAdvertisingFileName(file);
+            file.originalname = generatedName;
+            uploadMeta.set(generatedName, { fileHash, originalName });
+            prepared.push(file);
+        }
+
+        if (!prepared.length) {
+            return res.status(400).json({
+                ok: false,
+                message: `No se subio ninguna imagen nueva. Duplicadas: ${duplicates.join(", ")}`,
+            });
+        }
+
+        const { results: uploaded, errors } = await driveService.uploadImages(folderId, prepared);
 
         for (const file of uploaded) {
+            const meta = uploadMeta.get(file.name) || {};
             await pool.query(
-                `INSERT INTO advertising_images (folder_name, folder_id, file_name, file_id, mime_type, web_view_link, thumbnail_link, image_size, sort_order, is_active)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO advertising_images (folder_name, folder_id, file_name, file_id, file_hash, mime_type, web_view_link, thumbnail_link, image_size, sort_order, is_active)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     req.body.folder_name || "General",
                     folderId,
                     file.name,
                     file.id,
+                    meta.fileHash || null,
                     file.mimeType,
                     file.webViewLink || null,
                     file.thumbnailLink || null,
@@ -195,10 +345,13 @@ router.post("/admin/advertising/images/:folderId", upload.array("images", 20), a
                 ]
             );
         }
+        await upsertFolderMeta(folderId, req.body.folder_name || "General", 1);
+        await notifyUsersAdvertisingUpload(req.body.folder_name || "General", uploaded.length);
 
+        const extra = duplicates.length ? ` ${duplicates.length} duplicada(s) omitida(s).` : "";
         const message = errors
-            ? `${uploaded.length} subida(s), ${errors.length} error(es): ${errors.map(e => e.file).join(', ')}`
-            : `${uploaded.length} imagen(es) subida(s).`;
+            ? `${uploaded.length} subida(s), ${errors.length} error(es): ${errors.map(e => e.file).join(', ')}.${extra}`
+            : `${uploaded.length} imagen(es) subida(s).${extra}`;
 
         res.json({
             ok: true,

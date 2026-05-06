@@ -21,6 +21,8 @@ export default function Advertising() {
     const [folders, setFolders] = useState([]);
     const [selectedFolder, setSelectedFolder] = useState(null);
     const [images, setImages] = useState([]);
+    const [imagePage, setImagePage] = useState(1);
+    const [imagePagination, setImagePagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
     const [imagesLoading, setImagesLoading] = useState(false);
     const [error, setError] = useState("");
@@ -36,13 +38,15 @@ export default function Advertising() {
         }
     }, []);
 
-    const loadImages = useCallback(async (folderId) => {
+    const loadImages = useCallback(async (folderId, page = 1) => {
         setImagesLoading(true);
         setError("");
         try {
-            const r = await apiGet(`/advertising/images/${folderId}`);
+            const r = await apiGet(`/advertising/images/${folderId}?page=${page}&limit=10`);
             if (!r.ok) throw new Error(r.data?.message || "Error");
             setImages(Array.isArray(r.data?.data) ? r.data.data : []);
+            setImagePagination(r.data?.pagination || { page, limit: 10, total: 0, totalPages: 1 });
+            setImagePage(r.data?.pagination?.page || page);
         } catch (e) {
             setError(e?.message || "Error cargando imágenes.");
         } finally {
@@ -56,7 +60,8 @@ export default function Advertising() {
         setSelectedFolder(folder);
         setImages([]);
         setPreviewImage(null);
-        loadImages(folder.id);
+        setImagePage(1);
+        loadImages(folder.id, 1);
     }
 
     return (
@@ -169,6 +174,7 @@ export default function Advertising() {
                                     <div style={{ fontSize: 14, fontWeight: 600 }}>No hay imágenes en esta carpeta</div>
                                 </div>
                             ) : (
+                                <>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
                                     {images.map((img, idx) => (
                                         <motion.div
@@ -219,6 +225,17 @@ export default function Advertising() {
                                         </motion.div>
                                     ))}
                                 </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
+                                    <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
+                                        Mostrando {images.length} de {imagePagination.total || images.length} imagen(es)
+                                    </span>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <button className="btn-ghost" disabled={imagePage <= 1} onClick={() => loadImages(selectedFolder.id, imagePage - 1)} style={{ height: 38, padding: "0 14px" }}>Anterior</button>
+                                        <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Pág. {imagePagination.page} / {imagePagination.totalPages}</span>
+                                        <button className="btn-ghost" disabled={imagePage >= imagePagination.totalPages} onClick={() => loadImages(selectedFolder.id, imagePage + 1)} style={{ height: 38, padding: "0 14px" }}>Siguiente</button>
+                                    </div>
+                                </div>
+                                </>
                             )}
                         </>
                     )}

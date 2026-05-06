@@ -10,13 +10,33 @@ async function getFolderMetaMap() {
                 is_active, sort_order, created_at
            FROM advertising_images`
     );
+    let folderRows = [];
+    try {
+        [folderRows] = await pool.query(
+            "SELECT folder_id, folder_name, is_active FROM advertising_folders"
+        );
+    } catch {
+        folderRows = [];
+    }
 
     const metaByFolder = new Map();
     const metaByFile = new Map();
 
+    for (const row of folderRows) {
+        if (row.folder_id) {
+            metaByFolder.set(row.folder_id, {
+                name: row.folder_name,
+                isActive: Boolean(row.is_active),
+            });
+        }
+    }
+
     for (const row of rows) {
         if (row.folder_id && !metaByFolder.has(row.folder_id)) {
-            metaByFolder.set(row.folder_id, row.folder_name);
+            metaByFolder.set(row.folder_id, {
+                name: row.folder_name,
+                isActive: true,
+            });
         }
         if (row.file_id) {
             metaByFile.set(row.file_id, row);
@@ -36,6 +56,25 @@ async function getFolderImages(folderId, metaByFile) {
             if (sortDiff !== 0) return sortDiff;
             return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         });
+}
+
+function parsePagination(query) {
+    const page = Math.max(1, parseInt(query.page || "1", 10) || 1);
+    const rawLimit = parseInt(query.limit || "10", 10) || 10;
+    const limit = Math.min(50, Math.max(1, rawLimit));
+    return { page, limit };
+}
+
+function paginate(items, query) {
+    const { page, limit } = parsePagination(query);
+    const total = items.length;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const safePage = Math.min(page, totalPages);
+    const start = (safePage - 1) * limit;
+    return {
+        data: items.slice(start, start + limit),
+        pagination: { page: safePage, limit, total, totalPages },
+    };
 }
 
 function driveErrorMessage(err, fallback, context) {
@@ -90,11 +129,13 @@ router.get("/advertising/folders", requireAuth, async (_req, res) => {
 
         const folders = [];
         for (const folder of driveFolders) {
+            const folderMeta = metaByFolder.get(folder.id);
+            if (folderMeta && !folderMeta.isActive) continue;
             const images = await getFolderImages(folder.id, metaByFile);
             if (!images.length) continue;
             folders.push({
                 id: folder.id,
-                name: metaByFolder.get(folder.id) || folder.name,
+                name: folderMeta?.name || folder.name,
                 imageCount: images.length,
                 createdTime: folder.createdTime || null,
             });
@@ -112,9 +153,14 @@ router.get("/advertising/folders", requireAuth, async (_req, res) => {
 router.get("/advertising/images/:folderId", requireAuth, async (req, res) => {
     try {
         const { folderId } = req.params;
-        const { metaByFile } = await getFolderMetaMap();
+        const { metaByFolder, metaByFile } = await getFolderMetaMap();
+        const folderMeta = metaByFolder.get(folderId);
+        if (folderMeta && !folderMeta.isActive) {
+            return res.json({ ok: true, data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 } });
+        }
         const images = await getFolderImages(folderId, metaByFile);
-        res.json({ ok: true, data: images });
+        const page = paginate(images, req.query);
+        res.json({ ok: true, data: page.data, pagination: page.pagination });
     } catch (err) {
         console.error("[advertising/images]", err.message);
         const status = driveErrorStatus(err);
@@ -132,11 +178,13 @@ router.get("/advertising/all", requireAuth, async (_req, res) => {
         const grouped = [];
 
         for (const folder of driveFolders) {
+            const folderMeta = metaByFolder.get(folder.id);
+            if (folderMeta && !folderMeta.isActive) continue;
             const images = await getFolderImages(folder.id, metaByFile);
             if (!images.length) continue;
             grouped.push({
                 folderId: folder.id,
-                folderName: metaByFolder.get(folder.id) || folder.name,
+                folderName: folderMeta?.name || folder.name,
                 images,
             });
         }

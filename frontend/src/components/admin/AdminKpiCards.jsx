@@ -64,6 +64,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "🧩", tone: "orange", title: "Plataformas", hint: "Gestión de plataformas.", path: "/admin/platforms" },
                 { icon: "💳", tone: "pink", title: "Planes y Precios", hint: "Configuración de precios.", path: "/admin/prices" },
                 { icon: "⏱️", tone: "fuchsia", title: "Duraciones", hint: "Mensualidades, trimestres, etc.", path: "/admin/durations" },
+                { icon: "📢", tone: "sky", title: "Publicidad", hint: "Imágenes y carpetas de Drive.", path: "/admin/advertising" },
             ]
         },
         {

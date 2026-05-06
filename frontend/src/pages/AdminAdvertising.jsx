@@ -36,6 +36,9 @@ export default function AdminAdvertising() {
     const [folders, setFolders] = useState([]);
     const [selectedFolder, setSelectedFolder] = useState(null);
     const [images, setImages] = useState([]);
+    const [imagePage, setImagePage] = useState(1);
+    const [imageLimit, setImageLimit] = useState(10);
+    const [imagePagination, setImagePagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
     const [imagesLoading, setImagesLoading] = useState(false);
     const [error, setError] = useState("");
@@ -74,20 +77,22 @@ export default function AdminAdvertising() {
         }
     }, []);
 
-    const loadImages = useCallback(async (folderId) => {
+    const loadImages = useCallback(async (folderId, page = imagePage, limit = imageLimit) => {
         if (!folderId) return;
         setImagesLoading(true);
         setError("");
         try {
-            const r = await apiGet(`/admin/advertising/images/${folderId}`);
+            const r = await apiGet(`/admin/advertising/images/${folderId}?page=${page}&limit=${limit}`);
             if (!r.ok) throw new Error(r.data?.message || "Error cargando imágenes.");
             setImages(Array.isArray(r.data?.data) ? r.data.data : []);
+            setImagePagination(r.data?.pagination || { page, limit, total: 0, totalPages: 1 });
+            setImagePage(r.data?.pagination?.page || page);
         } catch (e) {
             setError(e?.message || "Error cargando imágenes.");
         } finally {
             setImagesLoading(false);
         }
-    }, []);
+    }, [imageLimit, imagePage]);
 
     useEffect(() => { loadFolders(); }, [loadFolders]);
 
@@ -146,6 +151,24 @@ export default function AdminAdvertising() {
         setConfirmDelete({ type: "folder", id: folder.id, name: folder.name });
     }
 
+    async function toggleFolderActive(folder) {
+        setError("");
+        try {
+            const r = await apiFetch(`/admin/advertising/folders/${folder.id}/toggle`, {
+                method: "PATCH",
+                body: JSON.stringify({ name: folder.name }),
+            });
+            if (!r.ok) throw new Error(r.data?.message || "Error actualizando carpeta.");
+            const nextActive = Boolean(r.data?.is_active);
+            setFolders(prev => prev.map(item => item.id === folder.id ? { ...item, isActive: nextActive } : item));
+            if (selectedFolder?.id === folder.id) {
+                setSelectedFolder(prev => prev ? { ...prev, isActive: nextActive } : prev);
+            }
+        } catch (e) {
+            setError(e?.message || "Error actualizando carpeta.");
+        }
+    }
+
     async function executeDelete() {
         if (!confirmDelete) return;
         setError("");
@@ -176,7 +199,8 @@ export default function AdminAdvertising() {
     function selectFolder(folder) {
         setSelectedFolder(folder);
         setImages([]);
-        loadImages(folder.id);
+        setImagePage(1);
+        loadImages(folder.id, 1, imageLimit);
     }
 
     async function handleUploadFiles(e) {
@@ -199,9 +223,10 @@ export default function AdminAdvertising() {
             const r = await apiPostFormData("/admin/advertising/images/" + selectedFolder.id, formData);
             if (!r.ok) throw new Error(r.data?.message || "Error subiendo imágenes.");
             const json = r.data;
-            setSuccessMsg(`✅ ${json?.data?.length || files.length} imagen(es) subida(s).`);
+            setSuccessMsg(json?.message || `${json?.data?.length || files.length} imagen(es) subida(s).`);
             setTimeout(() => setSuccessMsg(""), 4000);
-            await loadImages(selectedFolder.id);
+            setImagePage(1);
+            await loadImages(selectedFolder.id, 1, imageLimit);
             await loadFolders();
         } catch (e) {
             setError(e?.message || "Error de conexión.");
@@ -354,6 +379,7 @@ export default function AdminAdvertising() {
                                             )}
                                         </div>
                                         {renamingFolder === f.id ? (
+                                            <>
                                             <div style={{ display: "flex", gap: 4 }}>
                                                 <button onClick={(e) => { e.stopPropagation(); submitRename(); }}
                                                     style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 6, padding: "3px 8px", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
@@ -364,10 +390,13 @@ export default function AdminAdvertising() {
                                                     ✕
                                                 </button>
                                             </div>
+                                            </>
                                         ) : (
-                                            <div style={{ display: "flex", gap: 4, opacity: 0, transition: "opacity 0.15s" }}
-                                                onMouseEnter={e => e.currentTarget.style.opacity = "1"}
-                                                onMouseLeave={e => e.currentTarget.style.opacity = "0"}>
+                                            <div style={{ display: "flex", gap: 4, opacity: 1, transition: "opacity 0.15s" }}
+                                                >
+                                                <button onClick={(e) => { e.stopPropagation(); toggleFolderActive(f); }}
+                                                    style={{ background: f.isActive === false ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.12)", border: `1px solid ${f.isActive === false ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.28)"}`, color: f.isActive === false ? "#ef4444" : "#10b981", cursor: "pointer", fontSize: 10, padding: "3px 7px", borderRadius: 999, fontWeight: 800 }}
+                                                    title={f.isActive === false ? "Mostrar a usuarios" : "Ocultar a usuarios"}>{f.isActive === false ? "Oculta" : "Visible"}</button>
                                                 <button onClick={(e) => { e.stopPropagation(); startRename(f); }}
                                                     style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, padding: 2 }}
                                                     title="Renombrar">✎</button>
@@ -442,6 +471,7 @@ export default function AdminAdvertising() {
                                                 <div style={{ fontSize: 13, marginTop: 4 }}>Sube imágenes usando el botón de arriba.</div>
                                             </div>
                                         ) : (
+                                            <>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
                                                 {images.map((img, idx) => (
                                                     <motion.div
@@ -514,6 +544,31 @@ export default function AdminAdvertising() {
                                                     </motion.div>
                                                 ))}
                                             </div>
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
+                                                <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
+                                                    Mostrando {images.length} de {imagePagination.total || images.length} imagen(es)
+                                                </div>
+                                                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                                    <select
+                                                        value={imageLimit}
+                                                        onChange={(e) => {
+                                                            const nextLimit = Number(e.target.value);
+                                                            setImageLimit(nextLimit);
+                                                            setImagePage(1);
+                                                            loadImages(selectedFolder.id, 1, nextLimit);
+                                                        }}
+                                                        style={{ ...inputStyle, width: 86, height: 36 }}
+                                                    >
+                                                        <option value={10}>10</option>
+                                                        <option value={20}>20</option>
+                                                        <option value={30}>30</option>
+                                                    </select>
+                                                    <button className="btn-ghost" disabled={imagePagination.page <= 1} onClick={() => loadImages(selectedFolder.id, imagePagination.page - 1, imageLimit)} style={{ height: 36, padding: "0 12px" }}>Anterior</button>
+                                                    <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Pág. {imagePagination.page} / {imagePagination.totalPages}</span>
+                                                    <button className="btn-ghost" disabled={imagePagination.page >= imagePagination.totalPages} onClick={() => loadImages(selectedFolder.id, imagePagination.page + 1, imageLimit)} style={{ height: 36, padding: "0 12px" }}>Siguiente</button>
+                                                </div>
+                                            </div>
+                                            </>
                                         )}
                                     </div>
                                 </>

@@ -368,12 +368,30 @@ pool.query("CREATE INDEX idx_manual_topup_proof_expires ON manual_topup_proof_to
 // Tabla de publicidad / advertising (Google Drive)
 // ──────────────────────────────────────────────────────────────
 pool.query(`
+    CREATE TABLE IF NOT EXISTS advertising_folders (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        folder_id VARCHAR(255) NOT NULL,
+        folder_name VARCHAR(255) NOT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_advertising_folder_id (folder_id),
+        INDEX idx_advertising_folder_active (is_active)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE advertising_folders ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1").catch(() => { });
+pool.query("ALTER TABLE advertising_folders ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_advertising_folder_id ON advertising_folders(folder_id)").catch(() => { });
+pool.query("CREATE INDEX idx_advertising_folder_active ON advertising_folders(is_active)").catch(() => { });
+
+pool.query(`
     CREATE TABLE IF NOT EXISTS advertising_images (
         id INT AUTO_INCREMENT PRIMARY KEY,
         folder_name VARCHAR(255) NOT NULL,
         folder_id VARCHAR(255) NULL,
         file_name VARCHAR(255) NOT NULL,
         file_id VARCHAR(255) NOT NULL,
+        file_hash CHAR(64) NULL,
         mime_type VARCHAR(100) NULL DEFAULT 'image/jpeg',
         web_view_link TEXT NULL,
         thumbnail_link TEXT NULL,
@@ -388,10 +406,12 @@ pool.query(`
     )
 `).catch(() => { });
 pool.query("ALTER TABLE advertising_images ADD COLUMN folder_id VARCHAR(255) NULL").catch(() => { });
+pool.query("ALTER TABLE advertising_images ADD COLUMN file_hash CHAR(64) NULL").catch(() => { });
 pool.query("ALTER TABLE advertising_images ADD COLUMN image_size INT NULL DEFAULT 0").catch(() => { });
 pool.query("ALTER TABLE advertising_images ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
 pool.query("CREATE INDEX idx_advertising_folder ON advertising_images(folder_name)").catch(() => { });
 pool.query("CREATE INDEX idx_advertising_active ON advertising_images(is_active)").catch(() => { });
 pool.query("CREATE INDEX idx_advertising_sort ON advertising_images(sort_order)").catch(() => { });
+pool.query("CREATE INDEX idx_advertising_file_hash ON advertising_images(file_hash)").catch(() => { });
 
 module.exports = pool;

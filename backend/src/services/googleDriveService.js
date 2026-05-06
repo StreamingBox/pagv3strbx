@@ -159,7 +159,7 @@ async function listImagesInFolder(folderId) {
         ...getDriveRequestDefaults(),
         q: `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`,
         fields: "files(id, name, mimeType, webViewLink, thumbnailLink, size, createdTime)",
-        orderBy: "name",
+        orderBy: "createdTime desc",
     });
     return res.data.files || [];
 }

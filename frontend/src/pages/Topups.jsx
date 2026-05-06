@@ -8,6 +8,7 @@ import Sidebar from "../components/dashboard/Sidebar.jsx";
 import { apiGet } from "../api/api";
 import { buildApiUrl } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import useAppLogout from "../hooks/useAppLogout.js";
 
 const STATUS_META = {
     submitted: { label: "Enviada", color: "#f59e0b" },
@@ -54,6 +55,7 @@ function resolveQrImageUrl(value) {
 export default function Topups() {
     const navigate = useNavigate();
     const { user } = useAuth();
+    const logout = useAppLogout();
 
     const [wallet, setWallet] = useState(null);
     const [topupConfig, setTopupConfig] = useState({ currency: "", methods: [] });

@@ -296,7 +296,6 @@ async function getFileInfo(fileId) {
 async function uploadImages(folderId, files) {
     const results = [];
     const errors = [];
-    await verifyFolderAccess(folderId);
     for (const file of files) {
         try {
             const uploaded = await uploadImage(

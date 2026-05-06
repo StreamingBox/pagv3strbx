@@ -54,6 +54,35 @@ function driveErrorStatus(err) {
     return 500;
 }
 
+router.get("/advertising/file/:fileId", requireAuth, async (req, res) => {
+    try {
+        const { fileId } = req.params;
+        const { meta, stream } = await driveService.getFileStream(fileId);
+        const isDownload = String(req.query.download || "").trim() === "1";
+        res.setHeader("Content-Type", meta?.mimeType || "application/octet-stream");
+        res.setHeader(
+            "Content-Disposition",
+            `${isDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(meta?.name || fileId)}"`
+        );
+        stream.on("error", (err) => {
+            console.error("[advertising/file stream]", err.message);
+            if (!res.headersSent) {
+                res.status(500).end("Error leyendo archivo.");
+            } else {
+                res.end();
+            }
+        });
+        stream.pipe(res);
+    } catch (err) {
+        console.error("[advertising/file]", err.message);
+        const status = driveErrorStatus(err);
+        res.status(status).json({
+            ok: false,
+            message: driveErrorMessage(err, "No se pudo leer el archivo.", req.params.fileId),
+        });
+    }
+});
+
 router.get("/advertising/folders", requireAuth, async (_req, res) => {
     try {
         const driveFolders = await driveService.listFolders();

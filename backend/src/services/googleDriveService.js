@@ -166,7 +166,9 @@ async function createFolder(folderName) {
         },
         fields: "id, name, createdTime",
     });
-    await makeFilePublic(res.data.id);
+    try {
+        await makeFilePublic(res.data.id);
+    } catch {}
     return res.data;
 }
 
@@ -216,7 +218,6 @@ async function uploadImage(folderId, filePath, originalName, mimeType) {
             fields: "id, name, mimeType, webViewLink, thumbnailLink, size",
         });
         fileId = res.data.id;
-        await makeFilePublic(fileId);
         return {
             id: res.data.id,
             name: res.data.name || originalName,
@@ -243,15 +244,15 @@ async function deleteFile(fileId) {
 }
 
 function getDownloadLink(fileId) {
-    return `https://drive.google.com/uc?export=download&id=${fileId}`;
+    return `/api/advertising/file/${fileId}?download=1`;
 }
 
 function getPreviewLink(fileId) {
-    return `https://drive.google.com/uc?export=view&id=${fileId}`;
+    return `/api/advertising/file/${fileId}`;
 }
 
 function getThumbnailLink(fileId) {
-    return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+    return `/api/advertising/file/${fileId}`;
 }
 
 /**
@@ -288,6 +289,23 @@ async function getFileInfo(fileId) {
         fields: "id, name, mimeType, webViewLink, thumbnailLink, size, webContentLink",
     });
     return res.data;
+}
+
+async function getFileStream(fileId) {
+    const drive = getDrive();
+    const meta = await getFileInfo(fileId);
+    const response = await drive.files.get(
+        {
+            fileId,
+            supportsAllDrives: true,
+            alt: "media",
+        },
+        { responseType: "stream" }
+    );
+    return {
+        meta,
+        stream: response.data,
+    };
 }
 
 /**
@@ -335,5 +353,6 @@ module.exports = {
     getThumbnailLink,
     normalizeImage,
     getFileInfo,
+    getFileStream,
     formatDriveError,
 };

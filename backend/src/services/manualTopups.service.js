@@ -12,6 +12,7 @@ const {
     sanitizeAdminNote,
     sanitizeMatchedSenderName,
 } = require("../utils/manualTopupText");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 const PROOF_TOKEN_TTL_MINUTES = 10;
 
@@ -24,7 +25,7 @@ function mapManualTopupRow(row) {
         userEmail: row.user_email || null,
         userName: row.user_name || null,
         amount: Number(row.amount || 0),
-        currency: row.currency || "USD",
+        currency: normalizeCurrency(row.currency || "USD", "USD"),
         methodKey: row.method_key,
         methodLabel: row.method_label,
         proofFileUrl: row.proof_file_url,
@@ -65,23 +66,28 @@ function sanitizeManualTopupForClient(rowOrItem) {
 }
 
 async function ensureWalletForUser(conn, userId, currency) {
+    const targetCurrency = normalizeCurrency(currency || "USD", "USD");
     const [rows] = await conn.query(
         "SELECT id, balance, currency FROM wallets WHERE user_id = ? LIMIT 1 FOR UPDATE",
         [userId]
     );
     if (rows.length) {
+        const currentCurrency = normalizeCurrency(rows[0].currency || targetCurrency, targetCurrency);
+        if (!sameCurrency(currentCurrency, targetCurrency)) {
+            await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [targetCurrency, rows[0].id]);
+        }
         return {
             id: rows[0].id,
             balance: Number(rows[0].balance || 0),
-            currency: String(rows[0].currency || currency || "USD").toUpperCase(),
+            currency: targetCurrency,
         };
     }
 
     const [ins] = await conn.query(
         "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
-        [userId, String(currency || "USD").toUpperCase()]
+        [userId, targetCurrency]
     );
-    return { id: ins.insertId, balance: 0, currency: String(currency || "USD").toUpperCase() };
+    return { id: ins.insertId, balance: 0, currency: targetCurrency };
 }
 
 function getPublicBaseUrl() {
@@ -243,7 +249,7 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
                 requestRow.user_currency || requestRow.currency || "COP"
             );
 
-            if (String(wallet.currency || "").toUpperCase() !== String(requestRow.currency || "").toUpperCase()) {
+            if (!sameCurrency(wallet.currency, requestRow.currency)) {
                 throw new Error(`La wallet del usuario esta en ${wallet.currency} y la solicitud esta en ${requestRow.currency}.`);
             }
 

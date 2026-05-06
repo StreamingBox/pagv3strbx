@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getPlatformLogo, getInitials } from "../../../utils/platform.js";
+import { displayCurrency } from "../../../utils/currency.js";
 
 export default function CartItem({ item, index, onRemove }) {
     const c = item;
@@ -32,7 +33,7 @@ export default function CartItem({ item, index, onRemove }) {
 
             <div className="cart-itemRight">
                 <div className="cart-itemPrice">
-                    {Number(c.price).toLocaleString("es-CO")} {c.currency}
+                    {Number(c.price).toLocaleString("es-CO")} {displayCurrency(c.currency, "COP")}
                 </div>
                 <button className="btn-ghost cart-removeBtn" onClick={() => onRemove(index)}>
                     Quitar

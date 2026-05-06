@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { normalizeCurrency } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -13,11 +14,9 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
         const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 1000);
         const offset = (pageNum - 1) * limitNum;
 
-        // COUNT
         const [countRows] = await pool.query("SELECT COUNT(*) as total FROM users");
         const total = countRows[0].total;
 
-        // DATA
         const [rows] = await pool.query(
             `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at, u.whatsapp,
                COALESCE(w.balance, 0) AS balance, 
@@ -42,13 +41,12 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
             [limitNum, offset]
         );
 
-
         return res.json({
             items: rows,
             total,
             page: pageNum,
             limit: limitNum,
-            totalPages: Math.ceil(total / limitNum)
+            totalPages: Math.ceil(total / limitNum),
         });
     } catch (err) {
         console.error("API Error at " + req.originalUrl + ":", err.message);
@@ -68,13 +66,13 @@ router.get("/admin/users/stats", requireAuth, requireRole("admin"), async (req, 
     }
 });
 
-// ✅ Admin crea usuario
 router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { name, email, password, role, currency, whatsapp } = req.body || {};
-        const finalCurrency = (currency || "COP").toString().toUpperCase();
-        if (!["COP", "USD", "MXN"].includes(finalCurrency)) {
-            return res.status(400).json({ message: "currency inválida. Usa COP, USD o MXN." });
+        const requestedCurrency = String(currency || "COP").trim().toUpperCase();
+        const finalCurrency = normalizeCurrency(requestedCurrency, "COP");
+        if (!["COP", "USD", "USDT", "MXN"].includes(requestedCurrency) || !["COP", "USD", "MXN"].includes(finalCurrency)) {
+            return res.status(400).json({ message: "currency inválida. Usa COP, MXN o USDT." });
         }
 
         if (!name || !email || !password) {
@@ -99,7 +97,6 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
             [result.insertId, finalCurrency]
         );
 
-
         return res.status(201).json({
             user: { id: result.insertId, name, email: normalizedEmail, role: finalRole, status: "active", whatsapp: whatsapp || null },
         });
@@ -109,8 +106,6 @@ router.post("/admin/users", requireAuth, requireRole("admin"), async (req, res) 
     }
 });
 
-// ✅ Admin actualiza role/status/name
-// ✅ Admin actualiza role/status/name/currency (con regla segura)
 router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, res) => {
     const conn = await pool.getConnection();
     try {
@@ -119,15 +114,14 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
 
         await conn.beginTransaction();
 
-        // Si viene currency, validamos y sincronizamos users + wallets.
         if (currency !== undefined && currency !== null && String(currency).trim() !== "") {
-            const finalCurrency = String(currency).trim().toUpperCase();
-            if (!["COP", "USD", "MXN"].includes(finalCurrency)) {
+            const requestedCurrency = String(currency).trim().toUpperCase();
+            const finalCurrency = normalizeCurrency(requestedCurrency);
+            if (!["COP", "USD", "USDT", "MXN"].includes(requestedCurrency) || !["COP", "USD", "MXN"].includes(finalCurrency)) {
                 await conn.rollback();
-                return res.status(400).json({ message: "currency inválida. Usa COP, USD o MXN." });
+                return res.status(400).json({ message: "currency inválida. Usa COP, MXN o USDT." });
             }
 
-            // Regla recomendada: solo dejar cambiar moneda si el balance está en 0
             const [wrows] = await conn.query(
                 "SELECT balance FROM wallets WHERE user_id = ? LIMIT 1",
                 [id]
@@ -145,7 +139,6 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
             await conn.query("UPDATE wallets SET currency = ? WHERE user_id = ?", [finalCurrency, id]);
         }
 
-        // Actualizaciones normales
         await conn.query(
             `UPDATE users
        SET name = COALESCE(?, name),
@@ -167,8 +160,6 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
     }
 });
 
-
-// ✅ Admin cambia contraseña
 router.patch("/admin/users/:id/password", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { id } = req.params;
@@ -184,7 +175,6 @@ router.patch("/admin/users/:id/password", requireAuth, requireRole("admin"), asy
     }
 });
 
-// ✅ Admin ver suscripciones a notificaciones de stock
 router.get("/admin/stock-subscriptions", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const [rows] = await pool.query(
@@ -210,12 +200,10 @@ router.get("/admin/stock-subscriptions", requireAuth, requireRole("admin"), asyn
     }
 });
 
-// ✅ Admin marcar como resuelto: notifica al usuario y elimina la suscripción
 router.delete("/admin/stock-subscriptions/:id", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const subId = req.params.id;
 
-        // 1. Obtener datos de la suscripción antes de borrarla
         const [subs] = await pool.query(
             `SELECT ss.user_id, p.name AS platform_name
              FROM stock_subscriptions ss
@@ -227,14 +215,12 @@ router.delete("/admin/stock-subscriptions/:id", requireAuth, requireRole("admin"
 
         if (subs.length > 0) {
             const { user_id, platform_name } = subs[0];
-            // 2. Insertar notificación interna para el usuario
             await pool.query(
                 "INSERT INTO user_notifications (user_id, message) VALUES (?, ?)",
                 [user_id, `¡Ya hay stock disponible de ${platform_name}! Ingresa al catálogo para comprar.`]
             );
         }
 
-        // 3. Eliminar la suscripción
         await pool.query("DELETE FROM stock_subscriptions WHERE id = ?", [subId]);
         return res.json({ ok: true });
     } catch (err) {

@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { getPlatformLogo } from "../../utils/platform.js";
+import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
 
 const MotionDiv = motion.div;
@@ -198,7 +199,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     {Number(item.price || 0).toLocaleString("es-CO")}
                                 </span>
                                 <span className="catalog-card__price-currency">
-                                    {item.currency || "COP"}
+                                    {displayCurrency(item.currency, "COP")}
                                 </span>
                             </div>
 

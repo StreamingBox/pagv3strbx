@@ -9,6 +9,7 @@ import { apiGet, apiGetTransactions } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import TransactionsList from "../components/wallet/TransactionsList.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
+import { displayCurrency } from "../utils/currency.js";
 
 export default function Wallet() {
     const navigate = useNavigate();
@@ -65,14 +66,14 @@ export default function Wallet() {
                                 Saldo disponible
                             </div>
                             <div className="wallet-balance" style={{ fontSize: 24 }}>
-                                {Number(wallet?.balance || 0).toLocaleString("es-CO")}
-                                <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 6, fontWeight: 700, background: "rgba(13,166,242,0.12)", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 6, padding: "1px 6px" }}>
-                                    {wallet?.currency || "COP"}
+                                    {Number(wallet?.balance || 0).toLocaleString("es-CO")}
+                                    <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 6, fontWeight: 700, background: "rgba(13,166,242,0.12)", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 6, padding: "1px 6px" }}>
+                                    {displayCurrency(wallet?.currency, "COP")}
                                 </span>
                             </div>
                             <div className="wallet-meta" style={{ marginTop: 6 }}>
                                 <span className="wallet-meta__label">Moneda: </span>
-                                <b>{wallet?.currency || "-"}</b>
+                                <b>{displayCurrency(wallet?.currency) || "-"}</b>
                             </div>
                         </section>
 
@@ -87,7 +88,7 @@ export default function Wallet() {
                             <div className="wallet-balance" style={{ color: "#10b981", fontSize: 24 }}>
                                 {Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
                                 <span className="wallet-balance__cur" style={{ color: "rgba(16,185,129,0.6)" }}>
-                                    {wallet?.currency || "COP"}
+                                    {displayCurrency(wallet?.currency, "COP")}
                                 </span>
                             </div>
                             <div className="wallet-meta" style={{ marginTop: 6 }}>
@@ -107,7 +108,7 @@ export default function Wallet() {
                                 {Number(wallet?.total_invested || 0).toLocaleString("es-CO")}
                             </div>
                             <div style={{ fontSize: 11, color: "rgba(19,200,236,0.6)", fontWeight: 700 }}>
-                                {wallet?.currency || "COP"}
+                                {displayCurrency(wallet?.currency, "COP")}
                             </div>
                         </div>
                     </section>

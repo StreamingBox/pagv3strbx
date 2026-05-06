@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -15,6 +16,12 @@ router.post("/admin/wallet/topup", requireAuth, requireRole("admin"), async (req
     try {
         await conn.beginTransaction();
 
+        const [[userRow]] = await conn.query(
+            "SELECT currency FROM users WHERE id = ? LIMIT 1",
+            [userId]
+        );
+        const targetCurrency = normalizeCurrency(userRow?.currency || "COP", "COP");
+
         const [wrows] = await conn.query(
             "SELECT id, balance, currency FROM wallets WHERE user_id = ? FOR UPDATE",
             [userId]
@@ -23,16 +30,20 @@ router.post("/admin/wallet/topup", requireAuth, requireRole("admin"), async (req
         let walletId, balance, currency;
         if (!wrows.length) {
             const [ins] = await conn.query(
-                "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, 'COP')",
-                [userId]
+                "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
+                [userId, targetCurrency]
             );
             walletId = ins.insertId;
             balance = 0;
-            currency = "COP";
+            currency = targetCurrency;
         } else {
             walletId = wrows[0].id;
             balance = Number(wrows[0].balance);
-            currency = wrows[0].currency || "COP";
+            currency = normalizeCurrency(wrows[0].currency || targetCurrency, targetCurrency);
+            if (!sameCurrency(currency, targetCurrency)) {
+                await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [targetCurrency, walletId]);
+                currency = targetCurrency;
+            }
         }
 
         const amt = Number(amount);

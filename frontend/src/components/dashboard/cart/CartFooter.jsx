@@ -1,4 +1,5 @@
 import ProfitBox from "./ProfitBox.jsx";
+import { displayCurrency } from "../../../utils/currency.js";
 
 export default function CartFooter({
     cartTotal,
@@ -19,7 +20,7 @@ export default function CartFooter({
             <div className="cart-totalBlock">
                 <div className="cart-totalLabel">Total</div>
                 <div className="cart-totalValue">
-                    {Number(cartTotal).toLocaleString("es-CO")} {cartCurrency}
+                    {Number(cartTotal).toLocaleString("es-CO")} {displayCurrency(cartCurrency)}
                 </div>
             </div>
 

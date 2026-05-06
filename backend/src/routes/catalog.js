@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { normalizeCurrency, currencyAliases } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -25,7 +26,10 @@ router.get("/catalog", requireAuth, async (req, res) => {
       "SELECT currency FROM users WHERE id = ? LIMIT 1",
       [userId]
     );
-    const userCurrency = (urows?.[0]?.currency || "COP").toString().toUpperCase();
+    const userCurrency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
+    const aliases = currencyAliases(userCurrency, "COP");
+    const currencyPlaceholders = aliases.map(() => "?").join(",");
+    const allowedCurrencySql = aliases.map(() => "FIND_IN_SET(?, UPPER(REPLACE(p.allowed_currencies, ' ', ''))) > 0").join(" OR ");
 
     // 2) Traer catálogo filtrado por moneda + categoría + allowed_currencies
     const [rows] = await pool.query(
@@ -71,8 +75,12 @@ router.get("/catalog", requireAuth, async (req, res) => {
 
       WHERE pp.is_active = 1
         AND p.is_active = 1
-        AND pp.currency = ?
-        AND (p.allowed_currencies IS NULL OR p.allowed_currencies = '' OR FIND_IN_SET(?, p.allowed_currencies) > 0)
+        AND UPPER(pp.currency) IN (${currencyPlaceholders})
+        AND (
+          p.allowed_currencies IS NULL
+          OR p.allowed_currencies = ''
+          OR ${allowedCurrencySql}
+        )
 
       ORDER BY
         COALESCE(c.sort_order, 9999) ASC,
@@ -80,7 +88,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.name ASC,
         d.days ASC
       `,
-      [userCurrency, userCurrency]
+      [...aliases, ...aliases]
     );
 
     res.set("Cache-Control", "private, no-store, no-cache, must-revalidate");

@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { normalizeCurrency } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -81,15 +82,15 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
 
                 MAX(CASE WHEN pp.currency='COP' THEN pp.id END)        AS id_cop,
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.id END)        AS id_mxn,
-                MAX(CASE WHEN pp.currency='USD' THEN pp.id END)        AS id_usd,
+                MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.id END)        AS id_usd,
 
                 MAX(CASE WHEN pp.currency='COP' THEN pp.price END)     AS price_cop,
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.price END)     AS price_mxn,
-                MAX(CASE WHEN pp.currency='USD' THEN pp.price END)     AS price_usd,
+                MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.price END)     AS price_usd,
 
                 MAX(CASE WHEN pp.currency='COP' THEN pp.is_active END) AS active_cop,
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.is_active END) AS active_mxn,
-                MAX(CASE WHEN pp.currency='USD' THEN pp.is_active END) AS active_usd,
+                MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.is_active END) AS active_usd,
 
                 MAX(pp.is_renewable) AS is_renewable
 
@@ -130,9 +131,10 @@ router.post("/admin/prices", requireAuth, requireRole("admin"), async (req, res)
             return res.status(400).json({ message: "platform_id, duration_id y price son obligatorios." });
         }
 
-        const finalCurrency = String(currency || "COP").toUpperCase();
+        const requestedCurrency = String(currency || "COP").toUpperCase();
+        const finalCurrency = normalizeCurrency(requestedCurrency, "COP");
 
-        if (!["COP", "MXN", "USD"].includes(finalCurrency)) {
+        if (!["COP", "MXN", "USD", "USDT"].includes(requestedCurrency) || !["COP", "MXN", "USD"].includes(finalCurrency)) {
             return res.status(400).json({ message: "currency inválida. Usa COP, MXN o USD." });
         }
 
@@ -182,7 +184,7 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
         }
 
         const entries = Object.entries(prices)
-            .map(([cur, val]) => [String(cur).toUpperCase(), Number(val)])
+            .map(([cur, val]) => [normalizeCurrency(String(cur).toUpperCase(), String(cur).toUpperCase()), Number(val)])
             .filter(([cur, val]) => ["COP", "MXN", "USD"].includes(cur) && Number.isFinite(val) && val >= 0);
 
         if (!entries.length) {

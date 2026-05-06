@@ -20,6 +20,7 @@ const {
 } = require("../services/manualTopups.service");
 const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
 const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
+const { normalizeCurrency, sameCurrency, displayCurrency } = require("../utils/currency");
 
 const router = express.Router();
 const AUTO_RECONCILE_METHOD_KEYS = new Set(["breb", "binance"]);
@@ -64,7 +65,7 @@ function defaultPaymentMethods() {
         {
             key: "binance",
             label: "Binance",
-            currency: "USD",
+            currency: "USDT",
             holderName: "SCREEN",
             accountLabel: "ID Binance",
             accountValue: "920604097",
@@ -110,7 +111,8 @@ function normalizeQrImageUrl(value) {
 
 function normalizeMethod(input) {
     const raw = input && typeof input === "object" ? input : {};
-    const currency = String(raw.currency || "").trim().toUpperCase();
+    const requestedCurrency = String(raw.currency || "").trim().toUpperCase();
+    const currency = displayCurrency(normalizeCurrency(requestedCurrency || "COP", "COP"), "COP");
     const rawKey = String(raw.key || "").trim().toLowerCase();
     const key = currency === "COP" ? "breb" : rawKey;
     const parsedMinAmount = Number(raw.minAmount || 0);
@@ -238,9 +240,9 @@ router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
             "SELECT currency FROM users WHERE id = ? LIMIT 1",
             [req.user.id]
         );
-        const currency = String(userRow?.currency || "").trim().toUpperCase();
+        const currency = displayCurrency(normalizeCurrency(userRow?.currency || "COP", "COP"), "COP");
         const methods = await getPaymentMethodsConfig();
-        const filteredMethods = methods.filter((item) => item.currency === currency);
+        const filteredMethods = methods.filter((item) => sameCurrency(item.currency, currency));
         return res.json({
             ok: true,
             config: {
@@ -292,8 +294,9 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
             return res.status(404).json({ message: "Usuario no encontrado." });
         }
 
-        const userCurrency = String(userRow.currency || "").trim().toUpperCase();
-        const selectedMethod = methods.find((item) => item.key === methodKey && item.currency === userCurrency);
+        const userCurrency = normalizeCurrency(userRow.currency || "COP", "COP");
+        const userDisplayCurrency = displayCurrency(userCurrency, "COP");
+        const selectedMethod = methods.find((item) => item.key === methodKey && sameCurrency(item.currency, userCurrency));
 
         if (!selectedMethod) {
             return res.status(400).json({ message: "El medio de pago no esta disponible para tu moneda." });
@@ -304,7 +307,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         }
 
         if (amount < Number(selectedMethod.minAmount || 0)) {
-            return res.status(400).json({ message: `La recarga minima para ${selectedMethod.label} es de ${Number(selectedMethod.minAmount || 0).toLocaleString("es-CO")} ${userCurrency}.` });
+            return res.status(400).json({ message: `La recarga minima para ${selectedMethod.label} es de ${Number(selectedMethod.minAmount || 0).toLocaleString("es-CO")} ${userDisplayCurrency}.` });
         }
 
         const requiresProof = selectedMethod.key !== "breb";

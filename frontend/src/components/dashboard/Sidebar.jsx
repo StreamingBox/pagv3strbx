@@ -4,6 +4,7 @@ import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import BalancedText from "../text/BalancedText.jsx";
+import { displayCurrency } from "../../utils/currency.js";
 
 import { getApiBase } from "../../config/apiBase.js";
 import { isNativeAndroidApp } from "../../native/biometricAuth.js";
@@ -206,7 +207,7 @@ export default function Sidebar({
                                 <div className="sb-balance-amount">
                                     {Number(wallet?.balance || 0).toLocaleString("es-CO")}
                                     <span className="sb-balance-currency">
-                                        {wallet?.currency || "COP"}
+                                        {displayCurrency(wallet?.currency, "COP")}
                                     </span>
                                 </div>
 

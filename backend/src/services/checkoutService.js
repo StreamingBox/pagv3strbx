@@ -4,6 +4,7 @@ const { makeOrderCode } = require("../utils/orderCode");
 const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { addDaysExact, toSqlDateTime } = require("../utils/date");
 const { sendOrderDeliveryEmail } = require("./mailService");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, recordProfit, profitAmount }) {
     const platformPriceIds = items
@@ -74,8 +75,8 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
         const plans = platformPriceIds.map((id) => byId.get(Number(id)));
 
         // 2) Moneda consistente
-        const currency = (plans[0].currency || "COP").toString();
-        const mixedCurrency = plans.some((p) => (p.currency || "COP").toString() !== currency);
+        const currency = normalizeCurrency(plans[0].currency || "COP", "COP");
+        const mixedCurrency = plans.some((p) => !sameCurrency(p.currency || "COP", currency));
         if (mixedCurrency) {
             const err = new Error("Todos los items deben tener la misma moneda.");
             err.status = 400;
@@ -96,11 +97,18 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             );
             wallet = { id: wIns.insertId, balance: 0.0, currency };
         } else {
-            wallet = walletRows[0];
+            wallet = {
+                ...walletRows[0],
+                currency: normalizeCurrency(walletRows[0].currency || currency, currency),
+            };
+            if (!sameCurrency(wallet.currency, currency)) {
+                await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [currency, wallet.id]);
+                wallet.currency = currency;
+            }
         }
 
         // ✅ Evitar compra en moneda distinta a la wallet
-        if ((wallet.currency || "COP").toString() !== currency) {
+        if (!sameCurrency(wallet.currency, currency)) {
             const err = new Error(`Tu wallet está en ${wallet.currency}, pero el carrito está en ${currency}.`);
             err.status = 400;
             throw err;

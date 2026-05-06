@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { normalizeCurrency } = require("../utils/currency");
 
 const router = express.Router();
 
@@ -98,7 +99,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     // Si llega allowed_currencies, lo validamos
     if (allowed_currencies !== undefined) {
-        const valid = ["COP", "MXN", "USD"];
+        const valid = ["COP", "MXN", "USD", "USDT"];
 
         const list = Array.isArray(allowed_currencies)
             ? allowed_currencies
@@ -107,7 +108,10 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
                 .map((x) => x.trim().toUpperCase())
                 .filter(Boolean);
 
-        const clean = [...new Set(list)].filter((x) => valid.includes(x));
+        const clean = [...new Set(list)]
+            .filter((x) => valid.includes(x))
+            .map((x) => normalizeCurrency(x, x))
+            .filter((x) => ["COP", "MXN", "USD"].includes(x));
 
         if (!clean.length) {
             return res.status(400).json({

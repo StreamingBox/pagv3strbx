@@ -22,6 +22,7 @@ async function fetchWithTimeout(url, options = {}) {
     try {
         return await fetch(url, {
             ...fetchOptions,
+            cache: "no-store",
             signal: signal || controller.signal,
         });
     } finally {
@@ -63,6 +64,7 @@ async function tryRefresh(timeoutMs = DEFAULT_TIMEOUT_MS) {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
+            cache: "no-store",
             timeoutMs,
         });
         return r.ok;
@@ -152,6 +154,7 @@ export async function apiLogout() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
     });
 
     const data = await safeJson(res);

@@ -23,6 +23,59 @@ const HISTORY_TEXT_STYLE = {
     wordBreak: "break-word",
 };
 
+function getFallbackTopupMethods(currency) {
+    const normalized = displayTopupCurrency(currency || "COP").toUpperCase();
+    if (normalized === "USDT") {
+        return [
+            {
+                key: "binance",
+                label: "Binance",
+                currency: "USDT",
+                holderName: "SCREEN",
+                accountLabel: "ID Binance",
+                accountValue: "920604097",
+                accountAlias: "SCREEN",
+                accountType: "binance",
+                qrImageUrl: "",
+                minAmount: 1,
+                instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
+            },
+        ];
+    }
+    if (normalized === "MXN") {
+        return [
+            {
+                key: "binance",
+                label: "Binance",
+                currency: "MXN",
+                holderName: "SCREEN",
+                accountLabel: "ID Binance",
+                accountValue: "920604097",
+                accountAlias: "SCREEN",
+                accountType: "binance",
+                qrImageUrl: "",
+                minAmount: 1,
+                instructions: "Transfiere USDT por Binance usando el ID o alias y luego sube el comprobante.",
+            },
+        ];
+    }
+    return [
+        {
+            key: "breb",
+            label: "Bre-B",
+            currency: "COP",
+            holderName: "ANGEL MORENO",
+            accountLabel: "Llave",
+            accountValue: "3006952221",
+            accountAlias: "",
+            accountType: "llave",
+            qrImageUrl: "",
+            minAmount: 3000,
+            instructions: "Envía por llaves Bre-B a la llave 3006952221. Si pagas por otro medio, la recarga pasará a segunda validación manual.",
+        },
+    ];
+}
+
 function displayTopupCurrency(value) {
     const normalized = String(value || "").trim().toUpperCase();
     if (normalized === "USD") return "USDT";
@@ -72,6 +125,20 @@ export default function Topups() {
     const [historyPage, setHistoryPage] = useState(1);
     const [openingProofId, setOpeningProofId] = useState(null);
 
+    function applyFallbackTopupConfig(preferredCurrency) {
+        const fallbackCurrency = displayTopupCurrency(preferredCurrency || wallet?.currency || user?.currency || "COP");
+        const fallbackMethods = getFallbackTopupMethods(fallbackCurrency);
+        setTopupConfig({
+            currency: fallbackCurrency,
+            methods: fallbackMethods,
+        });
+        setSelectedMethodKey((prev) =>
+            fallbackMethods.some((item) => item.key === prev)
+                ? prev
+                : (fallbackMethods[0]?.key || "")
+        );
+    }
+
     async function loadWallet() {
         const response = await apiGet("/wallet");
         if (response.ok) setWallet(response.data);
@@ -82,10 +149,14 @@ export default function Topups() {
         if (response.ok) {
             const config = response.data?.config || { currency: "", methods: [] };
             const methods = Array.isArray(config.methods) ? config.methods : [];
-            setTopupConfig({ ...config, methods });
-            const firstMethod = methods[0]?.key || "";
-            setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
+            if (methods.length) {
+                setTopupConfig({ ...config, methods });
+                const firstMethod = methods[0]?.key || "";
+                setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
+                return;
+            }
         }
+        applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || "COP");
     }
 
     async function loadRequests() {
@@ -98,6 +169,13 @@ export default function Topups() {
         void loadTopupConfig();
         void loadRequests();
     }, []);
+
+    useEffect(() => {
+        const methods = Array.isArray(topupConfig.methods) ? topupConfig.methods : [];
+        if (!methods.length && (wallet?.currency || user?.currency)) {
+            applyFallbackTopupConfig(wallet?.currency || user?.currency);
+        }
+    }, [topupConfig.methods, wallet?.currency, user?.currency]);
 
     const availableMethods = Array.isArray(topupConfig.methods) ? topupConfig.methods : [];
     const selectedMethod = availableMethods.find((item) => item.key === selectedMethodKey) || availableMethods[0] || null;

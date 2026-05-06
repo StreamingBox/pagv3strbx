@@ -169,6 +169,11 @@ async function getPaymentMethodsConfig() {
     }
 }
 
+function getDefaultMethodsForCurrency(currency) {
+    const normalizedCurrency = displayCurrency(normalizeCurrency(currency || "COP", "COP"), "COP");
+    return defaultPaymentMethods().filter((item) => sameCurrency(item.currency, normalizedCurrency));
+}
+
 async function savePaymentMethodsConfig(methods) {
     await ensureSettingsTable();
     await pool.query(
@@ -258,11 +263,12 @@ router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
         const currency = displayCurrency(normalizeCurrency(userRow?.currency || "COP", "COP"), "COP");
         const methods = await getPaymentMethodsConfig();
         const filteredMethods = methods.filter((item) => sameCurrency(item.currency, currency));
+        const safeMethods = filteredMethods.length ? filteredMethods : getDefaultMethodsForCurrency(currency);
         return res.json({
             ok: true,
             config: {
                 currency,
-                methods: filteredMethods,
+                methods: safeMethods,
             },
         });
     } catch (err) {

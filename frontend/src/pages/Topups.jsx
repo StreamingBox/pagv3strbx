@@ -72,9 +72,19 @@ export default function Topups() {
     const [historyPage, setHistoryPage] = useState(1);
     const [openingProofId, setOpeningProofId] = useState(null);
 
+    function isAuthFailure(response) {
+        return Number(response?.status) === 401 || Number(response?.status) === 403;
+    }
+
     async function loadWallet() {
         const response = await apiGet("/wallet");
-        if (response.ok) setWallet(response.data);
+        if (response.ok) {
+            setWallet(response.data);
+            return;
+        }
+        if (isAuthFailure(response)) {
+            await logout();
+        }
     }
 
     async function loadTopupConfig() {
@@ -85,12 +95,22 @@ export default function Topups() {
             setTopupConfig({ ...config, methods });
             const firstMethod = methods[0]?.key || "";
             setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
+            return;
+        }
+        if (isAuthFailure(response)) {
+            await logout();
         }
     }
 
     async function loadRequests() {
         const response = await apiGet("/wallet/manual-topups");
-        if (response.ok) setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
+        if (response.ok) {
+            setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
+            return;
+        }
+        if (isAuthFailure(response)) {
+            await logout();
+        }
     }
 
     useEffect(() => {

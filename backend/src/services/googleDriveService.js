@@ -217,7 +217,15 @@ async function uploadImage(folderId, filePath, originalName, mimeType) {
         });
         fileId = res.data.id;
         await makeFilePublic(fileId);
-        return await getFileInfo(fileId);
+        return {
+            id: res.data.id,
+            name: res.data.name || originalName,
+            mimeType: res.data.mimeType || mimeType || "image/jpeg",
+            webViewLink: res.data.webViewLink || null,
+            thumbnailLink: res.data.thumbnailLink || null,
+            size: res.data.size || 0,
+            webContentLink: getDownloadLink(res.data.id),
+        };
     } catch (err) {
         if (fileId) {
             try { await drive.files.delete({ fileId, supportsAllDrives: true }); } catch {}
@@ -288,6 +296,7 @@ async function getFileInfo(fileId) {
 async function uploadImages(folderId, files) {
     const results = [];
     const errors = [];
+    await verifyFolderAccess(folderId);
     for (const file of files) {
         try {
             const uploaded = await uploadImage(
@@ -298,14 +307,16 @@ async function uploadImages(folderId, files) {
             );
             results.push(uploaded);
         } catch (err) {
-            console.error(`[GoogleDrive] Error subiendo ${file.originalname}:`, err.message);
-            errors.push({ file: file.originalname, error: err.message });
+            const errorMessage = formatDriveError(err, `subida ${file.originalname}`);
+            console.error(`[GoogleDrive] Error subiendo ${file.originalname}:`, errorMessage);
+            errors.push({ file: file.originalname, error: errorMessage });
         } finally {
             try { fs.unlinkSync(file.path); } catch {}
         }
     }
     if (errors.length > 0 && results.length === 0) {
-        throw new Error(`No se pudo subir ninguna imagen: ${errors.map(e => e.file).join(', ')}`);
+        const detail = errors.map((e) => `${e.file}: ${e.error}`).join(" | ");
+        throw new Error(`No se pudo subir ninguna imagen. ${detail}`);
     }
     return { results, errors: errors.length ? errors : null };
 }

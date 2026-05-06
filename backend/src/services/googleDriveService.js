@@ -14,11 +14,21 @@ const fs = require("fs");
  */
 
 function getAuth() {
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+
+    if (clientId && clientSecret && refreshToken) {
+        const oauth = new google.auth.OAuth2(clientId, clientSecret);
+        oauth.setCredentials({ refresh_token: refreshToken });
+        return oauth;
+    }
+
     const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
     const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
     if (!email || !key) {
-        throw new Error("GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY son requeridos.");
+        throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN, o GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY.");
     }
 
     const auth = new google.auth.JWT({
@@ -45,6 +55,7 @@ function getDriveRequestDefaults() {
 
 function formatDriveError(error, context = "") {
     const details = error?.response?.data?.error;
+    const reason = String(details?.errors?.[0]?.reason || "");
     const status = Number(error?.code || error?.response?.status || 500);
     const message = String(
         details?.message ||
@@ -55,7 +66,7 @@ function formatDriveError(error, context = "") {
     const ctxPrefix = context ? `[${context}] ` : "";
 
     if (/invalid_grant|invalid jwt|malformed/i.test(message)) {
-        return `${ctxPrefix}La private key o el email de la service account no son validos.`;
+        return `${ctxPrefix}Las credenciales de Google Drive no son validas o el refresh token fue revocado.`;
     }
     if (status === 404 || /File not found|fileNotFound/i.test(message)) {
         if (context) {
@@ -64,10 +75,13 @@ function formatDriveError(error, context = "") {
         return "La carpeta raiz de Drive no existe o no fue compartida con la service account.";
     }
     if (status === 403) {
-        if (context) {
-            return `${ctxPrefix}La service account no tiene permisos para acceder a esta carpeta.`;
+        if (/storageQuotaExceeded|quota/i.test(reason) || /storage quota|quota/i.test(message)) {
+            return `${ctxPrefix}Google Drive rechazo la subida por cuota o propiedad de almacenamiento. Configura OAuth con la cuenta duena del Drive o usa una unidad compartida. Detalle: ${message}`;
         }
-        return "La service account no tiene permisos de Editor sobre la carpeta de Drive.";
+        if (context) {
+            return `${ctxPrefix}Google Drive rechazo el acceso. Detalle: ${message}`;
+        }
+        return `Google Drive rechazo el acceso. Detalle: ${message}`;
     }
     if (status === 400) {
         return `${ctxPrefix}El ID proporcionado no es valido para Google Drive.`;

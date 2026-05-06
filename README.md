@@ -68,6 +68,9 @@ Entre las variables importantes están:
 - `TELEGRAM_CHAT_IDS`
 - `INTERNAL_SERVICE_TOKEN` (obligatoria si los microservicios Go corren en produccion)
 - `GO_SERVICE_BIND_ADDR` (por defecto `127.0.0.1`)
+- `GOOGLE_DRIVE_CLIENT_ID`
+- `GOOGLE_DRIVE_CLIENT_SECRET`
+- `GOOGLE_DRIVE_REFRESH_TOKEN`
 - `GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL`
 - `GOOGLE_DRIVE_PRIVATE_KEY`
 - `GOOGLE_DRIVE_PARENT_FOLDER_ID`

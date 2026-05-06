@@ -4,9 +4,18 @@ const requireAuth = require("../middleware/requireAuth");
 
 const router = express.Router();
 
+function getRequestUserId(req) {
+    const raw = req?.user?.sub ?? req?.user?.id ?? req?.user?.userId ?? null;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
 router.get("/wallet", requireAuth, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = getRequestUserId(req);
+        if (!userId) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
 
         const [rows] = await pool.query(
             `
@@ -52,7 +61,10 @@ router.get("/wallet", requireAuth, async (req, res) => {
 
 router.get("/wallet/transactions", requireAuth, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = getRequestUserId(req);
+        if (!userId) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
         const { page = 1, limit = 10, type } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
         const limitNum = Math.max(parseInt(limit, 10) || 10, 1);

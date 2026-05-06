@@ -224,6 +224,12 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
+function getRequestUserId(req) {
+    const raw = req?.user?.sub ?? req?.user?.id ?? req?.user?.userId ?? null;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
 async function createProofLinkResponse({ topupId, proofFileUrl, actorUserId = null, actorRole = null }) {
     const tokenInfo = await createManualTopupProofToken({
         topupId,
@@ -236,9 +242,18 @@ async function createProofLinkResponse({ topupId, proofFileUrl, actorUserId = nu
 
 router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
     try {
+        const userId = getRequestUserId(req);
+        if (!userId) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
+
         const [[userRow]] = await pool.query(
-            "SELECT currency FROM users WHERE id = ? LIMIT 1",
-            [req.user.id]
+            `SELECT COALESCE(u.currency, w.currency, 'COP') AS currency
+             FROM users u
+             LEFT JOIN wallets w ON w.user_id = u.id
+             WHERE u.id = ?
+             LIMIT 1`,
+            [userId]
         );
         const currency = displayCurrency(normalizeCurrency(userRow?.currency || "COP", "COP"), "COP");
         const methods = await getPaymentMethodsConfig();
@@ -258,7 +273,10 @@ router.get("/wallet/manual-topups/config", requireAuth, async (req, res) => {
 
 router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
     try {
-        const userId = req.user.id;
+        const userId = getRequestUserId(req);
+        if (!userId) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
         const [rows] = await pool.query(
             `SELECT *
              FROM manual_topup_requests
@@ -277,7 +295,10 @@ router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
 router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async (req, res) => {
     const conn = await pool.getConnection();
     try {
-        const userId = req.user.id;
+        const userId = getRequestUserId(req);
+        if (!userId) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
         const amount = Number(req.body?.amount || 0);
         const methodKey = String(req.body?.methodKey || "").trim().toLowerCase();
         const payerName = String(req.body?.payerName || "").trim();

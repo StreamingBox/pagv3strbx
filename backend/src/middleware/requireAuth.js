@@ -6,19 +6,21 @@ function requireAuth(req, res, next) {
     const auth = req.headers.authorization || "";
     const headerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
-    // ✅ No se acepta token por query param: queda en logs de Nginx/browser
     const token = cookieToken || headerToken;
     if (!token) return res.status(401).json({ message: "No autorizado." });
 
     try {
         const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+        const resolvedUserId = payload?.sub ?? payload?.id ?? payload?.userId ?? null;
 
-        // ✅ Unificar formato: sub (como JWT)
+        if (!resolvedUserId) {
+            return res.status(401).json({ message: "Token inválido o expirado." });
+        }
+
         req.user = {
-            sub: payload.sub,
-            role: payload.role,
-            // opcional: mantener id por compatibilidad
-            id: payload.sub,
+            sub: resolvedUserId,
+            id: resolvedUserId,
+            role: payload?.role || "user",
         };
 
         return next();

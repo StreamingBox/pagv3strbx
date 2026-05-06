@@ -468,7 +468,12 @@ router.post("/logout", async (req, res) => {
 // ME: devuelve el usuario desde la cookie accessToken
 router.get("/me", requireAuth, async (req, res) => {
     try {
-        const userId = req.user?.sub ?? req.user?.id;
+        const rawUserId = req.user?.sub ?? req.user?.id ?? req.user?.userId ?? null;
+        const userId = Number(rawUserId);
+
+        if (!Number.isFinite(userId) || userId <= 0) {
+            return res.status(401).json({ message: "No autorizado." });
+        }
 
         const [rows] = await pool.query(
             "SELECT id, name, email, role, status, currency FROM users WHERE id = ? LIMIT 1",

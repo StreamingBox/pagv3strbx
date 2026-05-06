@@ -84,7 +84,7 @@ function emptyMethod() {
         _rowId: `method-row-${nextMethodRowId++}`,
         key: "",
         label: "",
-        currency: "COP",
+        currency: "USD",
         holderName: "",
         accountLabel: "",
         accountValue: "",
@@ -178,7 +178,35 @@ export default function AdminTopups() {
     }, []);
 
     function updateMethod(index, field, value) {
-        setMethods((prev) => prev.map((method, currentIndex) => currentIndex === index ? { ...method, [field]: value } : method));
+        setConfigError("");
+        setMethods((prev) => {
+            const current = prev[index];
+            if (!current) return prev;
+
+            if (field === "currency") {
+                const nextCurrency = String(value || "").toUpperCase();
+                if (nextCurrency === "COP") {
+                    const hasOtherCopMethod = prev.some((method, currentIndex) => currentIndex !== index && String(method.currency || "").toUpperCase() === "COP");
+                    if (hasOtherCopMethod) {
+                        setConfigError("Solo puede existir un medio COP y debe ser Bre-B.");
+                        return prev;
+                    }
+                }
+            }
+
+            return prev.map((method, currentIndex) => {
+                if (currentIndex !== index) return method;
+
+                const nextMethod = { ...method, [field]: value };
+                const nextCurrency = String(nextMethod.currency || "").toUpperCase();
+                if (nextCurrency === "COP") {
+                    nextMethod.currency = "COP";
+                    nextMethod.key = "breb";
+                    nextMethod.label = "Bre-B";
+                }
+                return nextMethod;
+            });
+        });
     }
 
     function addMethod() {
@@ -186,7 +214,15 @@ export default function AdminTopups() {
     }
 
     function removeMethod(index) {
-        setMethods((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
+        setConfigError("");
+        setMethods((prev) => {
+            const target = prev[index];
+            if (String(target?.currency || "").toUpperCase() === "COP") {
+                setConfigError("El medio COP Bre-B es obligatorio y no se puede quitar.");
+                return prev;
+            }
+            return prev.filter((_, currentIndex) => currentIndex !== index);
+        });
     }
 
     async function saveConfig() {
@@ -397,6 +433,9 @@ export default function AdminTopups() {
                             <>
                                 <div style={{ display: "grid", gap: 12 }}>
                                     {methods.map((method, index) => (
+                                        (() => {
+                                            const isCopMethod = String(method.currency || "").toUpperCase() === "COP";
+                                            return (
                                         <div
                                             key={method._rowId || `method-${index}`}
                                             style={{
@@ -433,8 +472,20 @@ export default function AdminTopups() {
                                                     >
                                                             {displayTopupCurrency(method.currency)}
                                                     </span>
-                                                    <button className="btn-ghost" style={{ width: "auto", color: "#ef4444", borderColor: "rgba(239,68,68,.35)" }} onClick={() => removeMethod(index)}>
-                                                        Quitar
+                                                    <button
+                                                        className="btn-ghost"
+                                                        style={{
+                                                            width: "auto",
+                                                            color: isCopMethod ? "var(--muted)" : "#ef4444",
+                                                            borderColor: isCopMethod ? "var(--stroke)" : "rgba(239,68,68,.35)",
+                                                            opacity: isCopMethod ? 0.75 : 1,
+                                                            cursor: isCopMethod ? "not-allowed" : "pointer",
+                                                        }}
+                                                        onClick={() => removeMethod(index)}
+                                                        disabled={isCopMethod}
+                                                        title={isCopMethod ? "El medio COP Bre-B es obligatorio." : "Quitar metodo"}
+                                                    >
+                                                        {isCopMethod ? "Fijo" : "Quitar"}
                                                     </button>
                                                 </div>
                                             </div>
@@ -446,6 +497,7 @@ export default function AdminTopups() {
                                                         style={ADMIN_FIELD_STYLE}
                                                         value={method.key}
                                                         onChange={(event) => updateMethod(index, "key", event.target.value.toLowerCase())}
+                                                        disabled={isCopMethod}
                                                     />
                                                 </label>
                                                 <label style={ADMIN_LABEL_STYLE}>
@@ -454,6 +506,7 @@ export default function AdminTopups() {
                                                         style={ADMIN_FIELD_STYLE}
                                                         value={method.label}
                                                         onChange={(event) => updateMethod(index, "label", event.target.value)}
+                                                        disabled={isCopMethod}
                                                     />
                                                 </label>
                                                 <label style={ADMIN_LABEL_STYLE}>
@@ -572,6 +625,8 @@ export default function AdminTopups() {
                                                 ) : null}
                                             </div>
                                         </div>
+                                            );
+                                        })()
                                     ))}
                                 </div>
 

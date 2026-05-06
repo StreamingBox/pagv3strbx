@@ -110,8 +110,9 @@ function normalizeQrImageUrl(value) {
 
 function normalizeMethod(input) {
     const raw = input && typeof input === "object" ? input : {};
-    const key = String(raw.key || "").trim().toLowerCase();
     const currency = String(raw.currency || "").trim().toUpperCase();
+    const rawKey = String(raw.key || "").trim().toLowerCase();
+    const key = currency === "COP" ? "breb" : rawKey;
     const parsedMinAmount = Number(raw.minAmount || 0);
     const normalizedMinAmount = key === "binance"
         ? 1
@@ -121,7 +122,7 @@ function normalizeMethod(input) {
 
     return {
         key,
-        label: String(raw.label || "").trim(),
+        label: currency === "COP" ? "Bre-B" : String(raw.label || "").trim(),
         currency,
         holderName: String(raw.holderName || "").trim(),
         accountLabel: String(raw.accountLabel || "").trim(),

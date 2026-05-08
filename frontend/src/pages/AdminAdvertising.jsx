@@ -54,6 +54,7 @@ export default function AdminAdvertising() {
 
     // Subir imágenes
     const [uploading, setUploading] = useState(false);
+    const [dragActive, setDragActive] = useState(false);
 
     // Confirmación de eliminación
     const [confirmDelete, setConfirmDelete] = useState(null);
@@ -203,9 +204,11 @@ export default function AdminAdvertising() {
         loadImages(folder.id, 1, imageLimit);
     }
 
-    async function handleUploadFiles(e) {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
+    async function uploadImages(filesInput) {
+        const files = Array.from(filesInput || []).filter((file) =>
+            String(file?.type || "").toLowerCase().startsWith("image/")
+        );
+        if (!files.length) return;
         if (!selectedFolder) {
             setError("Selecciona una carpeta primero.");
             return;
@@ -232,8 +235,32 @@ export default function AdminAdvertising() {
             setError(e?.message || "Error de conexión.");
         } finally {
             setUploading(false);
+            setDragActive(false);
             if (fileInputRef.current) fileInputRef.current.value = "";
         }
+    }
+
+    async function handleUploadFiles(e) {
+        await uploadImages(e.target.files);
+    }
+
+    function handleDrag(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (uploading || !selectedFolder) return;
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    }
+
+    async function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (uploading || !selectedFolder) return;
+        setDragActive(false);
+        await uploadImages(e.dataTransfer?.files);
     }
 
     async function toggleImageActive(fileId) {
@@ -422,7 +449,24 @@ export default function AdminAdvertising() {
                             ) : (
                                 <>
                                     {/* ── Folder header + upload ── */}
-                                    <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--stroke)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                                    <div
+                                        onDragEnter={handleDrag}
+                                        onDragOver={handleDrag}
+                                        onDragLeave={handleDrag}
+                                        onDrop={handleDrop}
+                                        style={{
+                                            padding: "16px 20px",
+                                            borderBottom: "1px solid var(--stroke)",
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                            flexWrap: "wrap",
+                                            gap: 12,
+                                            transition: "background .2s ease, border-color .2s ease, box-shadow .2s ease",
+                                            background: dragActive ? "rgba(13,166,242,0.08)" : "transparent",
+                                            boxShadow: dragActive ? "inset 0 0 0 1px rgba(13,166,242,0.45)" : "none",
+                                        }}
+                                    >
                                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                             <span style={{ fontSize: 22 }}>📂</span>
                                             <div>
@@ -430,13 +474,17 @@ export default function AdminAdvertising() {
                                                 <span style={{ fontSize: 12, color: "var(--muted)" }}>
                                                     {images.length} imágenes · {formatSize(totalSize)}
                                                 </span>
+                                                <div style={{ fontSize: 12, color: dragActive ? "#38bdf8" : "var(--muted)", marginTop: 6, fontWeight: dragActive ? 700 : 500 }}>
+                                                    {dragActive ? "Suelta las imágenes para cargarlas en esta carpeta." : "También puedes arrastrar varias imágenes aquí."}
+                                                </div>
                                             </div>
                                         </div>
                                         <div style={{ display: "flex", gap: 8 }}>
                                             <input
                                                 ref={fileInputRef}
                                                 type="file"
- multiple accept="image/*"
+                                                multiple
+                                                accept="image/*"
                                                 style={{ display: "none" }}
                                                 onChange={handleUploadFiles}
                                             />

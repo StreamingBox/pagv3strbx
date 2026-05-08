@@ -143,7 +143,7 @@ async function notifyUsersAdvertisingUpload(folderName, count) {
     );
 }
 
-router.use(requireAuth, requireRole("admin"));
+router.use("/admin/advertising", requireAuth, requireRole("admin"));
 
 router.get("/admin/advertising/folders", async (_req, res) => {
     try {

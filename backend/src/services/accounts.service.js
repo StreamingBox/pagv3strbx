@@ -61,7 +61,7 @@ async function resolvePlatform(conn, { platformId, platformName }) {
     return { pid, pname };
 }
 
-async function upsertIdentity(conn, { pid, emailNorm, identityProf, password, pin }) {
+async function upsertIdentity(conn, { pid, emailValue, identityProf, password, pin }) {
     const [idRes] = await conn.query(
         `INSERT INTO account_identities (platform_id, email, profile_number, last_password, last_pin)
      VALUES (?, ?, ?, ?, ?)
@@ -69,21 +69,21 @@ async function upsertIdentity(conn, { pid, emailNorm, identityProf, password, pi
           last_password=VALUES(last_password),
           last_pin=VALUES(last_pin),
           updated_at=CURRENT_TIMESTAMP`,
-        [pid, emailNorm, identityProf, password, pin]
+        [pid, emailValue, identityProf, password, pin]
     );
 
     let identityId = idRes.insertId;
     if (!identityId) {
         const [ids] = await conn.query(
-            `SELECT id FROM account_identities WHERE platform_id=? AND email=? AND profile_number=? LIMIT 1`,
-            [pid, emailNorm, identityProf]
+            `SELECT id FROM account_identities WHERE platform_id=? AND LOWER(email)=LOWER(?) AND profile_number=? LIMIT 1`,
+            [pid, emailValue, identityProf]
         );
         identityId = ids?.[0]?.id || null;
     }
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailNorm, password, pin, accountProf, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, pin, accountProf, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
      (identity_id, platform_id, platform_name, email, password, pin, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
@@ -92,7 +92,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailNorm, password
             identityId,
             pid,
             pname || "",
-            emailNorm,
+            emailValue,
             password,
             pin,
             accountProf,
@@ -144,7 +144,7 @@ async function resolveStockAlerts(conn, pid, pname) {
     await Promise.all(notifyPromises);
 }
 
-async function propagatePassword(conn, { pid, emailNorm, password, newId }) {
+async function propagatePassword(conn, { pid, emailValue, password, newId }) {
     await conn.query(
         `UPDATE platform_accounts
      SET password = ?,
@@ -154,7 +154,7 @@ async function propagatePassword(conn, { pid, emailNorm, password, newId }) {
        AND status IN (${ACTIVE_STATUSES.map(() => "?").join(",")})
        AND (expires_at IS NULL OR expires_at >= UTC_TIMESTAMP())
        AND id <> ?`,
-        [password, pid, emailNorm, ...ACTIVE_STATUSES, newId]
+        [password, pid, emailValue, ...ACTIVE_STATUSES, newId]
     );
 }
 
@@ -167,7 +167,7 @@ async function createAccountOne(conn, body) {
         throw err;
     }
 
-    const emailNorm = String(email).trim().toLowerCase();
+    const emailValue = String(email).trim();
     const identityProf = normalizeProfileForIdentity(profileNumber);
     const accountProf = normalizeProfileForAccount(profileNumber);
     const exp = expiresAt ? toSqlDateStart(expiresAt) : null;
@@ -180,7 +180,7 @@ async function createAccountOne(conn, body) {
 
     const identityId = await upsertIdentity(conn, {
         pid,
-        emailNorm,
+        emailValue,
         identityProf,
         password,
         pin: normalizeOptionalValue(pin),
@@ -190,7 +190,7 @@ async function createAccountOne(conn, body) {
         identityId,
         pid,
         pname,
-        emailNorm,
+        emailValue,
         password,
         pin: normalizeOptionalValue(pin),
         accountProf,
@@ -198,7 +198,7 @@ async function createAccountOne(conn, body) {
         costModel,
     });
 
-    await propagatePassword(conn, { pid, emailNorm, password, newId });
+    await propagatePassword(conn, { pid, emailValue, password, newId });
 
     return { id: newId, platformId: pid, platformName: pname };
 }
@@ -228,7 +228,7 @@ function normalizeBulkRows(rows) {
         return {
             platformId,
             platformName,
-            email: String(r.email || "").trim().toLowerCase(),
+            email: String(r.email || "").trim(),
             password: String(r.password || "").trim(),
             pin: normalizeOptionalValue(r.pin),
             profileNumber,
@@ -278,7 +278,7 @@ async function bulkInsertAccounts(conn, rows) {
 
         const identityId = await upsertIdentity(conn, {
             pid,
-            emailNorm: r.email,
+            emailValue: r.email,
             identityProf,
             password: r.password,
             pin: r.pin,
@@ -288,7 +288,7 @@ async function bulkInsertAccounts(conn, rows) {
             identityId,
             pid,
             pname: r.platformName || "",
-            emailNorm: r.email,
+            emailValue: r.email,
             password: r.password,
             pin: r.pin,
             accountProf,
@@ -296,7 +296,7 @@ async function bulkInsertAccounts(conn, rows) {
             costModel,
         });
 
-        await propagatePassword(conn, { pid, emailNorm: r.email, password: r.password, newId });
+        await propagatePassword(conn, { pid, emailValue: r.email, password: r.password, newId });
 
         inserted += 1;
     }

@@ -3,6 +3,7 @@ const router = express.Router();
 const requireAuth = require("../middleware/requireAuth");
 const pool = require("../db");
 const driveService = require("../services/googleDriveService");
+const { isExplicitlyActive } = driveService;
 
 async function getFolderMetaMap() {
     const [rows] = await pool.query(
@@ -26,7 +27,7 @@ async function getFolderMetaMap() {
         if (row.folder_id) {
             metaByFolder.set(row.folder_id, {
                 name: row.folder_name,
-                isActive: Boolean(row.is_active),
+                isActive: isExplicitlyActive(row.is_active),
             });
         }
     }

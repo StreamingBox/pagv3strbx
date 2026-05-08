@@ -8,6 +8,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const pool = require("../db");
 const driveService = require("../services/googleDriveService");
+const { isExplicitlyActive } = driveService;
 
 function sanitizeFilename(name) {
     let ext = "";
@@ -117,7 +118,7 @@ async function getFolderMetaMap() {
     rows.forEach((row) => {
         map.set(row.folder_id, {
             name: row.folder_name,
-            isActive: Boolean(row.is_active),
+            isActive: isExplicitlyActive(row.is_active),
         });
     });
     return map;

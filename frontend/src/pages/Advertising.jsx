@@ -30,10 +30,15 @@ export default function Advertising() {
 
     const loadFolders = useCallback(async () => {
         setLoading(true);
+        setError("");
         try {
             const r = await apiGet("/advertising/folders");
-            if (r.ok) setFolders(Array.isArray(r.data?.data) ? r.data.data : []);
-        } catch { } finally {
+            if (!r.ok) throw new Error(r.data?.message || "Error cargando publicidad.");
+            setFolders(Array.isArray(r.data?.data) ? r.data.data : []);
+        } catch (e) {
+            setFolders([]);
+            setError(e?.message || "Error cargando publicidad.");
+        } finally {
             setLoading(false);
         }
     }, []);

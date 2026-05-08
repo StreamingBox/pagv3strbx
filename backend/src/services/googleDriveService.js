@@ -269,6 +269,10 @@ function getThumbnailLink(fileId) {
     return `/api/advertising/file/${fileId}`;
 }
 
+function isExplicitlyActive(value) {
+    return !(value === 0 || value === "0" || value === false);
+}
+
 /**
  * Normaliza un archivo de Drive + metadata opcional de DB en un objeto
  * consistente con URLs seguras (sin autenticación) para thumbnail, preview y descarga.
@@ -286,7 +290,7 @@ function normalizeImage(file, dbMeta = null) {
         size: Number(file.size || 0),
         folderName: dbMeta?.folder_name || "",
         folderId: dbMeta?.folder_id || "",
-        isActive: dbMeta ? Boolean(dbMeta.is_active) : true,
+        isActive: dbMeta ? isExplicitlyActive(dbMeta.is_active) : true,
         sortOrder: Number(dbMeta?.sort_order || 0),
         createdAt: dbMeta?.created_at || file.createdTime || null,
     };
@@ -366,6 +370,7 @@ module.exports = {
     getPreviewLink,
     getThumbnailLink,
     normalizeImage,
+    isExplicitlyActive,
     getFileInfo,
     getFileStream,
     formatDriveError,

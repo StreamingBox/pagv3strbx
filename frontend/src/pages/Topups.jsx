@@ -156,12 +156,21 @@ export default function Topups() {
                 return;
             }
         }
+        if (response.status >= 400) {
+            console.warn("[topups] config fallback", response.status, response.data?.message || "sin mensaje");
+        }
         applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || "COP");
     }
 
     async function loadRequests() {
         const response = await apiGet("/wallet/manual-topups");
-        if (response.ok) setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
+        if (response.ok) {
+            setRequests(Array.isArray(response.data?.items) ? response.data.items : []);
+            return;
+        }
+        if (response.status >= 400) {
+            console.warn("[topups] requests unavailable", response.status, response.data?.message || "sin mensaje");
+        }
     }
 
     useEffect(() => {
@@ -177,7 +186,13 @@ export default function Topups() {
         }
     }, [topupConfig.methods, wallet?.currency, user?.currency]);
 
-    const availableMethods = Array.isArray(topupConfig.methods) ? topupConfig.methods : [];
+    const fallbackMethods = useMemo(
+        () => getFallbackTopupMethods(wallet?.currency || user?.currency || topupConfig.currency || "COP"),
+        [topupConfig.currency, user?.currency, wallet?.currency]
+    );
+    const availableMethods = Array.isArray(topupConfig.methods) && topupConfig.methods.length
+        ? topupConfig.methods
+        : fallbackMethods;
     const selectedMethod = availableMethods.find((item) => item.key === selectedMethodKey) || availableMethods[0] || null;
     const selectedQrUrl = selectedMethod?.qrImageUrl ? resolveQrImageUrl(selectedMethod.qrImageUrl) : "";
     const selectedQrSrc = selectedQrUrl
@@ -185,7 +200,6 @@ export default function Topups() {
         : "";
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
-    const displayCurrency = displayTopupCurrency(currency);
     const isBreb = selectedMethod?.key === "breb";
     const isBinance = selectedMethod?.key === "binance";
 

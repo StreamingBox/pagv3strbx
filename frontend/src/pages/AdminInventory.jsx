@@ -152,6 +152,7 @@ export default function AdminInventory() {
         profitAmount: 0
     });
     const [sellCompleted, setSellCompleted] = useState(false);
+    const [sellDeliveryMessage, setSellDeliveryMessage] = useState("");
     const [supportModal, setSupportModal] = useState({ open: false, item: null });
     const [supportInfo, setSupportInfo] = useState(null);
     const [supportLoading, setSupportLoading] = useState(false);
@@ -319,6 +320,7 @@ export default function AdminInventory() {
 
             if (!r.ok) throw new Error(r.data?.message || "Error en la venta.");
 
+            setSellDeliveryMessage(r.data?.deliveryMessage || "");
             setSellCompleted(true);
             await loadInventory(page);
         } catch (e) {
@@ -585,6 +587,7 @@ export default function AdminInventory() {
                                                     setUserSearch("");
                                                     setSellData({ userId: "", platformPriceId: "", customExpiryDate: "", recordProfit: true, profitAmount: 0 });
                                                     setSellCompleted(false);
+                                                    setSellDeliveryMessage("");
                                                     setSellModal({ open: true, item: it });
                                                 }}
                                             />
@@ -734,7 +737,27 @@ export default function AdminInventory() {
                                     <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 12, padding: 16, color: "#10b981", fontSize: 14, fontWeight: 600 }}>
                                         ✅ ¡Venta realizada con éxito!
                                     </div>
-                                    <button className="btn-ghost" style={{ height: 44 }} onClick={() => { setSellModal({ open: false, item: null }); setSellCompleted(false); }}>
+                                    {sellDeliveryMessage ? (
+                                        <>
+                                            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Mensaje de entrega:</label>
+                                            <textarea
+                                                readOnly
+                                                style={{ ...inputStyle, height: 190, resize: "vertical", fontSize: 12, background: "var(--bg0)", padding: 12, lineHeight: 1.5 }}
+                                                value={sellDeliveryMessage}
+                                            />
+                                            <button
+                                                className="btn-primary"
+                                                style={{ height: 48, borderRadius: 12, background: "#2563EB", color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}
+                                                onClick={() => {
+                                                    navigator.clipboard.writeText(sellDeliveryMessage);
+                                                    alert("Copiado al portapapeles");
+                                                }}
+                                            >
+                                                Copiar mensaje
+                                            </button>
+                                        </>
+                                    ) : null}
+                                    <button className="btn-ghost" style={{ height: 44 }} onClick={() => { setSellModal({ open: false, item: null }); setSellCompleted(false); setSellDeliveryMessage(""); }}>
                                         Cerrar
                                     </button>
                                 </div>

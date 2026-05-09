@@ -73,7 +73,9 @@ export default function CartDrawer({
 
                 {error ? <div className="error cart-error">{error}</div> : null}
 
-                {!cart.length ? (
+                {buyResult ? (
+                    <CartResult result={buyResult} onClose={onClose} />
+                ) : !cart.length ? (
                     <p className="cart-empty">Tu carrito esta vacio.</p>
                 ) : (
                     <>
@@ -94,9 +96,6 @@ export default function CartDrawer({
                             setProfitAmount={setProfitAmount}
                         />
 
-                        {buyResult ? (
-                            <CartResult onClose={onClose} />
-                        ) : null}
                     </>
                 )}
             </aside>

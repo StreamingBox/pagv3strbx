@@ -448,7 +448,6 @@ export default function Dashboard() {
                 wallet={wallet}
                 setWallet={setWallet}
                 onPurchaseSuccess={() => {
-                    setCartOpen(false);
                     reload();
                 }}
             />

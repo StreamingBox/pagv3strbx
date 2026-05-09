@@ -2,6 +2,7 @@ const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { addDaysExact, toSqlDateTime } = require("../utils/date");
+const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
@@ -395,6 +396,11 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             "SELECT balance, profit_total, currency FROM wallets WHERE id = ? LIMIT 1",
             [wallet.id]
         );
+        const deliveryMessage = buildDeliveryMessage({
+            orderCode,
+            results,
+            baseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:3000",
+        });
 
         return {
             ok: true,
@@ -402,6 +408,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             orderCode,
             count: results.length,
             subscriptionIds: results.map((r) => r.subscriptionId),
+            deliveryMessage,
             total,
             currency,
             wallet: {

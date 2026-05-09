@@ -2,6 +2,7 @@ const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
+const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { sendOrderDeliveryEmail } = require("./mailService");
 
 /**
@@ -214,12 +215,18 @@ async function sellAccountFromInventory(payload) {
                 paymentMethod: "Venta manual desde inventario",
             }).catch((e) => console.error("[mail] sendOrderDeliveryEmail inventory error:", e?.message || e));
         }
+        const deliveryMessage = buildDeliveryMessage({
+            orderCode,
+            results,
+            baseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:3000",
+        });
 
         return {
             ok: true,
             orderId,
             orderCode,
             subscriptionId,
+            deliveryMessage,
             newBalance
         };
 

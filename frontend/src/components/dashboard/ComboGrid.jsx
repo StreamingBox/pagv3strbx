@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
-import { getPlatformLogo, getInitials } from "../../utils/platform.js";
+import { getPlatformLogo, getInitials, slugifyLogo } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 
 const MotionArticle = motion.article;
@@ -25,9 +25,29 @@ function getComboDuration(combo) {
     return values.length === 1 ? values[0] : "Varias duraciones";
 }
 
+function getLogoCandidates(item) {
+    const raw = `${item?.platformSlug || ""} ${item?.platformName || ""}`.toLowerCase();
+    const base = [
+        slugifyLogo(item?.platformSlug),
+        slugifyLogo(item?.platformName),
+    ];
+
+    if (raw.includes("netflix")) base.push("netflix", "netflix-internacional", "netflix-completa");
+    if (raw.includes("prime") || raw.includes("amazon")) base.push("prime-video", "prime-video-completa");
+    if (raw.includes("disney")) base.push("disney-premium", "disney-premium-completa", "disney-estandar", "disney");
+    if (raw.includes("paramount")) base.push("paramount-completa");
+    if (raw.includes("spotify")) base.push("spotify-3-meses");
+    if (raw.includes("youtube")) base.push("youtube-music");
+    if (raw.includes("chat") || raw.includes("gpt")) base.push("chatgpt", "chat-gpt");
+
+    return [...new Set(base.filter(Boolean))].map((slug) => getPlatformLogo(slug));
+}
+
 function ComboPlatformLogo({ item }) {
-    const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
-    const [failed, setFailed] = useState(!logoSrc);
+    const candidates = getLogoCandidates(item);
+    const [index, setIndex] = useState(0);
+    const logoSrc = candidates[index];
+    const failed = !logoSrc;
 
     return failed ? (
         <span style={{ color: "#fff", fontSize: 10, fontWeight: 900 }}>{getInitials(item.platformName)}</span>
@@ -35,7 +55,7 @@ function ComboPlatformLogo({ item }) {
         <img
             src={logoSrc}
             alt={item.platformName}
-            onError={() => setFailed(true)}
+            onError={() => setIndex((current) => current + 1)}
             style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }}
         />
     );

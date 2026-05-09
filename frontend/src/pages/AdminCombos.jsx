@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiDelete, apiGet, apiLogout, apiPatch, apiPost } from "../api/api.js";
+import { apiGet, apiLogout, apiPatch, apiPost } from "../api/api.js";
 import { displayCurrency } from "../utils/currency.js";
 
 const emptyForm = {
@@ -322,15 +322,16 @@ export default function AdminCombos() {
         }
     }
 
-    async function disableCombo(combo) {
-        if (!window.confirm(`Desactivar ${combo.name}?`)) return;
+    async function setComboActive(combo, active) {
+        const action = active ? "activar" : "desactivar";
+        if (!window.confirm(`Quieres ${action} ${combo.name}?`)) return;
         setSaving(true);
         try {
-            const res = await apiDelete(`/admin/combos/${combo.id}`);
-            if (!res.ok) throw new Error(res.data?.message || "No se pudo desactivar.");
+            const res = await apiPatch(`/admin/combos/${combo.id}`, { is_active: active });
+            if (!res.ok) throw new Error(res.data?.message || `No se pudo ${action}.`);
             await loadAll();
         } catch (e) {
-            setError(e?.message || "No se pudo desactivar.");
+            setError(e?.message || `No se pudo ${action}.`);
         } finally {
             setSaving(false);
         }
@@ -493,7 +494,14 @@ export default function AdminCombos() {
                                                 <td style={{ padding: "13px 14px" }}>
                                                     <div style={{ display: "flex", gap: 8 }}>
                                                         <button className="btn-ghost" onClick={() => editCombo(combo)} style={{ width: "auto", padding: "7px 12px" }}>Editar</button>
-                                                        <button className="btn-ghost" onClick={() => disableCombo(combo)} disabled={saving} style={{ width: "auto", padding: "7px 12px" }}>Desactivar</button>
+                                                        <button
+                                                            className="btn-ghost"
+                                                            onClick={() => setComboActive(combo, Number(combo.is_active) !== 1)}
+                                                            disabled={saving}
+                                                            style={{ width: "auto", padding: "7px 12px" }}
+                                                        >
+                                                            {Number(combo.is_active) === 1 ? "Desactivar" : "Activar"}
+                                                        </button>
                                                     </div>
                                                 </td>
                                             </tr>

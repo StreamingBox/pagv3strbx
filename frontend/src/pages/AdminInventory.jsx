@@ -151,7 +151,7 @@ export default function AdminInventory() {
         recordProfit: true,
         profitAmount: 0
     });
-    const [whatsappResult, setWhatsappResult] = useState("");
+    const [sellCompleted, setSellCompleted] = useState(false);
     const [supportModal, setSupportModal] = useState({ open: false, item: null });
     const [supportInfo, setSupportInfo] = useState(null);
     const [supportLoading, setSupportLoading] = useState(false);
@@ -319,7 +319,7 @@ export default function AdminInventory() {
 
             if (!r.ok) throw new Error(r.data?.message || "Error en la venta.");
 
-            setWhatsappResult(r.data.whatsappMessage);
+            setSellCompleted(true);
             await loadInventory(page);
         } catch (e) {
             setError(e?.message || "Error en la venta.");
@@ -584,6 +584,7 @@ export default function AdminInventory() {
                                                 onSell={() => {
                                                     setUserSearch("");
                                                     setSellData({ userId: "", platformPriceId: "", customExpiryDate: "", recordProfit: true, profitAmount: 0 });
+                                                    setSellCompleted(false);
                                                     setSellModal({ open: true, item: it });
                                                 }}
                                             />
@@ -728,28 +729,12 @@ export default function AdminInventory() {
                                 Estas vendiendo: <b style={{ color: "var(--text)" }}>{sellModal.item?.platform_name}</b> ({sellModal.item?.email})
                             </p>
 
-                            {whatsappResult ? (
+                            {sellCompleted ? (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                                     <div style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: 12, padding: 16, color: "#10b981", fontSize: 14, fontWeight: 600 }}>
                                         ✅ ¡Venta realizada con éxito!
                                     </div>
-                                    <label style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase" }}>Mensaje para WhatsApp:</label>
-                                    <textarea
-                                        readOnly
-                                        style={{ ...inputStyle, height: 160, resize: "none", fontSize: 12, background: "var(--bg0)", padding: 12 }}
-                                        value={whatsappResult}
-                                    />
-                                    <button 
-                                        className="btn-primary" 
-                                        style={{ height: 48, borderRadius: 12, background: "#2563EB", color: "white", fontWeight: 700, border: "none", cursor: "pointer" }}
-                                        onClick={() => {
-                                            navigator.clipboard.writeText(whatsappResult);
-                                            alert("Copiado al portapapeles");
-                                        }}
-                                    >
-                                        📋 Copiar Mensaje
-                                    </button>
-                                    <button className="btn-ghost" style={{ height: 44 }} onClick={() => { setSellModal({ open: false, item: null }); setWhatsappResult(""); }}>
+                                    <button className="btn-ghost" style={{ height: 44 }} onClick={() => { setSellModal({ open: false, item: null }); setSellCompleted(false); }}>
                                         Cerrar
                                     </button>
                                 </div>

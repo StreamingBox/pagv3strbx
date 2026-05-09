@@ -22,7 +22,7 @@ pagv3strbx/
 - Backend: Node.js + Express
 - Base de datos: MySQL
 - Android: Capacitor + Gradle
-- Otros: IMAP, Telegram Bot, Nodemailer, WhatsApp integrations
+- Otros: IMAP, Telegram Bot, Nodemailer
 
 ## Requisitos
 
@@ -254,7 +254,7 @@ El despliegue ahora valida Go `1.26.2+`, exige `INTERNAL_SERVICE_TOKEN`, audita 
 - El backend expone rutas públicas y privadas bajo `/api`.
 - Existen vistas admin para órdenes, renovaciones, inventario, vencimientos, logs de códigos y soporte.
 - Hay integración con links compartidos `/s/:token` para mostrar credenciales temporales.
-- Las renovaciones generan órdenes `RENO-*`, guardan el mensaje entregable como último mensaje de WhatsApp y notifican a Telegram con el bloque completo para copiar al cliente.
+- Las renovaciones generan órdenes `RENO-*` y notifican a Telegram con el bloque básico de la operación.
 - En inventario, el campo `ID Venta` solo debe mostrarse cuando la cuenta tiene una suscripción activa asociada; si no existe venta activa, debe quedar vacío.
 - El inventario permite abrir una tarjeta responsive por cuenta con credenciales, orden actual, fechas, trazabilidad de reemplazo y línea de tiempo de ventas/reemplazos.
 - Desde inventario también se puede abrir soporte sin salir de la página, copiar mensaje/link y ejecutar reemplazos.

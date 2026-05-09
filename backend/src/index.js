@@ -42,16 +42,11 @@ const analyticsRoutes = require("./routes/analytics");
 const adminUploads = require("./routes/admin.upload");
 const adminAdvertisingRoutes = require("./routes/admin.advertising");
 const advertisingRoutes = require("./routes/advertising");
-const whatsappRoutes = require("./routes/whatsapp");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
-
-function envBool(name) {
-    return String(process.env[name] || "").trim().toLowerCase() === "true";
-}
 
 function requireProdEnv(name, { minLength = 1 } = {}) {
     const value = String(process.env[name] || "").trim();
@@ -81,10 +76,6 @@ function validateProductionConfig() {
     requireProdEnv("JWT_REFRESH_SECRET", { minLength: 32 });
     validatePublicUrl("FRONTEND_URL");
     validatePublicUrl("PUBLIC_BASE_URL");
-
-    if (envBool("WASENDER_SKIP_SIGNATURE")) {
-        throw new Error("[config] WASENDER_SKIP_SIGNATURE no puede estar activo en produccion.");
-    }
 
 }
 
@@ -353,8 +344,6 @@ app.use("/api", analyticsRoutes);
 app.use("/api/admin/advertising", adminAdvertisingRoutes);
 app.use("/api", advertisingRoutes);
 
-// WhatsApp (WaSender)
-app.use("/api", whatsappRoutes);
 app.use("/api", manualTopupsRoutes);
 
 app.use((req, res) => {

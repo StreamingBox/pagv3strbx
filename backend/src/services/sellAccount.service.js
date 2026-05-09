@@ -1,7 +1,6 @@
 const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
 const { sendOrderDeliveryEmail } = require("./mailService");
 
@@ -13,7 +12,7 @@ const { sendOrderDeliveryEmail } = require("./mailService");
  * 3. Descontar saldo de la wallet del usuario.
  * 4. Crear Order, Subscription, OrderItem y CredentialLink.
  * 5. Marcar cuenta como 'assigned'.
- * 6. Devolver mensaje de WhatsApp.
+ * 6. Enviar entrega por correo si aplica.
  */
 async function sellAccountFromInventory(payload) {
     const { 
@@ -56,9 +55,7 @@ async function sellAccountFromInventory(payload) {
 
         // 2. Obtener datos del plan/precio
         const [priceRows] = await conn.query(
-            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type,
-                    p.whatsapp_instructions, p.wa_show_id, p.wa_show_email, p.wa_show_pass,
-                    p.wa_show_profile, p.wa_show_pin, p.wa_show_expire, p.wa_show_url
+            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type
              FROM platform_prices pp
              JOIN durations d ON d.id = pp.duration_id
              JOIN platforms p ON p.id = pp.platform_id
@@ -160,7 +157,6 @@ async function sellAccountFromInventory(payload) {
         const token = await insertCredentialLinkWithRetry(conn, {
             subscriptionId,
             createdByUserId: adminUserId || userId,
-            showWhatsapp: true
         });
 
         // 5.6 Descontar saldo y registrar ganancia
@@ -187,7 +183,7 @@ async function sellAccountFromInventory(payload) {
 
         await conn.commit();
 
-        // 6. Preparar respuesta y WhatsApp
+        // 6. Preparar respuesta y correo de entrega
         const results = [{
             subscriptionId,
             plan,
@@ -201,9 +197,6 @@ async function sellAccountFromInventory(payload) {
             expiresAt: finalExpiresAt,
             token
         }];
-
-        const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
-        const whatsappMessage = buildWhatsappMessage({ orderCode, results, baseUrl });
 
         const buyerInfo = await pool.query(
             "SELECT name, email FROM users WHERE id = ? LIMIT 1",
@@ -227,7 +220,6 @@ async function sellAccountFromInventory(payload) {
             orderId,
             orderCode,
             subscriptionId,
-            whatsappMessage,
             newBalance
         };
 

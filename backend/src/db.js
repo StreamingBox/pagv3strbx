@@ -24,9 +24,7 @@ pool.query('UPDATE wallet_transactions SET type="invest_adj" WHERE reference_typ
 pool.query('UPDATE wallet_transactions SET type="profit_adj" WHERE reference_type="admin_profit_adj" AND type=""').catch(() => { });
 
 // Migraciones automáticas para nuevas columnas (ignoran error si ya existe)
-pool.query('ALTER TABLE subscriptions ADD COLUMN whatsapp_phone VARCHAR(50) DEFAULT NULL').catch(() => { });
 pool.query('ALTER TABLE subscriptions ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0').catch(() => { });
-pool.query('ALTER TABLE users ADD COLUMN whatsapp VARCHAR(50) DEFAULT NULL').catch(() => { });
 pool.query("ALTER TABLE platforms ADD COLUMN is_promo TINYINT(1) NOT NULL DEFAULT 0").catch(() => { });
 pool.query("ALTER TABLE platforms ADD COLUMN promo_color VARCHAR(24) NULL DEFAULT NULL").catch(() => { });
 
@@ -50,46 +48,6 @@ pool.query("ALTER TABLE password_reset_tokens ADD COLUMN requested_ip VARCHAR(64
 pool.query("CREATE UNIQUE INDEX uq_password_reset_token_hash ON password_reset_tokens(token_hash)").catch(() => { });
 pool.query("CREATE INDEX idx_password_reset_user_created ON password_reset_tokens(user_id, created_at)").catch(() => { });
 pool.query("CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at)").catch(() => { });
-
-pool.query(`
-    CREATE TABLE IF NOT EXISTS whatsapp_queue (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        phone VARCHAR(50) NOT NULL,
-        message TEXT NOT NULL,
-        status ENUM('pending', 'sent', 'failed') DEFAULT 'pending',
-        source VARCHAR(32) NOT NULL DEFAULT 'queue',
-        created_by_user_id INT NULL,
-        created_by_role VARCHAR(32) NULL,
-        wasender_msg_id VARCHAR(128) NULL,
-        wa_status_code INT NULL,
-        wa_status_label VARCHAR(32) NULL,
-        wa_event VARCHAR(64) NULL,
-        provider_response_json LONGTEXT NULL,
-        attempts INT NOT NULL DEFAULT 0,
-        error_message TEXT DEFAULT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        sent_at TIMESTAMP NULL DEFAULT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        INDEX idx_whatsapp_queue_created_at (created_at),
-        INDEX idx_whatsapp_queue_status (status),
-        INDEX idx_whatsapp_queue_wasender_msg_id (wasender_msg_id)
-    )
-`).catch(() => { });
-
-// Migraciones no destructivas para instalaciones existentes
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'queue'").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN created_by_user_id INT NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN created_by_role VARCHAR(32) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN wasender_msg_id VARCHAR(128) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN wa_status_code INT NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN wa_status_label VARCHAR(32) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN wa_event VARCHAR(64) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN provider_response_json LONGTEXT NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN attempts INT NOT NULL DEFAULT 0").catch(() => { });
-pool.query("ALTER TABLE whatsapp_queue ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_queue_created_at ON whatsapp_queue(created_at)").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_queue_status ON whatsapp_queue(status)").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_queue_wasender_msg_id ON whatsapp_queue(wasender_msg_id)").catch(() => { });
 
 // Notificaciones de stock
 pool.query(`
@@ -120,7 +78,6 @@ pool.query(`
 pool.query("CREATE INDEX idx_orders_user_created ON orders(user_id, created_at)").catch(() => { });
 pool.query("CREATE INDEX idx_orders_created ON orders(created_at)").catch(() => { });
 pool.query("CREATE INDEX idx_order_items_order_platform ON order_items(order_id, platform_id)").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_status_label, created_at)").catch(() => { });
 pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_account_cost_total DECIMAL(12,2) NULL").catch(() => { });
 pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_profiles_total INT NULL").catch(() => { });
 pool.query("ALTER TABLE platform_accounts ADD COLUMN unit_cost DECIMAL(12,2) NULL").catch(() => { });
@@ -184,29 +141,6 @@ pool.query("ALTER TABLE combo_items ADD COLUMN quantity INT NOT NULL DEFAULT 1")
 pool.query("ALTER TABLE combo_items ADD COLUMN sort_order INT NOT NULL DEFAULT 0").catch(() => { });
 pool.query("ALTER TABLE combo_prices ADD COLUMN compare_at_price DECIMAL(12,2) NULL").catch(() => { });
 pool.query("ALTER TABLE combo_prices ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1").catch(() => { });
-
-pool.query(`
-    CREATE TABLE IF NOT EXISTS whatsapp_webhook_dedupe (
-        event_key VARCHAR(191) PRIMARY KEY,
-        msg_id VARCHAR(128) NULL,
-        fingerprint VARCHAR(191) NULL,
-        event_name VARCHAR(64) NULL,
-        phone VARCHAR(50) NULL,
-        message_preview VARCHAR(255) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        expires_at DATETIME NOT NULL,
-        INDEX idx_whatsapp_webhook_expires (expires_at),
-        INDEX idx_whatsapp_webhook_msg_id (msg_id)
-    )
-`).catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN msg_id VARCHAR(128) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN fingerprint VARCHAR(191) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN event_name VARCHAR(64) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN phone VARCHAR(50) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN message_preview VARCHAR(255) NULL").catch(() => { });
-pool.query("ALTER TABLE whatsapp_webhook_dedupe ADD COLUMN expires_at DATETIME NOT NULL").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_webhook_expires ON whatsapp_webhook_dedupe(expires_at)").catch(() => { });
-pool.query("CREATE INDEX idx_whatsapp_webhook_msg_id ON whatsapp_webhook_dedupe(msg_id)").catch(() => { });
 
 pool.query(`
     CREATE TABLE IF NOT EXISTS account_replacement_logs (

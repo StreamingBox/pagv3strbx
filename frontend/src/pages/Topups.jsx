@@ -109,10 +109,12 @@ export default function Topups() {
     const navigate = useNavigate();
     const { user } = useAuth();
     const logout = useAppLogout();
+    const initialCurrency = displayTopupCurrency(user?.currency || "COP");
+    const initialMethods = getFallbackTopupMethods(initialCurrency);
 
     const [wallet, setWallet] = useState(null);
-    const [topupConfig, setTopupConfig] = useState({ currency: "", methods: [] });
-    const [selectedMethodKey, setSelectedMethodKey] = useState("");
+    const [topupConfig, setTopupConfig] = useState({ currency: initialCurrency, methods: initialMethods });
+    const [selectedMethodKey, setSelectedMethodKey] = useState(initialMethods[0]?.key || "");
     const [requests, setRequests] = useState([]);
     const [amount, setAmount] = useState("");
     const [payerName, setPayerName] = useState("");
@@ -141,7 +143,13 @@ export default function Topups() {
 
     async function loadWallet() {
         const response = await apiGet("/wallet");
-        if (response.ok) setWallet(response.data);
+        if (response.ok) {
+            setWallet(response.data);
+            return;
+        }
+        if (response.status >= 400) {
+            console.warn("[topups] wallet unavailable", response.status, response.data?.message || "sin mensaje");
+        }
     }
 
     async function loadTopupConfig() {
@@ -159,7 +167,7 @@ export default function Topups() {
         if (response.status >= 400) {
             console.warn("[topups] config fallback", response.status, response.data?.message || "sin mensaje");
         }
-        applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || "COP");
+        applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || initialCurrency || "COP");
     }
 
     async function loadRequests() {
@@ -174,6 +182,7 @@ export default function Topups() {
     }
 
     useEffect(() => {
+        applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || initialCurrency || "COP");
         void loadWallet();
         void loadTopupConfig();
         void loadRequests();
@@ -187,13 +196,14 @@ export default function Topups() {
     }, [topupConfig.methods, wallet?.currency, user?.currency]);
 
     const fallbackMethods = useMemo(
-        () => getFallbackTopupMethods(wallet?.currency || user?.currency || topupConfig.currency || "COP"),
-        [topupConfig.currency, user?.currency, wallet?.currency]
+        () => getFallbackTopupMethods(wallet?.currency || user?.currency || topupConfig.currency || initialCurrency || "COP"),
+        [initialCurrency, topupConfig.currency, user?.currency, wallet?.currency]
     );
     const availableMethods = Array.isArray(topupConfig.methods) && topupConfig.methods.length
         ? topupConfig.methods
         : fallbackMethods;
-    const selectedMethod = availableMethods.find((item) => item.key === selectedMethodKey) || availableMethods[0] || null;
+    const safeMethods = availableMethods.length ? availableMethods : fallbackMethods;
+    const selectedMethod = safeMethods.find((item) => item.key === selectedMethodKey) || safeMethods[0] || null;
     const selectedQrUrl = selectedMethod?.qrImageUrl ? resolveQrImageUrl(selectedMethod.qrImageUrl) : "";
     const selectedQrSrc = selectedQrUrl
         ? `${selectedQrUrl}${selectedQrUrl.includes("?") ? "&" : "?"}preview=${encodeURIComponent(selectedMethod?.qrImageUrl || "")}`

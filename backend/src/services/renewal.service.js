@@ -1,5 +1,3 @@
-const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { makeOrderCode } = require("../utils/orderCode");
 const { addDaysExact, parseDateTime, toSqlDateTime } = require("../utils/date");
 const { getRenewalEligibility } = require("../utils/renewals");
@@ -20,9 +18,7 @@ async function renewSubscription({
                 s.duration_id, s.expires_at, s.price AS subscription_price, s.currency,
                 s.status, IFNULL(s.is_attended, 0) AS is_attended,
                 d.days, p.name AS platform_name, p.slug AS platform_slug, u.email AS user_email,
-                p.type AS platform_type, p.whatsapp_instructions,
-                p.wa_show_id, p.wa_show_email, p.wa_show_pass, p.wa_show_profile,
-                p.wa_show_pin, p.wa_show_expire, p.wa_show_url,
+                p.type AS platform_type,
                 pa.expires_at AS account_expires_at,
                 pp.is_renewable,
                 pp.price AS renewable_price
@@ -155,7 +151,6 @@ async function renewSubscription({
         "expires_at = ?",
         "status = 'active'",
         "is_attended = 0",
-        "reminder_sent = 0",
     ];
     const updateParams = [newExpiry];
 
@@ -280,53 +275,6 @@ async function renewSubscription({
         ]
     );
 
-    let whatsappText = "";
-    if (finalAccountId) {
-        const [accRows] = await conn.query(
-            "SELECT email, password, profile_number, pin FROM platform_accounts WHERE id = ? LIMIT 1",
-            [finalAccountId]
-        );
-
-        const [tokRows] = await conn.query(
-            "SELECT token FROM credential_links WHERE subscription_id = ? ORDER BY id DESC LIMIT 1",
-            [subscriptionId]
-        );
-
-        let token = tokRows.length > 0 ? tokRows[0].token : null;
-        if (!token) {
-            token = await insertCredentialLinkWithRetry(conn, {
-                subscriptionId,
-                createdByUserId: actorUserId,
-                showWhatsapp: false,
-            });
-        }
-
-        if (accRows.length > 0) {
-            whatsappText = buildWhatsappMessage({
-                orderCode: renewalOrderCode,
-                results: [{
-                    subscriptionId,
-                    plan: {
-                        platform_name: sub.platform_name,
-                        type: sub.platform_type,
-                        whatsapp_instructions: sub.whatsapp_instructions,
-                        wa_show_id: sub.wa_show_id,
-                        wa_show_email: sub.wa_show_email,
-                        wa_show_pass: sub.wa_show_pass,
-                        wa_show_profile: sub.wa_show_profile,
-                        wa_show_pin: sub.wa_show_pin,
-                        wa_show_expire: sub.wa_show_expire,
-                        wa_show_url: sub.wa_show_url,
-                    },
-                    account: accRows[0],
-                    expiresAt: newExpiryDate,
-                    token,
-                }],
-                baseUrl: process.env.BASE_URL || "https://strbx.com.co",
-            });
-        }
-    }
-
     return {
         ok: true,
         subscriptionId,
@@ -346,7 +294,6 @@ async function renewSubscription({
         newBalance: balanceAfter,
         balanceBefore,
         walletId,
-        whatsappText,
         eligibleUntilDate: eligibility.expiresOnDate,
     };
 }

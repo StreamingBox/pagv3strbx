@@ -1,20 +1,17 @@
 import { useState } from "react";
 import { apiPost } from "../api/api";
-import { saveLastWhatsappPayload } from "../utils/lastWhatsappPayload.js";
 
-export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setWallet, onPurchaseSuccess }) {
+export function useCartCheckout({ cart, clearCart, setWallet, onPurchaseSuccess }) {
     const [buyLoading, setBuyLoading] = useState(false);
     const [buyResult, setBuyResult] = useState(null);
     const [error, setError] = useState("");
-    const [whatsappMessage, setWhatsappMessage] = useState("");
 
-    async function checkout({ includeWhatsapp, whatsappPhone, recordProfit, profitAmount }) {
+    async function checkout({ recordProfit, profitAmount }) {
         if (!cart?.length) return;
 
         setBuyLoading(true);
         setError("");
         setBuyResult(null);
-        setWhatsappMessage("");
 
         try {
             // ✅ cookies HttpOnly (apiPost -> apiFetch -> credentials: "include")
@@ -25,8 +22,6 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
                 combos: cart
                     .filter((c) => c.type === "combo")
                     .map((c) => ({ comboId: c.comboId, quantity: 1 })),
-                includeWhatsapp,
-                whatsappPhone,
                 recordProfit,
                 profitAmount: recordProfit ? Number(profitAmount || 0) : 0,
             });
@@ -38,7 +33,6 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
             const data = res.data;
 
             setBuyResult(data);
-            setWhatsappMessage(data?.message || "");
 
             // ✅ Wallet (si backend la devuelve)
             if (data?.wallet) {
@@ -51,15 +45,6 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
             }
 
             clearCart();
-
-            saveLastWhatsappPayload({
-                message: data?.message || "",
-                orderCode: data?.orderCode || data?.order_code || "",
-                orderId: data?.orderId || data?.order_id || null,
-                total: data?.total ?? cartTotal ?? null,
-                currency: data?.currency || cartCurrency || "",
-                count: Array.isArray(cart) ? cart.length : null,
-            });
 
             // ✅ Llama al callback de éxito para cerrar el modal y recargar el catálogo
             if (typeof onPurchaseSuccess === "function") {
@@ -74,7 +59,6 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
 
     function resetResult() {
         setBuyResult(null);
-        setWhatsappMessage("");
         setError("");
     }
 
@@ -82,7 +66,6 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
         buyLoading,
         buyResult,
         error,
-        whatsappMessage,
         checkout,
         resetResult,
         setError,

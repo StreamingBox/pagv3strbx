@@ -397,10 +397,7 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
    - Normalizar/limitar dimensiones de imagen si aplica.
    - Servir archivos subidos desde un origen sin cookies cuando sea posible.
 
-3. Webhooks:
-   - WhatsApp webhook permite saltar firma con `WASENDER_SKIP_SIGNATURE`; asegurar que sea imposible en produccion.
-
-4. Headers en frontend/Nginx:
+3. Headers en frontend/Nginx:
    - Agregar headers para SPA: `Content-Security-Policy`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` y framing.
    - Validar con `curl -I` contra dominio real.
 
@@ -458,7 +455,7 @@ Validacion realizada el 2026-04-25 despues de revisar el arbol de trabajo actual
 3. Corregir IMAP TLS fallback: `connectImapWithTlsFallback` sigue reintentando con `rejectUnauthorized=false`; debe fallar cerrado en produccion.
 4. Instalar y ejecutar `govulncheck ./...` en cada modulo Go.
 5. Ejecutar smoke test del backend levantando servidor con variables reales de staging o entorno local completo.
-6. Probar manualmente flujos sensibles: login, refresh, logout, forgot/reset password, checkout, upload logo, branding logo, links `/s/:token` y webhook WhatsApp.
+6. Probar manualmente flujos sensibles: login, refresh, logout, forgot/reset password, checkout, upload logo, branding logo y links `/s/:token`.
 7. Publicar una APK nueva para que `allowBackup=false` y la limpieza de contrasena lleguen a usuarios.
 8. Revisar si los cambios actuales deben documentarse como fixes en el reporte principal o separarse en una rama/commit de remediacion.
 
@@ -509,7 +506,7 @@ Validacion realizada el 2026-04-25 despues de aplicar los fixes faltantes.
 1. Publicar APK nueva para distribuir `allowBackup=false` y la eliminacion del guardado de contrasena.
 2. Configurar despliegue/CI para usar Go 1.26.2 o superior; con Go 1.26.0 `govulncheck` vuelve a reportar vulnerabilidades de stdlib.
 3. Definir y rotar `INTERNAL_SERVICE_TOKEN`; actualizar cualquier proxy/cliente interno si vuelve a llamar directamente a `codes-service` o `store-service`.
-4. Ejecutar pruebas manuales con servicios reales: login, refresh, logout, forgot/reset password, checkout, uploads, branding, webhook WhatsApp, Telegram polling y flujo IMAP.
+4. Ejecutar pruebas manuales con servicios reales: login, refresh, logout, forgot/reset password, checkout, uploads, branding, Telegram polling y flujo IMAP.
 5. Revisar y limpiar deuda de `npm run lint`: el lint completo aun falla por deuda existente en `src` (imports no usados, `catch {}` vacios, reglas nuevas de hooks y `vite.config.js` sin globals Node). No bloquea build ni audits, pero debe corregirse en una tarea separada.
 6. Quitar o formalizar artefactos binarios versionados (`.apk`, `.exe`, backups) mediante releases/checksums.
 7. Validar headers reales con `curl -I` contra staging/produccion, porque parte de la postura HTTP depende de Nginx/edge.
@@ -545,7 +542,6 @@ Validacion realizada el 2026-04-25 para cerrar los pendientes fuera de codigo qu
   - `deploy.sh` puede instalar esa plantilla si se define `NGINX_SITE_PATH`.
 - Proveedores externos:
   - Telegram `getMe`: OK, bot respondio.
-  - WhatsApp/WaSender: token configurado en base de datos local.
   - IMAP: intento real fallo con `DEPTH_ZERO_SELF_SIGNED_CERT`; con la postura nueva esto queda fail-closed y no se fuerza TLS inseguro.
 
 ### Validacion ejecutada despues del cierre

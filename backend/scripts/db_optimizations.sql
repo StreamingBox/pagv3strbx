@@ -8,6 +8,3 @@ CREATE INDEX idx_orders_created ON orders(created_at);
 
 -- 3. Agilizar conteos o sumatorias de distribucion por plataforma
 CREATE INDEX idx_order_items_order_platform ON order_items(order_id, platform_id);
-
--- 4. Optimizar las búsquedas y ordenamientos en los logs de WhatsApp
-CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_status_label, created_at);

@@ -1,31 +1,20 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, EyeOff, Sun, Moon, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { countries } from "../utils/countries";
 import StreamingBoxLogo from "../components/StreamingBoxLogo.jsx";
 import { getApiBase } from "../config/apiBase.js";
 import { isNativeAndroidApp } from "../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
 const LOGO_URL = "/api/branding/logo";
-const WA_NUMBER = "573152485340";
 const APP_REMEMBER_LOGIN_KEY = "sb-app-remember-login";
 const APP_SAVED_EMAIL_KEY = "sb-app-saved-email";
 const APP_LEGACY_SAVED_PASSWORD_KEY = "sb-app-saved-password";
 
 function getTheme() {
     try { return localStorage.getItem("sb-theme") || "dark"; } catch { return "dark"; }
-}
-
-// Convierte emoji de bandera en URL de imagen (Windows no renderiza emoji de banderas)
-function flagUrl(flagEmoji) {
-    try {
-        const pts = [...flagEmoji].map(c => c.codePointAt(0));
-        const iso = pts.map(cp => String.fromCharCode(cp - 0x1F1E6 + 97)).join("");
-        return `https://flagcdn.com/20x15/${iso}.png`;
-    } catch { return ""; }
 }
 
 export default function Auth() {
@@ -52,22 +41,10 @@ export default function Auth() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [phone, setPhone] = useState("");
     const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [showPwd, setShowPwd] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [rememberLogin, setRememberLogin] = useState(isNativeAndroidApp());
-
-    // Country
-    const [country, setCountry] = useState({ code: "+57", flag: "🇨🇴", name: "Colombia" });
-    const [showCountries, setShowCountries] = useState(false);
-    const [countrySearch, setCountrySearch] = useState("");
-    const countryRef = useRef(null);
-
-    const filteredCountries = useMemo(() => {
-        const s = countrySearch.toLowerCase();
-        return countries.filter(c => c.name.toLowerCase().includes(s) || c.code.includes(s));
-    }, [countrySearch]);
 
     useEffect(() => {
         document.documentElement.setAttribute("data-theme", theme);
@@ -93,17 +70,6 @@ export default function Auth() {
             setRememberLogin(true);
         }
     }, [location.pathname]);
-
-    // Close countries on outside click
-    useEffect(() => {
-        const handler = (e) => {
-            if (countryRef.current && !countryRef.current.contains(e.target)) {
-                setShowCountries(false);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
 
     const toggle = () => {
         setError("");
@@ -151,10 +117,9 @@ export default function Auth() {
         if (!acceptedTerms) return setError("Debes aceptar los Términos y Condiciones.");
         setLoading(true);
         try {
-            const fullPhone = `${country.code}${phone.replace(/\D/g, "")}`;
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, phone: fullPhone }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "Error al crear cuenta.");
@@ -523,8 +488,6 @@ export default function Auth() {
         },
     };
 
-    const [hoveredCountry, setHoveredCountry] = useState(null);
-
     // ── SUCCESS state ──
     if (success) return (
         <div style={{ ...S.shell, flexDirection: "column", gap: 20 }}>
@@ -536,21 +499,8 @@ export default function Auth() {
                 <h2 style={{ fontSize: 26, fontWeight: 800, color: "#fff", marginBottom: 14 }}>¡Cuenta creada con éxito!</h2>
                 <p style={{ color: "rgba(200,215,245,.7)", lineHeight: 1.7, marginBottom: 20, fontSize: 15 }}>
                     Tu cuenta está <strong style={{ color: "#06b6d4" }}>pendiente de aprobación</strong>.<br />
-                    Escríbenos por WhatsApp para activarla.
+                    Espera a que un administrador la active.
                 </p>
-
-                <div style={{ background: "rgba(37,211,102,.08)", border: "1px solid rgba(37,211,102,.25)", borderRadius: 14, padding: "12px 18px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                    <span style={{ fontSize: 20 }}>📱</span>
-                    <div style={{ textAlign: "left" }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, color: "#25d366", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 2 }}>Número de WhatsApp</div>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: "#fff", letterSpacing: 1 }}>+57 315 248 5340</div>
-                    </div>
-                </div>
-                <motion.a href={`https://wa.me/${WA_NUMBER}?text=Hola%2C%20acabo%20de%20registrarme%20y%20necesito%20activar%20mi%20cuenta.`} target="_blank" rel="noreferrer" whileHover={{ scale: 1.03, y: -2 }}
-                    style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, background: "linear-gradient(135deg,#25d366,#128c7e)", color: "#fff", padding: "14px 28px", borderRadius: 16, textDecoration: "none", fontWeight: 700, fontSize: 16, marginBottom: 16, boxShadow: "0 6px 24px rgba(37,211,102,.3)" }}>
-                    <svg width={22} height={22} viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413z"/><path d="M12.004 2C6.477 2 2 6.478 2 12.004c0 1.944.526 3.764 1.44 5.321L2 22l4.802-1.414A9.959 9.959 0 0012.004 22C17.523 22 22 17.522 22 11.996 22 6.478 17.523 2 12.004 2zm0 18.155a9.13 9.13 0 01-4.854-1.39l-.348-.207-3.585 1.057 1.001-3.522-.227-.36A9.13 9.13 0 012.845 12c0-5.06 4.1-9.155 9.159-9.155 5.055 0 9.151 4.095 9.151 9.155 0 5.055-4.096 9.155-9.151 9.155z"/></svg>
-                    Contactar por WhatsApp
-                </motion.a>
                 <button onClick={() => { setSuccess(false); setIsRegister(false); navigate("/"); }}
                     style={{ background: "none", border: "none", color: "rgba(200,215,245,.5)", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}>
                     Volver al inicio de sesión
@@ -641,39 +591,6 @@ export default function Auth() {
                         <label style={S.label}>
                             Email
                             <input style={S.input} type="email" placeholder="tu@correo.com" value={email} onChange={e => setEmail(e.target.value)} onFocus={e => (e.target.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.style.boxShadow = "none")} required />
-                        </label>
-                        <label style={S.label}>
-                            WhatsApp
-                            <div style={{ position: "relative" }} ref={countryRef}>
-                                <div style={S.unifiedInput} className="unified-input">
-                                    <button type="button" style={S.countryTrigger} onClick={() => { setShowCountries(v => !v); setCountrySearch(""); }}>
-                                        <img src={flagUrl(country.flag)} alt="" style={{ width: 22, height: 16, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
-                                        <span style={{ fontSize: 14 }}>{country.code}</span>
-                                    </button>
-                                    <input style={S.phoneInput} type="text" placeholder="Número (sin indicativo)" value={phone} onChange={e => setPhone(e.target.value.replace(/\D/g, ""))} onFocus={e => (e.target.parentElement.style.boxShadow = "0 0 0 3px rgba(37,99,235,.25)")} onBlur={e => (e.target.parentElement.style.boxShadow = "none")} required />
-                                </div>
-
-                                <AnimatePresence>
-                                    {showCountries && (
-                                        <motion.div style={S.dropdown} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}>
-                                            <div style={S.searchRow}>
-                                                <input style={S.searchInput} type="text" placeholder="🔍 Buscar país..." value={countrySearch} onChange={e => setCountrySearch(e.target.value)} autoFocus />
-                                            </div>
-                                            {filteredCountries.map(c => (
-                                                <div key={c.name + c.code}
-                                                    style={S.countryRow(hoveredCountry === c.name)}
-                                                    onMouseEnter={() => setHoveredCountry(c.name)}
-                                                    onMouseLeave={() => setHoveredCountry(null)}
-                                                    onClick={() => { setCountry(c); setShowCountries(false); }}>
-                                                    <img src={flagUrl(c.flag)} alt="" style={{ width: 20, height: 15, objectFit: "cover", borderRadius: 2, flexShrink: 0 }} onError={e => e.target.style.display='none'} />
-                                                    <span style={{ flex: 1, color: C.text }}>{c.name}</span>
-                                                    <span style={{ fontSize: 12, color: C.muted }}>{c.code}</span>
-                                                </div>
-                                            ))}
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
                         </label>
                         <label style={S.label}>
                             Contraseña
@@ -830,4 +747,5 @@ export default function Auth() {
         </div>
     );
 }
+
 

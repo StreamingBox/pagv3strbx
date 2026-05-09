@@ -143,9 +143,9 @@ async function notifyUsersAdvertisingUpload(folderName, count) {
     );
 }
 
-router.use("/admin/advertising", requireAuth, requireRole("admin"));
+router.use(requireAuth, requireRole("admin"));
 
-router.get("/admin/advertising/folders", async (_req, res) => {
+router.get("/folders", async (_req, res) => {
     try {
         const folders = await driveService.listFolders();
         const folderMeta = await getFolderMetaMap();
@@ -173,7 +173,7 @@ router.get("/admin/advertising/folders", async (_req, res) => {
     }
 });
 
-router.post("/admin/advertising/folders", async (req, res) => {
+router.post("/folders", async (req, res) => {
     try {
         const { name } = req.body || {};
         if (!name || !String(name).trim()) {
@@ -197,7 +197,7 @@ router.post("/admin/advertising/folders", async (req, res) => {
     }
 });
 
-router.put("/admin/advertising/folders/:id", async (req, res) => {
+router.put("/folders/:id", async (req, res) => {
     try {
         const { name } = req.body || {};
         if (!name || !String(name).trim()) {
@@ -217,7 +217,7 @@ router.put("/admin/advertising/folders/:id", async (req, res) => {
     }
 });
 
-router.patch("/admin/advertising/folders/:id/toggle", async (req, res) => {
+router.patch("/folders/:id/toggle", async (req, res) => {
     try {
         const folderId = req.params.id;
         const folderName = String(req.body?.name || req.body?.folder_name || "Publicidad").trim();
@@ -238,7 +238,7 @@ router.patch("/admin/advertising/folders/:id/toggle", async (req, res) => {
     }
 });
 
-router.delete("/admin/advertising/folders/:id", async (req, res) => {
+router.delete("/folders/:id", async (req, res) => {
     try {
         const folderId = req.params.id;
         await driveService.deleteFolder(folderId);
@@ -251,7 +251,7 @@ router.delete("/admin/advertising/folders/:id", async (req, res) => {
     }
 });
 
-router.get("/admin/advertising/images/:folderId", async (req, res) => {
+router.get("/images/:folderId", async (req, res) => {
     try {
         const { folderId } = req.params;
         const driveFiles = await driveService.listImagesInFolder(folderId);
@@ -282,7 +282,7 @@ router.get("/admin/advertising/images/:folderId", async (req, res) => {
     }
 });
 
-router.post("/admin/advertising/images/:folderId", upload.array("images", 20), async (req, res) => {
+router.post("/images/:folderId", upload.array("images", 20), async (req, res) => {
     try {
         const { folderId } = req.params;
         const files = req.files;
@@ -365,7 +365,7 @@ router.post("/admin/advertising/images/:folderId", upload.array("images", 20), a
     }
 });
 
-router.patch("/admin/advertising/images/:fileId/toggle", async (req, res) => {
+router.patch("/images/:fileId/toggle", async (req, res) => {
     try {
         const { fileId } = req.params;
         const [rows] = await pool.query("SELECT id, is_active FROM advertising_images WHERE file_id = ?", [fileId]);
@@ -382,7 +382,7 @@ router.patch("/admin/advertising/images/:fileId/toggle", async (req, res) => {
     }
 });
 
-router.patch("/admin/advertising/images/:fileId/sort", async (req, res) => {
+router.patch("/images/:fileId/sort", async (req, res) => {
     try {
         const { fileId } = req.params;
         const { sort_order } = req.body || {};
@@ -394,7 +394,7 @@ router.patch("/admin/advertising/images/:fileId/sort", async (req, res) => {
     }
 });
 
-router.delete("/admin/advertising/images/:fileId", async (req, res) => {
+router.delete("/images/:fileId", async (req, res) => {
     try {
         const { fileId } = req.params;
         await driveService.deleteFile(fileId);

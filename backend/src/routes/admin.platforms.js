@@ -35,8 +35,7 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
 // POST /admin/platforms
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
-        name, slug, category_id, type, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
+        name, slug, category_id, type,
         is_promo, promo_color
     } = req.body || {};
 
@@ -44,24 +43,16 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         return res.status(400).json({ message: "name y slug son obligatorios." });
     }
 
-    const showId = wa_show_id !== undefined ? (wa_show_id ? 1 : 0) : 1;
-    const showEmail = wa_show_email !== undefined ? (wa_show_email ? 1 : 0) : 1;
-    const showPass = wa_show_pass !== undefined ? (wa_show_pass ? 1 : 0) : 1;
-    const showProfile = wa_show_profile !== undefined ? (wa_show_profile ? 1 : 0) : 1;
-    const showPin = wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : 1;
-    const showExpire = wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : 1;
-    const showUrl = wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : 1;
     const promoEnabled = is_promo ? 1 : 0;
     const promoColor = promoEnabled ? (normalizePromoColor(promo_color) || "#22D3EE") : null;
 
     const [r] = await pool.query(
         `INSERT INTO platforms (
             name, slug, category_id, type, is_active, allowed_currencies, 
-            whatsapp_instructions, wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
             is_promo, promo_color
          )
-         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [name, slug, category_id ?? null, type ?? 'normal', whatsapp_instructions ?? null, showId, showEmail, showPass, showProfile, showPin, showExpire, showUrl, promoEnabled, promoColor]
+         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?)`,
+        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor]
     );
 
     res.status(201).json({
@@ -72,14 +63,6 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         type: type ?? 'normal',
         is_active: 1,
         allowed_currencies: "COP,MXN,USD",
-        whatsapp_instructions: whatsapp_instructions ?? null,
-        wa_show_id: showId,
-        wa_show_email: showEmail,
-        wa_show_pass: showPass,
-        wa_show_profile: showProfile,
-        wa_show_pin: showPin,
-        wa_show_expire: showExpire,
-        wa_show_url: showUrl,
         is_promo: promoEnabled,
         promo_color: promoColor
     });
@@ -90,8 +73,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const { id } = req.params;
 
     const {
-        name, slug, is_active, category_id, type, allowed_currencies, whatsapp_instructions,
-        wa_show_id, wa_show_email, wa_show_pass, wa_show_profile, wa_show_pin, wa_show_expire, wa_show_url,
+        name, slug, is_active, category_id, type, allowed_currencies,
         is_promo, promo_color
     } = req.body || {};
 
@@ -133,14 +115,6 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          category_id = COALESCE(?, category_id),
          type = COALESCE(?, type),
          allowed_currencies = COALESCE(?, allowed_currencies),
-         whatsapp_instructions = COALESCE(?, whatsapp_instructions),
-         wa_show_id = COALESCE(?, wa_show_id),
-         wa_show_email = COALESCE(?, wa_show_email),
-         wa_show_pass = COALESCE(?, wa_show_pass),
-         wa_show_profile = COALESCE(?, wa_show_profile),
-         wa_show_pin = COALESCE(?, wa_show_pin),
-         wa_show_expire = COALESCE(?, wa_show_expire),
-         wa_show_url = COALESCE(?, wa_show_url),
          is_promo = COALESCE(?, is_promo),
          promo_color = CASE
             WHEN ? = 0 THEN NULL
@@ -155,14 +129,6 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             category_id ?? null,
             type ?? null,
             allowedCurrenciesCSV ?? null,
-            whatsapp_instructions !== undefined ? whatsapp_instructions : null,
-            wa_show_id !== undefined ? (wa_show_id ? 1 : 0) : null,
-            wa_show_email !== undefined ? (wa_show_email ? 1 : 0) : null,
-            wa_show_pass !== undefined ? (wa_show_pass ? 1 : 0) : null,
-            wa_show_profile !== undefined ? (wa_show_profile ? 1 : 0) : null,
-            wa_show_pin !== undefined ? (wa_show_pin ? 1 : 0) : null,
-            wa_show_expire !== undefined ? (wa_show_expire ? 1 : 0) : null,
-            wa_show_url !== undefined ? (wa_show_url ? 1 : 0) : null,
             promoFlag,
             promoFlag,
             promoFlag,

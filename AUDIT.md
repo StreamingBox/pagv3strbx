@@ -9,7 +9,7 @@
 - Rate limiting por endpoint: login (8/min), códigos (400/hr), links compartidos (8/min), global (450/hr)
 - Sanitización anti-prototype-pollution (`__proto__`, `constructor`, `prototype`)
 - Cookies HttpOnly + Secure + SameSite Strict
-- Validación de configuración en producción: secrets JWT ≥ 32 chars, `WASENDER_SKIP_SIGNATURE` bloqueado
+- Validación de configuración en producción: secrets JWT ≥ 32 chars
 - `trust proxy` configurado para IP real detrás de Nginx
 - `express.urlencoded` con `parameterLimit: 200` y `depth: 5`
 - Verificación de magic bytes en logos de plataforma (`hasAllowedImageSignature`)
@@ -30,7 +30,7 @@
 #### `.env` real en el proyecto
 - **Archivo**: `backend/.env`
 - **Criticidad**: 🔴 Crítico
-- El archivo `.env` existe en el filesystem con valores reales. Si alguna vez se commitea, las claves JWT, DB, SMTP, Google Drive y WaSender quedan expuestas.
+- El archivo `.env` existe en el filesystem con valores reales. Si alguna vez se commitea, las claves JWT, DB, SMTP y Google Drive quedan expuestas.
 - **Acción**: Verificar que `.env` esté en `.gitignore` y confirmar que no tiene commits en el historial. Agregar `.env` a un hook de pre-commit que lo bloquee explícitamente.
 
 ---
@@ -94,7 +94,7 @@
 #### `.env.example` incompleto
 - **Archivo**: `backend/.env.example`
 - **Criticidad**: 🟡 Medio
-- Faltan: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ACCESS_TOKEN_EXPIRES_IN`, `REFRESH_TOKEN_EXPIRES_DAYS`, `GOOGLE_DRIVE_*`, `TELEGRAM_*`, `WASENDER_*`, etc.
+- Faltan: `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `ACCESS_TOKEN_EXPIRES_IN`, `REFRESH_TOKEN_EXPIRES_DAYS`, `GOOGLE_DRIVE_*`, `TELEGRAM_*`, etc.
 - **Acción**: Listar todas las variables requeridas con descripción y ejemplo de formato (sin valores reales).
 
 ---

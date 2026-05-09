@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
+import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -97,7 +96,7 @@ function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
 }
 
 // ─── Componente de grupo por cuenta ─────────────────────────────────────────
-function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, handleRemind, navigate, allCollapsed, attendedFilter, savingIds }) {
+function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, navigate, allCollapsed, attendedFilter, savingIds }) {
     const [collapsed, setCollapsed] = useState(allCollapsed);
 
     useEffect(() => {
@@ -308,22 +307,6 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, han
                         <td style={{ padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                             <button
                                 className="btn-ghost"
-                                title={item.reminder_sent ? "Recordatorio ya enviado" : (item.whatsapp_phone ? `Enviar recordatorio por WA a ${item.whatsapp_phone}` : "No hay número guardado, haz clic para ingresarlo")}
-                                disabled={item.reminder_sent || isSaving}
-                                style={{
-                                    padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 8,
-                                    color: (item.reminder_sent || isSaving) ? "var(--muted)" : "#10b981",
-                                    background: (item.reminder_sent || isSaving) ? "rgba(255,255,255,0.05)" : "rgba(16,185,129,0.1)",
-                                    border: `1px solid ${(item.reminder_sent || isSaving) ? "var(--stroke)" : "rgba(16,185,129,0.3)"}`,
-                                    marginRight: 6, cursor: (item.reminder_sent || isSaving) ? "not-allowed" : "pointer",
-                                    opacity: (item.reminder_sent || isSaving) ? 0.6 : 1
-                                }}
-                                onClick={() => !item.reminder_sent && handleRemind(item)}
-                            >
-                                {item.reminder_sent ? "🔕" : "🔔"}
-                            </button>
-                            <button
-                                className="btn-ghost"
                                 style={{
                                     padding: "5px 10px", fontSize: 11, fontWeight: 700, borderRadius: 8,
                                     color: item.is_attended ? "#f59e0b" : "#10b981",
@@ -386,12 +369,6 @@ export default function AdminExpirations() {
     const [platforms, setPlatforms] = useState([]);
     const [allCollapsed, setAllCollapsed] = useState(false);
     const [savingIds, setSavingIds] = useState([]);
-
-    const [remindModalOpen, setRemindModalOpen] = useState(false);
-    const [remindItem, setRemindItem] = useState(null);
-    const [remindPhone, setRemindPhone] = useState("");
-    const [reminding, setReminding] = useState(false);
-    const [remindMsg, setRemindMsg] = useState({ type: "", text: "" });
 
     useEffect(() => {
         let mounted = true;
@@ -500,47 +477,6 @@ export default function AdminExpirations() {
             setSavingIds(prev => prev.filter(itemId => itemId !== id));
         }
     }
-    function openRemindModal(item) {
-        if (item.reminder_sent) {
-            return alert("Ya se le ha enviado un recordatorio a esta cuenta. No se permite reenviar para evitar spam.");
-        }
-        setRemindItem(item);
-        setRemindPhone(item.whatsapp_phone || "");
-        setRemindMsg({ type: "", text: "" });
-        setRemindModalOpen(true);
-    }
-
-    async function confirmRemind() {
-        if (!remindPhone.trim()) {
-            setRemindMsg({ type: "error", text: "El número es obligatorio" });
-            return;
-        }
-        setReminding(true);
-        setRemindMsg({ type: "", text: "" });
-
-        const finalPhone = remindPhone.trim();
-
-        try {
-            const data = await apiFetch(`/orders/${remindItem.id}/remind-whatsapp`, {
-                method: "POST",
-                body: JSON.stringify({ whatsappPhone: finalPhone })
-            });
-            if (data?.ok) {
-                setRemindMsg({ type: "success", text: data?.message || "✅ Recordatorio enviado exitosamente a WhatsApp." });
-                setItems(prev => prev.map(o => o.id === remindItem.id ? { ...o, reminder_sent: 1, whatsapp_phone: finalPhone } : o));
-                setTimeout(() => {
-                    setRemindModalOpen(false);
-                }, 1500);
-            } else {
-                setRemindMsg({ type: "error", text: "❌ No se pudo confirmar el envío." });
-            }
-        } catch (e) {
-            setRemindMsg({ type: "error", text: "❌ " + (e.message || "Error enviando recordatorio.") });
-        } finally {
-            setReminding(false);
-        }
-    }
-
     function getDaysLeft(expiryStr) {
         if (!expiryStr) return null;
         // Normalizar ambas fechas a medianoche para comparar días exactos
@@ -852,7 +788,6 @@ export default function AdminExpirations() {
                                                 getDaysLeft={getDaysLeft}
                                                 renderDaysBadge={renderDaysBadge}
                                                 toggleAttended={toggleAttended}
-                                                handleRemind={openRemindModal}
                                                 navigate={navigate}
                                                 allCollapsed={allCollapsed}
                                                 attendedFilter={attendedFilter}
@@ -910,95 +845,6 @@ export default function AdminExpirations() {
                     </div>
                 </main>
             </div>
-
-            {/* Modal Recordatorio WA */}
-            <AnimatePresence>
-                {remindModalOpen && remindItem && (
-                    <div style={{
-                        position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
-                        backgroundColor: "rgba(0,0,0,0.6)",
-                        backdropFilter: "blur(4px)",
-                        zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center",
-                        padding: 20
-                    }}>
-                        <MotionDiv
-                            initial={{ scale: 0.95, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.95, opacity: 0 }}
-                            style={{
-                                background: "var(--card-bg)",
-                                border: "1px solid var(--stroke)",
-                                borderRadius: 16,
-                                padding: 24,
-                                width: "100%", maxWidth: 400,
-                                position: "relative"
-                            }}
-                        >
-                            <button
-                                onClick={() => setRemindModalOpen(false)}
-                                style={{
-                                    position: "absolute", top: 16, right: 16,
-                                    background: "transparent", border: "none", color: "var(--muted)",
-                                    cursor: "pointer"
-                                }}
-                            >
-                                <X size={20} />
-                            </button>
-
-                            <h3 style={{ margin: "0 0 16px", fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
-                                <span style={{ fontSize: 24 }}>🔔</span>
-                                Enviar Recordatorio
-                            </h3>
-
-                            <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 16 }}>
-                                Vas a enviar un mensaje de WhatsApp al cliente recordando el vencimiento de la cuenta <b style={{color: "var(--fg)"}}>{remindItem.platform_name}</b>.
-                            </p>
-
-                            <div style={{ marginBottom: 16 }}>
-                                <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 6, fontWeight: 600 }}>Número de WhatsApp</label>
-                                <input
-                                    className="input"
-                                    type="text"
-                                    placeholder="+57300..."
-                                    value={remindPhone}
-                                    onChange={(e) => setRemindPhone(e.target.value)}
-                                    style={{ width: "100%" }}
-                                />
-                            </div>
-
-                            {remindMsg.text && (
-                                <div style={{
-                                    padding: 10, borderRadius: 8, fontSize: 13, marginBottom: 16,
-                                    background: remindMsg.type === "success" ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-                                    color: remindMsg.type === "success" ? "#10b981" : "#ef4444",
-                                    border: `1px solid ${remindMsg.type === "success" ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`
-                                }}>
-                                    {remindMsg.text}
-                                </div>
-                            )}
-
-                            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-                                <button
-                                    className="btn-ghost"
-                                    onClick={() => setRemindModalOpen(false)}
-                                    disabled={reminding}
-                                    style={{ padding: "8px 16px", fontSize: 13 }}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    className="btn"
-                                    onClick={confirmRemind}
-                                    disabled={reminding}
-                                    style={{ padding: "8px 16px", fontSize: 13 }}
-                                >
-                                    {reminding ? "Enviando..." : "Enviar Recordatorio"}
-                                </button>
-                            </div>
-                        </MotionDiv>
-                    </div>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

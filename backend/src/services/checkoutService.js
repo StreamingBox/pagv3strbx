@@ -1,7 +1,6 @@
 const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { addDaysExact, toSqlDateTime } = require("../utils/date");
 const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
@@ -45,15 +44,7 @@ async function loadIndividualPlans(conn, platformPriceIds) {
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
-            p.type,
-            p.whatsapp_instructions,
-            p.wa_show_id,
-            p.wa_show_email,
-            p.wa_show_pass,
-            p.wa_show_profile,
-            p.wa_show_pin,
-            p.wa_show_expire,
-            p.wa_show_url
+            p.type
          FROM platform_prices pp
          JOIN durations d ON d.id = pp.duration_id
          JOIN platforms p ON p.id = pp.platform_id
@@ -111,15 +102,7 @@ async function loadComboEntries(conn, comboRequests, currency) {
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
-            p.type,
-            p.whatsapp_instructions,
-            p.wa_show_id,
-            p.wa_show_email,
-            p.wa_show_pass,
-            p.wa_show_profile,
-            p.wa_show_pin,
-            p.wa_show_expire,
-            p.wa_show_url
+            p.type
          FROM combo_items ci
          JOIN platform_prices pp ON pp.platform_id = ci.platform_id
             AND pp.duration_id = ci.duration_id
@@ -180,7 +163,7 @@ async function loadComboEntries(conn, comboRequests, currency) {
     return entries;
 }
 
-async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, combos, recordProfit, profitAmount }) {
+async function checkoutService({ userId, items, combos, recordProfit, profitAmount }) {
     const platformPriceIds = (Array.isArray(items) ? items : [])
         .map((x) => Number(x?.platformPriceId))
         .filter((n) => Number.isFinite(n) && n > 0);
@@ -313,8 +296,8 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
                     (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
-                     status, expires_at, price, currency, whatsapp_phone)
-                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+                     status, expires_at, price, currency)
+                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
                 [
                     userId,
                     plan.platform_id,
@@ -324,7 +307,6 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                     expiresAtSql,
                     itemPrice,
                     currency,
-                    whatsappPhone ? String(whatsappPhone).trim() : null,
                 ]
             );
 
@@ -340,7 +322,6 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             const token = await insertCredentialLinkWithRetry(conn, {
                 subscriptionId,
                 createdByUserId: userId,
-                showWhatsapp: includeWhatsapp,
             });
 
             const unitCost = Number(account.unit_cost || 0);
@@ -410,9 +391,6 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             }).catch((e) => console.error("[mail] sendOrderDeliveryEmail error:", e?.message || e));
         }
 
-        const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
-        const message = buildWhatsappMessage({ orderCode, results, baseUrl });
-
         const [wAfter] = await pool.query(
             "SELECT balance, profit_total, currency FROM wallets WHERE id = ? LIMIT 1",
             [wallet.id]
@@ -424,7 +402,6 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             orderCode,
             count: results.length,
             subscriptionIds: results.map((r) => r.subscriptionId),
-            message,
             total,
             currency,
             wallet: {

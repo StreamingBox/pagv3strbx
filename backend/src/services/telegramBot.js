@@ -467,7 +467,6 @@ async function handleBuyMessage(msg) {
             const { checkoutService } = require("./checkoutService");
             const result = await checkoutService({
                 userId: session.userId,
-                includeWhatsapp: true,
                 items: [{ platformPriceId: session.priceId }],
                 recordProfit: session.profit > 0,
                 profitAmount: session.profit
@@ -844,7 +843,7 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
     }
 }
 
-async function notifyRenewalSale({ seller, platform, total, currency, newBalance, orderCode, deliveryMessage }) {
+async function notifyRenewalSale({ seller, platform, total, currency, newBalance, orderCode }) {
     if (!bot || AUTHORIZED.size === 0) return;
 
     const totalLabel = `${Number(total || 0).toLocaleString("es-CO")} ${currency || ""}`.trim();
@@ -862,16 +861,6 @@ async function notifyRenewalSale({ seller, platform, total, currency, newBalance
             `🧾 Orden: ${orderCode || "-"}`,
         ].join("\n")
     );
-
-    if (deliveryMessage) {
-        await notifyAuthorizedChats(
-            [
-                "📋 Texto para copiar al cliente",
-                "",
-                deliveryMessage,
-            ].join("\n")
-        );
-    }
 }
 
 async function notifyManualTopupSubmitted(topupId) {

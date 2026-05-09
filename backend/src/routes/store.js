@@ -4,8 +4,6 @@ const pool = require("../db");
 
 const { checkoutService } = require("../services/checkoutService");
 const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
-const { addToQueue } = require("../services/whatsappQueue");
-const { readWaToken } = require("../services/whatsappSettings");
 const { renewSubscription } = require("../services/renewal.service");
 const { notifyRenewalSale } = require("../services/telegramBot");
 
@@ -15,8 +13,6 @@ const router = express.Router();
 router.post("/checkout", requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
-        const includeWhatsapp = !!req.body?.includeWhatsapp;
-        const whatsappPhone = req.body?.whatsappPhone;
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
         const combos = Array.isArray(req.body?.combos) ? req.body.combos : [];
 
@@ -25,8 +21,6 @@ router.post("/checkout", requireAuth, async (req, res) => {
 
         const data = await checkoutService({
             userId,
-            includeWhatsapp,
-            whatsappPhone,
             items,
             combos,
             recordProfit,
@@ -151,7 +145,6 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
                p.slug AS platform_slug,
                acc.email AS account_email,
                acc.profile_number,
-               s.whatsapp_phone,
                s.reminder_sent
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id
@@ -196,82 +189,6 @@ router.get("/orders/expiring-count", requireAuth, async (req, res) => {
     }
 });
 
-// ✅ Renovar recordatorio por WhatsApp (User & Admin)
-router.post("/orders/:id/remind-whatsapp", requireAuth, async (req, res) => {
-    try {
-        const orderId = Number(req.params.id);
-        const { whatsappPhone } = req.body; // Se puede recibir un nuevo teléfono
-
-        const [rows] = await pool.query(`
-            SELECT 
-                s.user_id, s.whatsapp_phone, s.expires_at, s.reminder_sent,
-                p.name AS platform_name,
-                acc.email AS account_email, acc.profile_number,
-                u.whatsapp AS vendor_phone 
-            FROM subscriptions s
-            JOIN platforms p ON p.id = s.platform_id
-            JOIN users u ON u.id = s.user_id
-            LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
-            WHERE s.id = ?
-        `, [orderId]);
-
-        if (!rows.length) return res.status(404).json({ message: "Suscripción no encontrada." });
-        const sub = rows[0];
-
-        // Verificar acceso (debe ser dueño o admin)
-        if (sub.user_id !== req.user.id && req.user.role !== "admin") {
-            return res.status(403).json({ message: "No autorizado para esta cuenta." });
-        }
-
-        if (sub.reminder_sent) {
-            return res.status(400).json({ message: "El recordatorio ya fue enviado previamente para esta cuenta. No se pueden enviar más mensajes." });
-        }
-
-        const phoneToUse = whatsappPhone ? String(whatsappPhone).trim() : sub.whatsapp_phone;
-        if (!phoneToUse) {
-            return res.status(400).json({ message: "Se requiere un número de WhatsApp para enviar el recordatorio." });
-        }
-
-        const token = await readWaToken();
-        if (!token) return res.status(503).json({ message: "WhatsApp no configurado en ajustes." });
-
-        const phoneStr = phoneToUse.replace(/\\s|-/g, "");
-        const finalPhone = phoneStr.startsWith("+") ? phoneStr : "+" + phoneStr;
-
-        const today = new Date();
-        const expiryDate = new Date(sub.expires_at);
-        today.setHours(0,0,0,0);
-        expiryDate.setHours(0,0,0,0);
-        
-        let dateMsg = "el día de hoy";
-        if (expiryDate.getTime() < today.getTime()) {
-            dateMsg = "el día " + expiryDate.toLocaleDateString("es-CO");
-        } else if (expiryDate.getTime() > today.getTime()) {
-             dateMsg = "el próximo " + expiryDate.toLocaleDateString("es-CO");
-        }
-
-        const vendorContact = sub.vendor_phone ? `\n📱 *Para renovar, contáctate al número:* ${sub.vendor_phone}` : `\n📱 *Si deseas renovar, por favor comunícate por el mismo medio donde enviaste el comprobante de pago.*`;
-
-        const text = `🔔 *Recordatorio de Vencimiento*\n\nHola, te recordamos que tu perfil de *uid* de *${sub.platform_name}* vence *${dateMsg}*.\n\n*Cuenta:* ${sub.account_email || "Sin email"}\n*Perfil:* ${sub.profile_number || "—"}\n\nPor favor notifícanos si deseas renovar para no perder el acceso.${vendorContact}\n\n---\n⚠️ _Este es un mensaje automático. Por favor no responder a este bot_`.replace("*uid* ", "");
-
-        // Enviar a la cola para rate limiting (1 msj / minuto)
-        await addToQueue(finalPhone, text, {
-            source: "reminder",
-            createdByUserId: req.user?.id || null,
-            createdByRole: req.user?.role || null,
-        });
-
-        // Actualizar el teléfono (si cambió o es nuevo) y marcar validado
-        await pool.query("UPDATE subscriptions SET whatsapp_phone = ?, reminder_sent = 1 WHERE id = ?", [phoneToUse, orderId]);
-
-        return res.json({ ok: true, message: "Recordatorio encolado para WhatsApp." });
-
-    } catch (e) {
-        console.error("Error en POST /orders/:id/remind-whatsapp:", e);
-        return res.status(500).json({ message: "Error interno al enviar recordatorio: " + e.message });
-    }
-});
-
 router.post("/orders/:id/renew", requireAuth, async (req, res) => {
     const subscriptionId = Number(req.params.id);
 
@@ -306,7 +223,6 @@ router.post("/orders/:id/renew", requireAuth, async (req, res) => {
             currency: result.currency,
             newBalance: result.newBalance,
             orderCode: result.renewalOrderCode,
-            deliveryMessage: result.whatsappText,
         }).catch((e) => console.error("[TelegramBot] notifyRenewalSale error:", e?.message || e));
 
         return res.json({

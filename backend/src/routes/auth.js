@@ -117,16 +117,13 @@ async function getValidPasswordResetToken(rawToken, db = pool) {
 
 router.post("/register", async (req, res) => {
     try {
-        const { name, email, password, phone } = req.body || {};
+        const { name, email, password } = req.body || {};
 
-        if (!name || !email || !password || !phone) {
-            return res.status(400).json({ message: "Nombre, email, contraseña y número de WhatsApp son obligatorios." });
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: "Nombre, email y contraseña son obligatorios." });
         }
         if (password.length < 8) {
             return res.status(400).json({ message: "La contraseña debe tener al menos 8 caracteres." });
-        }
-        if (phone.length < 7) {
-            return res.status(400).json({ message: "El número de WhatsApp no parece válido." });
         }
 
         const emailClean = email.trim().toLowerCase();
@@ -143,8 +140,8 @@ router.post("/register", async (req, res) => {
         const passwordHash = await bcrypt.hash(password, 12);
 
         await pool.query(
-            "INSERT INTO users (name, email, password_hash, role, status, currency, whatsapp) VALUES (?, ?, ?, 'user', 'pending', 'COP', ?)",
-            [name.trim(), emailClean, passwordHash, phone.trim()]
+            "INSERT INTO users (name, email, password_hash, role, status, currency) VALUES (?, ?, ?, 'user', 'pending', 'COP')",
+            [name.trim(), emailClean, passwordHash]
         );
 
         return res.status(201).json({

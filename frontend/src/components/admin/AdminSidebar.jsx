@@ -56,8 +56,6 @@ const NAV_GROUPS = [
     {
         title: "Configuracion",
         links: [
-            { path: "/admin/whatsapp", label: "WhatsApp API", icon: "💬" },
-            { path: "/admin/whatsapp-trace", label: "Traza de WhatsApp", icon: "📡" },
         ],
     },
 ];

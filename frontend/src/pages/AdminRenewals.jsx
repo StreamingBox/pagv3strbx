@@ -55,7 +55,6 @@ export default function AdminRenewals() {
     const [result, setResult] = useState(null);
     const [renewing, setRenewing] = useState(false);
     const [renewErr, setRenewErr] = useState("");
-    const [whatsappPhone, setWhatsappPhone] = useState("");
 
     const [logs, setLogs] = useState([]);
     const [logsPage, setLogsPage] = useState(1);
@@ -129,7 +128,6 @@ export default function AdminRenewals() {
             setOrder(data);
             setOverridePrice(String(data.price || ""));
             setNote(`Renovación suscripción #${id}`);
-            if (data.user_phone) setWhatsappPhone(data.user_phone);
 
             try {
                 const acc = await apiFetch(`/admin/accounts?platformId=${data.platform_id}&available=1&limit=200`);
@@ -595,19 +593,6 @@ export default function AdminRenewals() {
                                                 />
                                             </div>
 
-                                            <div style={{ gridColumn: "1 / -1" }}>
-                                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
-                                                    WhatsApp del cliente
-                                                </label>
-                                                <input
-                                                    style={inputStyle}
-                                                    type="text"
-                                                    disabled={!!renewalBlockedReason}
-                                                    value={whatsappPhone}
-                                                    onChange={(e) => setWhatsappPhone(e.target.value)}
-                                                    placeholder="57300..."
-                                                />
-                                            </div>
                                         </div>
 
                                         <div style={{ marginTop: 24, padding: "16px", borderRadius: 12, background: "var(--input-bg)", border: "1px solid var(--stroke2)", display: "flex", alignItems: "center", gap: 12 }}>

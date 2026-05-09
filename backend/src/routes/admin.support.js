@@ -3,7 +3,6 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { buildWhatsappMessage } = require("../utils/whatsappMessage");
 const { formatDateOnlyBogota, isDateTimeExpired } = require("../utils/date");
 
 const router = express.Router();
@@ -17,11 +16,11 @@ const router = express.Router();
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
 
-function buildReplacementWhatsappMessage({ orderCode, subscriptionId, platformName, account, expiresAt, token, baseUrl }) {
+function buildAccountDeliveryMessage({ intro = "Detalle de la cuenta:", orderCode, subscriptionId, platformName, account, expiresAt, token, baseUrl }) {
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
     const credentialUrl = token ? `${cleanBaseUrl}/s/${token}` : "";
     const lines = [
-        "Tu cuenta ha sido remplazada por:",
+        intro,
         "",
         `🧾 Orden: ${orderCode || "-"}`,
         "📦 Pedido múltiple (1 items)",
@@ -85,7 +84,6 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         o.order_code,
         p.name AS platform_name,
         p.slug AS platform_slug,
-        u.whatsapp AS user_whatsapp,
         a.email,
         a.password,
         a.pin,
@@ -95,7 +93,6 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
      LEFT JOIN order_items oi ON oi.subscription_id = s.id
      LEFT JOIN orders o ON o.id = oi.order_id
      JOIN platforms p ON p.id = s.platform_id
-     JOIN users u ON u.id = s.user_id
      JOIN platform_accounts a ON a.id = s.platform_account_id
      WHERE s.id = ?
      LIMIT 1`,
@@ -121,7 +118,6 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         token = await insertCredentialLinkWithRetry(conn, {
             subscriptionId,
             createdByUserId: r.user_id,
-            showWhatsapp: 1,
         });
     }
 
@@ -131,23 +127,19 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         currentAccountId: r.platform_account_id,
     });
 
-    const message = buildWhatsappMessage({
+    const message = buildAccountDeliveryMessage({
         orderCode: r.order_code || `#${r.order_id || "-"}`,
+        subscriptionId: r.subscription_id,
+        platformName: r.platform_name,
+        account: {
+            email: r.email,
+            password: r.password,
+            pin: r.pin,
+            profile_number: r.profile_number,
+        },
+        expiresAt: r.account_expires_at || r.expires_at,
+        token,
         baseUrl,
-        results: [
-            {
-                subscriptionId: r.subscription_id,
-                plan: { platform_name: r.platform_name, platform_slug: r.platform_slug },
-                account: {
-                    email: r.email,
-                    password: r.password,
-                    pin: r.pin,
-                    profile_number: r.profile_number,
-                },
-                expiresAt: r.account_expires_at || r.expires_at,
-                token,
-            },
-        ],
     });
 
     return {
@@ -168,7 +160,6 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         replacementCandidates,
         suggestedReplacementId: replacementCandidates?.[0]?.id || null,
         token,
-        whatsappPhone: r.user_whatsapp || null,
         message,
     };
 }
@@ -353,7 +344,8 @@ router.post(
             const info = await getSubscriptionSupportInfo(conn, subscriptionId);
             const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
             if (info) {
-                info.message = buildReplacementWhatsappMessage({
+                info.message = buildAccountDeliveryMessage({
+                    intro: "Tu cuenta ha sido reemplazada por:",
                     orderCode: info.orderCode || `#${info.orderId || "-"}`,
                     subscriptionId: info.subscriptionId,
                     platformName: info.platformName,

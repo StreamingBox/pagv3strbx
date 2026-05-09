@@ -386,8 +386,6 @@ sidebar:
         links: [{ path: /admin/categories, icon: 📁 }, { path: /admin/platforms, icon: 📺 }, { path: /admin/prices, icon: 💳 }, { path: /admin/durations, icon: ⏱️ }]
       - title: Usuarios & Atencion
         links: [{ path: /admin/users, icon: 👥 }, { path: /admin/support, icon: 🎧 }, { path: /admin/replacements, icon: 🔁 }]
-      - title: Configuracion
-        links: [{ path: /admin/whatsapp, icon: 💬 }, { path: /admin/whatsapp-trace, icon: 📡 }]
     nav_item:
       base:
         css: |
@@ -816,8 +814,6 @@ icons:
       users: 👥
       support: 🎧
       replacements: 🔁
-      whatsapp: 💬
-      whatsapp_trace: 📡
       advertising_admin: 📢
     actions:
       create: +

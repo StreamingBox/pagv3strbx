@@ -14,11 +14,10 @@ type CheckoutItem struct {
 }
 
 type CheckoutRequest struct {
-	UserId          int            `json:"userId"`
-	IncludeWhatsapp bool           `json:"includeWhatsapp"`
-	Items           []CheckoutItem `json:"items"`
-	RecordProfit    bool           `json:"recordProfit"`
-	ProfitAmount    float64        `json:"profitAmount"`
+	UserId       int            `json:"userId"`
+	Items        []CheckoutItem `json:"items"`
+	RecordProfit bool           `json:"recordProfit"`
+	ProfitAmount float64        `json:"profitAmount"`
 }
 
 func CheckoutHandler(c *fiber.Ctx) error {
@@ -177,7 +176,7 @@ func CheckoutHandler(c *fiber.Ctx) error {
 	}
 
 	// 6) Assign Accounts and Subscriptions
-	var results []utils.WhatsappResultItem
+	subscriptionIds := []int{}
 
 	for _, id := range priceIds {
 		// Find selected plan
@@ -229,17 +228,9 @@ func CheckoutHandler(c *fiber.Ctx) error {
 
 		tx.Exec("UPDATE platform_accounts SET status = 'assigned', assigned_to_user_id = ?, assigned_at = NOW(), expires_at = ? WHERE id = ?", body.UserId, expiresAt, account.ID)
 
-		token := utils.MakeOrderCode() // Mock logic for generating Share token logic for credentials
-
 		tx.Exec("INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price) VALUES (?, ?, ?, ?, ?)", order.ID, sub.ID, selectedPlan.PlatformID, selectedPlan.PlatformPriceID, selectedPlan.Price)
 
-		results = append(results, utils.WhatsappResultItem{
-			SubscriptionID: sub.ID,
-			PlanName:       selectedPlan.PlatformName,
-			Account:        account,
-			ExpiresAt:      expiresAt,
-			Token:          token,
-		})
+		subscriptionIds = append(subscriptionIds, sub.ID)
 	}
 
 	// 7) Wallet deductions
@@ -261,9 +252,6 @@ func CheckoutHandler(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"message": "Transaction Commit failed"})
 	}
 
-	baseUrl := "http://localhost:3000" // Configure via envs
-	waMessage := utils.BuildWhatsappMessage(orderCode, results, baseUrl)
-
 	// Fetch final wallet
 	var finalWallet models.Wallet
 	config.DB.First(&finalWallet, wallet.ID)
@@ -272,9 +260,8 @@ func CheckoutHandler(c *fiber.Ctx) error {
 		"ok":              true,
 		"orderId":         order.ID,
 		"orderCode":       orderCode,
-		"count":           len(results),
-		"subscriptionIds": []int{},
-		"message":         waMessage,
+		"count":           len(subscriptionIds),
+		"subscriptionIds": subscriptionIds,
 		"total":           total,
 		"currency":        firstCurrency,
 		"wallet": fiber.Map{

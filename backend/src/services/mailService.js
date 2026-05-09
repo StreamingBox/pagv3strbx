@@ -163,18 +163,7 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
-function replaceInstructionVars(text, values) {
-    return String(text || "")
-        .replace(/{URL}|{ENLACE}/gi, values.credentialUrl || "")
-        .replace(/{CORREO}/gi, values.email || "")
-        .replace(/{PASSWORD}|{PASS}|{CONTRASENA}/gi, values.password || "")
-        .replace(/{PIN}/gi, values.pin || "")
-        .replace(/{PERFIL}/gi, values.profile || "")
-        .replace(/{EXPIRA}/gi, values.expiresAt || "");
-}
-
-function buildCredentialFields(result, credentialUrl) {
-    const plan = result?.plan || {};
+function buildCredentialFields(result) {
     const account = result?.account || {};
     const fields = [];
 
@@ -203,28 +192,13 @@ function buildCredentialFields(result, credentialUrl) {
     }
 
     if (!fields.some((field) => field.label === "Correo" || field.label === "Contrasena")) {
-        const instruction = replaceInstructionVars(plan.whatsapp_instructions, {
-            credentialUrl,
-            email: account.email,
-            password: account.password,
-            pin: account.pin,
-            profile: account.profile_number,
-            expiresAt: formatDateOnly(result?.expiresAt),
-        }).trim();
-
         fields.push({
             label: "Entrega",
-            value: instruction || "Tu entrega fue registrada. Si este producto requiere activacion manual, revisa tu panel o contacta soporte.",
+            value: "Tu entrega fue registrada. Si este producto requiere activacion manual, revisa tu panel o contacta soporte.",
         });
     }
 
     return fields.filter((field) => field.value);
-}
-
-function toWhatsappHref(phone) {
-    const digits = String(phone || "").replace(/\D+/g, "");
-    if (!digits) return null;
-    return `https://wa.me/${digits}`;
 }
 
 function renderHtmlField(field) {
@@ -332,7 +306,6 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const totalText = formatMoney(total, currency);
     const orderDateText = formatDateTime(new Date());
     const salesContactPhone = String(process.env.SALES_CONTACT_PHONE || "3152485340").trim();
-    const salesWhatsappUrl = toWhatsappHref(salesContactPhone);
 
     const normalizedResults = Array.isArray(results) ? results : [];
     const itemCount = normalizedResults.length;
@@ -340,7 +313,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const itemBlocksText = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = buildCredentialFields(result, credentialUrl);
+        const fields = buildCredentialFields(result);
         const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${plan.platform_name || "Producto"}`];
         for (const field of fields) {
             if (field.label === "Correo") lines.push(`📧 ${renderTextField(field)}`);
@@ -373,7 +346,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const itemBlocksHtml = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = buildCredentialFields(result, credentialUrl);
+        const fields = buildCredentialFields(result);
 
         return `
             <div style="border:1px solid #cfd8ea;border-radius:16px;padding:18px 18px 14px;margin:0 0 18px;background:#f8fbff">
@@ -416,7 +389,6 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
                             Si necesitas ayuda con esta entrega o con una renovacion, puedes comunicarte con ventas.
                         </div>
                         <div style="font-size:15px;color:#334155;margin:0 0 10px"><strong>Telefono:</strong> ${escapeHtml(salesContactPhone)}</div>
-                        ${salesWhatsappUrl ? `<a href="${escapeHtml(salesWhatsappUrl)}" style="display:inline-block;background:#16a34a;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 14px;border-radius:10px">💬 Hablar por WhatsApp</a>` : ""}
                     </div>
 
                     <div style="font-size:13px;line-height:1.6;color:#64748b;margin-top:8px">

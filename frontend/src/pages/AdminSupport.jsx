@@ -163,7 +163,6 @@ function Field({ label, value, mono = false }) {
 }
 
 function shortDate(d) { return formatBogotaDate(d); }
-function normalizePhone(phone) { return String(phone || "").replace(/\D/g, ""); }
 
 /* ─── Componente principal ─── */
 export default function AdminSupport() {
@@ -177,11 +176,6 @@ export default function AdminSupport() {
     const [error, setError] = useState("");
     const [copied, setCopied] = useState("");
     const [selectedReplacementId, setSelectedReplacementId] = useState("");
-
-    // WhatsApp directo
-    const [waPhone, setWaPhone] = useState("");
-    const [waSending, setWaSending] = useState(false);
-    const [waResult, setWaResult] = useState(null); // { ok, msg }
 
     const canReplace = useMemo(() => !!info?.subscriptionId && !loading, [info, loading]);
     const fullLink = info?.token ? `${PUBLIC_BASE}/s/${info.token}` : "";
@@ -210,7 +204,6 @@ export default function AdminSupport() {
             const { ok, data, status } = await apiFetch(`/admin/support/subscription/${id}`, { method: "GET" });
             if (!ok) { setError(data?.message || `Error (${status})`); return; }
             setInfo(data);
-            setWaResult(null);
         } finally { setLoading(false); }
     }
 
@@ -227,29 +220,7 @@ export default function AdminSupport() {
             });
             if (!ok) { setError(data?.message || `Error (${status})`); return; }
             setInfo(data.info);
-            setWaResult(null);
         } finally { setLoading(false); }
-    }
-
-    async function sendWhatsapp() {
-        if (!waPhone.trim() || !info?.message) return;
-        setWaSending(true);
-        setWaResult(null);
-        try {
-            const { ok, data } = await apiFetch("/whatsapp/send", {
-                method: "POST",
-                body: JSON.stringify({ to: waPhone.trim(), text: info.message }),
-            });
-            if (ok) {
-                setWaResult({ ok: true, msg: "✅ Mensaje enviado exitosamente por WhatsApp." });
-            } else {
-                setWaResult({ ok: false, msg: `⚠️ ${data?.message || "Error al enviar el mensaje."}` });
-            }
-        } catch (e) {
-            setWaResult({ ok: false, msg: `⚠️ Error de red: ${e?.message || "Desconocido"}` });
-        } finally {
-            setWaSending(false);
-        }
     }
 
     async function copy(text, label = "") {
@@ -418,55 +389,6 @@ export default function AdminSupport() {
                             </div>
                         </div>
 
-                        {/* Envío WhatsApp directo */}
-                        {info?.message && (
-                            <div style={{ ...S.card, padding: "16px 20px" }}>
-                                <div style={{ fontSize: 13, fontWeight: 700, color: "rgba(234,241,255,0.5)", textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 12 }}>
-                                    📲 Enviar por WhatsApp
-                                </div>
-                                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                    <input
-                                        style={{
-                                            ...S.input, flex: 1, minWidth: 220,
-                                            borderColor: waPhone ? "rgba(37,211,102,.4)" : undefined,
-                                        }}
-                                        placeholder="Número WhatsApp (ej: 573152485340)"
-                                        value={waPhone}
-                                        onChange={e => { setWaPhone(e.target.value); setWaResult(null); }}
-                                        onFocus={e => { e.target.style.borderColor = "rgba(37,211,102,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(37,211,102,0.1)"; }}
-                                        onBlur={e => { e.target.style.borderColor = waPhone ? "rgba(37,211,102,.4)" : "rgba(255,255,255,0.1)"; e.target.style.boxShadow = "none"; }}
-                                    />
-                                    <button
-                                        onClick={sendWhatsapp}
-                                        disabled={waSending || !waPhone.trim()}
-                                        style={{
-                                            ...S.btnGreen,
-                                            opacity: (waSending || !waPhone.trim()) ? 0.5 : 1,
-                                            cursor: (waSending || !waPhone.trim()) ? "not-allowed" : "pointer",
-                                            background: "rgba(37,211,102,.15)",
-                                            color: "#25d366",
-                                            border: "1px solid rgba(37,211,102,.35)",
-                                            boxShadow: waSending ? "none" : "0 0 12px rgba(37,211,102,.2)",
-                                        }}
-                                        onMouseEnter={e => { if (!waSending && waPhone) e.currentTarget.style.background = "rgba(37,211,102,.28)"; }}
-                                        onMouseLeave={e => e.currentTarget.style.background = "rgba(37,211,102,.15)"}
-                                    >
-                                        {waSending ? "⏳ Enviando..." : "📲 Enviar WhatsApp"}
-                                    </button>
-                                </div>
-                                {waResult && (
-                                    <div style={{
-                                        marginTop: 10, padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 600,
-                                        background: waResult.ok ? "rgba(37,211,102,.1)" : "rgba(239,68,68,.1)",
-                                        border: `1px solid ${waResult.ok ? "rgba(37,211,102,.3)" : "rgba(239,68,68,.3)"}`,
-                                        color: waResult.ok ? "#25d366" : "#ef4444",
-                                    }}>
-                                        {waResult.msg}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
                         {/* Grid: credenciales + mensaje */}
                         <div style={{
                             ...S.twoCol,
@@ -489,7 +411,6 @@ export default function AdminSupport() {
                                     <Field label="Perfil" value={String(info.account?.profile_number ?? "").trim() ? info.account?.profile_number : "—"} />
                                     <Field label="Pin" value={String(info.account?.pin ?? "").trim() ? info.account?.pin : "—"} />
                                     <Field label="Expira" value={shortDate(info.expiresAt)} />
-                                    <Field label="WhatsApp usuario" value={info.whatsappPhone || "—"} mono />
                                     <Field label="Link" value={fullLink || "—"} mono />
                                 </div>
                                 <div style={S.warnBox}>
@@ -497,11 +418,11 @@ export default function AdminSupport() {
                                 </div>
                             </div>
 
-                            {/* Mensaje WhatsApp */}
+                            {/* Mensaje */}
                             <div style={S.card}>
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>💬 Mensaje WhatsApp</div>
-                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.message || "", "Mensaje WhatsApp")}
+                                    <div style={{ fontWeight: 700, fontSize: 15 }}>💬 Mensaje</div>
+                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.message || "", "Mensaje")}
                                         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
                                         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
                                     >

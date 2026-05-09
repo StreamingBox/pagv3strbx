@@ -112,39 +112,6 @@
     margin-top: 6px;
 }
 
-/* WhatsApp section */
-.cart-whatsapp {
-    margin-top: 14px;
-    padding: 12px;
-    border-radius: 14px;
-    border: 1px solid rgba(124, 92, 255, 0.22);
-    background: rgba(124, 92, 255, 0.08);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.cart-sectionTitle {
-    font-weight: 900;
-}
-
-.cart-sectionDesc {
-    color: var(--muted);
-    font-size: 13px;
-}
-
-.cart-toggle {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.cart-toggleLabel {
-    font-weight: 900;
-}
-
 /* Footer */
 .cart-footer {
     margin-top: 14px;

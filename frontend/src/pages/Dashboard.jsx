@@ -8,7 +8,6 @@ import CatalogGrid from "../components/dashboard/CatalogGrid.jsx";
 import ComboGrid from "../components/dashboard/ComboGrid.jsx";
 import CartDrawer from "../components/dashboard/CartDrawer.jsx";
 import { useDashboardData } from "../hooks/useDashboardData.js";
-import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
 import { apiFetch } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -317,8 +316,6 @@ export default function Dashboard() {
                     <div className="dash-header">
                         <h1 style={{ margin: 0 }}>Plataformas disponibles</h1>
                     </div>
-
-                    <LastWhatsappCard onGoOrders={() => navigate("/orders")} />
 
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
                         Compra contenido premium con tu saldo activo.

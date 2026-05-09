@@ -75,13 +75,6 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
             ],
         },
-        {
-            groupName: "Configuración",
-            items: [
-                { icon: "💬", tone: "emerald", title: "WhatsApp API", hint: "Envío automático de credenciales vía WaSender.", path: "/admin/whatsapp" },
-                { icon: "📡", tone: "indigo", title: "Traza de WhatsApp", hint: "Trazabilidad de envíos y estados.", path: "/admin/whatsapp-trace" },
-            ],
-        },
     ];
 
     return (

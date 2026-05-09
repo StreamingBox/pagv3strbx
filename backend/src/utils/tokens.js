@@ -19,7 +19,7 @@ async function cleanupExpiredCredentialLinks(connOrPool) {
     return Number(result?.affectedRows || 0);
 }
 
-async function insertCredentialLinkWithRetry(conn, { subscriptionId, createdByUserId, showWhatsapp }) {
+async function insertCredentialLinkWithRetry(conn, { subscriptionId, createdByUserId }) {
     const maxTries = 12;
 
     for (let i = 0; i < maxTries; i++) {
@@ -27,9 +27,9 @@ async function insertCredentialLinkWithRetry(conn, { subscriptionId, createdByUs
 
         try {
             await conn.query(
-                `INSERT INTO credential_links (subscription_id, token, created_by_user_id, show_whatsapp)
-         VALUES (?, ?, ?, ?)`,
-                [subscriptionId, token, createdByUserId, showWhatsapp ? 1 : 0]
+                `INSERT INTO credential_links (subscription_id, token, created_by_user_id)
+         VALUES (?, ?, ?)`,
+                [subscriptionId, token, createdByUserId]
             );
 
             return token; // ✅ éxito

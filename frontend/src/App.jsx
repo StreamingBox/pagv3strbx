@@ -32,8 +32,6 @@ const AdminReplacements = lazy(() => import("./pages/AdminReplacements.jsx"));
 const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
 const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
 const AdminStockNotify = lazy(() => import("./pages/AdminStockNotify.jsx"));
-const AdminWhatsapp = lazy(() => import("./pages/AdminWhatsapp.jsx"));
-const AdminWhatsappTrace = lazy(() => import("./pages/AdminWhatsappTrace.jsx"));
 const AdminUploadLogs = lazy(() => import("./pages/AdminUploadLogs.jsx"));
 const AdminAdvertising = lazy(() => import("./pages/AdminAdvertising.jsx"));
 const Advertising = lazy(() => import("./pages/Advertising.jsx"));
@@ -338,24 +336,6 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminStockNotify />
-                        </ProtectedRoute>
-                    }
-                />
-
-                <Route
-                    path="/admin/whatsapp"
-                    element={
-                        <ProtectedRoute roles={["admin"]}>
-                            <AdminWhatsapp />
-                        </ProtectedRoute>
-                    }
-                />
-
-                <Route
-                    path="/admin/whatsapp-trace"
-                    element={
-                        <ProtectedRoute roles={["admin"]}>
-                            <AdminWhatsappTrace />
                         </ProtectedRoute>
                     }
                 />

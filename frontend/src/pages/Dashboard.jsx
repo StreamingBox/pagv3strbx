@@ -374,8 +374,7 @@ export default function Dashboard() {
                                 ) : null}
                             </div>
 
-                            {categories.length || combos.length ? (
-                                <div className="dash-tabs dash-tabs--right">
+                            <div className="dash-tabs dash-tabs--right">
                                     <button
                                         className="btn-ghost"
                                         onClick={() => setCategoryFilter("all")}
@@ -387,18 +386,16 @@ export default function Dashboard() {
                                         Todos
                                     </button>
 
-                                    {combos.length ? (
-                                        <button
-                                            className="btn-ghost"
-                                            onClick={() => setCategoryFilter("combos")}
-                                            style={{
-                                                opacity: activeCategoryFilter === "combos" ? 1 : 0.7,
-                                                border: activeCategoryFilter === "combos" ? "1px solid rgba(46,123,255,.4)" : undefined,
-                                            }}
-                                        >
-                                            Combos
-                                        </button>
-                                    ) : null}
+                                    <button
+                                        className="btn-ghost"
+                                        onClick={() => setCategoryFilter("combos")}
+                                        style={{
+                                            opacity: activeCategoryFilter === "combos" ? 1 : 0.7,
+                                            border: activeCategoryFilter === "combos" ? "1px solid rgba(46,123,255,.4)" : undefined,
+                                        }}
+                                    >
+                                        Combos
+                                    </button>
 
                                     {categories.map((c) => (
                                         <button
@@ -416,10 +413,7 @@ export default function Dashboard() {
                                             {c.name}
                                         </button>
                                     ))}
-                                </div>
-                            ) : (
-                                <div />
-                            )}
+                            </div>
                         </div>
                     ) : null}
 
@@ -429,6 +423,12 @@ export default function Dashboard() {
                             onAddCombo={addComboToCart}
                             cartCountByComboId={cartCountByComboId}
                         />
+                    ) : null}
+
+                    {activeCategoryFilter === "combos" && !combos.length ? (
+                        <div className="kpi" style={{ padding: 18, color: "var(--muted)", borderRadius: 14 }}>
+                            No hay combos disponibles para tu moneda o stock actual.
+                        </div>
                     ) : null}
 
                     {activeCategoryFilter !== "combos" ? (

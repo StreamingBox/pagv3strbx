@@ -1071,7 +1071,59 @@ function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDet
                                 {it.access_url && (
                                     <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", flexDirection: "column", gap: 4 }}>
                                         <span style={{ textTransform: "uppercase", fontWeight: 700, letterSpacing: "0.5px" }}>URL Acceso</span>
-                                        <a href={it.access_url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontWeight: 600, fontSize: 13, background: "var(--bg0)", padding: "4px 8px", borderRadius: 6, textDecoration: "none" }}>Abrir Enlace 🔗</a>
+                                        <div
+                                            title={it.access_url}
+                                            style={{
+                                                color: "var(--text)",
+                                                fontWeight: 600,
+                                                fontSize: 13,
+                                                background: "var(--bg0)",
+                                                padding: "8px 10px",
+                                                borderRadius: 8,
+                                                border: "1px solid var(--stroke2)",
+                                                userSelect: "all",
+                                                overflowWrap: "anywhere",
+                                                wordBreak: "break-all",
+                                                lineHeight: 1.45,
+                                            }}
+                                        >
+                                            {it.access_url}
+                                        </div>
+                                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                            <a
+                                                href={it.access_url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                style={{
+                                                    color: "var(--accent)",
+                                                    fontWeight: 700,
+                                                    fontSize: 13,
+                                                    background: "rgba(13,166,242,0.12)",
+                                                    border: "1px solid rgba(13,166,242,0.25)",
+                                                    padding: "6px 10px",
+                                                    borderRadius: 8,
+                                                    textDecoration: "none",
+                                                }}
+                                            >
+                                                Abrir enlace 🔗
+                                            </a>
+                                            <button
+                                                type="button"
+                                                onClick={() => navigator.clipboard.writeText(it.access_url)}
+                                                style={{
+                                                    color: "var(--text)",
+                                                    fontWeight: 700,
+                                                    fontSize: 13,
+                                                    background: "var(--bg0)",
+                                                    border: "1px solid var(--stroke2)",
+                                                    padding: "6px 10px",
+                                                    borderRadius: 8,
+                                                    cursor: "pointer",
+                                                }}
+                                            >
+                                                Copiar link
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
                             </div>

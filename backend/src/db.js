@@ -124,6 +124,7 @@ pool.query("CREATE INDEX idx_whatsapp_queue_status_time ON whatsapp_queue(wa_sta
 pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_account_cost_total DECIMAL(12,2) NULL").catch(() => { });
 pool.query("ALTER TABLE platform_accounts ADD COLUMN parent_profiles_total INT NULL").catch(() => { });
 pool.query("ALTER TABLE platform_accounts ADD COLUMN unit_cost DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE platform_accounts MODIFY COLUMN access_url TEXT NULL").catch(() => { });
 pool.query("CREATE INDEX idx_platform_accounts_unit_cost ON platform_accounts(unit_cost)").catch(() => { });
 pool.query("ALTER TABLE order_items ADD COLUMN cost_amount DECIMAL(12,2) NULL").catch(() => { });
 pool.query("ALTER TABLE order_items ADD COLUMN profit_amount DECIMAL(12,2) NULL").catch(() => { });

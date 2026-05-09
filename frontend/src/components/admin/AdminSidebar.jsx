@@ -41,6 +41,7 @@ const NAV_GROUPS = [
             { path: "/admin/categories", label: "Categorias", icon: "📁" },
             { path: "/admin/platforms", label: "Plataformas", icon: "📺" },
             { path: "/admin/prices", label: "Planes y Precios", icon: "💳" },
+            { path: "/admin/combos", label: "Combos", icon: "C" },
             { path: "/admin/durations", label: "Duraciones", icon: "⏱️" },
         ],
     },

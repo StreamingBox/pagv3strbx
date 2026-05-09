@@ -4,6 +4,7 @@ import { apiGet } from "../api/api";
 export function useDashboardData() {
     const [wallet, setWallet] = useState({ balance: 0, profit_total: 0, total_invested: 0, currency: "COP" });
     const [catalog, setCatalog] = useState([]);
+    const [combos, setCombos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
@@ -12,16 +13,15 @@ export function useDashboardData() {
         setError("");
 
         try {
-            // ✅ NO Authorization header, todo por cookies HttpOnly
-            const [wRes, cRes] = await Promise.all([
+            const [wRes, cRes, comboRes] = await Promise.all([
                 apiGet("/wallet"),
                 apiGet("/catalog"),
+                apiGet("/combos"),
             ]);
 
             if (!wRes.ok) throw new Error(wRes.data?.message || "Error cargando wallet.");
-            if (!cRes.ok) throw new Error(cRes.data?.message || "Error cargando catálogo.");
-
-
+            if (!cRes.ok) throw new Error(cRes.data?.message || "Error cargando catalogo.");
+            if (!comboRes.ok) throw new Error(comboRes.data?.message || "Error cargando combos.");
 
             setWallet({
                 balance: Number(wRes.data?.balance ?? 0),
@@ -31,10 +31,12 @@ export function useDashboardData() {
             });
 
             setCatalog(Array.isArray(cRes.data) ? cRes.data : []);
+            setCombos(Array.isArray(comboRes.data) ? comboRes.data : []);
         } catch (e) {
-            setError(e?.message || "No se pudo cargar catálogo/wallet.");
-            setWallet({ balance: 0, profit_total: 0, currency: "COP" });
+            setError(e?.message || "No se pudo cargar catalogo/wallet.");
+            setWallet({ balance: 0, profit_total: 0, total_invested: 0, currency: "COP" });
             setCatalog([]);
+            setCombos([]);
         } finally {
             setLoading(false);
         }
@@ -44,5 +46,5 @@ export function useDashboardData() {
         load();
     }, [load]);
 
-    return { wallet, setWallet, catalog, loading, error, setError, reload: load };
+    return { wallet, setWallet, catalog, combos, loading, error, setError, reload: load };
 }

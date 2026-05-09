@@ -19,7 +19,12 @@ export function useCartCheckout({ cart, cartTotal, cartCurrency, clearCart, setW
         try {
             // ✅ cookies HttpOnly (apiPost -> apiFetch -> credentials: "include")
             const res = await apiPost("/checkout", {
-                items: cart.map((c) => ({ platformPriceId: c.platformPriceId })),
+                items: cart
+                    .filter((c) => c.type !== "combo")
+                    .map((c) => ({ platformPriceId: c.platformPriceId })),
+                combos: cart
+                    .filter((c) => c.type === "combo")
+                    .map((c) => ({ comboId: c.comboId, quantity: 1 })),
                 includeWhatsapp,
                 whatsappPhone,
                 recordProfit,

@@ -5,6 +5,7 @@ import "../styles/dashboard-stitch.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import CatalogGrid from "../components/dashboard/CatalogGrid.jsx";
+import ComboGrid from "../components/dashboard/ComboGrid.jsx";
 import CartDrawer from "../components/dashboard/CartDrawer.jsx";
 import { useDashboardData } from "../hooks/useDashboardData.js";
 import LastWhatsappCard from "../components/LastWhatsappCard.jsx";
@@ -20,7 +21,7 @@ export default function Dashboard() {
     const { user, authLoading } = useAuth();
     const logout = useAppLogout();
 
-    const { wallet, setWallet, catalog, loading, error, setError, reload } = useDashboardData();
+    const { wallet, setWallet, catalog, combos, loading, error, setError, reload } = useDashboardData();
 
     const cartStorageKey = `${CART_STORAGE_PREFIX}:${user?.id || user?.email || "guest"}`;
 
@@ -91,12 +92,31 @@ export default function Dashboard() {
                 },
             ])
         );
+        const stockByComboId = new Map((combos || []).map((combo) => [combo.id, Number(combo.stock || 0)]));
 
         setCart((prev) => {
             const counts = new Map();
+            const comboCounts = new Map();
             let changed = false;
 
             const next = prev.filter((item) => {
+                if (item.type === "combo") {
+                    const stock = stockByComboId.get(item.comboId);
+                    if (stock === undefined) {
+                        changed = true;
+                        return false;
+                    }
+
+                    const currentCount = comboCounts.get(item.comboId) || 0;
+                    if (currentCount >= stock) {
+                        changed = true;
+                        return false;
+                    }
+
+                    comboCounts.set(item.comboId, currentCount + 1);
+                    return true;
+                }
+
                 const stockInfo = stockByPlatformPriceId.get(item.platformPriceId);
                 if (!stockInfo) {
                     changed = true;
@@ -117,12 +137,22 @@ export default function Dashboard() {
 
             return changed ? next : prev;
         });
-    }, [catalog, cartHydrated]);
+    }, [catalog, combos, cartHydrated]);
 
     const cartCountByPlatformPriceId = useMemo(() => {
         const counts = new Map();
         for (const item of cart) {
+            if (item.type === "combo") continue;
             counts.set(item.platformPriceId, (counts.get(item.platformPriceId) || 0) + 1);
+        }
+        return counts;
+    }, [cart]);
+
+    const cartCountByComboId = useMemo(() => {
+        const counts = new Map();
+        for (const item of cart) {
+            if (item.type !== "combo") continue;
+            counts.set(item.comboId, (counts.get(item.comboId) || 0) + 1);
         }
         return counts;
     }, [cart]);
@@ -151,6 +181,34 @@ export default function Dashboard() {
                     price: item.price,
                     currency: item.currency,
                     platformSlug: item.platformSlug,
+                },
+            ];
+        });
+    }
+
+    function addComboToCart(combo) {
+        setError("");
+        const stock = Number(combo.stock || 0);
+
+        setCart((prev) => {
+            const alreadyInCart = prev.filter((x) => x.type === "combo" && x.comboId === combo.id).length;
+            if (alreadyInCart >= stock) {
+                setError(`Solo hay ${stock} combo${stock === 1 ? "" : "s"} disponible${stock === 1 ? "" : "s"} de ${combo.name}.`);
+                return prev;
+            }
+
+            return [
+                ...prev,
+                {
+                    type: "combo",
+                    comboId: combo.id,
+                    comboName: combo.name,
+                    platformName: combo.name,
+                    durationName: "Combo",
+                    days: null,
+                    price: combo.price,
+                    currency: combo.currency,
+                    items: combo.items || [],
                 },
             ];
         });
@@ -201,11 +259,14 @@ export default function Dashboard() {
 
     const activeCategoryFilter = useMemo(() => {
         if (categoryFilter === "all") return "all";
+        if (categoryFilter === "combos") return "combos";
         return categories.some((c) => String(c.id) === String(categoryFilter)) ? categoryFilter : "all";
     }, [categories, categoryFilter]);
 
     const filteredCatalog = useMemo(() => {
         let list = catalog || [];
+
+        if (activeCategoryFilter === "combos") return [];
 
         if (activeCategoryFilter !== "all") {
             list = list.filter((x) => String(x.categoryId) === String(activeCategoryFilter));
@@ -313,7 +374,7 @@ export default function Dashboard() {
                                 ) : null}
                             </div>
 
-                            {categories.length ? (
+                            {categories.length || combos.length ? (
                                 <div className="dash-tabs dash-tabs--right">
                                     <button
                                         className="btn-ghost"
@@ -325,6 +386,19 @@ export default function Dashboard() {
                                     >
                                         Todos
                                     </button>
+
+                                    {combos.length ? (
+                                        <button
+                                            className="btn-ghost"
+                                            onClick={() => setCategoryFilter("combos")}
+                                            style={{
+                                                opacity: activeCategoryFilter === "combos" ? 1 : 0.7,
+                                                border: activeCategoryFilter === "combos" ? "1px solid rgba(46,123,255,.4)" : undefined,
+                                            }}
+                                        >
+                                            Combos
+                                        </button>
+                                    ) : null}
 
                                     {categories.map((c) => (
                                         <button
@@ -349,13 +423,23 @@ export default function Dashboard() {
                         </div>
                     ) : null}
 
-                    <CatalogGrid
-                        catalog={filteredCatalog}
-                        buyLoading={false}
-                        onAddToCart={addToCart}
-                        onNotifyMe={handleNotifyMe}
-                        cartCountByPlatformPriceId={cartCountByPlatformPriceId}
-                    />
+                    {activeCategoryFilter === "all" || activeCategoryFilter === "combos" ? (
+                        <ComboGrid
+                            combos={combos}
+                            onAddCombo={addComboToCart}
+                            cartCountByComboId={cartCountByComboId}
+                        />
+                    ) : null}
+
+                    {activeCategoryFilter !== "combos" ? (
+                        <CatalogGrid
+                            catalog={filteredCatalog}
+                            buyLoading={false}
+                            onAddToCart={addToCart}
+                            onNotifyMe={handleNotifyMe}
+                            cartCountByPlatformPriceId={cartCountByPlatformPriceId}
+                        />
+                    ) : null}
                 </main>
             </div>
 

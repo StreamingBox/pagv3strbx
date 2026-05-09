@@ -18,6 +18,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
         const includeWhatsapp = !!req.body?.includeWhatsapp;
         const whatsappPhone = req.body?.whatsappPhone;
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
+        const combos = Array.isArray(req.body?.combos) ? req.body.combos : [];
 
         const recordProfit = !!req.body?.recordProfit;
         const profitAmount = Number(req.body?.profitAmount || 0);
@@ -27,6 +28,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
             includeWhatsapp,
             whatsappPhone,
             items,
+            combos,
             recordProfit,
             profitAmount,
         });

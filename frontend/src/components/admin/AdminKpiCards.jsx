@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import IconBadge from "./IconBadge.jsx";
 import "../../styles/special-effects.css";
 
-// Diversidad de colores para que no se repitan tanto (diseño Hyper-Premium)
 const TONE_COLORS = {
     blue: { border: "#3b82f6", glow: "rgba(59, 130, 246, .22)" },
     emerald: { border: "#10b981", glow: "rgba(16, 185, 129, .20)" },
@@ -23,16 +22,17 @@ const TONE_COLORS = {
 const containerVariants = {
     hidden: {},
     show: {
-        transition: { staggerChildren: 0.045 }
-    }
+        transition: { staggerChildren: 0.045 },
+    },
 };
 
 const itemVariants = {
     hidden: { opacity: 0, scale: 0.95 },
     show: {
-        opacity: 1, scale: 1,
-        transition: { type: "spring", stiffness: 300, damping: 25 }
-    }
+        opacity: 1,
+        scale: 1,
+        transition: { type: "spring", stiffness: 300, damping: 25 },
+    },
 };
 
 export default function AdminKpiCards({ onNavigate }) {
@@ -46,7 +46,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "💸", tone: "sky", title: "Recargas", hint: "Comprobantes y aprobaciones.", path: "/admin/topups" },
                 { icon: "🧾", tone: "indigo", title: "Historial de Compras", hint: "Órdenes y detalles.", path: "/admin/orders" },
                 { icon: "🔄", tone: "emerald", title: "Renovaciones", hint: "Renovar pedidos.", path: "/admin/renewals" },
-            ]
+            ],
         },
         {
             groupName: "Cuentas & Inventario",
@@ -55,7 +55,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
                 { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de pines generados.", path: "/admin/code-logs" },
-            ]
+            ],
         },
         {
             groupName: "Catálogo & Oferta",
@@ -63,24 +63,25 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "🏷️", tone: "lime", title: "Categorías", hint: "Streaming, IA, Música, etc.", path: "/admin/categories" },
                 { icon: "🧩", tone: "orange", title: "Plataformas", hint: "Gestión de plataformas.", path: "/admin/platforms" },
                 { icon: "💳", tone: "pink", title: "Planes y Precios", hint: "Configuración de precios.", path: "/admin/prices" },
+                { icon: "🎁", tone: "emerald", title: "Combos", hint: "Paquetes con precio propio.", path: "/admin/combos" },
                 { icon: "⏱️", tone: "fuchsia", title: "Duraciones", hint: "Mensualidades, trimestres, etc.", path: "/admin/durations" },
                 { icon: "📢", tone: "sky", title: "Publicidad", hint: "Imágenes y carpetas de Drive.", path: "/admin/advertising" },
-            ]
+            ],
         },
         {
             groupName: "Usuarios & Atención",
             items: [
                 { icon: "👤", tone: "violet", title: "Usuarios", hint: "Gestión de clientes/vendedores.", path: "/admin/users" },
                 { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
-            ]
+            ],
         },
         {
             groupName: "Configuración",
             items: [
                 { icon: "💬", tone: "emerald", title: "WhatsApp API", hint: "Envío automático de credenciales vía WaSender.", path: "/admin/whatsapp" },
                 { icon: "📡", tone: "indigo", title: "Traza de WhatsApp", hint: "Trazabilidad de envíos y estados.", path: "/admin/whatsapp-trace" },
-            ]
-        }
+            ],
+        },
     ];
 
     return (
@@ -90,20 +91,27 @@ export default function AdminKpiCards({ onNavigate }) {
             animate="show"
             style={{ display: "flex", flexDirection: "column", gap: 28, marginTop: -2 }}
         >
-            {groups.map((group, idx) => (
-                <div key={idx}>
-                    <div style={{
-                        fontSize: 14, fontWeight: 900, color: "var(--text)",
-                        textTransform: "uppercase", letterSpacing: 1.2,
-                        marginBottom: 14, borderBottom: "1px solid var(--line)",
-                        paddingBottom: 8, opacity: 0.8
-                    }}>
+            {groups.map((group) => (
+                <div key={group.groupName}>
+                    <div
+                        style={{
+                            fontSize: 14,
+                            fontWeight: 900,
+                            color: "var(--text)",
+                            textTransform: "uppercase",
+                            letterSpacing: 1.2,
+                            marginBottom: 14,
+                            borderBottom: "1px solid var(--line)",
+                            paddingBottom: 8,
+                            opacity: 0.8,
+                        }}
+                    >
                         {group.groupName}
                     </div>
 
                     <div className="admin-cards-grid" style={{ marginTop: 0 }}>
                         {group.items.map((s) => {
-                            const { border, glow } = TONE_COLORS[s.tone] || TONE_COLORS.blue;
+                            const { border } = TONE_COLORS[s.tone] || TONE_COLORS.blue;
                             return (
                                 <motion.div
                                     key={s.path}
@@ -126,30 +134,34 @@ export default function AdminKpiCards({ onNavigate }) {
                                             gap: "16px",
                                             alignItems: "center",
                                             justifyContent: "flex-start",
-                                            border: `1px solid var(--line)`,
+                                            border: "1px solid var(--line)",
                                             width: "100%",
-                                            background: "var(--card)", 
+                                            background: "var(--card)",
                                             backdropFilter: "blur(18px)",
-                                            borderRadius: "inherit"
+                                            borderRadius: "inherit",
                                         }}
                                     >
                                         <IconBadge icon={s.icon} tone={s.tone} />
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <div style={{ 
-                                                fontWeight: 800, 
-                                                fontSize: "14.5px", 
-                                                color: "var(--text)",
-                                                letterSpacing: "-0.2px"
-                                            }}>
+                                            <div
+                                                style={{
+                                                    fontWeight: 800,
+                                                    fontSize: "14.5px",
+                                                    color: "var(--text)",
+                                                    letterSpacing: "-0.2px",
+                                                }}
+                                            >
                                                 {s.title}
                                             </div>
-                                            <div style={{ 
-                                                marginTop: 4, 
-                                                color: "var(--muted)", 
-                                                fontSize: "12px", 
-                                                lineHeight: 1.4,
-                                                fontWeight: 500
-                                            }}>
+                                            <div
+                                                style={{
+                                                    marginTop: 4,
+                                                    color: "var(--muted)",
+                                                    fontSize: "12px",
+                                                    lineHeight: 1.4,
+                                                    fontWeight: 500,
+                                                }}
+                                            >
                                                 {s.hint}
                                             </div>
                                         </div>

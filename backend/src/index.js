@@ -21,6 +21,7 @@ const storeRoutes = require("./routes/store");
 const shareRoutes = require("./routes/share");
 const walletRoutes = require("./routes/wallet");
 const catalogRoutes = require("./routes/catalog");
+const combosRoutes = require("./routes/combos");
 
 const adminUsers = require("./routes/admin.users");
 const userNotifications = require("./routes/user.notifications");
@@ -332,6 +333,7 @@ app.use(shareRoutes); // acceso directo sin /api para Nginx SPA catch-all
 // Wallet y Catalog
 app.use("/api", walletRoutes);
 app.use("/api", catalogRoutes);
+app.use("/api", combosRoutes);
 
 // Admin
 app.use("/api", adminUsers);
@@ -348,7 +350,7 @@ app.use("/api", adminDurations);
 app.use("/api", analyticsRoutes);
 
 // Publicidad / Advertising (Google Drive)
-app.use("/api", adminAdvertisingRoutes);
+app.use("/api/admin/advertising", adminAdvertisingRoutes);
 app.use("/api", advertisingRoutes);
 
 // WhatsApp (WaSender)

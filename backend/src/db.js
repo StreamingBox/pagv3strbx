@@ -128,7 +128,62 @@ pool.query("ALTER TABLE platform_accounts MODIFY COLUMN access_url TEXT NULL").c
 pool.query("CREATE INDEX idx_platform_accounts_unit_cost ON platform_accounts(unit_cost)").catch(() => { });
 pool.query("ALTER TABLE order_items ADD COLUMN cost_amount DECIMAL(12,2) NULL").catch(() => { });
 pool.query("ALTER TABLE order_items ADD COLUMN profit_amount DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE order_items ADD COLUMN combo_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE order_items ADD COLUMN combo_name VARCHAR(160) NULL").catch(() => { });
 pool.query("CREATE INDEX idx_order_items_subscription_id ON order_items(subscription_id)").catch(() => { });
+pool.query("CREATE INDEX idx_order_items_combo_id ON order_items(combo_id)").catch(() => { });
+
+pool.query(`
+    CREATE TABLE IF NOT EXISTS combos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(160) NOT NULL,
+        slug VARCHAR(180) NOT NULL,
+        description TEXT NULL,
+        badge VARCHAR(80) NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_combos_slug (slug),
+        INDEX idx_combos_active_sort (is_active, sort_order)
+    )
+`).catch(() => { });
+pool.query(`
+    CREATE TABLE IF NOT EXISTS combo_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        combo_id INT NOT NULL,
+        platform_id INT NOT NULL,
+        duration_id INT NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        sort_order INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_combo_item_plan (combo_id, platform_id, duration_id),
+        INDEX idx_combo_items_combo (combo_id),
+        INDEX idx_combo_items_plan (platform_id, duration_id)
+    )
+`).catch(() => { });
+pool.query(`
+    CREATE TABLE IF NOT EXISTS combo_prices (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        combo_id INT NOT NULL,
+        currency VARCHAR(10) NOT NULL,
+        price DECIMAL(12,2) NOT NULL DEFAULT 0,
+        compare_at_price DECIMAL(12,2) NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_combo_price_currency (combo_id, currency),
+        INDEX idx_combo_prices_active (currency, is_active)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE combos ADD COLUMN description TEXT NULL").catch(() => { });
+pool.query("ALTER TABLE combos ADD COLUMN badge VARCHAR(80) NULL").catch(() => { });
+pool.query("ALTER TABLE combos ADD COLUMN sort_order INT NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE combos ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
+pool.query("ALTER TABLE combo_items ADD COLUMN quantity INT NOT NULL DEFAULT 1").catch(() => { });
+pool.query("ALTER TABLE combo_items ADD COLUMN sort_order INT NOT NULL DEFAULT 0").catch(() => { });
+pool.query("ALTER TABLE combo_prices ADD COLUMN compare_at_price DECIMAL(12,2) NULL").catch(() => { });
+pool.query("ALTER TABLE combo_prices ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1").catch(() => { });
 
 pool.query(`
     CREATE TABLE IF NOT EXISTS whatsapp_webhook_dedupe (

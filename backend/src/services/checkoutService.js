@@ -6,25 +6,207 @@ const { addDaysExact, toSqlDateTime } = require("../utils/date");
 const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
-async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, recordProfit, profitAmount }) {
-    const platformPriceIds = items
+function allocateComboPrices(comboPrice, comboItems) {
+    const price = Number(comboPrice || 0);
+    const regularTotal = comboItems.reduce((sum, item) => sum + Number(item.price || 0), 0);
+    if (!comboItems.length) return [];
+
+    if (regularTotal <= 0) {
+        const equal = Number((price / comboItems.length).toFixed(2));
+        return comboItems.map((item, index) => ({
+            ...item,
+            salePrice: index === comboItems.length - 1
+                ? Number((price - equal * (comboItems.length - 1)).toFixed(2))
+                : equal,
+        }));
+    }
+
+    let allocated = 0;
+    return comboItems.map((item, index) => {
+        const salePrice = index === comboItems.length - 1
+            ? Number((price - allocated).toFixed(2))
+            : Number((price * (Number(item.price || 0) / regularTotal)).toFixed(2));
+        allocated += salePrice;
+        return { ...item, salePrice };
+    });
+}
+
+async function loadIndividualPlans(conn, platformPriceIds) {
+    if (!platformPriceIds.length) return [];
+
+    const placeholders = platformPriceIds.map(() => "?").join(",");
+    const [planRows] = await conn.query(
+        `SELECT
+            pp.id AS platform_price_id,
+            pp.platform_id,
+            pp.duration_id,
+            pp.price,
+            pp.currency,
+            d.days,
+            p.name AS platform_name,
+            p.slug AS platform_slug,
+            p.type,
+            p.whatsapp_instructions,
+            p.wa_show_id,
+            p.wa_show_email,
+            p.wa_show_pass,
+            p.wa_show_profile,
+            p.wa_show_pin,
+            p.wa_show_expire,
+            p.wa_show_url
+         FROM platform_prices pp
+         JOIN durations d ON d.id = pp.duration_id
+         JOIN platforms p ON p.id = pp.platform_id
+         WHERE pp.id IN (${placeholders}) AND pp.is_active = 1`,
+        platformPriceIds
+    );
+
+    const byId = new Map(planRows.map((p) => [Number(p.platform_price_id), p]));
+    const missing = platformPriceIds.filter((id) => !byId.has(Number(id)));
+    if (missing.length) {
+        const err = new Error("Uno o mas planes no existen o estan inactivos.");
+        err.status = 404;
+        err.payload = { missingPlatformPriceIds: missing };
+        throw err;
+    }
+
+    return platformPriceIds.map((id) => byId.get(Number(id)));
+}
+
+async function loadComboEntries(conn, comboRequests, currency) {
+    if (!comboRequests.length) return [];
+
+    const comboIds = [...new Set(comboRequests.map((combo) => combo.comboId))];
+    const comboPlaceholders = comboIds.map(() => "?").join(",");
+
+    const [comboRows] = await conn.query(
+        `SELECT c.id, c.name, cp.price, cp.currency
+         FROM combos c
+         JOIN combo_prices cp ON cp.combo_id = c.id
+         WHERE c.id IN (${comboPlaceholders})
+           AND c.is_active = 1
+           AND cp.is_active = 1
+           AND UPPER(cp.currency) = ?`,
+        [...comboIds, currency]
+    );
+
+    const comboMap = new Map(comboRows.map((combo) => [Number(combo.id), combo]));
+    const missingCombos = comboIds.filter((id) => !comboMap.has(Number(id)));
+    if (missingCombos.length) {
+        const err = new Error("Uno o mas combos no existen, estan inactivos o no tienen precio en tu moneda.");
+        err.status = 404;
+        err.payload = { missingComboIds: missingCombos };
+        throw err;
+    }
+
+    const [comboItemRows] = await conn.query(
+        `SELECT
+            ci.combo_id,
+            ci.quantity,
+            pp.id AS platform_price_id,
+            pp.platform_id,
+            pp.duration_id,
+            pp.price,
+            pp.currency,
+            d.days,
+            p.name AS platform_name,
+            p.slug AS platform_slug,
+            p.type,
+            p.whatsapp_instructions,
+            p.wa_show_id,
+            p.wa_show_email,
+            p.wa_show_pass,
+            p.wa_show_profile,
+            p.wa_show_pin,
+            p.wa_show_expire,
+            p.wa_show_url
+         FROM combo_items ci
+         JOIN platform_prices pp ON pp.platform_id = ci.platform_id
+            AND pp.duration_id = ci.duration_id
+            AND UPPER(pp.currency) = ?
+            AND pp.is_active = 1
+         JOIN durations d ON d.id = pp.duration_id
+         JOIN platforms p ON p.id = pp.platform_id AND p.is_active = 1
+         WHERE ci.combo_id IN (${comboPlaceholders})
+         ORDER BY ci.combo_id ASC, ci.sort_order ASC, ci.id ASC`,
+        [currency, ...comboIds]
+    );
+
+    const [expectedRows] = await conn.query(
+        `SELECT combo_id, SUM(quantity) AS expected_count
+         FROM combo_items
+         WHERE combo_id IN (${comboPlaceholders})
+         GROUP BY combo_id`,
+        comboIds
+    );
+    const expectedCountByCombo = new Map(expectedRows.map((row) => [Number(row.combo_id), Number(row.expected_count || 0)]));
+
+    const itemsByCombo = new Map();
+    for (const row of comboItemRows) {
+        if (!itemsByCombo.has(row.combo_id)) itemsByCombo.set(row.combo_id, []);
+        for (let i = 0; i < Number(row.quantity || 1); i += 1) {
+            itemsByCombo.get(row.combo_id).push({ ...row });
+        }
+    }
+
+    for (const comboId of comboIds) {
+        const resolvedCount = itemsByCombo.get(comboId)?.length || 0;
+        const expectedCount = expectedCountByCombo.get(comboId) || 0;
+        if (!resolvedCount || resolvedCount !== expectedCount) {
+            const err = new Error(`El combo ${comboMap.get(comboId)?.name || comboId} tiene plataformas sin precio activo para ${currency}.`);
+            err.status = 400;
+            throw err;
+        }
+    }
+
+    const entries = [];
+    for (const request of comboRequests) {
+        const combo = comboMap.get(request.comboId);
+        const comboItems = itemsByCombo.get(request.comboId) || [];
+
+        for (let n = 0; n < request.quantity; n += 1) {
+            const allocated = allocateComboPrices(Number(combo.price || 0), comboItems);
+            for (const item of allocated) {
+                entries.push({
+                    plan: item,
+                    salePrice: item.salePrice,
+                    comboId: combo.id,
+                    comboName: combo.name,
+                });
+            }
+        }
+    }
+
+    return entries;
+}
+
+async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, combos, recordProfit, profitAmount }) {
+    const platformPriceIds = (Array.isArray(items) ? items : [])
         .map((x) => Number(x?.platformPriceId))
         .filter((n) => Number.isFinite(n) && n > 0);
 
-    if (!platformPriceIds.length) {
-        const err = new Error("items debe contener al menos un platformPriceId válido.");
+    const comboRequests = (Array.isArray(combos) ? combos : [])
+        .map((x) => ({
+            comboId: Number(x?.comboId ?? x?.id),
+            quantity: Math.max(1, Number(x?.quantity || 1)),
+        }))
+        .filter((x) => Number.isInteger(x.comboId) && x.comboId > 0);
+
+    if (!platformPriceIds.length && !comboRequests.length) {
+        const err = new Error("Debes enviar al menos un item o combo valido.");
         err.status = 400;
         throw err;
     }
 
-    if (platformPriceIds.length > 20) {
-        const err = new Error("Máximo 20 items por checkout.");
+    const requestedUnits = platformPriceIds.length + comboRequests.reduce((sum, combo) => sum + combo.quantity, 0);
+    if (requestedUnits > 20) {
+        const err = new Error("Maximo 20 items por checkout.");
         err.status = 400;
         throw err;
     }
 
     if (recordProfit && (!Number.isFinite(profitAmount) || profitAmount < 0)) {
-        const err = new Error("profitAmount debe ser un número >= 0.");
+        const err = new Error("profitAmount debe ser un numero >= 0.");
         err.status = 400;
         throw err;
     }
@@ -34,56 +216,29 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
     try {
         await conn.beginTransaction();
 
-        // 1) Traer planes
-        const placeholders = platformPriceIds.map(() => "?").join(",");
-        const [planRows] = await conn.query(
-            `SELECT
-         pp.id AS platform_price_id,
-         pp.platform_id,
-         pp.duration_id,
-         pp.price,
-         pp.currency,
-         d.days,
-         p.name AS platform_name,
-         p.slug AS platform_slug,
-         p.type,
-         p.whatsapp_instructions,
-         p.wa_show_id,
-         p.wa_show_email,
-         p.wa_show_pass,
-         p.wa_show_profile,
-         p.wa_show_pin,
-         p.wa_show_expire,
-         p.wa_show_url
-       FROM platform_prices pp
-       JOIN durations d ON d.id = pp.duration_id
-       JOIN platforms p ON p.id = pp.platform_id
-       WHERE pp.id IN (${placeholders}) AND pp.is_active = 1`,
-            platformPriceIds
-        );
-
-        // permitir duplicados + validar que existan
-        const byId = new Map(planRows.map((p) => [Number(p.platform_price_id), p]));
-        const missing = platformPriceIds.filter((id) => !byId.has(Number(id)));
-        if (missing.length) {
-            const err = new Error("Uno o más planes no existen o están inactivos.");
-            err.status = 404;
-            err.payload = { missingPlatformPriceIds: missing };
-            throw err;
+        const individualPlans = await loadIndividualPlans(conn, platformPriceIds);
+        let currency = normalizeCurrency(individualPlans[0]?.currency || "", "");
+        if (!currency) {
+            const [urows] = await conn.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
+            currency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
         }
 
-        const plans = platformPriceIds.map((id) => byId.get(Number(id)));
+        const purchaseEntries = individualPlans.map((plan) => ({
+            plan,
+            salePrice: Number(plan.price || 0),
+            comboId: null,
+            comboName: null,
+        }));
 
-        // 2) Moneda consistente
-        const currency = normalizeCurrency(plans[0].currency || "COP", "COP");
-        const mixedCurrency = plans.some((p) => !sameCurrency(p.currency || "COP", currency));
+        purchaseEntries.push(...await loadComboEntries(conn, comboRequests, currency));
+
+        const mixedCurrency = purchaseEntries.some((entry) => !sameCurrency(entry.plan.currency || "COP", currency));
         if (mixedCurrency) {
             const err = new Error("Todos los items deben tener la misma moneda.");
             err.status = 400;
             throw err;
         }
 
-        // 3) Wallet lock
         const [walletRows] = await conn.query(
             "SELECT id, balance, currency FROM wallets WHERE user_id = ? FOR UPDATE",
             [userId]
@@ -107,15 +262,13 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             }
         }
 
-        // ✅ Evitar compra en moneda distinta a la wallet
         if (!sameCurrency(wallet.currency, currency)) {
-            const err = new Error(`Tu wallet está en ${wallet.currency}, pero el carrito está en ${currency}.`);
+            const err = new Error(`Tu wallet esta en ${wallet.currency}, pero el carrito esta en ${currency}.`);
             err.status = 400;
             throw err;
         }
 
-        // 4) Total + saldo
-        const total = plans.reduce((sum, p) => sum + Number(p.price || 0), 0);
+        const total = Number(purchaseEntries.reduce((sum, entry) => sum + Number(entry.salePrice || 0), 0).toFixed(2));
         const balance = Number(wallet.balance);
 
         if (balance < total) {
@@ -125,26 +278,24 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             throw err;
         }
 
-        // ✅ Crear ORDEN (1 sola)
         const orderCode = makeOrderCode();
         const [ordIns] = await conn.query(
             `INSERT INTO orders (user_id, order_code, total, currency, created_at)
-       VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
+             VALUES (?, ?, ?, ?, UTC_TIMESTAMP())`,
             [userId, orderCode, total, currency]
         );
         const orderId = ordIns.insertId;
-
-        // 5) Items: reservar cuenta + crear subscription + token + order_items
         const results = [];
 
-        for (const plan of plans) {
+        for (const entry of purchaseEntries) {
+            const plan = entry.plan;
             const [accRows] = await conn.query(
                 `SELECT id, email, password, pin, profile_number, access_url, unit_cost
-           FROM platform_accounts
-           WHERE platform_id = ? AND status = 'available'
-           ORDER BY id ASC
-           LIMIT 1
-           FOR UPDATE`,
+                 FROM platform_accounts
+                 WHERE platform_id = ? AND status = 'available'
+                 ORDER BY id ASC
+                 LIMIT 1
+                 FOR UPDATE`,
                 [plan.platform_id]
             );
 
@@ -157,12 +308,13 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
 
             const expiresAt = addDaysExact(new Date(), Number(plan.days));
             const expiresAtSql = toSqlDateTime(expiresAt);
+            const itemPrice = Number(entry.salePrice || 0);
 
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
-          (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
-           status, expires_at, price, currency, whatsapp_phone)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+                    (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
+                     status, expires_at, price, currency, whatsapp_phone)
+                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
                 [
                     userId,
                     plan.platform_id,
@@ -170,7 +322,7 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                     plan.duration_id,
                     account.id,
                     expiresAtSql,
-                    Number(plan.price),
+                    itemPrice,
                     currency,
                     whatsappPhone ? String(whatsappPhone).trim() : null,
                 ]
@@ -180,8 +332,8 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
 
             await conn.query(
                 `UPDATE platform_accounts
-           SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
-           WHERE id=?`,
+                 SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
+                 WHERE id=?`,
                 [userId, expiresAtSql, account.id]
             );
 
@@ -192,18 +344,17 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             });
 
             const unitCost = Number(account.unit_cost || 0);
-            const itemPrice = Number(plan.price || 0);
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             await conn.query(
-                `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit]
+                `INSERT INTO order_items
+                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName]
             );
 
             results.push({ subscriptionId, plan, account, expiresAt, token });
         }
 
-        // 6) Wallet: descontar + (opcional) sumar ganancia
         const newBalance = balance - total;
         const profitToAdd = recordProfit ? Number(profitAmount || 0) : 0;
 
@@ -212,41 +363,40 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
             [newBalance, profitToAdd, wallet.id]
         );
 
-        // 7) wallet_transactions
         await conn.query(
             `INSERT INTO wallet_transactions
-        (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
-       VALUES (?, 'purchase', ?, ?, 'order', ?, ?)`,
+                (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+             VALUES (?, 'purchase', ?, ?, 'order', ?, ?)`,
             [wallet.id, -Number(total), newBalance, orderId, `Orden ${orderCode}`]
         );
 
         if (profitToAdd > 0) {
             await conn.query(
                 `INSERT INTO wallet_transactions
-          (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
-         VALUES (?, 'profit', ?, ?, 'order', ?, ?)`,
+                    (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+                 VALUES (?, 'profit', ?, ?, 'order', ?, ?)`,
                 [wallet.id, Number(profitToAdd), newBalance, orderId, `Ganancia registrada en orden ${orderCode}`]
             );
         }
 
         await conn.commit();
 
-        // 8) Notificación Telegram (fire-and-forget, no bloquea)
         const buyerInfo = await pool.query(
-            "SELECT name, email FROM users WHERE id = ? LIMIT 1", [userId]
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
+            [userId]
         ).then(([r]) => r[0]).catch(() => null);
 
         const { notifySale } = require("./telegramBot");
         notifySale({
             seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
-            platforms: plans.map(p => p.platform_name),
+            platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
             total,
             currency,
-            discount: total,          // lo que se descontó del wallet
-            profit: profitToAdd,     // ganancia registrada
+            discount: total,
+            profit: profitToAdd,
             newBalance,
             orderCode,
-        }).catch(e => console.error("[TelegramBot] notifySale error:", e?.message));
+        }).catch((e) => console.error("[TelegramBot] notifySale error:", e?.message));
 
         if (buyerInfo?.email) {
             sendOrderDeliveryEmail({
@@ -257,14 +407,12 @@ async function checkoutService({ userId, includeWhatsapp, whatsappPhone, items, 
                 currency,
                 results,
                 paymentMethod: "Balance de cuenta",
-            }).catch(e => console.error("[mail] sendOrderDeliveryEmail error:", e?.message || e));
+            }).catch((e) => console.error("[mail] sendOrderDeliveryEmail error:", e?.message || e));
         }
 
-        // 9) Mensaje WhatsApp
         const baseUrl = process.env.PUBLIC_BASE_URL || "http://localhost:3000";
         const message = buildWhatsappMessage({ orderCode, results, baseUrl });
 
-        // leer wallet actualizada (incluye ganancia acumulada)
         const [wAfter] = await pool.query(
             "SELECT balance, profit_total, currency FROM wallets WHERE id = ? LIMIT 1",
             [wallet.id]

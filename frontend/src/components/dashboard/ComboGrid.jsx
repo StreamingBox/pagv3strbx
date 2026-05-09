@@ -28,8 +28,8 @@ function getComboDuration(combo) {
 function getLogoCandidates(item) {
     const raw = `${item?.platformSlug || ""} ${item?.platformName || ""}`.toLowerCase();
     const base = [
-        slugifyLogo(item?.platformSlug),
         slugifyLogo(item?.platformName),
+        slugifyLogo(item?.platformSlug),
     ];
 
     if (raw.includes("netflix")) base.push("netflix", "netflix-internacional", "netflix-completa");

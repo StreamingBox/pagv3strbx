@@ -52,6 +52,11 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         lines.push("");
     }
 
+    if (safeResults.length) {
+        lines.push("📌 Regla de uso: 1 pantalla = 1 dispositivo.");
+        lines.push("La cuenta debe usarse únicamente en un solo equipo. No está permitido alternarla entre TV, celular u otros dispositivos, ni compartir el acceso. Si se detecta incumplimiento de esta regla, se procederá con la expulsión de la cuenta y se perderá la garantía del servicio.");
+    }
+
     return lines.join("\n").trim();
 }
 

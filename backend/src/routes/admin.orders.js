@@ -454,6 +454,58 @@ router.post("/admin/orders/:id/attend", requireAuth, requireRole("admin"), async
     }
 });
 
+// ✅ Bulk attend expirations (Admin)
+router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+        const uniqueIds = Array.from(new Set(
+            rawIds
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value > 0)
+        ));
+
+        if (!uniqueIds.length) {
+            return res.status(400).json({ message: "El archivo no contiene IDs de vencimientos validos." });
+        }
+
+        if (uniqueIds.length > 2000) {
+            return res.status(400).json({ message: "Maximo 2000 vencimientos por carga." });
+        }
+
+        const placeholders = uniqueIds.map(() => "?").join(",");
+        const [existingRows] = await pool.query(
+            `SELECT id, is_attended FROM subscriptions WHERE id IN (${placeholders})`,
+            uniqueIds
+        );
+
+        const foundIds = new Set(existingRows.map((row) => Number(row.id)));
+        const notFoundIds = uniqueIds.filter((id) => !foundIds.has(id));
+        const alreadyAttended = existingRows.filter((row) => Number(row.is_attended) === 1).length;
+
+        const [result] = await pool.query(
+            `UPDATE subscriptions
+             SET is_attended = 1
+             WHERE id IN (${placeholders})
+               AND COALESCE(is_attended, 0) = 0`,
+            uniqueIds
+        );
+
+        return res.json({
+            ok: true,
+            requested: rawIds.length,
+            unique: uniqueIds.length,
+            found: existingRows.length,
+            updated: Number(result?.affectedRows || 0),
+            alreadyAttended,
+            notFound: notFoundIds.length,
+            notFoundIds: notFoundIds.slice(0, 25),
+        });
+    } catch (err) {
+        console.error("Error en POST /admin/orders/attend-bulk:", err);
+        return res.status(500).json({ message: "Error actualizando vencimientos masivos." });
+    }
+});
+
 // ✅ Count pending expirations (Admin)
 router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
     try {

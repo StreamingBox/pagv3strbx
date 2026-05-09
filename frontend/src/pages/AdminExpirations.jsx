@@ -16,6 +16,36 @@ async function apiFetch(path, opts = {}) {
 
 const LOGO_URL = "/api/branding/logo"; // or matching your global sidebar logo logic
 const MotionDiv = motion.div;
+const IMPORT_ID_HEADERS = new Set([
+    "id",
+    "idsuscripcion",
+    "suscripcionid",
+    "subscriptionid",
+    "subscription",
+    "idvencimiento",
+    "vencimientoid",
+]);
+
+function normalizeImportHeader(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+}
+
+function extractExpirationIds(rows) {
+    const ids = [];
+    for (const row of rows) {
+        const idKey = Object.keys(row || {}).find((key) => IMPORT_ID_HEADERS.has(normalizeImportHeader(key)));
+        if (!idKey) continue;
+
+        const match = String(row[idKey] ?? "").match(/\d+/);
+        const id = match ? Number(match[0]) : Number(row[idKey]);
+        if (Number.isInteger(id) && id > 0) ids.push(id);
+    }
+    return Array.from(new Set(ids));
+}
 
 function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
     const [open, setOpen] = useState(false);
@@ -369,6 +399,9 @@ export default function AdminExpirations() {
     const [platforms, setPlatforms] = useState([]);
     const [allCollapsed, setAllCollapsed] = useState(false);
     const [savingIds, setSavingIds] = useState([]);
+    const [importing, setImporting] = useState(false);
+    const [importSummary, setImportSummary] = useState("");
+    const importInputRef = useRef(null);
 
     useEffect(() => {
         let mounted = true;
@@ -477,6 +510,49 @@ export default function AdminExpirations() {
             setSavingIds(prev => prev.filter(itemId => itemId !== id));
         }
     }
+
+    async function handleImportFile(event) {
+        const file = event.target.files?.[0];
+        event.target.value = "";
+        if (!file) return;
+
+        setImporting(true);
+        setImportSummary("");
+        try {
+            const XLSX = await loadXlsx();
+            const buffer = await file.arrayBuffer();
+            const wb = XLSX.read(buffer, { type: "array" });
+            const firstSheet = wb.SheetNames?.[0];
+            if (!firstSheet) throw new Error("El archivo no tiene hojas para leer.");
+
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[firstSheet], { defval: "" });
+            const ids = extractExpirationIds(rows);
+            if (!ids.length) {
+                throw new Error("No encontre una columna ID con vencimientos para marcar.");
+            }
+
+            const confirmed = window.confirm(`Se marcaran como atendidos ${ids.length} vencimientos del archivo. ¿Continuar?`);
+            if (!confirmed) return;
+
+            const result = await apiFetch("/admin/orders/attend-bulk", {
+                method: "POST",
+                body: JSON.stringify({ ids }),
+                timeoutMs: 60000,
+            });
+
+            const importedIds = new Set(ids);
+            setItems(prev => prev.map(item => importedIds.has(Number(item.id)) ? { ...item, is_attended: 1 } : item));
+            setImportSummary(
+                `Carga lista: ${result.updated || 0} marcados, ${result.alreadyAttended || 0} ya estaban atendidos` +
+                (result.notFound ? `, ${result.notFound} no encontrados` : "") + "."
+            );
+        } catch (e) {
+            alert(e.message || "Error importando vencimientos");
+        } finally {
+            setImporting(false);
+        }
+    }
+
     function getDaysLeft(expiryStr) {
         if (!expiryStr) return null;
         // Normalizar ambas fechas a medianoche para comparar días exactos
@@ -688,7 +764,41 @@ export default function AdminExpirations() {
 
                     {/* ── Table Card ── */}
                     <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>
-                        <div style={{ padding: "12px 20px", background: "rgba(0,0,0,0.2)", borderBottom: "1px solid var(--stroke)", display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                        <div style={{ padding: "12px 20px", background: "rgba(0,0,0,0.2)", borderBottom: "1px solid var(--stroke)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                            <div style={{ fontSize: 12, color: importSummary ? "#10b981" : "var(--muted)", fontWeight: 700 }}>
+                                {importSummary || "Sube el Excel exportado para limpiar vencimientos por ID."}
+                            </div>
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                                <input
+                                    ref={importInputRef}
+                                    type="file"
+                                    accept=".xlsx,.xls,.csv"
+                                    onChange={handleImportFile}
+                                    style={{ display: "none" }}
+                                />
+                                <button
+                                    onClick={() => importInputRef.current?.click()}
+                                    disabled={importing}
+                                    style={{
+                                        background: importing ? "rgba(255,255,255,0.06)" : "rgba(13,166,242,0.1)",
+                                        border: "1px solid rgba(13,166,242,0.3)",
+                                        borderRadius: 8,
+                                        padding: "6px 14px",
+                                        color: "var(--accent)",
+                                        fontSize: 12,
+                                        fontWeight: 700,
+                                        cursor: importing ? "wait" : "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 6,
+                                        transition: "all 0.2s",
+                                        opacity: importing ? 0.7 : 1
+                                    }}
+                                    onMouseEnter={e => { if (!importing) e.currentTarget.style.background = "rgba(13,166,242,0.15)"; }}
+                                    onMouseLeave={e => { if (!importing) e.currentTarget.style.background = "rgba(13,166,242,0.1)"; }}
+                                >
+                                    {importing ? "Procesando..." : "Subir Excel y limpiar"}
+                                </button>
                             <button
                                 onClick={exportToExcel}
                                 style={{
@@ -731,6 +841,7 @@ export default function AdminExpirations() {
                             >
                                 {allCollapsed ? "↔️ Expandir Todo" : "↕️ Colapsar Todo"}
                             </button>
+                            </div>
                         </div>
                         <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>

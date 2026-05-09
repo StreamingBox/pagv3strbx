@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { useState } from "react";
 import { getPlatformLogo, getInitials } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 
@@ -22,6 +23,22 @@ function getComboDuration(combo) {
     const values = [...new Set((combo.items || []).map((item) => formatDuration(item)).filter(Boolean))];
     if (!values.length) return "";
     return values.length === 1 ? values[0] : "Varias duraciones";
+}
+
+function ComboPlatformLogo({ item }) {
+    const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
+    const [failed, setFailed] = useState(!logoSrc);
+
+    return failed ? (
+        <span style={{ color: "#fff", fontSize: 10, fontWeight: 900 }}>{getInitials(item.platformName)}</span>
+    ) : (
+        <img
+            src={logoSrc}
+            alt={item.platformName}
+            onError={() => setFailed(true)}
+            style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }}
+        />
+    );
 }
 
 export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
@@ -93,7 +110,6 @@ export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
 
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                                 {(combo.items || []).map((item, itemIndex) => {
-                                    const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
                                     return (
                                         <div
                                             key={`${item.platformId}-${item.durationId}-${itemIndex}`}
@@ -110,11 +126,7 @@ export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
                                                 overflow: "hidden",
                                             }}
                                         >
-                                            {logoSrc ? (
-                                                <img src={logoSrc} alt={item.platformName} style={{ width: "100%", height: "100%", objectFit: "contain", padding: 5 }} />
-                                            ) : (
-                                                <span style={{ color: "#fff", fontSize: 10, fontWeight: 900 }}>{getInitials(item.platformName)}</span>
-                                            )}
+                                            <ComboPlatformLogo item={item} />
                                         </div>
                                     );
                                 })}

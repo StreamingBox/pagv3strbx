@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
-import { apiGet, apiPost, apiPatch, apiLogout } from "../api/api";
+import { apiGet, apiPost, apiPatch, apiDelete, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
@@ -45,6 +45,7 @@ export default function AdminPlatforms() {
 
     const [platforms, setPlatforms] = useState([]);
     const [categories, setCategories] = useState([]);
+    const [fallbacks, setFallbacks] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [successMsg, setSuccessMsg] = useState("");
@@ -60,6 +61,9 @@ export default function AdminPlatforms() {
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
     const [uploadingId, setUploadingId] = useState(null);
+    const [fallbackSourceId, setFallbackSourceId] = useState("");
+    const [fallbackTargetId, setFallbackTargetId] = useState("");
+    const [fallbackPriority, setFallbackPriority] = useState(1);
     // Cache-busters por plataforma: { [platformId]: timestamp }
     const [logoTimestamps, setLogoTimestamps] = useState({});
 
@@ -76,14 +80,17 @@ export default function AdminPlatforms() {
     const load = useCallback(async () => {
         setLoading(true); setError("");
         try {
-            const [r1, r2] = await Promise.all([
+            const [r1, r2, r3] = await Promise.all([
                 apiGet("/admin/platforms"),
                 apiGet("/admin/categories"),
+                apiGet("/admin/platform-fallbacks"),
             ]);
             if (!r1.ok) throw new Error(r1.data?.message || "No se pudo cargar plataformas.");
             if (!r2.ok) throw new Error(r2.data?.message || "No se pudo cargar categorías.");
+            if (!r3.ok) throw new Error(r3.data?.message || "No se pudo cargar equivalencias.");
             setPlatforms(Array.isArray(r1.data) ? r1.data : []);
             setCategories(Array.isArray(r2.data) ? r2.data : []);
+            setFallbacks(Array.isArray(r3.data) ? r3.data : []);
         } catch (e) {
             setError(e?.message || "Error cargando.");
         } finally {
@@ -133,6 +140,51 @@ export default function AdminPlatforms() {
             if (!r.ok) throw new Error(r.data?.message || "Error.");
             await load();
         } catch (e) { setError(e?.message || "Error actualizando monedas."); }
+    }
+
+    async function createFallback() {
+        if (!fallbackSourceId || !fallbackTargetId) {
+            setError("Selecciona plataforma origen y plataforma compatible.");
+            return;
+        }
+        if (Number(fallbackSourceId) === Number(fallbackTargetId)) {
+            setError("La plataforma compatible debe ser diferente.");
+            return;
+        }
+        setSaving(true); setError(""); setSuccessMsg("");
+        try {
+            const r = await apiPost("/admin/platform-fallbacks", {
+                source_platform_id: Number(fallbackSourceId),
+                fallback_platform_id: Number(fallbackTargetId),
+                priority: Number(fallbackPriority || 1),
+            });
+            if (!r.ok) throw new Error(r.data?.message || "No se pudo guardar equivalencia.");
+            setFallbackTargetId("");
+            setFallbackPriority(1);
+            setSuccessMsg("Equivalencia guardada.");
+            setTimeout(() => setSuccessMsg(""), 3000);
+            await load();
+        } catch (e) {
+            setError(e?.message || "Error guardando equivalencia.");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function toggleFallback(id, current) {
+        try {
+            const r = await apiPatch(`/admin/platform-fallbacks/${id}`, { is_active: current ? 0 : 1 });
+            if (!r.ok) throw new Error(r.data?.message || "No se pudo actualizar.");
+            await load();
+        } catch (e) { setError(e?.message || "Error actualizando equivalencia."); }
+    }
+
+    async function deleteFallback(id) {
+        try {
+            const r = await apiDelete(`/admin/platform-fallbacks/${id}`);
+            if (!r.ok) throw new Error(r.data?.message || "No se pudo eliminar.");
+            await load();
+        } catch (e) { setError(e?.message || "Error eliminando equivalencia."); }
     }
 
     async function saveEditedPlatform(e) {
@@ -360,6 +412,62 @@ export default function AdminPlatforms() {
                     </motion.div>
 
                     {/* ── Table Card ── */}
+                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+                        style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
+                            <div>
+                                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" }}>Equivalencias de stock</h3>
+                                <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--muted)" }}>Define que plataforma puede entregar stock cuando la original no tenga cuentas disponibles.</p>
+                            </div>
+                            <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", border: "1px solid var(--stroke)", borderRadius: 999, padding: "4px 10px" }}>{fallbacks.length} reglas</span>
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 110px auto", gap: 12, alignItems: "end", marginBottom: 16 }}>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Si falta stock de</label>
+                                <select style={selStyle} value={fallbackSourceId} onChange={e => setFallbackSourceId(e.target.value)}>
+                                    <option value="">Selecciona plataforma</option>
+                                    {platforms.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Usar stock de</label>
+                                <select style={selStyle} value={fallbackTargetId} onChange={e => setFallbackTargetId(e.target.value)}>
+                                    <option value="">Selecciona compatible</option>
+                                    {platforms.filter(p => String(p.id) !== String(fallbackSourceId)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Prioridad</label>
+                                <input style={inputStyle} type="number" min="1" value={fallbackPriority} onChange={e => setFallbackPriority(e.target.value)} />
+                            </div>
+                            <button className="btn" onClick={createFallback} disabled={saving || !fallbackSourceId || !fallbackTargetId}
+                                style={{ height: 42, padding: "0 18px", fontSize: 13, fontWeight: 800, borderRadius: 10, whiteSpace: "nowrap" }}>Guardar regla</button>
+                        </div>
+                        <div style={{ overflowX: "auto", border: "1px solid var(--stroke)", borderRadius: 12 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                <tbody>
+                                    {!fallbacks.length ? (
+                                        <tr><td style={{ padding: 18, color: "var(--muted)", textAlign: "center" }}>Sin equivalencias configuradas.</td></tr>
+                                    ) : fallbacks.map(rule => (
+                                        <tr key={rule.id} style={{ borderTop: "1px solid var(--stroke)" }}>
+                                            <td style={{ padding: "10px 12px", fontWeight: 800, color: "var(--text)" }}>{rule.source_platform_name}</td>
+                                            <td style={{ padding: "10px 12px", color: "var(--muted)" }}>usa stock de</td>
+                                            <td style={{ padding: "10px 12px", color: "var(--text)" }}>{rule.fallback_platform_name}</td>
+                                            <td style={{ padding: "10px 12px", color: Number(rule.fallback_stock || 0) > 0 ? "#10b981" : "var(--muted)", fontWeight: 800 }}>Stock {Number(rule.fallback_stock || 0)}</td>
+                                            <td style={{ padding: "10px 12px", color: "var(--muted)" }}>Prioridad {rule.priority}</td>
+                                            <td style={{ padding: "10px 12px" }}>
+                                                <button onClick={() => toggleFallback(rule.id, rule.is_active)}
+                                                    style={{ marginRight: 8, border: "1px solid var(--stroke)", borderRadius: 999, padding: "4px 10px", background: rule.is_active ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.04)", color: rule.is_active ? "#10b981" : "var(--muted)", fontWeight: 800, cursor: "pointer" }}>{rule.is_active ? "Activa" : "Inactiva"}</button>
+                                                <button onClick={() => deleteFallback(rule.id)}
+                                                    style={{ border: "1px solid rgba(239,68,68,0.35)", borderRadius: 999, padding: "4px 10px", background: "rgba(239,68,68,0.08)", color: "#ef4444", fontWeight: 800, cursor: "pointer" }}>Eliminar</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </motion.div>
+
                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
 

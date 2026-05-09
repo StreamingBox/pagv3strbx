@@ -4,6 +4,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { formatDateOnlyBogota, isDateTimeExpired } = require("../utils/date");
+const { findAvailableAccountForPlatform } = require("../services/platformFallbacks.service");
 
 const router = express.Router();
 
@@ -49,13 +50,22 @@ function buildAccountDeliveryMessage({ intro = "Detalle de la cuenta:", orderCod
 
 async function getReplacementCandidates(conn, { platformId, currentAccountId }) {
     const [rows] = await conn.query(
-        `SELECT id, email, password, pin, profile_number, expires_at
-           FROM platform_accounts
-          WHERE platform_id = ?
-            AND status = 'available'
-            AND id <> ?
-          ORDER BY id ASC`,
-        [platformId, Number(currentAccountId || 0)]
+        `SELECT pa.id, pa.email, pa.password, pa.pin, pa.profile_number, pa.expires_at,
+                pa.platform_id, p.name AS platform_name, candidate.priority
+           FROM (
+                SELECT ? AS platform_id, 0 AS priority
+                UNION ALL
+                SELECT fallback_platform_id AS platform_id, priority
+                FROM platform_fallbacks
+                WHERE source_platform_id = ? AND is_active = 1
+           ) candidate
+           JOIN platform_accounts pa ON pa.platform_id = candidate.platform_id
+           JOIN platforms p ON p.id = pa.platform_id
+          WHERE pa.status = 'available'
+            AND pa.id <> ?
+            AND (pa.expires_at IS NULL OR pa.expires_at > NOW())
+          ORDER BY candidate.priority ASC, pa.id ASC`,
+        [platformId, platformId, Number(currentAccountId || 0)]
     );
 
     return rows.map((row) => ({
@@ -65,6 +75,9 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId }) 
         pin: row.pin,
         profile_number: row.profile_number,
         expiresAt: row.expires_at || null,
+        platformId: row.platform_id,
+        platformName: row.platform_name,
+        isFallback: Number(row.platform_id) !== Number(platformId),
     }));
 }
 
@@ -240,32 +253,12 @@ router.post(
                 return res.status(409).json({ message: "La subscription ya estÃ¡ vencida." });
             }
 
-            // Tomar otra cuenta disponible del MISMO platform_id
-            let accRows;
-            if (replacementAccountId) {
-                [accRows] = await conn.query(
-                    `SELECT id, email, password, pin, profile_number
-               FROM platform_accounts
-              WHERE id = ?
-                AND platform_id = ?
-                AND status = 'available'
-              LIMIT 1
-              FOR UPDATE`,
-                    [replacementAccountId, sub.platform_id]
-                );
-            } else {
-                [accRows] = await conn.query(
-                    `SELECT id, email, password, pin, profile_number
-               FROM platform_accounts
-              WHERE platform_id = ? AND status = 'available'
-              ORDER BY id ASC
-              LIMIT 1
-              FOR UPDATE`,
-                    [sub.platform_id]
-                );
-            }
+            const resolvedAccount = await findAvailableAccountForPlatform(conn, sub.platform_id, {
+                accountId: replacementAccountId || null,
+                excludeAccountId: sub.platform_account_id,
+            });
 
-            if (replacementAccountId && !accRows.length) {
+            if (replacementAccountId && !resolvedAccount?.account) {
                 await conn.rollback();
                 return res.status(409).json({
                     code: "NO_STOCK",
@@ -273,7 +266,7 @@ router.post(
                 });
             }
 
-            if (!accRows.length) {
+            if (!resolvedAccount?.account) {
                 await conn.rollback();
                 return res.status(409).json({
                     code: "NO_STOCK",
@@ -281,7 +274,7 @@ router.post(
                 });
             }
 
-            const newAcc = accRows[0];
+            const newAcc = resolvedAccount.account;
 
             // Marcar nueva cuenta como assigned con misma expiraciÃ³n / user
             await conn.query(
@@ -295,9 +288,10 @@ router.post(
             await conn.query(
                 `UPDATE subscriptions
             SET platform_account_id = ?,
+                delivered_platform_id = ?,
                 is_attended = 1
           WHERE id = ?`,
-                [newAcc.id, subscriptionId]
+                [newAcc.id, resolvedAccount.deliveredPlatformId, subscriptionId]
             );
 
             // Marcar cuenta anterior como sold (fuera de inventario)

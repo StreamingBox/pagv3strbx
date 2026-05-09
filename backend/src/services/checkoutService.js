@@ -5,6 +5,7 @@ const { addDaysExact, toSqlDateTime } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -273,22 +274,15 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
         for (const entry of purchaseEntries) {
             const plan = entry.plan;
-            const [accRows] = await conn.query(
-                `SELECT id, email, password, pin, profile_number, access_url, unit_cost
-                 FROM platform_accounts
-                 WHERE platform_id = ? AND status = 'available'
-                 ORDER BY id ASC
-                 LIMIT 1
-                 FOR UPDATE`,
-                [plan.platform_id]
-            );
+            const resolvedAccount = await findAvailableAccountForPlatform(conn, plan.platform_id);
 
-            if (!accRows.length) {
+            if (!resolvedAccount?.account) {
                 const err = new Error(`No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
                 err.status = 409;
                 throw err;
             }
-            const account = accRows[0];
+            const account = resolvedAccount.account;
+            const deliveredPlatformId = resolvedAccount.deliveredPlatformId;
 
             const expiresAt = addDaysExact(new Date(), Number(plan.days));
             const expiresAtSql = toSqlDateTime(expiresAt);
@@ -297,14 +291,15 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
                     (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
-                     status, expires_at, price, currency)
-                 VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+                     delivered_platform_id, status, expires_at, price, currency)
+                 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
                 [
                     userId,
                     plan.platform_id,
                     plan.platform_price_id,
                     plan.duration_id,
                     account.id,
+                    deliveredPlatformId,
                     expiresAtSql,
                     itemPrice,
                     currency,
@@ -329,12 +324,21 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             await conn.query(
                 `INSERT INTO order_items
-                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName]
+                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name, delivered_platform_id)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName, deliveredPlatformId]
             );
 
-            results.push({ subscriptionId, plan, account, expiresAt, token });
+            results.push({
+                subscriptionId,
+                plan,
+                account,
+                expiresAt,
+                token,
+                deliveredPlatformId,
+                deliveredPlatformName: account.delivered_platform_name || plan.platform_name,
+                usedFallback: resolvedAccount.usedFallback,
+            });
         }
 
         const newBalance = balance - total;

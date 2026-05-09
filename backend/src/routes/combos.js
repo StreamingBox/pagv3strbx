@@ -76,7 +76,7 @@ async function getCatalogCombosForCurrency(currency) {
             p.type AS platformType,
             d.name AS durationName,
             d.days,
-            COALESCE(s.stock, 0) AS stock
+            CASE WHEN COALESCE(s.stock, 0) > 0 THEN COALESCE(s.stock, 0) ELSE COALESCE(fs.fallback_stock, 0) END AS stock
          FROM combo_items ci
          JOIN platforms p ON p.id = ci.platform_id AND p.is_active = 1
          JOIN durations d ON d.id = ci.duration_id
@@ -91,6 +91,20 @@ async function getCatalogCombosForCurrency(currency) {
               AND (expires_at IS NULL OR expires_at > NOW())
             GROUP BY platform_id
          ) s ON s.platform_id = p.id
+         LEFT JOIN (
+            SELECT pf.source_platform_id AS platform_id, SUM(COALESCE(stock.stock, 0)) AS fallback_stock
+            FROM platform_fallbacks pf
+            JOIN platforms fp ON fp.id = pf.fallback_platform_id AND fp.is_active = 1
+            LEFT JOIN (
+                SELECT platform_id, COUNT(*) AS stock
+                FROM platform_accounts
+                WHERE status = 'available'
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                GROUP BY platform_id
+            ) stock ON stock.platform_id = pf.fallback_platform_id
+            WHERE pf.is_active = 1
+            GROUP BY pf.source_platform_id
+         ) fs ON fs.platform_id = p.id
          WHERE ci.combo_id IN (${comboPlaceholders})
          ORDER BY ci.combo_id ASC, ci.sort_order ASC, p.name ASC`,
         [...aliases, ...comboIds]

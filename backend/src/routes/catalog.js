@@ -56,7 +56,12 @@ router.get("/catalog", requireAuth, async (req, res) => {
         pp.currency,
         pp.is_renewable,
 
-        COALESCE(s.stock, 0) AS stock
+        CASE
+          WHEN COALESCE(s.stock, 0) > 0 THEN COALESCE(s.stock, 0)
+          ELSE COALESCE(fs.fallback_stock, 0)
+        END AS stock,
+        COALESCE(s.stock, 0) AS directStock,
+        COALESCE(fs.fallback_stock, 0) AS fallbackStock
       FROM platform_prices pp
       JOIN platforms p ON p.id = pp.platform_id
       JOIN durations d ON d.id = pp.duration_id
@@ -70,6 +75,23 @@ router.get("/catalog", requireAuth, async (req, res) => {
           AND (expires_at IS NULL OR expires_at > NOW())
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
+
+      LEFT JOIN (
+        SELECT
+          pf.source_platform_id AS platform_id,
+          SUM(COALESCE(stock.stock, 0)) AS fallback_stock
+        FROM platform_fallbacks pf
+        JOIN platforms fp ON fp.id = pf.fallback_platform_id AND fp.is_active = 1
+        LEFT JOIN (
+          SELECT platform_id, COUNT(*) AS stock
+          FROM platform_accounts
+          WHERE status = 'available'
+            AND (expires_at IS NULL OR expires_at > NOW())
+          GROUP BY platform_id
+        ) stock ON stock.platform_id = pf.fallback_platform_id
+        WHERE pf.is_active = 1
+        GROUP BY pf.source_platform_id
+      ) fs ON fs.platform_id = p.id
 
       LEFT JOIN categories c ON c.id = p.category_id
 
@@ -122,7 +144,9 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         pp.price,
         pp.currency,
         pp.is_renewable,
-        COALESCE(s.stock, 0) AS stock
+        CASE WHEN COALESCE(s.stock, 0) > 0 THEN COALESCE(s.stock, 0) ELSE COALESCE(fs.fallback_stock, 0) END AS stock,
+        COALESCE(s.stock, 0) AS directStock,
+        COALESCE(fs.fallback_stock, 0) AS fallbackStock
       FROM platform_prices pp
       JOIN platforms p ON p.id = pp.platform_id
       JOIN durations d ON d.id = pp.duration_id
@@ -131,6 +155,17 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         WHERE status = 'available' AND (expires_at IS NULL OR expires_at > NOW())
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
+      LEFT JOIN (
+        SELECT pf.source_platform_id AS platform_id, SUM(COALESCE(stock.stock, 0)) AS fallback_stock
+        FROM platform_fallbacks pf
+        LEFT JOIN (
+          SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
+          WHERE status = 'available' AND (expires_at IS NULL OR expires_at > NOW())
+          GROUP BY platform_id
+        ) stock ON stock.platform_id = pf.fallback_platform_id
+        WHERE pf.is_active = 1
+        GROUP BY pf.source_platform_id
+      ) fs ON fs.platform_id = p.id
       LEFT JOIN categories c ON c.id = p.category_id LIMIT 5`
     );
     res.json(rows);

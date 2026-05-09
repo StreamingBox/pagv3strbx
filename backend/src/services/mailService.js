@@ -312,9 +312,12 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
 
     const itemBlocksText = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
+        const platformLabel = result?.usedFallback && result?.deliveredPlatformName
+            ? `${plan.platform_name || "Producto"} (entregado: ${result.deliveredPlatformName})`
+            : (plan.platform_name || "Producto");
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
         const fields = buildCredentialFields(result);
-        const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${plan.platform_name || "Producto"}`];
+        const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${platformLabel}`];
         for (const field of fields) {
             if (field.label === "Correo") lines.push(`📧 ${renderTextField(field)}`);
             else if (field.label === "Contrasena") lines.push(`🔑 ${renderTextField(field)}`);
@@ -345,13 +348,16 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
 
     const itemBlocksHtml = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
+        const platformLabel = result?.usedFallback && result?.deliveredPlatformName
+            ? `${plan.platform_name || "Producto"} (entregado: ${result.deliveredPlatformName})`
+            : (plan.platform_name || "Producto");
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
         const fields = buildCredentialFields(result);
 
         return `
             <div style="border:1px solid #cfd8ea;border-radius:16px;padding:18px 18px 14px;margin:0 0 18px;background:#f8fbff">
                 <div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#2557d6;margin:0 0 10px">📦 Licencia #${index + 1}</div>
-                <div style="font-size:19px;font-weight:800;color:#0f172a;margin:0 0 8px">${escapeHtml(plan.platform_name || "Producto")}</div>
+                <div style="font-size:19px;font-weight:800;color:#0f172a;margin:0 0 8px">${escapeHtml(platformLabel)}</div>
                 <div style="font-size:15px;color:#334155;margin:0 0 12px"><strong style="color:#0f172a">🆔 ID:</strong> ${escapeHtml(result?.subscriptionId || "-")}</div>
                 ${fields.map(renderHtmlField).join("")}
                 ${credentialUrl ? `<div style="margin-top:12px"><a href="${escapeHtml(credentialUrl)}" style="display:inline-block;background:#2557d6;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 14px;border-radius:10px">🔗 Abrir acceso seguro</a></div>` : ""}

@@ -27,6 +27,28 @@ pool.query('UPDATE wallet_transactions SET type="profit_adj" WHERE reference_typ
 pool.query('ALTER TABLE subscriptions ADD COLUMN reminder_sent TINYINT(1) DEFAULT 0').catch(() => { });
 pool.query("ALTER TABLE platforms ADD COLUMN is_promo TINYINT(1) NOT NULL DEFAULT 0").catch(() => { });
 pool.query("ALTER TABLE platforms ADD COLUMN promo_color VARCHAR(24) NULL DEFAULT NULL").catch(() => { });
+pool.query("ALTER TABLE subscriptions ADD COLUMN delivered_platform_id INT NULL").catch(() => { });
+pool.query("ALTER TABLE order_items ADD COLUMN delivered_platform_id INT NULL").catch(() => { });
+
+pool.query(`
+    CREATE TABLE IF NOT EXISTS platform_fallbacks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        source_platform_id INT NOT NULL,
+        fallback_platform_id INT NOT NULL,
+        priority INT NOT NULL DEFAULT 1,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_platform_fallback_pair (source_platform_id, fallback_platform_id),
+        INDEX idx_platform_fallback_source (source_platform_id, is_active, priority),
+        INDEX idx_platform_fallback_target (fallback_platform_id)
+    )
+`).catch(() => { });
+pool.query("ALTER TABLE platform_fallbacks ADD COLUMN priority INT NOT NULL DEFAULT 1").catch(() => { });
+pool.query("ALTER TABLE platform_fallbacks ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1").catch(() => { });
+pool.query("ALTER TABLE platform_fallbacks ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP").catch(() => { });
+pool.query("CREATE UNIQUE INDEX uq_platform_fallback_pair ON platform_fallbacks(source_platform_id, fallback_platform_id)").catch(() => { });
+pool.query("CREATE INDEX idx_platform_fallback_source ON platform_fallbacks(source_platform_id, is_active, priority)").catch(() => { });
 
 pool.query(`
     CREATE TABLE IF NOT EXISTS password_reset_tokens (

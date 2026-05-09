@@ -3,6 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency } = require("../utils/currency");
+const { getPlatformFallbacks } = require("../services/platformFallbacks.service");
 
 const router = express.Router();
 
@@ -30,6 +31,87 @@ router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, re
   `);
 
     res.json(rows);
+});
+
+router.get("/admin/platform-fallbacks", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const sourcePlatformId = req.query?.sourcePlatformId ? Number(req.query.sourcePlatformId) : null;
+        const rows = await getPlatformFallbacks(pool, sourcePlatformId);
+        return res.json(rows);
+    } catch (e) {
+        return res.status(500).json({ message: "Error cargando equivalencias." });
+    }
+});
+
+router.post("/admin/platform-fallbacks", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const sourcePlatformId = Number(req.body?.source_platform_id ?? req.body?.sourcePlatformId);
+        const fallbackPlatformId = Number(req.body?.fallback_platform_id ?? req.body?.fallbackPlatformId);
+        const priority = Math.max(1, Number(req.body?.priority || 1));
+
+        if (!Number.isInteger(sourcePlatformId) || sourcePlatformId <= 0 || !Number.isInteger(fallbackPlatformId) || fallbackPlatformId <= 0) {
+            return res.status(400).json({ message: "source_platform_id y fallback_platform_id son obligatorios." });
+        }
+        if (sourcePlatformId === fallbackPlatformId) {
+            return res.status(400).json({ message: "La plataforma fallback debe ser diferente a la plataforma origen." });
+        }
+
+        const [platformRows] = await pool.query(
+            `SELECT id FROM platforms WHERE id IN (?, ?)`,
+            [sourcePlatformId, fallbackPlatformId]
+        );
+        if (platformRows.length !== 2) {
+            return res.status(404).json({ message: "Una de las plataformas no existe." });
+        }
+
+        await pool.query(
+            `INSERT INTO platform_fallbacks (source_platform_id, fallback_platform_id, priority, is_active)
+             VALUES (?, ?, ?, 1)
+             ON DUPLICATE KEY UPDATE priority = VALUES(priority), is_active = 1`,
+            [sourcePlatformId, fallbackPlatformId, priority]
+        );
+
+        return res.status(201).json({ ok: true });
+    } catch (e) {
+        return res.status(500).json({ message: "Error guardando equivalencia." });
+    }
+});
+
+router.patch("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        const priority = req.body?.priority !== undefined ? Math.max(1, Number(req.body.priority || 1)) : null;
+        const isActive = req.body?.is_active !== undefined ? (req.body.is_active ? 1 : 0) : null;
+
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ message: "id invalido." });
+        }
+
+        await pool.query(
+            `UPDATE platform_fallbacks
+             SET priority = COALESCE(?, priority),
+                 is_active = COALESCE(?, is_active)
+             WHERE id = ?`,
+            [priority, isActive, id]
+        );
+
+        return res.json({ ok: true });
+    } catch (e) {
+        return res.status(500).json({ message: "Error actualizando equivalencia." });
+    }
+});
+
+router.delete("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const id = Number(req.params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return res.status(400).json({ message: "id invalido." });
+        }
+        await pool.query("DELETE FROM platform_fallbacks WHERE id = ?", [id]);
+        return res.json({ ok: true });
+    } catch (e) {
+        return res.status(500).json({ message: "Error eliminando equivalencia." });
+    }
 });
 
 // POST /admin/platforms

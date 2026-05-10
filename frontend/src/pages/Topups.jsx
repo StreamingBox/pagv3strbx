@@ -5,7 +5,7 @@ import "../styles/dashboard.css";
 import "../styles/wallet.css";
 
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { apiGet } from "../api/api";
+import { apiFetch, apiGet } from "../api/api";
 import { buildApiUrl } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -82,6 +82,19 @@ function displayTopupCurrency(value) {
     return normalized || String(value || "").trim();
 }
 
+function normalizeTopupCurrency(value) {
+    const normalized = displayTopupCurrency(value);
+    return normalized === "USDT" ? "USD" : normalized;
+}
+
+function sameTopupCurrency(left, right) {
+    return normalizeTopupCurrency(left) === normalizeTopupCurrency(right);
+}
+
+function methodId(method) {
+    return `${String(method?.key || "").trim().toLowerCase()}:${normalizeTopupCurrency(method?.currency || "")}`;
+}
+
 function resolveQrImageUrl(value) {
     const input = String(value || "").trim();
     if (!input) return "";
@@ -114,7 +127,7 @@ export default function Topups() {
 
     const [wallet, setWallet] = useState(null);
     const [topupConfig, setTopupConfig] = useState({ currency: initialCurrency, methods: initialMethods });
-    const [selectedMethodKey, setSelectedMethodKey] = useState(initialMethods[0]?.key || "");
+    const [selectedMethodId, setSelectedMethodId] = useState(methodId(initialMethods[0]) || "");
     const [requests, setRequests] = useState([]);
     const [amount, setAmount] = useState("");
     const [payerName, setPayerName] = useState("");
@@ -134,10 +147,10 @@ export default function Topups() {
             currency: fallbackCurrency,
             methods: fallbackMethods,
         });
-        setSelectedMethodKey((prev) =>
-            fallbackMethods.some((item) => item.key === prev)
+        setSelectedMethodId((prev) =>
+            fallbackMethods.some((item) => methodId(item) === prev)
                 ? prev
-                : (fallbackMethods[0]?.key || "")
+                : (methodId(fallbackMethods[0]) || "")
         );
     }
 
@@ -159,8 +172,8 @@ export default function Topups() {
             const methods = Array.isArray(config.methods) ? config.methods : [];
             if (methods.length) {
                 setTopupConfig({ ...config, methods });
-                const firstMethod = methods[0]?.key || "";
-                setSelectedMethodKey((prev) => (methods.some((item) => item.key === prev) ? prev : firstMethod));
+                const firstMethod = methodId(methods[0]) || "";
+                setSelectedMethodId((prev) => (methods.some((item) => methodId(item) === prev) ? prev : firstMethod));
                 return;
             }
         }
@@ -199,11 +212,15 @@ export default function Topups() {
         () => getFallbackTopupMethods(wallet?.currency || user?.currency || topupConfig.currency || initialCurrency || "COP"),
         [initialCurrency, topupConfig.currency, user?.currency, wallet?.currency]
     );
-    const availableMethods = Array.isArray(topupConfig.methods) && topupConfig.methods.length
-        ? topupConfig.methods
+    const activeCurrency = displayTopupCurrency(wallet?.currency || topupConfig.currency || user?.currency || initialCurrency || "COP");
+    const configuredMethods = Array.isArray(topupConfig.methods)
+        ? topupConfig.methods.filter((item) => sameTopupCurrency(item.currency, activeCurrency))
+        : [];
+    const availableMethods = configuredMethods.length
+        ? configuredMethods
         : fallbackMethods;
     const safeMethods = availableMethods.length ? availableMethods : fallbackMethods;
-    const selectedMethod = safeMethods.find((item) => item.key === selectedMethodKey) || safeMethods[0] || null;
+    const selectedMethod = safeMethods.find((item) => methodId(item) === selectedMethodId) || safeMethods[0] || null;
     const selectedQrUrl = selectedMethod?.qrImageUrl ? resolveQrImageUrl(selectedMethod.qrImageUrl) : "";
     const selectedQrSrc = selectedQrUrl
         ? `${selectedQrUrl}${selectedQrUrl.includes("?") ? "&" : "?"}preview=${encodeURIComponent(selectedMethod?.qrImageUrl || "")}`
@@ -249,7 +266,7 @@ export default function Topups() {
 
     useEffect(() => {
         if (!selectedMethod && availableMethods.length) {
-            setSelectedMethodKey(availableMethods[0].key);
+            setSelectedMethodId(methodId(availableMethods[0]));
         }
     }, [selectedMethod, availableMethods]);
 
@@ -320,6 +337,7 @@ export default function Topups() {
         const form = new FormData();
         form.append("amount", String(normalizedAmount));
         form.append("methodKey", selectedMethod.key);
+        form.append("methodCurrency", selectedMethod.currency || currency || "");
         if (isBreb || isBinance) {
             form.append("payerName", payerName.trim());
         }
@@ -329,16 +347,15 @@ export default function Topups() {
 
         setSubmitting(true);
         try {
-            const response = await fetch(buildApiUrl("/wallet/manual-topups"), {
+            const response = await apiFetch("/wallet/manual-topups", {
                 method: "POST",
-                credentials: "include",
                 body: form,
+                timeoutMs: 60000,
             });
             if (response.status === 413) {
                 throw new Error("El comprobante supera el tamaño permitido. Usa un archivo de máximo 5MB.");
             }
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(data?.message || "No se pudo enviar la solicitud.");
+            if (!response.ok) throw new Error(response.data?.message || "No se pudo enviar la solicitud.");
 
             setAmount("");
             setPayerName("");
@@ -488,12 +505,13 @@ export default function Topups() {
                             <>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 12, marginTop: 14, marginBottom: 16 }}>
                                     {availableMethods.map((method) => {
-                                        const active = method.key === selectedMethod?.key;
+                                        const id = methodId(method);
+                                        const active = id === methodId(selectedMethod);
                                         return (
                                             <button
-                                                key={method.key}
+                                                key={id}
                                                 type="button"
-                                                onClick={() => setSelectedMethodKey(method.key)}
+                                                onClick={() => setSelectedMethodId(id)}
                                                 style={{
                                                     borderRadius: 18,
                                                     border: active ? "1px solid rgba(59,130,246,.75)" : "1px solid var(--stroke)",

@@ -307,6 +307,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         }
         const amount = Number(req.body?.amount || 0);
         const methodKey = String(req.body?.methodKey || "").trim().toLowerCase();
+        const methodCurrency = normalizeCurrency(req.body?.methodCurrency || "", "");
         const payerName = String(req.body?.payerName || "").trim();
         const declaredPaidAtRaw = String(req.body?.declaredPaidAt || "").trim();
         let declaredPaidAt = declaredPaidAtRaw ? new Date(declaredPaidAtRaw) : null;
@@ -323,7 +324,11 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
 
         const userCurrency = normalizeCurrency(userRow.currency || "COP", "COP");
         const userDisplayCurrency = displayCurrency(userCurrency, "COP");
-        const selectedMethod = methods.find((item) => item.key === methodKey && sameCurrency(item.currency, userCurrency));
+        const selectedMethod = methods.find((item) =>
+            item.key === methodKey &&
+            sameCurrency(item.currency, methodCurrency || userCurrency) &&
+            sameCurrency(item.currency, userCurrency)
+        );
 
         if (!selectedMethod) {
             return res.status(400).json({ message: "El medio de pago no esta disponible para tu moneda." });

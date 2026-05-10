@@ -109,7 +109,7 @@ function OrderDetailPanel({ order, onClose }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                         <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(13,166,242,.1)", border: "1px solid rgba(13,166,242,.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🎟️</div>
                         <div>
-                            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text)" }}>Pedido #{order.orderId}</div>
+                            <div style={{ fontWeight: 800, fontSize: 16, color: "var(--text)" }}>Pedido {order.orderCode || `#${order.orderId}`}</div>
                             <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2 }}>{order.platformName} · {order.userEmail}</div>
                         </div>
                     </div>
@@ -451,7 +451,7 @@ export default function AdminCodeRequests() {
                                         </tr>
                                     ) : orders.map((o, idx) => (
                                         <motion.tr
-                                            key={o.orderId}
+                                            key={o.itemId ?? `${o.purchaseOrderId || "order"}-${o.orderId}`}
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             transition={{ delay: Math.min(idx * 0.02, 0.3) }}
@@ -459,7 +459,14 @@ export default function AdminCodeRequests() {
                                             onMouseEnter={e => e.currentTarget.style.background = "rgba(13,166,242,.05)"}
                                             onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                                         >
-                                            <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>#{o.orderId}</td>
+                                            <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                                                {o.orderCode || `#${o.orderId}`}
+                                                {o.orderCode ? (
+                                                    <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>
+                                                        Sub #{o.orderId}
+                                                    </div>
+                                                ) : null}
+                                            </td>
                                             <td style={{ padding: "12px 16px" }}>
                                                 <div style={{ fontWeight: 700, color: "var(--text)", fontSize: 13 }}>{o.userName || "—"}</div>
                                                 <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{o.userEmail}</div>

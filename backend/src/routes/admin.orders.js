@@ -45,7 +45,7 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
             params.push(`%${String(platformName).trim()}%`);
         }
         if (currency) {
-            where.push("s.currency = ?");
+            where.push("o.currency = ?");
             params.push(String(currency));
         }
 
@@ -56,21 +56,21 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
             // Si parece un número busca también por ID exacto de pedido
             const isNumeric = /^\d+$/.test(qTrim);
             if (isNumeric) {
-                where.push("(s.id = ? OR u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ?)");
-                params.push(Number(qTrim), qq, qq, qq, qq);
+                where.push("(s.id = ? OR o.id = ? OR o.order_code LIKE ? OR u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ?)");
+                params.push(Number(qTrim), Number(qTrim), qq, qq, qq, qq, qq);
             } else {
-                where.push("(u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ? OR CAST(s.id AS CHAR) LIKE ?)");
-                params.push(qq, qq, qq, qq, qq);
+                where.push("(o.order_code LIKE ? OR u.email LIKE ? OR u.name LIKE ? OR p.name LIKE ? OR pa.email LIKE ? OR CAST(s.id AS CHAR) LIKE ?)");
+                params.push(qq, qq, qq, qq, qq, qq);
             }
         }
 
         // rango de fechas (por created_at)
         if (dateFrom) {
-            where.push("DATE(s.created_at) >= DATE(?)");
+            where.push("DATE(o.created_at) >= DATE(?)");
             params.push(String(dateFrom));
         }
         if (dateTo) {
-            where.push("DATE(s.created_at) <= DATE(?)");
+            where.push("DATE(o.created_at) <= DATE(?)");
             params.push(String(dateTo));
         }
 
@@ -80,7 +80,9 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
         const [countRows] = await pool.query(
             `
       SELECT COUNT(*) AS total
-      FROM subscriptions s
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN subscriptions s ON s.id = oi.subscription_id
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
       JOIN durations d ON d.id = s.duration_id
@@ -98,11 +100,14 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
             `
       SELECT
         s.id AS orderId,
+        oi.id AS itemId,
+        o.id AS purchaseOrderId,
+        o.order_code AS orderCode,
         s.status,
-        s.price,
-        s.currency,
+        oi.price,
+        o.currency,
         s.expires_at,
-        s.created_at,
+        o.created_at,
         u.id AS userId,
         u.email AS userEmail,
         u.name AS userName,
@@ -116,13 +121,15 @@ router.get("/admin/orders", requireAuth, requireRole("admin"), async (req, res) 
         pa.email AS accountEmail,
         pa.profile_number AS accountProfile,
         pa.pin AS accountPin
-      FROM subscriptions s
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      JOIN subscriptions s ON s.id = oi.subscription_id
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
       JOIN durations d ON d.id = s.duration_id
       LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
       ${whereSql}
-      ORDER BY s.id DESC
+      ORDER BY o.created_at DESC, oi.id DESC
       LIMIT ?, ?
       `,
             [...params, offset, limit]

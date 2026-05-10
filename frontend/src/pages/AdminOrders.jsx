@@ -354,7 +354,7 @@ export default function AdminOrders() {
                                     ) : (
                                         orders.map((o, idx) => (
                                             <motion.tr
-                                                key={o.orderId}
+                                                key={o.itemId ?? `${o.purchaseOrderId || "order"}-${o.orderId}`}
                                                 initial={{ opacity: 0 }}
                                                 animate={{ opacity: 1 }}
                                                 transition={{ delay: idx * 0.02 }}
@@ -367,7 +367,12 @@ export default function AdminOrders() {
                                                 onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)"}
                                             >
                                                 <td style={{ padding: "14px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-                                                    #{o.orderId}
+                                                    {o.orderCode || `#${o.orderId}`}
+                                                    {o.orderCode ? (
+                                                        <div style={{ marginTop: 3, fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>
+                                                            Sub #{o.orderId}
+                                                        </div>
+                                                    ) : null}
                                                 </td>
                                                 <td style={{ padding: "14px 16px", color: "var(--text)", fontWeight: 500, fontSize: 13, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={o.userEmail}>
                                                     {o.userEmail}

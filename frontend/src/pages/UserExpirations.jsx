@@ -134,7 +134,7 @@ export default function UserExpirations() {
                         </div>
                     </div>
 
-                    <div className="kpi" style={{ padding: 20 }}>
+                    <div className="kpi" style={{ padding: 20, minWidth: 0, maxWidth: "100%", overflow: "hidden" }}>
                         {/* Filtros */}
                         <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                             <input
@@ -160,8 +160,8 @@ export default function UserExpirations() {
                         {error && <div className="error" style={{ marginBottom: 16 }}>{error}</div>}
 
                         {/* Tabla */}
-                        <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
+                        <div style={{ width: "100%", maxWidth: "100%", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                            <table style={{ width: "100%", minWidth: 720, borderCollapse: "collapse", fontSize: 13, textAlign: "left" }}>
                                 <thead>
                                     <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.1)", color: "var(--muted)" }}>
                                         <th style={{ padding: "12px 8px", fontWeight: 600 }}>ID</th>

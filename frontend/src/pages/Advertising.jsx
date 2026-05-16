@@ -69,6 +69,11 @@ export default function Advertising() {
         loadImages(folder.id, 1);
     }
 
+    function startDownload(downloadLink) {
+        const url = new URL(downloadLink, window.location.origin);
+        window.location.href = url.toString();
+    }
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden>
@@ -210,10 +215,9 @@ export default function Advertising() {
                                                 </div>
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
                                                     <span style={{ fontSize: 11, color: "var(--muted)" }}>{formatSize(img.size)}</span>
-                                                    <a
-                                                        href={img.downloadLink}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => startDownload(img.downloadLink)}
                                                         style={{
                                                             display: "inline-flex", alignItems: "center", gap: 5,
                                                             padding: "6px 14px", borderRadius: 8,
@@ -221,10 +225,11 @@ export default function Advertising() {
                                                             color: "#fff", fontSize: 12, fontWeight: 700,
                                                             textDecoration: "none", fontFamily: "var(--font)",
                                                             boxShadow: "0 4px 12px rgba(13,166,242,0.25)",
+                                                            border: "none", cursor: "pointer",
                                                         }}
                                                     >
                                                         ⬇ Descargar
-                                                    </a>
+                                                    </button>
                                                 </div>
                                             </div>
                                         </motion.div>
@@ -269,10 +274,10 @@ export default function Advertising() {
                                     />
                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, color: "#fff" }}>
                                         <span style={{ fontSize: 14, fontWeight: 600 }}>{previewImage.name}</span>
-                                        <a href={previewImage.downloadLink} target="_blank" rel="noopener noreferrer"
-                                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, background: "linear-gradient(135deg, #0da6f2, #6333ff)", color: "#fff", fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: "var(--font)" }}>
+                                        <button type="button" onClick={() => startDownload(previewImage.downloadLink)}
+                                            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 18px", borderRadius: 8, background: "linear-gradient(135deg, #0da6f2, #6333ff)", color: "#fff", fontSize: 13, fontWeight: 700, textDecoration: "none", fontFamily: "var(--font)", border: "none", cursor: "pointer" }}>
                                             ⬇ Descargar
-                                        </a>
+                                        </button>
                                     </div>
                                 </motion.div>
                             </motion.div>

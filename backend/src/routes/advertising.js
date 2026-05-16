@@ -1,9 +1,51 @@
 const express = require("express");
 const router = express.Router();
+const jwt = require("jsonwebtoken");
 const requireAuth = require("../middleware/requireAuth");
 const pool = require("../db");
 const driveService = require("../services/googleDriveService");
 const { isExplicitlyActive } = driveService;
+const DOWNLOAD_TOKEN_EXPIRES_IN = "30m";
+
+function signDownloadToken(fileId) {
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!secret) return "";
+    return jwt.sign(
+        { scope: "advertising-download", fileId: String(fileId) },
+        secret,
+        { expiresIn: DOWNLOAD_TOKEN_EXPIRES_IN }
+    );
+}
+
+function withDownloadToken(image) {
+    const token = signDownloadToken(image.fileId);
+    if (!token) return image;
+    const separator = image.downloadLink.includes("?") ? "&" : "?";
+    return {
+        ...image,
+        downloadLink: `${image.downloadLink}${separator}token=${encodeURIComponent(token)}`,
+    };
+}
+
+function hasValidDownloadToken(req, fileId) {
+    const token = String(req.query?.token || "").trim();
+    const secret = process.env.JWT_ACCESS_SECRET;
+    if (!token || !secret) return false;
+
+    try {
+        const payload = jwt.verify(token, secret);
+        return payload?.scope === "advertising-download" && String(payload?.fileId) === String(fileId);
+    } catch {
+        return false;
+    }
+}
+
+function requireFileAccess(req, res, next) {
+    if (hasValidDownloadToken(req, req.params.fileId)) {
+        return next();
+    }
+    return requireAuth(req, res, next);
+}
 
 async function getFolderMetaMap() {
     const [rows] = await pool.query(
@@ -52,6 +94,7 @@ async function getFolderImages(folderId, metaByFile) {
     return driveFiles
         .map((file) => driveService.normalizeImage(file, metaByFile.get(file.id)))
         .filter((item) => item.isActive)
+        .map(withDownloadToken)
         .sort((a, b) => {
             const sortDiff = a.sortOrder - b.sortOrder;
             if (sortDiff !== 0) return sortDiff;
@@ -94,7 +137,7 @@ function driveErrorStatus(err) {
     return 500;
 }
 
-router.get("/advertising/file/:fileId", requireAuth, async (req, res) => {
+router.get("/advertising/file/:fileId", requireFileAccess, async (req, res) => {
     try {
         const { fileId } = req.params;
         const { meta, stream } = await driveService.getFileStream(fileId);

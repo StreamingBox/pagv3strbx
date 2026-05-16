@@ -183,6 +183,7 @@ export default function Orders() {
                     onGoCodeLogs={() => navigate("/admin/code-logs")}
                     onGoAdmin={() => navigate("/admin")}
                     onGoExpirations={() => navigate("/expirations")}
+                    onGoAdvertising={() => navigate("/advertising")}
                     onGoHome={() => navigate("/dashboard")}
                     onLogout={logout}
                 />

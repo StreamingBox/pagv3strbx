@@ -2,18 +2,24 @@ const { google } = require("googleapis");
 const fs = require("fs");
 
 /**
- * Servicio de Google Drive usando Service Account.
- * 
- * Variables de entorno requeridas:
- *   GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL  — email de la service account
- *   GOOGLE_DRIVE_PRIVATE_KEY           — private key (con \\n reales)
- *   GOOGLE_DRIVE_PARENT_FOLDER_ID      — ID de la carpeta raíz en Drive
- * 
- * La carpeta raíz debe estar compartida con el email de la service account
- * con permisos de Editor.
+ * Servicio de Google Drive.
+ *
+ * OAuth se prefiere cuando esta configurado porque sube archivos usando la
+ * cuota de la cuenta dueña del Drive. Service Account queda como respaldo,
+ * util principalmente para unidades compartidas.
  */
 
 function getAuth() {
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+
+    if (clientId && clientSecret && refreshToken) {
+        const oauth = new google.auth.OAuth2(clientId, clientSecret);
+        oauth.setCredentials({ refresh_token: refreshToken });
+        return oauth;
+    }
+
     const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
     const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
@@ -23,16 +29,6 @@ function getAuth() {
             key,
             scopes: ["https://www.googleapis.com/auth/drive"],
         });
-    }
-
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
-
-    if (clientId && clientSecret && refreshToken) {
-        const oauth = new google.auth.OAuth2(clientId, clientSecret);
-        oauth.setCredentials({ refresh_token: refreshToken });
-        return oauth;
     }
 
     throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY, o GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN.");
@@ -75,7 +71,7 @@ function formatDriveError(error, context = "") {
     }
     if (status === 403) {
         if (/storageQuotaExceeded|quota/i.test(reason) || /storage quota|quota/i.test(message)) {
-            return `${ctxPrefix}Google Drive rechazo la subida por cuota o propiedad de almacenamiento. Configura OAuth con la cuenta duena del Drive o usa una unidad compartida. Detalle: ${message}`;
+            return `${ctxPrefix}Google Drive rechazo la subida por cuota o propiedad de almacenamiento. Configura GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN con la cuenta duena del Drive, o usa una unidad compartida. Detalle: ${message}`;
         }
         if (context) {
             return `${ctxPrefix}Google Drive rechazo el acceso. Detalle: ${message}`;

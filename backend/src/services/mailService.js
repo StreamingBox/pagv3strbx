@@ -27,6 +27,11 @@ function buildMailConfig(prefix = "") {
     const smtpUser = String(process.env[`${prefix}SMTP_USER`] || "").trim();
     const smtpPass = String(process.env[`${prefix}SMTP_PASS`] || "").trim();
     const smtpSecure = String(process.env[`${prefix}SMTP_SECURE`] || "").trim().toLowerCase() === "true";
+    const rejectUnauthorized = String(
+        process.env[`${prefix}SMTP_TLS_REJECT_UNAUTHORIZED`] ??
+        process.env.SMTP_TLS_REJECT_UNAUTHORIZED ??
+        "true"
+    ).trim().toLowerCase() !== "false";
     const from = String(
         process.env[`${prefix}MAIL_FROM`] ||
         process.env.MAIL_FROM ||
@@ -44,6 +49,13 @@ function buildMailConfig(prefix = "") {
                     user: smtpUser,
                     pass: smtpPass,
                 },
+                tls: {
+                    rejectUnauthorized,
+                    servername: smtpHost,
+                },
+                connectionTimeout: Number(process.env[`${prefix}SMTP_CONNECTION_TIMEOUT_MS`] || process.env.SMTP_CONNECTION_TIMEOUT_MS || 30000),
+                greetingTimeout: Number(process.env[`${prefix}SMTP_GREETING_TIMEOUT_MS`] || process.env.SMTP_GREETING_TIMEOUT_MS || 30000),
+                socketTimeout: Number(process.env[`${prefix}SMTP_SOCKET_TIMEOUT_MS`] || process.env.SMTP_SOCKET_TIMEOUT_MS || 60000),
             },
         };
     }

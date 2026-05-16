@@ -20,12 +20,14 @@ const pool = require("../db");
 const { createAccountOne } = require("./accounts.service");
 const {
     buildTopupProofUrl,
+    buildTopupProofFileUrl,
     getManualTopupById,
     updateManualTopupStatus,
 } = require("./manualTopups.service");
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const BOT_ENABLED = String(process.env.TELEGRAM_BOT_ENABLED || "true").toLowerCase() !== "false";
+const BOT_POLLING_ENABLED = String(process.env.TELEGRAM_BOT_POLLING || "true").toLowerCase() !== "false";
 const RAW_IDS = process.env.TELEGRAM_CHAT_IDS || "";
 // Conjunto de chat IDs autorizados (números)
 const AUTHORIZED = new Set(
@@ -53,11 +55,21 @@ class TelegramBotClient extends EventEmitter {
     }
 
     async request(method, payload = {}) {
-        const { data } = await this.http.post(`/${method}`, payload);
-        if (!data?.ok) {
-            throw new Error(data?.description || `Telegram ${method} failed`);
+        try {
+            const { data } = await this.http.post(`/${method}`, payload);
+            if (!data?.ok) {
+                throw new Error(data?.description || `Telegram ${method} failed`);
+            }
+            return data.result;
+        } catch (err) {
+            const description = err?.response?.data?.description;
+            if (description) {
+                const wrapped = new Error(description);
+                wrapped.status = err.response.status;
+                throw wrapped;
+            }
+            throw err;
         }
-        return data.result;
     }
 
     setMyCommands(commands) {
@@ -241,10 +253,12 @@ async function notifyAuthorizedChats(text, options = {}, meta = {}) {
 }
 
 async function sendTopupProofPreview(chatId, item) {
-    const proofUrl = await buildTopupProofUrl(item?.proofFileUrl, item?.id);
+    const viewerUrl = await buildTopupProofUrl(item?.proofFileUrl, item?.id);
+    const fileUrl = await buildTopupProofFileUrl(item?.proofFileUrl, item?.id);
+    const proofUrl = fileUrl || viewerUrl;
     if (!proofUrl || !bot) return;
     try {
-        if (/\.pdf($|\?)/i.test(proofUrl)) {
+        if (/\.pdf($|\?)/i.test(String(item?.proofFileUrl || proofUrl))) {
             await bot.sendDocument(chatId, proofUrl, {
                 caption: `Comprobante ${item.requestCode}`,
             });
@@ -255,6 +269,9 @@ async function sendTopupProofPreview(chatId, item) {
         });
     } catch (err) {
         console.error(`[TelegramBot] Error enviando comprobante a ${chatId}:`, err?.message || err);
+        if (viewerUrl) {
+            await bot.sendMessage(chatId, `No pude adjuntar el comprobante, pero puedes abrirlo aqui:\n${viewerUrl}`).catch(() => { });
+        }
     }
 }
 
@@ -920,9 +937,9 @@ function initBot() {
     }
 
     try {
-        bot = new TelegramBotClient(TOKEN, { polling: true });
+        bot = new TelegramBotClient(TOKEN, { polling: BOT_POLLING_ENABLED });
         setupCommands();
-        console.log("[TelegramBot] ✅ Bot iniciado en modo polling.");
+        console.log(`[TelegramBot] ✅ Bot iniciado${BOT_POLLING_ENABLED ? " en modo polling" : " sin polling"}.`);
     } catch (e) {
         console.error("[TelegramBot] Error al iniciar:", e?.message);
     }

@@ -138,6 +138,7 @@ async function createManualTopupProofToken({ topupId, proofFileUrl, actorUserId 
     return {
         token,
         viewerUrl: `${getPublicBaseUrl()}/api/topup-proofs/view/${token}`,
+        fileUrl: `${getPublicBaseUrl()}/api/topup-proofs/file/${token}`,
     };
 }
 
@@ -187,6 +188,15 @@ function buildTopupProofUrl(proofFileUrl, topupId) {
         proofFileUrl,
         actorRole: "telegram",
     }).then((tokenInfo) => tokenInfo?.viewerUrl || null);
+}
+
+function buildTopupProofFileUrl(proofFileUrl, topupId) {
+    if (!proofFileUrl || !topupId) return null;
+    return createManualTopupProofToken({
+        topupId: Number(topupId),
+        proofFileUrl,
+        actorRole: "telegram",
+    }).then((tokenInfo) => tokenInfo?.fileUrl || null);
 }
 
 async function getManualTopupById(id, conn = pool) {
@@ -336,6 +346,7 @@ module.exports = {
     mapManualTopupRow,
     sanitizeManualTopupForClient,
     buildTopupProofUrl,
+    buildTopupProofFileUrl,
     createManualTopupProofToken,
     getManualTopupProofAccess,
     markManualTopupProofTokenOpened,

@@ -14,6 +14,17 @@ const fs = require("fs");
  */
 
 function getAuth() {
+    const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
+    const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
+
+    if (email && key) {
+        return new google.auth.JWT({
+            email,
+            key,
+            scopes: ["https://www.googleapis.com/auth/drive"],
+        });
+    }
+
     const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
     const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
@@ -24,19 +35,7 @@ function getAuth() {
         return oauth;
     }
 
-    const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
-    const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
-
-    if (!email || !key) {
-        throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN, o GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY.");
-    }
-
-    const auth = new google.auth.JWT({
-        email,
-        key,
-        scopes: ["https://www.googleapis.com/auth/drive"],
-    });
-    return auth;
+    throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY, o GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN.");
 }
 
 function getDrive() {

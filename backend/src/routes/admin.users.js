@@ -6,6 +6,7 @@ const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency } = require("../utils/currency");
 
 const router = express.Router();
+const ALLOWED_USER_STATUSES = new Set(["active", "inactive", "blocked", "pending", "rejected"]);
 
 router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
@@ -111,6 +112,13 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
     try {
         const { id } = req.params;
         const { role, status, name, currency } = req.body || {};
+        const normalizedStatus = status == null || String(status).trim() === ""
+            ? null
+            : String(status).trim().toLowerCase();
+
+        if (normalizedStatus && !ALLOWED_USER_STATUSES.has(normalizedStatus)) {
+            return res.status(400).json({ message: "Estado de usuario invalido." });
+        }
 
         await conn.beginTransaction();
 
@@ -145,7 +153,7 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
            role = COALESCE(?, role),
            status = COALESCE(?, status)
        WHERE id = ?`,
-            [name ?? null, role ?? null, status ?? null, id]
+            [name ?? null, role ?? null, normalizedStatus, id]
         );
 
         await conn.commit();

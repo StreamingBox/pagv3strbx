@@ -34,9 +34,9 @@ const USER_STATUS_META = {
 };
 
 function getUserStatusMeta(status) {
-    const key = String(status || "active").toLowerCase();
+    const key = String(status || "").toLowerCase();
     return USER_STATUS_META[key] || {
-        label: status || "Activo",
+        label: status || "Sin estado",
         color: "#94a3b8",
         bg: "rgba(148,163,184,.12)",
         border: "rgba(148,163,184,.25)",

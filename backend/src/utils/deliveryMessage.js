@@ -17,7 +17,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const plan = result?.plan || {};
         const account = result?.account || {};
         const url = credentialUrl(baseUrl, result?.token || "");
-        const platformName = result?.deliveredPlatformName || plan.platform_name || "Producto";
+        const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
         if (plan.type === "correo") {
             lines.push(`🖥️ ${platformName}`);

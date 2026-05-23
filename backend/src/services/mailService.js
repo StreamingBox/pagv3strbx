@@ -324,9 +324,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
 
     const itemBlocksText = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
-        const platformLabel = result?.usedFallback && result?.deliveredPlatformName
-            ? `${plan.platform_name || "Producto"} (entregado: ${result.deliveredPlatformName})`
-            : (plan.platform_name || "Producto");
+        const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
         const fields = buildCredentialFields(result);
         const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${platformLabel}`];
@@ -360,9 +358,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
 
     const itemBlocksHtml = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
-        const platformLabel = result?.usedFallback && result?.deliveredPlatformName
-            ? `${plan.platform_name || "Producto"} (entregado: ${result.deliveredPlatformName})`
-            : (plan.platform_name || "Producto");
+        const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
         const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
         const fields = buildCredentialFields(result);
 

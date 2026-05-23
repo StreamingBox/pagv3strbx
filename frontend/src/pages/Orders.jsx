@@ -32,6 +32,8 @@ export default function Orders() {
     const [renewSubmitting, setRenewSubmitting] = useState(false);
     const [renewError, setRenewError] = useState("");
     const [renewSuccess, setRenewSuccess] = useState("");
+    const [renewDeliveryMessage, setRenewDeliveryMessage] = useState("");
+    const [renewCopied, setRenewCopied] = useState(false);
 
     function formatBogota(dt) {
         if (!dt) return "-";
@@ -131,6 +133,8 @@ export default function Orders() {
         setRenewLoadingWallet(true);
         setRenewError("");
         setRenewSuccess("");
+        setRenewDeliveryMessage("");
+        setRenewCopied(false);
         try {
             const res = await apiGet("/wallet");
             if (!res.ok) throw new Error(res.data?.message || "No se pudo cargar tu saldo.");
@@ -144,13 +148,17 @@ export default function Orders() {
 
     async function confirmRenew() {
         if (!renewModal?.subscription_id) return;
+        if (renewSubmitting || renewSuccess) return;
         setRenewSubmitting(true);
         setRenewError("");
         setRenewSuccess("");
+        setRenewDeliveryMessage("");
+        setRenewCopied(false);
         try {
             const res = await apiPost(`/orders/${renewModal.subscription_id}/renew`, {});
             if (!res.ok) throw new Error(res.data?.message || "No se pudo renovar la suscripción.");
             setRenewSuccess(res.data?.message || "Renovación completada.");
+            setRenewDeliveryMessage(res.data?.deliveryMessage || "");
             const walletRes = await apiGet("/wallet");
             if (walletRes.ok) setRenewWallet(walletRes.data);
             await loadOrders(page);
@@ -159,6 +167,13 @@ export default function Orders() {
         } finally {
             setRenewSubmitting(false);
         }
+    }
+
+    async function copyRenewDeliveryMessage() {
+        if (!renewDeliveryMessage) return;
+        await navigator.clipboard.writeText(renewDeliveryMessage);
+        setRenewCopied(true);
+        window.setTimeout(() => setRenewCopied(false), 1600);
     }
 
     return (
@@ -497,6 +512,15 @@ export default function Orders() {
                             </div>
                         </div>
 
+                        {!renewSuccess ? (
+                            <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "var(--text)" }}>
+                                <div style={{ fontWeight: 900 }}>¿Estás seguro de que deseas renovar esta cuenta?</div>
+                                <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 13 }}>
+                                    Se descontará el valor de tu saldo y el tiempo adicional se sumará desde el vencimiento actual, no desde hoy.
+                                </div>
+                            </div>
+                        ) : null}
+
                         {renewError ? (
                             <div className="error" style={{ marginTop: 14 }}>{renewError}</div>
                         ) : null}
@@ -512,6 +536,37 @@ export default function Orders() {
                             </div>
                         ) : null}
 
+                        {renewDeliveryMessage ? (
+                            <div style={{ marginTop: 14 }}>
+                                <div className="label">Mensaje para copiar y pegar</div>
+                                <pre
+                                    style={{
+                                        margin: "8px 0 0",
+                                        maxHeight: 280,
+                                        overflow: "auto",
+                                        whiteSpace: "pre-wrap",
+                                        wordBreak: "break-word",
+                                        background: "rgba(2,6,23,0.45)",
+                                        border: "1px solid var(--stroke)",
+                                        borderRadius: 12,
+                                        padding: 12,
+                                        color: "var(--text)",
+                                        fontSize: 12,
+                                        lineHeight: 1.45,
+                                    }}
+                                >
+                                    {renewDeliveryMessage}
+                                </pre>
+                                <button
+                                    className="btn"
+                                    onClick={copyRenewDeliveryMessage}
+                                    style={{ width: "auto", padding: "8px 16px", marginTop: 10 }}
+                                >
+                                    {renewCopied ? "Copiado" : "Copiar mensaje"}
+                                </button>
+                            </div>
+                        ) : null}
+
                         <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end", gap: 10 }}>
                             <button
                                 className="btn-ghost"
@@ -523,11 +578,11 @@ export default function Orders() {
                             </button>
                             <button
                                 className="btn"
-                                disabled={renewSubmitting || !renewModal.renewal?.can_renew_now}
+                                disabled={renewSubmitting || !!renewSuccess || !renewModal.renewal?.can_renew_now}
                                 onClick={confirmRenew}
                                 style={{ width: "auto", padding: "8px 16px" }}
                             >
-                                {renewSubmitting ? "Renovando..." : "Confirmar renovación"}
+                                {renewSubmitting ? "Renovando..." : "Sí, renovar ahora"}
                             </button>
                         </div>
                     </div>

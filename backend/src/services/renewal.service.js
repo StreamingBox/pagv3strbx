@@ -1,6 +1,8 @@
 const { makeOrderCode } = require("../utils/orderCode");
 const { addDaysExact, parseDateTime, toSqlDateTime } = require("../utils/date");
+const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { getRenewalEligibility } = require("../utils/renewals");
+const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 
 async function renewSubscription({
     conn,
@@ -72,6 +74,25 @@ async function renewSubscription({
         throw err;
     }
 
+    const [recentRenewalRows] = await conn.query(
+        `SELECT renewal_order_code, new_expires_at, created_at
+         FROM subscription_renewal_logs
+         WHERE subscription_id = ?
+           AND created_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [subscriptionId]
+    );
+    if (recentRenewalRows.length) {
+        const err = new Error("Esta cuenta ya fue renovada hace unos minutos. Actualiza la pantalla antes de intentar de nuevo.");
+        err.status = 409;
+        err.payload = {
+            renewalOrderCode: recentRenewalRows[0].renewal_order_code,
+            newExpiry: recentRenewalRows[0].new_expires_at,
+        };
+        throw err;
+    }
+
     const amount = Number(
         overridePrice !== undefined && overridePrice !== null
             ? overridePrice
@@ -84,7 +105,12 @@ async function renewSubscription({
         throw err;
     }
 
-    const previousExpiry = parseDateTime(sub.expires_at) || new Date();
+    const previousExpiry = parseDateTime(sub.expires_at);
+    if (!previousExpiry) {
+        const err = new Error("La suscripcion no tiene una fecha de vencimiento valida para renovar.");
+        err.status = 400;
+        throw err;
+    }
     const days = Number(sub.days || 0);
     const newExpiryDate = addDaysExact(previousExpiry, days);
     const newExpiry = toSqlDateTime(newExpiryDate);
@@ -275,6 +301,56 @@ async function renewSubscription({
         ]
     );
 
+    let account = null;
+    if (finalAccountId) {
+        const [accountRows] = await conn.query(
+            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.profile_number, pa.access_url, pa.expires_at,
+                    p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
+             FROM platform_accounts pa
+             LEFT JOIN platforms p ON p.id = pa.platform_id
+             WHERE pa.id = ?
+             LIMIT 1`,
+            [finalAccountId]
+        );
+        account = accountRows?.[0] || null;
+    }
+
+    const [tokenRows] = await conn.query(
+        `SELECT token
+         FROM credential_links
+         WHERE subscription_id = ?
+         ORDER BY id DESC
+         LIMIT 1`,
+        [subscriptionId]
+    );
+    const token = tokenRows?.[0]?.token || await insertCredentialLinkWithRetry(conn, {
+        subscriptionId,
+        createdByUserId: actorUserId,
+    });
+
+    const deliveryMessage = buildDeliveryMessage({
+        orderCode: renewalOrderCode,
+        baseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:3000",
+        results: [{
+            subscriptionId,
+            plan: {
+                platform_id: sub.platform_id,
+                platform_name: sub.platform_name,
+                platform_slug: sub.platform_slug,
+                type: sub.platform_type,
+            },
+            account: account || {},
+            expiresAt: account?.expires_at || newExpiry,
+            token,
+            purchasedPlatformId: sub.platform_id,
+            purchasedPlatformName: sub.platform_name,
+            purchasedPlatformSlug: sub.platform_slug,
+            deliveredPlatformId: account?.platform_id || sub.platform_id,
+            deliveredPlatformName: account?.delivered_platform_name || sub.platform_name,
+            usedFallback: account ? Number(account.platform_id) !== Number(sub.platform_id) : false,
+        }],
+    });
+
     return {
         ok: true,
         subscriptionId,
@@ -295,6 +371,8 @@ async function renewSubscription({
         balanceBefore,
         walletId,
         eligibleUntilDate: eligibility.expiresOnDate,
+        token,
+        deliveryMessage,
     };
 }
 

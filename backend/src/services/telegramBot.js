@@ -751,10 +751,11 @@ function setupCommands() {
 
     // Detectar selecciones del teclado inline
     bot.on("callback_query", Object.assign(async (query) => {
-        if (!isAuthorized(query.message.chat.id)) return bot.answerCallbackQuery(query.id, { text: "No autorizado" });
+        const chatId = query.message?.chat?.id ?? query.from?.id;
+        if (!isAuthorized(chatId)) return bot.answerCallbackQuery(query.id, { text: "No autorizado" });
         try {
             const data = query.data;
-            const mockMsg = { chat: query.message.chat, from: query.from };
+            const mockMsg = { chat: query.message?.chat || { id: chatId }, from: query.from };
 
             if (data === "cmd_stock") {
                 await cmdStock(mockMsg);
@@ -778,25 +779,51 @@ function setupCommands() {
                     const actor = query.from?.username
                         ? `@${query.from.username}`
                         : (query.from?.first_name || "Admin Telegram");
-                    const item = await updateManualTopupStatus({
-                        id: Number(rawId),
-                        status,
-                        adminUserId: null,
-                        adminNote: null,
-                    });
-                    const replyMarkup = await buildTopupInlineKeyboard(item);
-                    await bot.editMessageText(buildTopupMessage(item, { actor }), {
-                        chat_id: query.message.chat.id,
-                        message_id: query.message.message_id,
-                        reply_markup: replyMarkup,
-                    });
-                    await notifyManualTopupStatusChanged(item, {
-                        actor,
-                        excludeChatIds: [query.message.chat.id],
-                    });
-                    bot.answerCallbackQuery(query.id, {
-                        text: `Recarga ${getTopupStatusLabel(status).toLowerCase()}.`,
-                    }).catch(() => { });
+                    try {
+                        const item = await updateManualTopupStatus({
+                            id: Number(rawId),
+                            status,
+                            adminUserId: null,
+                            adminNote: null,
+                        });
+                        const replyMarkup = await buildTopupInlineKeyboard(item);
+                        if (query.message?.chat?.id && query.message?.message_id) {
+                            await bot.editMessageText(buildTopupMessage(item, { actor }), {
+                                chat_id: query.message.chat.id,
+                                message_id: query.message.message_id,
+                                reply_markup: replyMarkup,
+                            }).catch((editErr) => {
+                                console.warn("[TelegramBot topup edit warning]", editErr?.message || editErr);
+                            });
+                        }
+                        notifyManualTopupStatusChanged(item, {
+                            actor,
+                            excludeChatIds: query.message?.chat?.id ? [query.message.chat.id] : [],
+                        }).catch((notifyErr) => {
+                            console.error("[TelegramBot topup notify error]", notifyErr?.message || notifyErr);
+                        });
+                        bot.answerCallbackQuery(query.id, {
+                            text: `Recarga ${getTopupStatusLabel(status).toLowerCase()}.`,
+                        }).catch(() => { });
+                    } catch (topupErr) {
+                        const message = topupErr?.message || "No se pudo actualizar la recarga.";
+                        console.error("[TelegramBot topup callback error]", message);
+                        const currentItem = await getManualTopupById(Number(rawId)).catch(() => null);
+                        if (currentItem && query.message?.chat?.id && query.message?.message_id) {
+                            const replyMarkup = await buildTopupInlineKeyboard(currentItem).catch(() => undefined);
+                            bot.editMessageText(buildTopupMessage(currentItem, { actor, note: message }), {
+                                chat_id: query.message.chat.id,
+                                message_id: query.message.message_id,
+                                reply_markup: replyMarkup,
+                            }).catch((editErr) => {
+                                console.warn("[TelegramBot topup error edit warning]", editErr?.message || editErr);
+                            });
+                        }
+                        bot.answerCallbackQuery(query.id, {
+                            text: message.slice(0, 180),
+                            show_alert: true,
+                        }).catch(() => { });
+                    }
                     return;
                 }
                 await handleBuyCallback(query);
@@ -804,6 +831,10 @@ function setupCommands() {
             bot.answerCallbackQuery(query.id).catch(() => { });
         } catch (e) {
             console.error("[TelegramBot callback error]", e);
+            bot.answerCallbackQuery(query.id, {
+                text: "Error procesando la accion.",
+                show_alert: true,
+            }).catch(() => { });
         }
     }));
 

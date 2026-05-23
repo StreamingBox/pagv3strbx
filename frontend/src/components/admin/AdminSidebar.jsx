@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import ThemeToggle from "../ThemeToggle.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import useTheme from "../../hooks/useTheme";
+import { useResponsiveSidebar } from "../sidebar/AppSidebar.jsx";
 
 const NAV_GROUPS = [
     {
@@ -61,9 +62,12 @@ const NAV_GROUPS = [
 ];
 
 export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, onLogout }) {
-    const [collapsed, setCollapsed] = useState(false);
+    const { collapsed, setCollapsed, isMobile } = useResponsiveSidebar({
+        defaultCollapsed: false,
+        collapseOnMobile: true,
+        expandOnDesktop: true,
+    });
     const [isHovered, setIsHovered] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
     const [stockCount, setStockCount] = useState(0);
     const [expirationsCount, setExpirationsCount] = useState(0);
     const [topupsCount, setTopupsCount] = useState(0);
@@ -80,7 +84,9 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                     const data = await response.json();
                     setStockCount(Array.isArray(data) ? data.length : 0);
                 }
-            } catch { }
+            } catch {
+                // Ignore badge fetch failures; the sidebar remains usable without counts.
+            }
         }
         fetchStockCount();
         const timer = setInterval(fetchStockCount, 180000);
@@ -99,7 +105,9 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                     const data = await response.json();
                     setExpirationsCount(Number(data.count) || 0);
                 }
-            } catch { }
+            } catch {
+                // Ignore badge fetch failures; the sidebar remains usable without counts.
+            }
         }
         fetchExpirations();
         const timer = setInterval(fetchExpirations, 180000);
@@ -118,25 +126,14 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                     const data = await response.json();
                     setTopupsCount(Number(data.total) || 0);
                 }
-            } catch { }
+            } catch {
+                // Ignore badge fetch failures; the sidebar remains usable without counts.
+            }
         }
         fetchTopups();
         const timer = setInterval(fetchTopups, 180000);
         return () => clearInterval(timer);
     }, [location.pathname]);
-
-    useEffect(() => {
-        const handleResize = () => {
-            if (typeof window === "undefined") return;
-            const mobile = window.innerWidth <= 900;
-            if (mobile && !isMobile) setCollapsed(true);
-            if (!mobile && isMobile) setCollapsed(false);
-            setIsMobile(mobile);
-        };
-        handleResize();
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, [isMobile]);
 
     const effectiveCollapsed = isMobile ? collapsed : (collapsed && !isHovered);
 

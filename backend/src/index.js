@@ -45,6 +45,7 @@ const advertisingRoutes = require("./routes/advertising");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
+const { runMigrations } = require("./migrations/runner");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
 
@@ -119,11 +120,6 @@ if (lockEnabled) {
 }
 
 const app = express();
-
-cleanupExpiredCredentialLinks(pool).catch(() => { });
-setInterval(() => {
-    cleanupExpiredCredentialLinks(pool).catch(() => { });
-}, 60 * 60 * 1000).unref();
 
 // IP real detrás de Nginx
 app.set("trust proxy", 1);
@@ -372,13 +368,32 @@ server.headersTimeout = Number(process.env.HTTP_HEADERS_TIMEOUT_MS || 125000);
 server.keepAliveTimeout = Number(process.env.HTTP_KEEP_ALIVE_TIMEOUT_MS || 5000);
 server.maxHeadersCount = Number(process.env.HTTP_MAX_HEADERS_COUNT || 100);
 
-server.listen(port, () => {
-    console.log(`API running on :${port}`);
-    initBot();
-    processPendingBrebTopups().catch(() => { });
+async function startServer() {
+    await runMigrations(pool);
+
+    cleanupExpiredCredentialLinks(pool).catch(() => { });
     setInterval(() => {
+        cleanupExpiredCredentialLinks(pool).catch(() => { });
+    }, 60 * 60 * 1000).unref();
+
+    server.listen(port, () => {
+        console.log(`API running on :${port}`);
+        initBot();
         processPendingBrebTopups().catch(() => { });
-    }, 60 * 1000).unref();
+        setInterval(() => {
+            processPendingBrebTopups().catch(() => { });
+        }, 60 * 1000).unref();
+    });
+}
+
+startServer().catch((err) => {
+    console.error("[boot] Error iniciando backend:", err?.message || err);
+    releaseLock();
+    try {
+        server.close(() => process.exit(1));
+    } catch {
+        process.exit(1);
+    }
 });
 
 

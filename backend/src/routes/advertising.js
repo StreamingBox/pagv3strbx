@@ -47,6 +47,26 @@ function requireFileAccess(req, res, next) {
     return requireAuth(req, res, next);
 }
 
+function matchEtag(clientHeader, serverEtag) {
+    if (!clientHeader || !serverEtag) return false;
+
+    const cleanHeader = String(clientHeader).trim();
+    if (cleanHeader === "*") return true;
+
+    const normalize = (tag) => String(tag).replace(/^W\//i, "").replace(/"/g, "").trim();
+    const serverNorm = normalize(serverEtag);
+    return cleanHeader.split(",").map(normalize).includes(serverNorm);
+}
+
+function buildAdvertisingEtag(fileId, cachedImage) {
+    let etagValue = cachedImage.file_hash;
+    if (!etagValue) {
+        const ctime = cachedImage.created_at ? new Date(cachedImage.created_at).getTime() : 0;
+        etagValue = `${fileId}-${cachedImage.image_size || 0}-${ctime}`;
+    }
+    return `W/"${etagValue}"`;
+}
+
 async function getFolderMetaMap() {
     const [rows] = await pool.query(
         `SELECT id, folder_id, folder_name, file_id, file_name, mime_type, web_view_link, thumbnail_link, image_size,
@@ -140,13 +160,51 @@ function driveErrorStatus(err) {
 router.get("/advertising/file/:fileId", requireFileAccess, async (req, res) => {
     try {
         const { fileId } = req.params;
-        const { meta, stream } = await driveService.getFileStream(fileId);
         const isDownload = String(req.query.download || "").trim() === "1";
-        res.setHeader("Content-Type", meta?.mimeType || "application/octet-stream");
+        const [rows] = await pool.query(
+            `SELECT
+                    i.file_name,
+                    i.mime_type,
+                    i.file_hash,
+                    i.image_size,
+                    i.created_at,
+                    i.is_active AS image_active,
+                    COALESCE(f.is_active, 1) AS folder_active
+               FROM advertising_images i
+               LEFT JOIN advertising_folders f ON f.folder_id = i.folder_id
+              WHERE i.file_id = ?
+              LIMIT 1`,
+            [fileId]
+        );
+
+        if (!rows.length) {
+            return res.status(404).json({ ok: false, message: "Imagen no encontrada en el inventario." });
+        }
+
+        const cachedImage = rows[0];
+        if (!isExplicitlyActive(cachedImage.image_active) || !isExplicitlyActive(cachedImage.folder_active)) {
+            return res.status(403).json({ ok: false, message: "Acceso no autorizado a este recurso." });
+        }
+
+        const etag = buildAdvertisingEtag(fileId, cachedImage);
+        if (!isDownload && matchEtag(req.headers["if-none-match"], etag)) {
+            res.setHeader("Cache-Control", "private, no-cache, must-revalidate");
+            res.setHeader("ETag", etag);
+            return res.status(304).end();
+        }
+
+        const { meta, stream } = await driveService.getFileStream(fileId);
+        res.setHeader("Content-Type", meta?.mimeType || cachedImage.mime_type || "application/octet-stream");
         res.setHeader(
             "Content-Disposition",
-            `${isDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(meta?.name || fileId)}"`
+            `${isDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(meta?.name || cachedImage.file_name || fileId)}"`
         );
+        if (!isDownload) {
+            res.setHeader("Cache-Control", "private, no-cache, must-revalidate");
+            res.setHeader("ETag", etag);
+        } else {
+            res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
+        }
         stream.on("error", (err) => {
             console.error("[advertising/file stream]", err.message);
             if (!res.headersSent) {

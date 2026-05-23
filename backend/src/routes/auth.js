@@ -2,6 +2,7 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const pool = require("../db");
+const { withTransaction } = require("../dbHelpers");
 const { signAccessToken, signRefreshToken, sha256 } = require("../auth/tokens");
 const jwt = require("jsonwebtoken");
 const requireAuth = require("../middleware/requireAuth");
@@ -219,65 +220,61 @@ router.get("/reset-password/validate", async (req, res) => {
 });
 
 router.post("/reset-password", async (req, res) => {
-    const conn = await pool.getConnection();
     try {
         const token = String(req.body?.token || "").trim();
         const password = String(req.body?.password || "");
 
         if (!token || !password) {
-            conn.release();
-            return res.status(400).json({ message: "Token y contraseña son obligatorios." });
+            return res.status(400).json({ message: "Token y contrasena son obligatorios." });
         }
         if (password.length < 8) {
-            conn.release();
-            return res.status(400).json({ message: "La contraseña debe tener al menos 8 caracteres." });
+            return res.status(400).json({ message: "La contrasena debe tener al menos 8 caracteres." });
         }
 
-        await conn.beginTransaction();
+        const result = await withTransaction(async (conn) => {
+            const [rows] = await conn.query(
+                `SELECT id, user_id
+                   FROM password_reset_tokens
+                  WHERE token_hash = ?
+                    AND used_at IS NULL
+                    AND expires_at > UTC_TIMESTAMP()
+                  LIMIT 1
+                  FOR UPDATE`,
+                [sha256(token)]
+            );
 
-        const [rows] = await conn.query(
-            `SELECT id, user_id
-               FROM password_reset_tokens
-              WHERE token_hash = ?
-                AND used_at IS NULL
-                AND expires_at > UTC_TIMESTAMP()
-              LIMIT 1
-              FOR UPDATE`,
-            [sha256(token)]
-        );
+            if (!rows.length) {
+                return {
+                    status: 400,
+                    body: { message: "El enlace de recuperacion es invalido o expiro." },
+                };
+            }
 
-        if (!rows.length) {
-            await conn.rollback();
-            conn.release();
-            return res.status(400).json({ message: "El enlace de recuperación es inválido o expiró." });
-        }
+            const resetRow = rows[0];
+            const passwordHash = await bcrypt.hash(password, 12);
 
-        const resetRow = rows[0];
-        const passwordHash = await bcrypt.hash(password, 12);
+            await conn.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, resetRow.user_id]);
+            await conn.query("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE id = ?", [resetRow.id]);
+            await conn.query(
+                "UPDATE password_reset_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE user_id = ? AND id <> ? AND used_at IS NULL",
+                [resetRow.user_id, resetRow.id]
+            );
+            await conn.query(
+                "UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL",
+                [resetRow.user_id]
+            );
 
-        await conn.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, resetRow.user_id]);
-        await conn.query("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE id = ?", [resetRow.id]);
-        await conn.query(
-            "UPDATE password_reset_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE user_id = ? AND id <> ? AND used_at IS NULL",
-            [resetRow.user_id, resetRow.id]
-        );
-        await conn.query(
-            "UPDATE refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE user_id = ? AND revoked_at IS NULL",
-            [resetRow.user_id]
-        );
-
-        await conn.commit();
-        conn.release();
-
-        return res.json({
-            ok: true,
-            message: "Contraseña actualizada. Ya puedes iniciar sesión.",
+            return {
+                status: 200,
+                body: {
+                    ok: true,
+                    message: "Contrasena actualizada. Ya puedes iniciar sesion.",
+                },
+            };
         });
+
+        return res.status(result.status).json(result.body);
     } catch (err) {
-        try {
-            await conn.rollback();
-        } catch { }
-        conn.release();
         console.error("RESET PASSWORD ERROR:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
@@ -333,96 +330,79 @@ router.post("/login", async (req, res) => {
 
 // REFRESH (rota refresh token) - usa cookie refreshToken
 router.post("/refresh", async (req, res) => {
-    const conn = await pool.getConnection();
     try {
         const refreshToken = req.cookies?.refreshToken;
         if (!refreshToken) {
-            conn.release();
             return res.status(401).json({ message: "No refresh token." });
         }
 
-        let payload;
         try {
-            payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+            jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
         } catch {
-            conn.release();
-            return res.status(401).json({ message: "Refresh token inválido o expirado." });
+            return res.status(401).json({ message: "Refresh token invalido o expirado." });
         }
 
         const refreshHash = sha256(refreshToken);
+        const result = await withTransaction(async (conn) => {
+            const [rows] = await conn.query(
+                `SELECT id, user_id, revoked_at, expires_at
+                   FROM refresh_tokens
+                  WHERE token_hash = ?
+                  LIMIT 1`,
+                [refreshHash]
+            );
 
-        await conn.beginTransaction();
+            if (!rows.length) {
+                return { status: 401, body: { message: "Refresh token no reconocido." } };
+            }
 
-        // Busca el token en BD
-        const [rows] = await conn.query(
-            `SELECT id, user_id, revoked_at, expires_at
-       FROM refresh_tokens
-       WHERE token_hash = ?
-       LIMIT 1`,
-            [refreshHash]
-        );
+            const rt = rows[0];
+            if (rt.revoked_at) {
+                return { status: 401, body: { message: "Refresh token revocado." } };
+            }
+            if (new Date(rt.expires_at).getTime() < Date.now()) {
+                return { status: 401, body: { message: "Refresh token expirado." } };
+            }
 
-        if (!rows.length) {
-            await conn.rollback();
-            conn.release();
-            return res.status(401).json({ message: "Refresh token no reconocido." });
+            const [urows] = await conn.query(
+                "SELECT id, role, status, name, email, currency FROM users WHERE id = ? LIMIT 1",
+                [rt.user_id]
+            );
+            if (!urows.length) {
+                return { status: 401, body: { message: "Usuario no existe." } };
+            }
+
+            const user = urows[0];
+            if (user.status !== "active") {
+                return { status: 403, body: { message: "Usuario no activo." } };
+            }
+
+            await conn.query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?", [rt.id]);
+            const newAccessToken = signAccessToken({ sub: user.id, role: user.role });
+            const { refreshToken: newRefreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role, conn);
+
+            return {
+                status: 200,
+                body: { ok: true },
+                accessToken: newAccessToken,
+                refreshToken: newRefreshToken,
+                refreshDays,
+            };
+        });
+
+        if (result.status !== 200) {
+            return res.status(result.status).json(result.body);
         }
 
-        const rt = rows[0];
-        if (rt.revoked_at) {
-            await conn.rollback();
-            conn.release();
-            return res.status(401).json({ message: "Refresh token revocado." });
-        }
-        if (new Date(rt.expires_at).getTime() < Date.now()) {
-            await conn.rollback();
-            conn.release();
-            return res.status(401).json({ message: "Refresh token expirado." });
-        }
-
-        // Verifica usuario
-        const [urows] = await conn.query(
-            "SELECT id, role, status, name, email, currency FROM users WHERE id = ? LIMIT 1",
-            [rt.user_id]
-        );
-        if (!urows.length) {
-            await conn.rollback();
-            conn.release();
-            return res.status(401).json({ message: "Usuario no existe." });
-        }
-        const user = urows[0];
-        if (user.status !== "active") {
-            await conn.rollback();
-            conn.release();
-            return res.status(403).json({ message: "Usuario no activo." });
-        }
-
-        // Revoca el viejo
-        await conn.query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?", [rt.id]);
-
-        // Emite nuevos tokens
-        const newAccessToken = signAccessToken({ sub: user.id, role: user.role });
-
-        // Emite nuevo refresh token (reutiliza lógica con defensa anti-colisión)
-        const { refreshToken: newRefreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role, conn);
-
-        await conn.commit();
-        conn.release();
-
-        // ✅ Set cookies (después de commit)
-        res.cookie("accessToken", newAccessToken, cookieOpts(req, 15 * 60 * 1000, "/api"));
+        res.cookie("accessToken", result.accessToken, cookieOpts(req, 15 * 60 * 1000, "/api"));
         res.cookie(
             "refreshToken",
-            newRefreshToken,
-            cookieOpts(req, refreshDays * 24 * 60 * 60 * 1000, REFRESH_COOKIE_PATH)
+            result.refreshToken,
+            cookieOpts(req, result.refreshDays * 24 * 60 * 60 * 1000, REFRESH_COOKIE_PATH)
         );
 
-        return res.json({ ok: true });
+        return res.json(result.body);
     } catch (err) {
-        try {
-            await conn.rollback();
-        } catch { }
-        conn.release();
         console.error("Refresh Token Error:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }

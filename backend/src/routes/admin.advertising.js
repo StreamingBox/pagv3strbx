@@ -133,6 +133,82 @@ async function upsertFolderMeta(folderId, folderName, isActive = 1) {
     );
 }
 
+async function getFolderName(folderId, fallback = "General") {
+    const [rows] = await pool.query(
+        "SELECT folder_name FROM advertising_folders WHERE folder_id = ? LIMIT 1",
+        [folderId]
+    );
+    return rows[0]?.folder_name || fallback;
+}
+
+async function syncDriveImagesToDb(folderId, folderName, driveFiles) {
+    if (!Array.isArray(driveFiles) || !driveFiles.length) {
+        await pool.query("DELETE FROM advertising_images WHERE folder_id = ?", [folderId]);
+        return;
+    }
+
+    const [rows] = await pool.query(
+        "SELECT file_id FROM advertising_images WHERE folder_id = ?",
+        [folderId]
+    );
+    const knownIds = new Set(rows.map((row) => String(row.file_id)));
+    const driveIds = new Set(driveFiles.filter((file) => file?.id).map((file) => String(file.id)));
+
+    for (const file of driveFiles) {
+        if (!file?.id) continue;
+        if (knownIds.has(String(file.id))) {
+            await pool.query(
+                `UPDATE advertising_images
+                    SET folder_name = ?, file_name = ?, mime_type = ?, web_view_link = ?,
+                        thumbnail_link = ?, image_size = ?, updated_at = CURRENT_TIMESTAMP
+                  WHERE folder_id = ? AND file_id = ?`,
+                [
+                    folderName || "General",
+                    file.name || file.id,
+                    file.mimeType || null,
+                    file.webViewLink || null,
+                    file.thumbnailLink || null,
+                    file.size ? Number(file.size) : 0,
+                    folderId,
+                    file.id,
+                ]
+            );
+            continue;
+        }
+        await pool.query(
+            `INSERT INTO advertising_images
+                (folder_name, folder_id, file_name, file_id, mime_type, web_view_link, thumbnail_link, image_size, sort_order, is_active)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                folderName || "General",
+                folderId,
+                file.name || file.id,
+                file.id,
+                file.mimeType || null,
+                file.webViewLink || null,
+                file.thumbnailLink || null,
+                file.size ? Number(file.size) : 0,
+                0,
+                1,
+            ]
+        );
+        knownIds.add(String(file.id));
+    }
+
+    const staleIds = rows
+        .map((row) => String(row.file_id))
+        .filter((fileId) => !driveIds.has(fileId));
+
+    if (staleIds.length) {
+        await pool.query(
+            `DELETE FROM advertising_images
+              WHERE folder_id = ?
+                AND file_id IN (${staleIds.map(() => "?").join(",")})`,
+            [folderId, ...staleIds]
+        );
+    }
+}
+
 async function notifyUsersAdvertisingUpload(folderName, count) {
     if (!count) return;
     const message = `Nueva publicidad disponible en ${folderName}.`;
@@ -149,6 +225,9 @@ router.get("/folders", async (_req, res) => {
     try {
         const folders = await driveService.listFolders();
         const folderMeta = await getFolderMetaMap();
+        for (const folder of folders) {
+            await upsertFolderMeta(folder.id, folderMeta.get(folder.id)?.name || folder.name, 1);
+        }
         const [rows] = await pool.query(
             "SELECT folder_id, COUNT(*) as count FROM advertising_images WHERE is_active = 1 GROUP BY folder_id"
         );
@@ -255,6 +334,8 @@ router.get("/images/:folderId", async (req, res) => {
     try {
         const { folderId } = req.params;
         const driveFiles = await driveService.listImagesInFolder(folderId);
+        const folderName = await getFolderName(folderId);
+        await syncDriveImagesToDb(folderId, folderName, driveFiles);
         const [dbRows] = await pool.query(
             "SELECT * FROM advertising_images WHERE folder_id = ? ORDER BY sort_order ASC, created_at DESC",
             [folderId]

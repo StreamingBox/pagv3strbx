@@ -1,3 +1,4 @@
+/* global __APK_RELEASE_ID__ */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import ThemeToggle from "../ThemeToggle.jsx";
@@ -5,12 +6,12 @@ import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import BalancedText from "../text/BalancedText.jsx";
 import { displayCurrency } from "../../utils/currency.js";
+import { isSidebarMobile, useResponsiveSidebar } from "../sidebar/AppSidebar.jsx";
 
 import { getApiBase } from "../../config/apiBase.js";
 import { isNativeAndroidApp } from "../../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
-const isMobile = () => typeof window !== "undefined" && window.innerWidth <= 900;
 const MotionButton = motion.button;
 const MotionSpan = motion.span;
 const APK_RELEASE_ID = typeof __APK_RELEASE_ID__ !== "undefined" ? __APK_RELEASE_ID__ : "dev";
@@ -44,9 +45,16 @@ export default function Sidebar({
     onGoHome,
     onLogout,
 }) {
-    const [collapsed, setCollapsed] = useState(isMobile());
+    const { collapsed, setCollapsed } = useResponsiveSidebar({ collapseOnMobile: true });
     const [expirationsCount, setExpirationsCount] = useState(0);
-    const [apkDownloadedRelease, setApkDownloadedRelease] = useState("");
+    const [apkDownloadedRelease, setApkDownloadedRelease] = useState(() => {
+        if (typeof window === "undefined") return "";
+        try {
+            return window.localStorage.getItem(APK_ACK_STORAGE_KEY) || "";
+        } catch {
+            return "";
+        }
+    });
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
     const activePath = window.location.pathname;
 
@@ -75,23 +83,6 @@ export default function Sidebar({
     }
 
     useEffect(() => {
-        const handleResize = () => {
-            setCollapsed(typeof window !== "undefined" && window.innerWidth <= 900);
-        };
-        window.addEventListener("resize", handleResize);
-        return () => window.removeEventListener("resize", handleResize);
-    }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        try {
-            setApkDownloadedRelease(window.localStorage.getItem(APK_ACK_STORAGE_KEY) || "");
-        } catch {
-            setApkDownloadedRelease("");
-        }
-    }, []);
-
-    useEffect(() => {
         async function fetchExpirations() {
             if (activePath === "/expirations") {
                 setExpirationsCount(0);
@@ -114,7 +105,7 @@ export default function Sidebar({
     }, [activePath]);
 
     function nav(fn) {
-        if (isMobile()) setCollapsed(true);
+        if (isSidebarMobile()) setCollapsed(true);
         if (typeof fn === "function") fn();
     }
 

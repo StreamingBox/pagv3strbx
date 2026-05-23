@@ -5,9 +5,19 @@ import "./styles/auth.css";
 import "./styles/adminSupport.css";
 
 import { BrowserRouter } from "react-router-dom";
+import { QueryClientProvider } from "@tanstack/react-query";
 import App from "./App.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { clearLegacySession } from "./api/api.js";
+import { queryClient } from "./queryClient.js";
+
+const ReactQueryDevtoolsLazy = import.meta.env.DEV
+    ? React.lazy(() =>
+        import("@tanstack/react-query-devtools").then((module) => ({
+            default: module.ReactQueryDevtools,
+        }))
+    )
+    : null;
 
 // ✅ Limpieza legacy (tokens + user) para que NO se vea nada de sesión en localStorage
 function getInitialTheme() {
@@ -45,10 +55,17 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 
 ReactDOM.createRoot(document.getElementById("root")).render(
     <React.StrictMode>
-        <BrowserRouter>
-            <AuthProvider>
-                <App />
-            </AuthProvider>
-        </BrowserRouter>
+        <QueryClientProvider client={queryClient}>
+            <BrowserRouter>
+                <AuthProvider>
+                    <App />
+                </AuthProvider>
+            </BrowserRouter>
+            {ReactQueryDevtoolsLazy ? (
+                <React.Suspense fallback={null}>
+                    <ReactQueryDevtoolsLazy initialIsOpen={false} />
+                </React.Suspense>
+            ) : null}
+        </QueryClientProvider>
     </React.StrictMode>
 );

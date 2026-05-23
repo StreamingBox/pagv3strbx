@@ -1,5 +1,7 @@
+/* global process */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import compression from 'vite-plugin-compression'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -39,7 +41,25 @@ export default defineConfig({
     __APP_BUILD_ID__: JSON.stringify(appBuildId),
     __APK_RELEASE_ID__: JSON.stringify(apkReleaseId),
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    compression({
+      algorithm: 'brotliCompress',
+      ext: '.br',
+      threshold: 1024,
+      deleteOriginFile: false,
+    }),
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/recharts')) return 'vendor-recharts';
+          if (id.includes('node_modules/@tanstack/react-query')) return 'vendor-react-query';
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

@@ -11,6 +11,7 @@ import TopupCard from "../components/adminUsers/TopupCard";
 import ChangePasswordCard from "../components/adminUsers/ChangePasswordCard";
 import ChangeCurrencyCard from "../components/adminUsers/ChangeCurrencyCard";
 import TransactionsList from "../components/wallet/TransactionsList";
+import "../styles/admin-users.css";
 import "../styles/special-effects.css";
 import { getApiBase } from "../config/apiBase.js";
 
@@ -116,13 +117,13 @@ export default function AdminUsers() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "20px 24px 40px" }}>
+                <main className="main admin-users-main" style={{ padding: "20px 24px 40px" }}>
 
                     {/* ── Header ── */}
-                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                    <motion.div className="admin-users-header" initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid var(--stroke)", flexWrap: "wrap", gap: 16 }}>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <div className="admin-users-titleRow" style={{ display: "flex", alignItems: "center", gap: 14 }}>
                             <div style={{ width: 48, height: 48, borderRadius: 14, background: "linear-gradient(135deg,rgba(13,166,242,0.15),rgba(99,51,255,0.15))", border: "1px solid rgba(13,166,242,0.3)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, boxShadow: "0 4px 16px rgba(13,166,242,0.2)", flexShrink: 0 }}>👥</div>
                             <div>
                                 <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px" }}>Usuarios</h1>
@@ -131,9 +132,9 @@ export default function AdminUsers() {
                         </div>
 
                         {/* KPI stat chips */}
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        <div className="admin-users-kpis" style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                             {(stats || []).map(s => (
-                                <div key={s.currency} style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 12, padding: "10px 16px", minWidth: 140 }}>
+                                <div className="admin-users-kpi" key={s.currency} style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 12, padding: "10px 16px", minWidth: 140 }}>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>
                                         {statIcons[s.currency]} Ganancia {s.currency}
                                     </div>
@@ -156,10 +157,10 @@ export default function AdminUsers() {
                     </AnimatePresence>
 
                     {/* ── Tab Bar ── */}
-                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+                    <motion.div className="admin-users-tabs" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
                         style={{ display: "flex", gap: 6, marginBottom: 20, background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 14, padding: 6, flexWrap: "wrap" }}>
                         {TABS.map(t => (
-                            <button key={t.id} onClick={() => setActiveTab(t.id)}
+                            <button className="admin-users-tab" key={t.id} onClick={() => setActiveTab(t.id)}
                                 style={{
                                     flex: "1 1 auto", minWidth: 120,
                                     height: 40, padding: "0 16px",
@@ -183,17 +184,17 @@ export default function AdminUsers() {
 
                             {/* TAB: Lista */}
                             {activeTab === "list" && (
-                                <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
+                                <div className="admin-users-card" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
                                     {/* Table toolbar */}
-                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid var(--stroke)", flexWrap: "wrap", gap: 10 }}>
+                                    <div className="admin-users-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid var(--stroke)", flexWrap: "wrap", gap: 10 }}>
                                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                                             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" }}>👤 Lista de Usuarios</h3>
                                             <span style={{ background: "rgba(99,51,255,0.12)", border: "1px solid rgba(99,51,255,0.25)", color: "#8b5cf6", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 800 }}>{total}</span>
                                         </div>
-                                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                            <div style={{ position: "relative" }}>
+                                        <div className="admin-users-toolbarControls" style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                            <div className="admin-users-searchWrap" style={{ position: "relative" }}>
                                                 <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, opacity: 0.4, pointerEvents: "none" }}>🔎</span>
-                                                <input style={inputSrch} placeholder="Buscar por email, nombre..."
+                                                <input className="admin-users-searchInput" style={inputSrch} placeholder="Buscar por email, nombre..."
                                                     value={search} onChange={e => setSearch(e.target.value)}
                                                     onFocus={e => e.target.style.borderColor = "#0da6f2"}
                                                     onBlur={e => e.target.style.borderColor = "var(--stroke)"}
@@ -215,8 +216,8 @@ export default function AdminUsers() {
                                         </div>
                                     </div>
 
-                                    <div style={{ overflowX: "auto" }}>
-                                        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                                    <div className="admin-users-tableWrap" style={{ overflowX: "auto" }}>
+                                        <table className="admin-users-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                             <thead>
                                                 <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
                                                     {["ID", "Usuario", "Rol", "Moneda", "Saldo", "Ganancia", "Inversión", "Acciones"].map(h => (
@@ -346,7 +347,7 @@ export default function AdminUsers() {
 
                                     {/* Pagination */}
                                     {!loading && total > 0 && (
-                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderTop: "1px solid var(--stroke)", background: "rgba(0,0,0,0.15)" }}>
+                                        <div className="admin-users-pagination" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderTop: "1px solid var(--stroke)", background: "rgba(0,0,0,0.15)" }}>
                                             <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
                                                 <span>Filas:</span>
                                                 <div style={{ position: "relative" }}>
@@ -357,7 +358,7 @@ export default function AdminUsers() {
                                                 </div>
                                                 <span>· {Math.min((page - 1) * limit + 1, total)}–{Math.min(page * limit, total)} de {total}</span>
                                             </div>
-                                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                                            <div className="admin-users-pageButtons" style={{ display: "flex", gap: 10, alignItems: "center" }}>
                                                 <button className="btn-ghost" disabled={page <= 1 || loading} onClick={() => loadUsers(page - 1, limit)}
                                                     style={{ width: "auto", padding: "6px 14px", fontSize: 12, borderRadius: 8, opacity: page <= 1 ? 0.35 : 1 }}>
                                                     ← Anterior

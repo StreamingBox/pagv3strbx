@@ -51,16 +51,16 @@ export default function CreateUserCard({ saving, onCreate }) {
     const blur = e => { e.target.style.borderColor = "var(--stroke)"; e.target.style.boxShadow = "none"; };
 
     return (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        <motion.div className="admin-users-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+            <div className="admin-users-cardTitle" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
                 <span style={{ fontSize: 18 }}>➕</span>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Crear Nuevo Usuario</h3>
             </div>
 
             {/* Row 1: Nombre + Email */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+            <div className="admin-users-formGrid admin-users-formGrid--two" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
                 <div>
                     <span style={lbl}>Nombre</span>
                     <input style={inp} placeholder="Juan Pérez" value={name} onChange={e => setName(e.target.value)} onFocus={focus} onBlur={blur} />
@@ -72,7 +72,7 @@ export default function CreateUserCard({ saving, onCreate }) {
             </div>
 
             {/* Row 2: Contraseña + Rol + Moneda */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
+            <div className="admin-users-formGrid admin-users-formGrid--three" style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 14, marginBottom: 20 }}>
                 <div>
                     <span style={lbl}>🔒 Contraseña *</span>
                     <div style={{ position: "relative" }}>
@@ -95,7 +95,7 @@ export default function CreateUserCard({ saving, onCreate }) {
                 </div>
             </div>
 
-            <button className="btn" style={{ height: 42, padding: "0 28px", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
+            <button className="btn admin-users-submitBtn" style={{ height: 42, padding: "0 28px", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
                 onClick={handleCreate} disabled={saving || !email || !password}>
                 {saving ? "Creando..." : "➕ Crear Usuario"}
             </button>

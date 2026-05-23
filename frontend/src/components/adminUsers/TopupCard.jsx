@@ -63,10 +63,10 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
     const blur = e => { e.target.style.borderColor = "var(--stroke)"; e.target.style.boxShadow = "none"; };
 
     return (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        <motion.div className="admin-users-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+            <div className="admin-users-cardTitle" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
                 <span style={{ fontSize: 18 }}>💰</span>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Gestionar Ajustes (Saldo / Ganancia / Inversión)</h3>
             </div>
@@ -87,7 +87,7 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
             )}
 
             {/* Row 1: Usuario + tipo + operación */}
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr", gap: 14, marginBottom: 14 }}>
+            <div className="admin-users-formGrid admin-users-formGrid--three" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr 0.8fr", gap: 14, marginBottom: 14 }}>
                 <div>
                     <span style={lbl}>👤 Usuario *</span>
                     <DarkSelect options={userOptions} value={topupUserId} onChange={setTopupUserId} placeholder="Seleccionar usuario..." />
@@ -103,7 +103,7 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
             </div>
 
             {/* Row 2: Monto + Nota + Botón */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr auto", gap: 14, alignItems: "flex-end" }}>
+            <div className="admin-users-formGrid admin-users-formGrid--action" style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr auto", gap: 14, alignItems: "flex-end" }}>
                 <div>
                     <span style={lbl}>Monto</span>
                     <input style={inp} type="number" min="0" placeholder="Ej: 5000"
@@ -115,7 +115,7 @@ export default function TopupCard({ users, usersById, saving, onTopup, onAdjustP
                     <input style={inp} type="text" value={note} onChange={e => setNote(e.target.value)}
                         onFocus={focus} onBlur={blur} />
                 </div>
-                <button className="btn" style={{ height: 42, padding: "0 24px", whiteSpace: "nowrap", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
+                <button className="btn admin-users-submitBtn" style={{ height: 42, padding: "0 24px", whiteSpace: "nowrap", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
                     disabled={!topupUserId || !amount || saving} onClick={handleAction}>
                     {saving ? "Procesando..." : "Realizar ajuste"}
                 </button>

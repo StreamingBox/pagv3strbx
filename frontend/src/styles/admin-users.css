@@ -1,0 +1,220 @@
+.admin-users-main {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-users-titleRow,
+.admin-users-card,
+.admin-users-toolbar,
+.admin-users-toolbarControls,
+.admin-users-pagination {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.admin-users-titleRow > div:last-child {
+  min-width: 0;
+}
+
+.admin-users-titleRow h1,
+.admin-users-titleRow p,
+.admin-users-cardTitle h3 {
+  overflow-wrap: anywhere;
+}
+
+.admin-users-kpis {
+  min-width: 0;
+}
+
+.admin-users-kpi {
+  flex: 1 1 140px;
+}
+
+.admin-users-tableWrap {
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.admin-users-table {
+  min-width: 900px;
+}
+
+.admin-users-formGrid > div {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .admin-users-main {
+    padding: 18px 18px 34px !important;
+    padding-top: 76px !important;
+  }
+
+  .admin-users-header {
+    align-items: stretch !important;
+  }
+
+  .admin-users-titleRow {
+    align-items: flex-start !important;
+  }
+
+  .admin-users-kpis {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-users-kpi {
+    min-width: 0 !important;
+  }
+
+  .admin-users-tabs {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-users-tab {
+    min-width: 0 !important;
+    padding: 0 10px !important;
+  }
+
+  .admin-users-toolbar {
+    align-items: stretch !important;
+  }
+
+  .admin-users-toolbarControls {
+    width: 100%;
+  }
+
+  .admin-users-searchWrap {
+    flex: 1 1 220px;
+    min-width: 0;
+  }
+
+  .admin-users-searchInput {
+    width: 100% !important;
+  }
+
+  .admin-users-formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .admin-users-formGrid--action {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  }
+
+  .admin-users-formGrid--action .admin-users-submitBtn {
+    grid-column: 1 / -1;
+  }
+
+  .admin-users-submitBtn {
+    width: 100% !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-users-main {
+    padding: 14px 12px 28px !important;
+    padding-top: 72px !important;
+  }
+
+  .admin-users-header {
+    margin-bottom: 18px !important;
+    padding-bottom: 16px !important;
+  }
+
+  .admin-users-titleRow {
+    gap: 12px !important;
+  }
+
+  .admin-users-titleRow h1 {
+    font-size: 20px !important;
+  }
+
+  .admin-users-titleRow p {
+    font-size: 12px !important;
+    line-height: 1.4;
+  }
+
+  .admin-users-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-users-kpi {
+    padding: 10px 12px !important;
+  }
+
+  .admin-users-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px !important;
+  }
+
+  .admin-users-tab {
+    height: 40px !important;
+    font-size: 12px !important;
+  }
+
+  .admin-users-card {
+    padding: 18px !important;
+    border-radius: 14px !important;
+  }
+
+  .admin-users-cardTitle {
+    align-items: flex-start !important;
+    margin-bottom: 18px !important;
+  }
+
+  .admin-users-cardTitle h3 {
+    font-size: 15px !important;
+    line-height: 1.35;
+  }
+
+  .admin-users-toolbar {
+    padding: 14px !important;
+  }
+
+  .admin-users-toolbarControls {
+    display: grid !important;
+    grid-template-columns: 1fr;
+    align-items: stretch !important;
+  }
+
+  .admin-users-toolbarControls > *,
+  .admin-users-toolbarControls button,
+  .admin-users-toolbarControls select {
+    width: 100% !important;
+  }
+
+  .admin-users-formGrid,
+  .admin-users-formGrid--action {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .admin-users-formGrid--action .admin-users-submitBtn {
+    grid-column: auto;
+  }
+
+  .admin-users-pagination {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 12px;
+    padding: 14px !important;
+  }
+
+  .admin-users-pageButtons {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 380px) {
+  .admin-users-kpis,
+  .admin-users-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-users-main {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}

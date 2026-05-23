@@ -34,10 +34,10 @@ export default function ChangeCurrencyCard({ users, saving, onUpdateCurrency }) 
     }
 
     return (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        <motion.div className="admin-users-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "24px", boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
+            <div className="admin-users-cardTitle" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
                 <span style={{ fontSize: 18 }}>🌍</span>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>Cambiar Moneda de Usuario</h3>
             </div>
@@ -46,7 +46,7 @@ export default function ChangeCurrencyCard({ users, saving, onUpdateCurrency }) 
                 ⚠ Recomendación: si el usuario tiene saldo activo, considera vaciarlo antes de cambiar la moneda.
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14, marginBottom: 16 }}>
+            <div className="admin-users-formGrid admin-users-formGrid--two" style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 14, marginBottom: 16 }}>
                 <div>
                     <span style={lbl}>👤 Usuario *</span>
                     <DarkSelect options={userOptions} value={userId} onChange={setUserId} placeholder="Seleccionar usuario..." />
@@ -57,7 +57,7 @@ export default function ChangeCurrencyCard({ users, saving, onUpdateCurrency }) 
                 </div>
             </div>
 
-            <button className="btn" style={{ height: 42, padding: "0 24px", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
+            <button className="btn admin-users-submitBtn" style={{ height: 42, padding: "0 24px", borderRadius: 10, fontWeight: 700, fontSize: 14 }}
                 disabled={saving || !userId} onClick={handleSave}>
                 {saving ? "Guardando..." : "🌍 Guardar Moneda"}
             </button>

@@ -25,6 +25,24 @@ const TABS = [
 
 const fmtNum = (n) => Number(n || 0).toLocaleString("es-CO");
 
+const USER_STATUS_META = {
+    active: { label: "Activo", color: "#10b981", bg: "rgba(16,185,129,.12)", border: "rgba(16,185,129,.3)" },
+    pending: { label: "Pendiente", color: "#f59e0b", bg: "rgba(245,158,11,.15)", border: "rgba(245,158,11,.3)" },
+    rejected: { label: "Rechazado", color: "#ef4444", bg: "rgba(239,68,68,.15)", border: "rgba(239,68,68,.3)" },
+    inactive: { label: "Inactivo", color: "#94a3b8", bg: "rgba(148,163,184,.12)", border: "rgba(148,163,184,.25)" },
+    blocked: { label: "Bloqueado", color: "#ef4444", bg: "rgba(239,68,68,.12)", border: "rgba(239,68,68,.28)" },
+};
+
+function getUserStatusMeta(status) {
+    const key = String(status || "active").toLowerCase();
+    return USER_STATUS_META[key] || {
+        label: status || "Activo",
+        color: "#94a3b8",
+        bg: "rgba(148,163,184,.12)",
+        border: "rgba(148,163,184,.25)",
+    };
+}
+
 const selStyle = {
     appearance: "none", height: 32, padding: "0 24px 0 10px",
     background: "var(--bg0)", color: "var(--text)",
@@ -97,6 +115,7 @@ export default function AdminUsers() {
             );
         }
         if (roleFilter === "pending") return list.filter(u => u.status === "pending");
+        if (roleFilter === "rejected") return list.filter(u => u.status === "rejected");
         if (roleFilter !== "all") list = list.filter(u => u.role === roleFilter);
         return list;
     }, [users, search, roleFilter]);
@@ -206,6 +225,7 @@ export default function AdminUsers() {
                                                     <option value="admin">Admin</option>
                                                     <option value="user">User</option>
                                                     <option value="pending">⏳ Pendientes</option>
+                                                    <option value="rejected">Rechazados</option>
                                                 </select>
                                                 <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                             </div>
@@ -220,24 +240,25 @@ export default function AdminUsers() {
                                         <table className="admin-users-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                             <thead>
                                                 <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                                                    {["ID", "Usuario", "Rol", "Moneda", "Saldo", "Ganancia", "Inversión", "Acciones"].map(h => (
+                                                    {["ID", "Usuario", "Rol", "Estado", "Moneda", "Saldo", "Ganancia", "Inversión", "Acciones"].map(h => (
                                                         <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                                     ))}
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {loading ? (
-                                                    <tr><td colSpan={8} style={{ padding: "60px", textAlign: "center" }}>
+                                                    <tr><td colSpan={9} style={{ padding: "60px", textAlign: "center" }}>
                                                         <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                                                     </td></tr>
                                                 ) : filteredUsers.length === 0 ? (
-                                                    <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                                    <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                         <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
                                                         {search ? "Sin resultados para esa búsqueda." : "No hay usuarios registrados."}
                                                     </td></tr>
                                                 ) : filteredUsers.map((u, idx) => {
                                                     const isAdmin = u.role === "admin";
                                                     const base = idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.012)";
+                                                    const statusMeta = getUserStatusMeta(u.status);
                                                     return (
                                                         <tr key={u.id}
                                                             style={{ borderBottom: "1px solid var(--stroke2)", background: base }}
@@ -262,6 +283,20 @@ export default function AdminUsers() {
                                                                     border: `1px solid ${isAdmin ? "rgba(99,51,255,0.25)" : "rgba(13,166,242,0.25)"}`,
                                                                     padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 800
                                                                 }}>{u.role}</span>
+                                                            </td>
+                                                            <td style={{ padding: "13px 16px" }}>
+                                                                <span style={{
+                                                                    display: "inline-flex",
+                                                                    alignItems: "center",
+                                                                    background: statusMeta.bg,
+                                                                    color: statusMeta.color,
+                                                                    border: `1px solid ${statusMeta.border}`,
+                                                                    padding: "4px 10px",
+                                                                    borderRadius: 20,
+                                                                    fontSize: 11,
+                                                                    fontWeight: 800,
+                                                                    whiteSpace: "nowrap",
+                                                                }}>{statusMeta.label}</span>
                                                             </td>
                                                             <td style={{ padding: "13px 16px", color: "var(--muted)", fontWeight: 600 }}>{u.currency}</td>
                                                             <td style={{ padding: "13px 16px", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
@@ -321,16 +356,6 @@ export default function AdminUsers() {
                                                                                 ❌ Rechazar
                                                                             </button>
                                                                         </>
-                                                                    )}
-                                                                    {u.status === "pending" && (
-                                                                        <span style={{ background: "rgba(245,158,11,.15)", color: "#f59e0b", border: "1px solid rgba(245,158,11,.3)", borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700 }}>
-                                                                            ⏳ Pendiente
-                                                                        </span>
-                                                                    )}
-                                                                    {u.status === "rejected" && (
-                                                                        <span style={{ background: "rgba(239,68,68,.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)", borderRadius: 7, padding: "5px 10px", fontSize: 11, fontWeight: 700 }}>
-                                                                            🚫 Rechazado
-                                                                        </span>
                                                                     )}
                                                                     <button onClick={() => setHistoryUser(u)}
                                                                         style={{ background: "rgba(13,166,242,0.08)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>

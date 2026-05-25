@@ -4,22 +4,12 @@ const fs = require("fs");
 /**
  * Servicio de Google Drive.
  *
- * OAuth se prefiere cuando esta configurado porque sube archivos usando la
- * cuota de la cuenta dueña del Drive. Service Account queda como respaldo,
- * util principalmente para unidades compartidas.
+ * Service Account se prefiere cuando esta configurada porque no depende de
+ * refresh tokens de OAuth que Google puede revocar o invalidar. OAuth queda
+ * como respaldo para instalaciones que no tengan service account.
  */
 
 function getAuth() {
-    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
-
-    if (clientId && clientSecret && refreshToken) {
-        const oauth = new google.auth.OAuth2(clientId, clientSecret);
-        oauth.setCredentials({ refresh_token: refreshToken });
-        return oauth;
-    }
-
     const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
     const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
@@ -29,6 +19,16 @@ function getAuth() {
             key,
             scopes: ["https://www.googleapis.com/auth/drive"],
         });
+    }
+
+    const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
+    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+
+    if (clientId && clientSecret && refreshToken) {
+        const oauth = new google.auth.OAuth2(clientId, clientSecret);
+        oauth.setCredentials({ refresh_token: refreshToken });
+        return oauth;
     }
 
     throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY, o GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN.");

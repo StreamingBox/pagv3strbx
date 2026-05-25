@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -131,20 +131,27 @@ export default function AdminUsers() {
     const statColors = { COP: "#10b981", MXN: "#f59e0b", USD: "#8b5cf6" };
     const statIcons = { COP: "🇨🇴", MXN: "🇲🇽", USD: "🇺🇸" };
 
-    const filteredUsers = useMemo(() => {
-        let list = users || [];
-        if (search.trim()) {
-            const q = search.toLowerCase();
-            list = list.filter(u =>
-                u.email?.toLowerCase().includes(q) ||
-                u.name?.toLowerCase().includes(q) ||
-                String(u.id).includes(q)
-            );
+    const listFilters = useMemo(() => {
+        const next = {};
+        const q = search.trim();
+        if (q) next.q = q;
+        if (USER_STATUS_META[roleFilter]) {
+            next.status = roleFilter;
+        } else if (roleFilter !== "all") {
+            next.role = roleFilter;
         }
-        if (USER_STATUS_META[roleFilter]) return list.filter(u => u.status === roleFilter);
-        if (roleFilter !== "all") list = list.filter(u => u.role === roleFilter);
-        return list;
-    }, [users, search, roleFilter]);
+        return next;
+    }, [search, roleFilter]);
+
+    useEffect(() => {
+        const handle = window.setTimeout(() => {
+            loadUsers(1, limit, listFilters);
+        }, 300);
+        return () => window.clearTimeout(handle);
+    }, [limit, listFilters, loadUsers]);
+
+    const filteredUsers = users || [];
+    const hasActiveFilters = Boolean(search.trim()) || roleFilter !== "all";
 
     return (
         <div className="page-shell">
@@ -258,7 +265,7 @@ export default function AdminUsers() {
                                                 </select>
                                                 <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                                             </div>
-                                            <button className="btn-ghost" onClick={() => loadUsers(1, limit)} disabled={loading}
+                                            <button className="btn-ghost" onClick={() => loadUsers(1, limit, listFilters)} disabled={loading}
                                                 style={{ height: 34, padding: "0 14px", fontSize: 12, borderRadius: 8 }}>
                                                 {loading ? "⟳" : "⟳"} Refrescar
                                             </button>
@@ -282,7 +289,7 @@ export default function AdminUsers() {
                                                 ) : filteredUsers.length === 0 ? (
                                                     <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                         <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
-                                                        {search ? "Sin resultados para esa búsqueda." : "No hay usuarios registrados."}
+                                                        {hasActiveFilters ? "Sin resultados para esa búsqueda." : "No hay usuarios registrados."}
                                                     </td></tr>
                                                 ) : filteredUsers.map((u, idx) => {
                                                     const isAdmin = u.role === "admin";

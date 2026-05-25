@@ -11,11 +11,33 @@ const ALLOWED_USER_STATUSES = new Set(["active", "inactive", "blocked", "pending
 router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { page = 1, limit = 50 } = req.query;
+        const q = String(req.query.q || "").trim().toLowerCase();
+        const role = String(req.query.role || "").trim().toLowerCase();
+        const status = String(req.query.status || "").trim().toLowerCase();
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
         const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 1000);
         const offset = (pageNum - 1) * limitNum;
+        const where = [];
+        const params = [];
 
-        const [countRows] = await pool.query("SELECT COUNT(*) as total FROM users");
+        if (q) {
+            where.push("(LOWER(COALESCE(u.email, '')) LIKE ? OR LOWER(COALESCE(u.name, '')) LIKE ? OR CAST(u.id AS CHAR) LIKE ?)");
+            params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+        }
+
+        if (["admin", "user"].includes(role)) {
+            where.push("u.role = ?");
+            params.push(role);
+        }
+
+        if (ALLOWED_USER_STATUSES.has(status)) {
+            where.push("u.status = ?");
+            params.push(status);
+        }
+
+        const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+        const [countRows] = await pool.query(`SELECT COUNT(*) as total FROM users u ${whereSql}`, params);
         const total = countRows[0].total;
 
         const [rows] = await pool.query(
@@ -37,9 +59,10 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
                ) AS total_invested
         FROM users u
         LEFT JOIN wallets w ON w.user_id = u.id
+        ${whereSql}
         ORDER BY u.id DESC
         LIMIT ? OFFSET ?`,
-            [limitNum, offset]
+            [...params, limitNum, offset]
         );
 
         return res.json({
@@ -47,7 +70,7 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
             total,
             page: pageNum,
             limit: limitNum,
-            totalPages: Math.ceil(total / limitNum),
+            totalPages: Math.max(Math.ceil(total / limitNum), 1),
         });
     } catch (err) {
         console.error("API Error at " + req.originalUrl + ":", err.message);

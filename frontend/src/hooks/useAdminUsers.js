@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
     adjustProfit,
     adjustInvested,
@@ -17,6 +17,7 @@ export function useAdminUsers() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const filtersRef = useRef({});
 
     // PAGINATION
     const [page, setPage] = useState(1);
@@ -27,12 +28,15 @@ export function useAdminUsers() {
     // STATS
     const [stats, setStats] = useState([]);
 
-    const loadUsers = useCallback(async (pageNum = 1, currentLimit = 5) => {
+    const loadUsers = useCallback(async (pageNum = 1, currentLimit = 5, filters) => {
         setLoading(true);
         setError("");
+        const nextFilters = filters === undefined ? filtersRef.current : (filters || {});
+        filtersRef.current = nextFilters;
+
         try {
             const [userData, statsData, fullData] = await Promise.all([
-                fetchUsers({ page: pageNum, limit: currentLimit }),
+                fetchUsers({ page: pageNum, limit: currentLimit, ...nextFilters }),
                 fetchUserStats(),
                 fetchUsers({ page: 1, limit: 1000 }) // ✅ Fetch "all" for dropdowns
             ]);
@@ -50,10 +54,6 @@ export function useAdminUsers() {
             setLoading(false);
         }
     }, []);
-
-    useEffect(() => {
-        loadUsers(1, 5);
-    }, [loadUsers]);
 
     const usersById = useMemo(() => {
         const map = new Map();

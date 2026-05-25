@@ -33,6 +33,14 @@ const USER_STATUS_META = {
     blocked: { label: "Bloqueado", color: "#ef4444", bg: "rgba(239,68,68,.12)", border: "rgba(239,68,68,.28)" },
 };
 
+const USER_STATUS_OPTIONS = [
+    { value: "active", label: "Activo" },
+    { value: "inactive", label: "Inactivo" },
+    { value: "blocked", label: "Bloqueado" },
+    { value: "pending", label: "Pendiente" },
+    { value: "rejected", label: "Rechazado" },
+];
+
 function getUserStatusMeta(status) {
     const key = String(status || "").toLowerCase();
     return USER_STATUS_META[key] || {
@@ -79,19 +87,38 @@ export default function AdminUsers() {
 
     const API_BASE = getApiBase();
 
-    async function updateUserStatus(userId, newStatus) {
-        const action = newStatus === "active" ? "aprobar" : "rechazar";
-        if (!window.confirm(`¿Estás seguro de que deseas ${action} a este usuario?`)) return;
+    async function updateUserStatus(targetUser, newStatus) {
+        const currentStatus = String(targetUser?.status || "").toLowerCase();
+        if (!targetUser?.id || newStatus === currentStatus) return;
+
+        const nextMeta = getUserStatusMeta(newStatus);
+        const currentMeta = getUserStatusMeta(currentStatus);
+        const label = targetUser.name || targetUser.email || `usuario #${targetUser.id}`;
+        const isDisabling = ["inactive", "blocked", "rejected"].includes(newStatus);
+        const warning = isDisabling ? "\n\nEl usuario no podrá ingresar mientras no vuelva a estar Activo." : "";
+
+        if (!window.confirm(`¿Cambiar el estado de ${label} de ${currentMeta.label} a ${nextMeta.label}?${warning}`)) {
+            loadUsers(page, limit);
+            return;
+        }
+
         try {
-            const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+            const res = await fetch(`${API_BASE}/admin/users/${targetUser.id}`, {
                 method: "PATCH",
                 credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ status: newStatus }),
             });
             if (res.ok) loadUsers(page, limit);
-            else alert(`Error al ${action} usuario`);
-        } catch { alert("Error de conexión"); }
+            else {
+                const data = await res.json().catch(() => ({}));
+                alert(data?.message || "Error al cambiar estado del usuario");
+                loadUsers(page, limit);
+            }
+        } catch {
+            alert("Error de conexión");
+            loadUsers(page, limit);
+        }
     }
 
     async function logout() {
@@ -114,8 +141,7 @@ export default function AdminUsers() {
                 String(u.id).includes(q)
             );
         }
-        if (roleFilter === "pending") return list.filter(u => u.status === "pending");
-        if (roleFilter === "rejected") return list.filter(u => u.status === "rejected");
+        if (USER_STATUS_META[roleFilter]) return list.filter(u => u.status === roleFilter);
         if (roleFilter !== "all") list = list.filter(u => u.role === roleFilter);
         return list;
     }, [users, search, roleFilter]);
@@ -221,9 +247,12 @@ export default function AdminUsers() {
                                             </div>
                                             <div style={{ position: "relative" }}>
                                                 <select style={selStyle} value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
-                                                    <option value="all">Todos los roles</option>
+                                                    <option value="all">Todos</option>
                                                     <option value="admin">Admin</option>
                                                     <option value="user">User</option>
+                                                    <option value="active">Activos</option>
+                                                    <option value="inactive">Inactivos</option>
+                                                    <option value="blocked">Bloqueados</option>
                                                     <option value="pending">⏳ Pendientes</option>
                                                     <option value="rejected">Rechazados</option>
                                                 </select>
@@ -285,18 +314,22 @@ export default function AdminUsers() {
                                                                 }}>{u.role}</span>
                                                             </td>
                                                             <td style={{ padding: "13px 16px" }}>
-                                                                <span style={{
-                                                                    display: "inline-flex",
-                                                                    alignItems: "center",
-                                                                    background: statusMeta.bg,
-                                                                    color: statusMeta.color,
-                                                                    border: `1px solid ${statusMeta.border}`,
-                                                                    padding: "4px 10px",
-                                                                    borderRadius: 20,
-                                                                    fontSize: 11,
-                                                                    fontWeight: 800,
-                                                                    whiteSpace: "nowrap",
-                                                                }}>{statusMeta.label}</span>
+                                                                <select
+                                                                    className="admin-users-statusSelect"
+                                                                    value={String(u.status || "")}
+                                                                    onChange={(e) => updateUserStatus(u, e.target.value)}
+                                                                    disabled={saving || loading}
+                                                                    title="Cambiar estado del usuario"
+                                                                    style={{
+                                                                        background: statusMeta.bg,
+                                                                        color: statusMeta.color,
+                                                                        border: `1px solid ${statusMeta.border}`,
+                                                                    }}
+                                                                >
+                                                                    {USER_STATUS_OPTIONS.map((option) => (
+                                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                                    ))}
+                                                                </select>
                                                             </td>
                                                             <td style={{ padding: "13px 16px", color: "var(--muted)", fontWeight: 600 }}>{u.currency}</td>
                                                             <td style={{ padding: "13px 16px", fontWeight: 700, color: "var(--text)", fontVariantNumeric: "tabular-nums" }}>
@@ -343,20 +376,6 @@ export default function AdminUsers() {
                                                             </td>
                                                             <td style={{ padding: "13px 16px" }}>
                                                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                                                    {u.status === "pending" && (
-                                                                        <>
-                                                                            <button
-                                                                                onClick={() => updateUserStatus(u.id, "active")}
-                                                                                style={{ background: "rgba(16,185,129,.12)", color: "#10b981", border: "1px solid rgba(16,185,129,.3)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
-                                                                                ✅ Aprobar
-                                                                            </button>
-                                                                            <button
-                                                                                onClick={() => updateUserStatus(u.id, "rejected")}
-                                                                                style={{ background: "rgba(239,68,68,.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,.3)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
-                                                                                ❌ Rechazar
-                                                                            </button>
-                                                                        </>
-                                                                    )}
                                                                     <button onClick={() => setHistoryUser(u)}
                                                                         style={{ background: "rgba(13,166,242,0.08)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
                                                                         Ver historial

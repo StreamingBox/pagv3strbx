@@ -4,12 +4,13 @@ const fs = require("fs");
 /**
  * Servicio de Google Drive.
  *
- * Service Account se prefiere cuando esta configurada porque no depende de
- * refresh tokens de OAuth que Google puede revocar o invalidar. OAuth queda
- * como respaldo para instalaciones que no tengan service account.
+ * Lecturas: Service Account primero, porque no depende de refresh tokens.
+ * Escrituras: OAuth primero, porque subir a carpetas de "Mi unidad" consume
+ * cuota de la cuenta dueña; las service accounts solo pueden subir sin ese
+ * problema cuando el destino es una unidad compartida.
  */
 
-function getAuth() {
+function getServiceAccountAuth() {
     const email = process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL;
     const key = (process.env.GOOGLE_DRIVE_PRIVATE_KEY || "").replace(/\\n/g, "\n");
 
@@ -20,7 +21,10 @@ function getAuth() {
             scopes: ["https://www.googleapis.com/auth/drive"],
         });
     }
+    return null;
+}
 
+function getOAuthAuth() {
     const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
     const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
@@ -30,13 +34,27 @@ function getAuth() {
         oauth.setCredentials({ refresh_token: refreshToken });
         return oauth;
     }
+    return null;
+}
+
+function getAuth({ preferOAuth = false } = {}) {
+    const oauth = getOAuthAuth();
+    const serviceAccount = getServiceAccountAuth();
+    const auth = preferOAuth
+        ? (oauth || serviceAccount)
+        : (serviceAccount || oauth);
+    if (auth) return auth;
 
     throw new Error("Google Drive requiere OAuth o Service Account. Configura GOOGLE_DRIVE_SERVICE_ACCOUNT_EMAIL y GOOGLE_DRIVE_PRIVATE_KEY, o GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET y GOOGLE_DRIVE_REFRESH_TOKEN.");
 }
 
-function getDrive() {
-    const auth = getAuth();
+function getDrive(options = {}) {
+    const auth = getAuth(options);
     return google.drive({ version: "v3", auth });
+}
+
+function getWriteDrive() {
+    return getDrive({ preferOAuth: true });
 }
 
 const PARENT_FOLDER_ID = () => process.env.GOOGLE_DRIVE_PARENT_FOLDER_ID || "root";
@@ -101,7 +119,7 @@ async function listFolders() {
 }
 
 async function makeFilePublic(fileId) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     try {
         await drive.permissions.create({
             fileId,
@@ -163,7 +181,7 @@ async function listImagesInFolder(folderId) {
  * Crea una carpeta dentro de la carpeta raíz de Drive.
  */
 async function createFolder(folderName) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     const parentId = PARENT_FOLDER_ID();
 
     const res = await drive.files.create({
@@ -185,7 +203,7 @@ async function createFolder(folderName) {
  * Elimina una carpeta y su contenido de Drive.
  */
 async function deleteFolder(folderId) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     await drive.files.delete({ fileId: folderId, supportsAllDrives: true });
 }
 
@@ -193,7 +211,7 @@ async function deleteFolder(folderId) {
  * Renombra una carpeta en Drive.
  */
 async function renameFolder(folderId, newName) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     const res = await drive.files.update({
         fileId: folderId,
         supportsAllDrives: true,
@@ -211,7 +229,7 @@ async function renameFolder(folderId, newName) {
  * @param {string} mimeType - Tipo MIME
  */
 async function uploadImage(folderId, filePath, originalName, mimeType) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     let fileId = null;
     try {
         const res = await drive.files.create({
@@ -248,7 +266,7 @@ async function uploadImage(folderId, filePath, originalName, mimeType) {
  * Elimina un archivo de Drive por su ID.
  */
 async function deleteFile(fileId) {
-    const drive = getDrive();
+    const drive = getWriteDrive();
     await drive.files.delete({ fileId, supportsAllDrives: true });
 }
 

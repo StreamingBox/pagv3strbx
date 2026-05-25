@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Folder } from "lucide-react";
 
 const MotionDiv = motion.div;
 
@@ -13,8 +14,8 @@ export default function FolderGrid({
 }) {
     if (!folders.length) {
         return (
-            <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>CARP</div>
+                <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
+                <Folder size={34} strokeWidth={1.8} style={{ marginBottom: 8, color: "#38bdf8" }} />
                 <div style={{ fontSize: 15, fontWeight: 700 }}>{emptyTitle}</div>
                 {emptySubtitle ? <div style={{ marginTop: 4 }}>{emptySubtitle}</div> : null}
             </div>
@@ -44,7 +45,7 @@ export default function FolderGrid({
                         }}
                         whileHover={{ y: -4, boxShadow: "0 12px 40px rgba(0,0,0,0.2)" }}
                     >
-                        <div style={{ fontSize: 32, marginBottom: 12, color: "#0da6f2", fontWeight: 900 }}>DIR</div>
+                        <Folder size={34} strokeWidth={1.8} style={{ marginBottom: 12, color: "#38bdf8" }} />
                         <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{folder.name}</div>
                         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{folder.imageCount || 0} imagen(es)</div>
                         {renderActions ? <div style={{ marginTop: 12 }}>{renderActions(folder)}</div> : null}

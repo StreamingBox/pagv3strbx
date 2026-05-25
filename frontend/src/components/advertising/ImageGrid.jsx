@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { Image as ImageIcon } from "lucide-react";
 import { formatSize } from "./utils.js";
 
 const MotionDiv = motion.div;
@@ -15,7 +16,7 @@ export default function ImageGrid({
     if (!images.length) {
         return (
             <div style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>IMG</div>
+                <ImageIcon size={34} strokeWidth={1.8} style={{ marginBottom: 10, color: "#38bdf8" }} />
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{emptyTitle}</div>
             </div>
         );

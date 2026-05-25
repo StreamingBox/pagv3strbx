@@ -1,6 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    Check,
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Eye,
+    EyeOff,
+    Folder,
+    Image as ImageIcon,
+    Pencil,
+    Plus,
+    RefreshCw,
+    Trash2,
+    UploadCloud,
+    X,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { apiDelete, apiFetch, apiGet, apiPost, apiPostFormData } from "../api/api";
@@ -12,6 +28,19 @@ import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
 const MotionDiv = motion.div;
+
+const smallIconButton = {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: "1px solid var(--stroke2)",
+    background: "rgba(255,255,255,0.03)",
+    color: "var(--muted)",
+    cursor: "pointer",
+};
 
 const inputStyle = {
     appearance: "none",
@@ -274,7 +303,9 @@ export default function AdminAdvertising() {
                     transition: "all 0.15s",
                 }}
             >
-                <span style={{ fontSize: 18, flexShrink: 0 }}>DIR</span>
+                <span style={{ flexShrink: 0, color: isSelected ? "#38bdf8" : "var(--muted)", display: "inline-flex" }}>
+                    <Folder size={19} strokeWidth={1.9} />
+                </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                     {isRenaming ? (
                         <input
@@ -297,18 +328,40 @@ export default function AdminAdvertising() {
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }} onClick={(event) => event.stopPropagation()}>
                     {isRenaming ? (
-                        <button className="btn-ghost" onClick={submitRename} style={{ height: 28, padding: "0 8px", fontSize: 11 }}>OK</button>
+                        <>
+                            <button
+                                type="button"
+                                onClick={submitRename}
+                                style={{ ...smallIconButton, color: "#10b981", borderColor: "rgba(16,185,129,0.28)" }}
+                                title="Guardar nombre"
+                            >
+                                <Check size={14} />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRenamingFolder(null)}
+                                style={{ ...smallIconButton, color: "#ef4444", borderColor: "rgba(239,68,68,0.24)" }}
+                                title="Cancelar"
+                            >
+                                <X size={14} />
+                            </button>
+                        </>
                     ) : (
                         <>
                             <button
                                 onClick={() => toggleFolderActive(folder)}
-                                style={{ background: folder.isActive === false ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.12)", border: `1px solid ${folder.isActive === false ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.28)"}`, color: folder.isActive === false ? "#ef4444" : "#10b981", cursor: "pointer", fontSize: 10, padding: "3px 7px", borderRadius: 999, fontWeight: 800 }}
+                                style={{ background: folder.isActive === false ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.12)", border: `1px solid ${folder.isActive === false ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.28)"}`, color: folder.isActive === false ? "#ef4444" : "#10b981", cursor: "pointer", fontSize: 10, padding: "3px 7px", borderRadius: 999, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 4 }}
                                 title={folder.isActive === false ? "Mostrar a usuarios" : "Ocultar a usuarios"}
                             >
+                                {folder.isActive === false ? <EyeOff size={12} /> : <Eye size={12} />}
                                 {folder.isActive === false ? "Oculta" : "Visible"}
                             </button>
-                            <button onClick={() => startRename(folder)} style={{ background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, padding: 2 }} title="Renombrar">Edit</button>
-                            <button onClick={() => setConfirmDelete({ type: "folder", id: folder.id, name: folder.name })} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 13, padding: 2 }} title="Eliminar carpeta">Del</button>
+                            <button onClick={() => startRename(folder)} style={smallIconButton} title="Renombrar">
+                                <Pencil size={14} />
+                            </button>
+                            <button onClick={() => setConfirmDelete({ type: "folder", id: folder.id, name: folder.name })} style={{ ...smallIconButton, color: "#ef4444", borderColor: "rgba(239,68,68,0.24)" }} title="Eliminar carpeta">
+                                <Trash2 size={14} />
+                            </button>
                         </>
                     )}
                 </div>
@@ -342,10 +395,12 @@ export default function AdminAdvertising() {
                     >
                         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                             <div style={{ background: "rgba(13,166,242,0.1)", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 10, padding: "6px 14px", display: "flex", alignItems: "center", gap: 8 }}>
+                                <Folder size={16} color="#38bdf8" />
                                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Carpetas</span>
                                 <span style={{ fontSize: 20, fontWeight: 900, color: "#0da6f2" }}>{folders.length}</span>
                             </div>
-                            <button className="btn-ghost" onClick={() => refreshAdvertisingQueries()} disabled={foldersQuery.isLoading} style={{ height: 36, padding: "0 14px", fontSize: 13, borderRadius: 10 }}>
+                            <button className="btn-ghost" onClick={() => refreshAdvertisingQueries()} disabled={foldersQuery.isLoading} style={{ height: 36, padding: "0 14px", fontSize: 13, borderRadius: 10, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                <RefreshCw size={14} />
                                 Refrescar
                             </button>
                         </div>
@@ -372,7 +427,7 @@ export default function AdminAdvertising() {
                             style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", order: isNarrow ? 2 : 1 }}>
                             <div style={{ padding: "16px 18px", borderBottom: "1px solid var(--stroke)" }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                                    <span style={{ fontSize: 15 }}>DIR</span>
+                                    <Folder size={17} color="#38bdf8" />
                                     <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "var(--text)" }}>Carpetas en Drive</h3>
                                 </div>
                                 <div style={{ display: "flex", gap: 8 }}>
@@ -383,8 +438,9 @@ export default function AdminAdvertising() {
                                         onChange={(event) => setNewFolderName(event.target.value)}
                                         onKeyDown={(event) => { if (event.key === "Enter") void createFolder(); }}
                                     />
-                                    <button className="btn" onClick={createFolder} disabled={creatingFolder || !newFolderName.trim()} style={{ height: 36, padding: "0 14px", fontSize: 12, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
-                                        {creatingFolder ? "..." : "+ Crear"}
+                                    <button className="btn" onClick={createFolder} disabled={creatingFolder || !newFolderName.trim()} style={{ height: 36, padding: "0 14px", fontSize: 12, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                        <Plus size={14} />
+                                        {creatingFolder ? "Creando" : "Crear"}
                                     </button>
                                 </div>
                             </div>
@@ -395,7 +451,7 @@ export default function AdminAdvertising() {
                                     </div>
                                 ) : folders.length === 0 ? (
                                     <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)", fontSize: 13 }}>
-                                        <div style={{ fontSize: 32, marginBottom: 8 }}>DIR</div>
+                                        <Folder size={34} strokeWidth={1.8} style={{ marginBottom: 8, color: "#38bdf8" }} />
                                         No hay carpetas. Crea una nueva.
                                     </div>
                                 ) : folders.map(renderFolderRow)}
@@ -406,7 +462,7 @@ export default function AdminAdvertising() {
                             style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,0.15)", order: 1 }}>
                             {!selectedFolder ? (
                                 <div style={{ padding: "80px 20px", textAlign: "center", color: "var(--muted)" }}>
-                                    <div style={{ fontSize: 32, marginBottom: 16 }}>IMG</div>
+                                    <ImageIcon size={38} strokeWidth={1.7} style={{ marginBottom: 16, color: "#38bdf8" }} />
                                     <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Selecciona una carpeta</div>
                                     <div style={{ fontSize: 13 }}>Elige una carpeta del panel izquierdo para ver y administrar sus imagenes.</div>
                                 </div>
@@ -431,7 +487,9 @@ export default function AdminAdvertising() {
                                         }}
                                     >
                                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                                            <span style={{ fontSize: 18, fontWeight: 900, color: "#0da6f2" }}>DIR</span>
+                                            <span style={{ width: 38, height: 38, borderRadius: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "rgba(13,166,242,0.12)", border: "1px solid rgba(13,166,242,0.25)", color: "#38bdf8", flexShrink: 0 }}>
+                                                <Folder size={20} strokeWidth={1.9} />
+                                            </span>
                                             <div>
                                                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{selectedFolder.name}</h3>
                                                 <span style={{ fontSize: 12, color: "var(--muted)" }}>
@@ -444,7 +502,8 @@ export default function AdminAdvertising() {
                                         </div>
                                         <div style={{ display: "flex", gap: 8 }}>
                                             <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(event) => uploadImages(event.target.files)} />
-                                            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ background: "linear-gradient(135deg, #0da6f2, #6333ff)", color: "#fff", border: "none", padding: "0 18px", height: 38, borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)", boxShadow: "0 4px 12px rgba(13,166,242,0.3)", display: "flex", alignItems: "center", gap: 6 }}>
+                                            <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ background: "linear-gradient(135deg, #0da6f2, #6333ff)", color: "#fff", border: "none", padding: "0 18px", height: 38, borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)", boxShadow: "0 4px 12px rgba(13,166,242,0.3)", display: "flex", alignItems: "center", gap: 7 }}>
+                                                <UploadCloud size={16} />
                                                 {uploading ? "Subiendo..." : "Subir imagenes"}
                                             </button>
                                         </div>
@@ -464,14 +523,15 @@ export default function AdminAdvertising() {
                                                     emptyTitle="Esta carpeta esta vacia"
                                                     renderActions={(img) => (
                                                         <>
-                                                            <button onClick={() => toggleImageActive(img.fileId)} style={{ flex: 1, padding: "4px 0", borderRadius: 6, fontSize: 10, fontWeight: 700, background: img.isActive ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)", color: img.isActive ? "#10b981" : "#ef4444", border: `1px solid ${img.isActive ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, cursor: "pointer", fontFamily: "var(--font)" }}>
+                                                            <button onClick={() => toggleImageActive(img.fileId)} style={{ flex: 1, padding: "4px 0", borderRadius: 6, fontSize: 10, fontWeight: 700, background: img.isActive ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)", color: img.isActive ? "#10b981" : "#ef4444", border: `1px solid ${img.isActive ? "rgba(16,185,129,0.3)" : "rgba(239,68,68,0.3)"}`, cursor: "pointer", fontFamily: "var(--font)", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                                                                {img.isActive ? <Eye size={12} /> : <EyeOff size={12} />}
                                                                 {img.isActive ? "Visible" : "Oculta"}
                                                             </button>
-                                                            <a href={img.downloadLink} target="_blank" rel="noopener noreferrer" style={{ padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "rgba(13,166,242,0.1)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.3)", cursor: "pointer", textDecoration: "none", fontFamily: "var(--font)" }} title="Descargar">
-                                                                Down
+                                                            <a href={img.downloadLink} target="_blank" rel="noopener noreferrer" style={{ width: 28, height: 24, borderRadius: 6, background: "rgba(13,166,242,0.1)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.3)", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }} title="Descargar">
+                                                                <Download size={13} />
                                                             </a>
-                                                            <button onClick={() => setConfirmDelete({ type: "image", id: img.fileId, name: img.name })} style={{ padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", fontFamily: "var(--font)" }} title="Eliminar">
-                                                                Del
+                                                            <button onClick={() => setConfirmDelete({ type: "image", id: img.fileId, name: img.name })} style={{ width: 28, height: 24, borderRadius: 6, background: "rgba(239,68,68,0.08)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }} title="Eliminar">
+                                                                <Trash2 size={13} />
                                                             </button>
                                                         </>
                                                     )}
@@ -495,9 +555,9 @@ export default function AdminAdvertising() {
                                                                 <option value={20}>20</option>
                                                                 <option value={30}>30</option>
                                                             </select>
-                                                            <button className="btn-ghost" disabled={imagePagination.page <= 1} onClick={() => setImagePage((page) => Math.max(1, page - 1))} style={{ height: 36, padding: "0 12px" }}>Anterior</button>
+                                                            <button className="btn-ghost" disabled={imagePagination.page <= 1} onClick={() => setImagePage((page) => Math.max(1, page - 1))} style={{ height: 36, padding: "0 12px", display: "inline-flex", alignItems: "center", gap: 5 }}><ChevronLeft size={14} />Anterior</button>
                                                             <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>Pag. {imagePagination.page} / {imagePagination.totalPages}</span>
-                                                            <button className="btn-ghost" disabled={imagePagination.page >= imagePagination.totalPages} onClick={() => setImagePage((page) => page + 1)} style={{ height: 36, padding: "0 12px" }}>Siguiente</button>
+                                                            <button className="btn-ghost" disabled={imagePagination.page >= imagePagination.totalPages} onClick={() => setImagePage((page) => page + 1)} style={{ height: 36, padding: "0 12px", display: "inline-flex", alignItems: "center", gap: 5 }}>Siguiente<ChevronRight size={14} /></button>
                                                         </div>
                                                     </div>
                                                 ) : null}
@@ -527,7 +587,10 @@ export default function AdminAdvertising() {
                             onClick={(event) => event.stopPropagation()}
                             style={{ background: "var(--bg0)", border: "1px solid var(--stroke)", borderRadius: 20, width: "100%", maxWidth: 420, padding: 24, boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }}
                         >
-                            <h3 style={{ margin: "0 0 8px", color: "var(--text)", fontSize: 18 }}>Confirmar eliminacion</h3>
+                            <h3 style={{ margin: "0 0 8px", color: "var(--text)", fontSize: 18, display: "flex", alignItems: "center", gap: 8 }}>
+                                <Trash2 size={18} color="#ef4444" />
+                                Confirmar eliminacion
+                            </h3>
                             <p style={{ margin: "0 0 20px", color: "var(--muted)", fontSize: 13, lineHeight: 1.6 }}>
                                 Esta accion eliminara {confirmDelete.type === "folder" ? "la carpeta" : "la imagen"} "{confirmDelete.name}".
                             </p>

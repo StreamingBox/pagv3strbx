@@ -7,6 +7,7 @@ const { signAccessToken, signRefreshToken, sha256 } = require("../auth/tokens");
 const jwt = require("jsonwebtoken");
 const requireAuth = require("../middleware/requireAuth");
 const { sendPasswordResetEmail } = require("../services/mailService");
+const { notifyUserRegistered } = require("../services/telegramBot");
 const router = express.Router();
 
 /**
@@ -140,10 +141,14 @@ router.post("/register", async (req, res) => {
 
         const passwordHash = await bcrypt.hash(password, 12);
 
-        await pool.query(
+        const [result] = await pool.query(
             "INSERT INTO users (name, email, password_hash, role, status, currency) VALUES (?, ?, ?, 'user', 'pending', 'COP')",
             [name.trim(), emailClean, passwordHash]
         );
+
+        notifyUserRegistered(result.insertId).catch((tgErr) => {
+            console.error("[TelegramBot] notifyUserRegistered:", tgErr?.message || tgErr);
+        });
 
         return res.status(201).json({
             ok: true,

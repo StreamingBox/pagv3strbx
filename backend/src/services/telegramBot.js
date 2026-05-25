@@ -236,6 +236,144 @@ function buildTopupMessage(item, extra = {}) {
     return lines.join("\n");
 }
 
+function getUserRegistrationStatusLabel(status) {
+    const normalized = String(status || "").toLowerCase();
+    if (normalized === "active") return "Activo";
+    if (normalized === "pending") return "Pendiente";
+    if (normalized === "rejected") return "Rechazado";
+    if (normalized === "inactive") return "Inactivo";
+    if (normalized === "blocked") return "Bloqueado";
+    return normalized || "Sin estado";
+}
+
+function mapRegistrationUser(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        name: row.name || "",
+        email: row.email || "",
+        role: row.role || "user",
+        status: row.status || "pending",
+        currency: row.currency || "COP",
+        createdAt: row.created_at,
+    };
+}
+
+async function getRegistrationUserById(userId, db = pool) {
+    const id = Number(userId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+    const [rows] = await db.query(
+        `SELECT id, name, email, role, status, currency, created_at
+           FROM users
+          WHERE id = ?
+          LIMIT 1`,
+        [id]
+    );
+    return mapRegistrationUser(rows[0]);
+}
+
+function buildUserRegistrationInlineKeyboard(user) {
+    const status = String(user?.status || "").toLowerCase();
+    if (status !== "pending" || !(Number(user?.id) > 0)) return undefined;
+    return {
+        inline_keyboard: [[
+            { text: "Activar", callback_data: `user_active_${user.id}` },
+            { text: "Rechazar", callback_data: `user_rejected_${user.id}` },
+        ]],
+    };
+}
+
+function buildUserRegistrationMessage(user, extra = {}) {
+    const lines = [
+        "Nuevo usuario registrado",
+        `ID: ${user.id}`,
+        `Nombre: ${user.name || "-"}`,
+        `Email: ${user.email || "-"}`,
+        `Estado: ${getUserRegistrationStatusLabel(user.status)}`,
+        `Moneda: ${user.currency || "COP"}`,
+    ];
+
+    if (user.createdAt) {
+        const date = new Date(user.createdAt);
+        lines.push(`Creado: ${date.toLocaleString("es-CO", { timeZone: "America/Bogota" })}`);
+    }
+    if (extra.actor) lines.push(`Gestionado por: ${extra.actor}`);
+    if (extra.note) lines.push(`Detalle: ${extra.note}`);
+    return lines.join("\n");
+}
+
+async function updateRegisteredUserStatusFromTelegram({ id, status }) {
+    const userId = Number(id);
+    const nextStatus = String(status || "").trim().toLowerCase();
+    if (!Number.isFinite(userId) || userId <= 0) {
+        throw new Error("Usuario invalido.");
+    }
+    if (!["active", "rejected"].includes(nextStatus)) {
+        throw new Error("Estado invalido.");
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [rows] = await conn.query(
+            `SELECT id, name, email, role, status, currency, created_at
+               FROM users
+              WHERE id = ?
+              LIMIT 1
+              FOR UPDATE`,
+            [userId]
+        );
+        if (!rows.length) {
+            await conn.rollback();
+            throw new Error("Usuario no encontrado.");
+        }
+
+        const current = mapRegistrationUser(rows[0]);
+        const currentStatus = String(current.status || "").toLowerCase();
+        if (currentStatus !== "pending") {
+            await conn.commit();
+            return {
+                user: current,
+                changed: false,
+                note: `No se cambio porque ya esta ${getUserRegistrationStatusLabel(currentStatus)}.`,
+            };
+        }
+
+        await conn.query("UPDATE users SET status = ? WHERE id = ?", [nextStatus, userId]);
+
+        if (nextStatus === "active") {
+            await conn.query(
+                `INSERT INTO wallets (user_id, balance, currency)
+                 SELECT u.id, 0.00, COALESCE(u.currency, 'COP')
+                   FROM users u
+                   LEFT JOIN wallets w ON w.user_id = u.id
+                  WHERE u.id = ?
+                    AND w.id IS NULL`,
+                [userId]
+            );
+        }
+
+        const [updatedRows] = await conn.query(
+            `SELECT id, name, email, role, status, currency, created_at
+               FROM users
+              WHERE id = ?
+              LIMIT 1`,
+            [userId]
+        );
+        await conn.commit();
+        return {
+            user: mapRegistrationUser(updatedRows[0]),
+            changed: true,
+            note: `Estado actualizado a ${getUserRegistrationStatusLabel(nextStatus)}.`,
+        };
+    } catch (err) {
+        try { await conn.rollback(); } catch { }
+        throw err;
+    } finally {
+        conn.release();
+    }
+}
+
 async function notifyAuthorizedChats(text, options = {}, meta = {}) {
     if (!bot || AUTHORIZED.size === 0) return [];
     const sent = [];
@@ -826,6 +964,65 @@ function setupCommands() {
                     }
                     return;
                 }
+                const userMatch = String(data || "").match(/^user_(active|rejected)_(\d+)$/);
+                if (userMatch) {
+                    const [, status, rawId] = userMatch;
+                    const actor = query.from?.username
+                        ? `@${query.from.username}`
+                        : (query.from?.first_name || "Admin Telegram");
+                    try {
+                        const result = await updateRegisteredUserStatusFromTelegram({
+                            id: Number(rawId),
+                            status,
+                        });
+                        const user = result.user;
+                        const replyMarkup = buildUserRegistrationInlineKeyboard(user);
+                        const text = buildUserRegistrationMessage(user, {
+                            actor,
+                            note: result.note,
+                        });
+                        if (query.message?.chat?.id && query.message?.message_id) {
+                            await bot.editMessageText(text, {
+                                chat_id: query.message.chat.id,
+                                message_id: query.message.message_id,
+                                reply_markup: replyMarkup || { inline_keyboard: [] },
+                            }).catch((editErr) => {
+                                console.warn("[TelegramBot user edit warning]", editErr?.message || editErr);
+                            });
+                        }
+                        notifyAuthorizedChats(`Registro actualizado\n\n${text}`, {
+                            reply_markup: replyMarkup,
+                        }, {
+                            excludeChatIds: query.message?.chat?.id ? [query.message.chat.id] : [],
+                        }).catch((notifyErr) => {
+                            console.error("[TelegramBot user notify error]", notifyErr?.message || notifyErr);
+                        });
+                        bot.answerCallbackQuery(query.id, {
+                            text: result.changed
+                                ? `Usuario ${getUserRegistrationStatusLabel(status).toLowerCase()}.`
+                                : result.note.slice(0, 180),
+                        }).catch(() => { });
+                    } catch (userErr) {
+                        const message = userErr?.message || "No se pudo actualizar el usuario.";
+                        console.error("[TelegramBot user callback error]", message);
+                        const currentUser = await getRegistrationUserById(Number(rawId)).catch(() => null);
+                        if (currentUser && query.message?.chat?.id && query.message?.message_id) {
+                            const replyMarkup = buildUserRegistrationInlineKeyboard(currentUser);
+                            bot.editMessageText(buildUserRegistrationMessage(currentUser, { actor, note: message }), {
+                                chat_id: query.message.chat.id,
+                                message_id: query.message.message_id,
+                                reply_markup: replyMarkup || { inline_keyboard: [] },
+                            }).catch((editErr) => {
+                                console.warn("[TelegramBot user error edit warning]", editErr?.message || editErr);
+                            });
+                        }
+                        bot.answerCallbackQuery(query.id, {
+                            text: message.slice(0, 180),
+                            show_alert: true,
+                        }).catch(() => { });
+                    }
+                    return;
+                }
                 await handleBuyCallback(query);
             }
             bot.answerCallbackQuery(query.id).catch(() => { });
@@ -956,6 +1153,18 @@ async function notifyManualTopupAlert(itemOrId, extra = {}) {
     });
 }
 
+async function notifyUserRegistered(userOrId) {
+    if (!bot || AUTHORIZED.size === 0) return;
+    const user = typeof userOrId === "object" && userOrId
+        ? mapRegistrationUser(userOrId)
+        : await getRegistrationUserById(Number(userOrId));
+    if (!user) return;
+
+    await notifyAuthorizedChats(buildUserRegistrationMessage(user), {
+        reply_markup: buildUserRegistrationInlineKeyboard(user),
+    });
+}
+
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
     if (!BOT_ENABLED) {
@@ -983,4 +1192,5 @@ module.exports = {
     notifyManualTopupSubmitted,
     notifyManualTopupStatusChanged,
     notifyManualTopupAlert,
+    notifyUserRegistered,
 };

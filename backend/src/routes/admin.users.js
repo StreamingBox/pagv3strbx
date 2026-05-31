@@ -221,6 +221,7 @@ router.get("/admin/stock-subscriptions", requireAuth, requireRole("admin"), asyn
              JOIN platform_prices pp ON pp.id = s.platform_price_id
              JOIN platforms p ON p.id = pp.platform_id
              JOIN durations d ON d.id = pp.duration_id
+             WHERE s.is_notified = FALSE
              ORDER BY s.created_at DESC`
         );
         return res.json(rows);
@@ -233,23 +234,6 @@ router.get("/admin/stock-subscriptions", requireAuth, requireRole("admin"), asyn
 router.delete("/admin/stock-subscriptions/:id", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const subId = req.params.id;
-
-        const [subs] = await pool.query(
-            `SELECT ss.user_id, p.name AS platform_name
-             FROM stock_subscriptions ss
-             JOIN platform_prices pp ON pp.id = ss.platform_price_id
-             JOIN platforms p ON p.id = pp.platform_id
-             WHERE ss.id = ?`,
-            [subId]
-        );
-
-        if (subs.length > 0) {
-            const { user_id, platform_name } = subs[0];
-            await pool.query(
-                "INSERT INTO user_notifications (user_id, message) VALUES (?, ?)",
-                [user_id, `¡Ya hay stock disponible de ${platform_name}! Ingresa al catálogo para comprar.`]
-            );
-        }
 
         await pool.query("DELETE FROM stock_subscriptions WHERE id = ?", [subId]);
         return res.json({ ok: true });

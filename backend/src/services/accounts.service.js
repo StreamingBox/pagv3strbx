@@ -134,8 +134,8 @@ async function resolveStockAlerts(conn, pid, pname) {
             INSERT INTO user_notifications (user_id, message)
             VALUES (?, ?)
         `, [sub.user_id, msg]);
-        
-        // 3. Marcar la suscripción como notificada/resuelta
+
+        // 3. Marcar la suscripcion como notificada para no avisar dos veces
         await conn.query(`
             UPDATE stock_subscriptions SET is_notified = TRUE WHERE id = ?
         `, [sub.sub_id]);

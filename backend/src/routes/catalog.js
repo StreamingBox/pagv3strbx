@@ -188,7 +188,11 @@ router.post("/catalog/:platformPriceId/notify", requireAuth, async (req, res) =>
     }
 
     await pool.query(
-      `INSERT IGNORE INTO stock_subscriptions (user_id, platform_price_id) VALUES (?, ?)`,
+      `INSERT INTO stock_subscriptions (user_id, platform_price_id, is_notified)
+       VALUES (?, ?, FALSE)
+       ON DUPLICATE KEY UPDATE
+         created_at = CASE WHEN is_notified = TRUE THEN CURRENT_TIMESTAMP ELSE created_at END,
+         is_notified = FALSE`,
       [userId, platformPriceId]
     );
 

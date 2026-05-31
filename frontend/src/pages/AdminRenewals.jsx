@@ -55,6 +55,7 @@ export default function AdminRenewals() {
     const [result, setResult] = useState(null);
     const [renewing, setRenewing] = useState(false);
     const [renewErr, setRenewErr] = useState("");
+    const [copiedDeliveryMessage, setCopiedDeliveryMessage] = useState(false);
 
     const [logs, setLogs] = useState([]);
     const [logsPage, setLogsPage] = useState(1);
@@ -122,6 +123,7 @@ export default function AdminRenewals() {
         setSearchErr("");
         setOrder(null);
         setResult(null);
+        setCopiedDeliveryMessage(false);
         setRenewErr("");
         try {
             const data = await apiFetch(`/admin/orders/${id}`);
@@ -154,6 +156,7 @@ export default function AdminRenewals() {
         setRenewing(true);
         setRenewErr("");
         setResult(null);
+        setCopiedDeliveryMessage(false);
         try {
             const body = {
                 deductWallet,
@@ -170,6 +173,20 @@ export default function AdminRenewals() {
             setRenewErr(e?.message || "No se pudo procesar la renovación.");
         } finally {
             setRenewing(false);
+        }
+    }
+
+    async function copyDeliveryMessage() {
+        const message = String(result?.deliveryMessage || "");
+        if (!message) return;
+
+        try {
+            await navigator.clipboard.writeText(message);
+            setCopiedDeliveryMessage(true);
+            window.setTimeout(() => setCopiedDeliveryMessage(false), 1600);
+        } catch (e) {
+            console.error(e);
+            setRenewErr("No se pudo copiar el mensaje. Selecciona el texto y copialo manualmente.");
         }
     }
 
@@ -537,6 +554,22 @@ export default function AdminRenewals() {
                                             </div>
                                         ))}
                                     </div>
+                                    {result.deliveryMessage ? (
+                                        <div style={{ marginTop: 20 }}>
+                                            <div style={{ color: "var(--muted)", fontSize: 12, marginBottom: 8, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                                Mensaje para copiar y pegar
+                                            </div>
+                                            <pre style={{ margin: 0, maxHeight: 320, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", background: "rgba(2,6,23,0.45)", border: "1px solid var(--stroke)", borderRadius: 12, padding: 14, color: "var(--text)", fontSize: 12, lineHeight: 1.45, fontFamily: "monospace" }}>{result.deliveryMessage}</pre>
+                                            <button
+                                                type="button"
+                                                className="btn"
+                                                onClick={copyDeliveryMessage}
+                                                style={{ width: "auto", padding: "8px 16px", marginTop: 12 }}
+                                            >
+                                                {copiedDeliveryMessage ? "Copiado" : "Copiar mensaje"}
+                                            </button>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : (
                                 <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 24, boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>

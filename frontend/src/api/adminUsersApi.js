@@ -43,6 +43,12 @@ export async function fetchUserStats() {
     });
 }
 
+export async function fetchUserActivity(userId) {
+    return request(`/admin/users/${userId}/activity`, {
+        method: "GET",
+    });
+}
+
 export async function createUser(body) {
     return request("/admin/users", {
         method: "POST",

@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const requireAuth = require("../middleware/requireAuth");
 const { sendPasswordResetEmail } = require("../services/mailService");
 const { notifyUserRegistered } = require("../services/telegramBot");
+const { safelyRecordUserActivity } = require("../services/userActivity.service");
 const router = express.Router();
 
 /**
@@ -313,7 +314,8 @@ router.post("/login", async (req, res) => {
         // ✅ Insert refresh token con defensa contra duplicados
         const { refreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role);
 
-        await pool.query("UPDATE users SET last_login_at = NOW() WHERE id = ?", [user.id]);
+        await pool.query("UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = ?", [user.id]);
+        await safelyRecordUserActivity(pool, req, user.id, { eventType: "login", recordEvent: true });
 
         // Cookies
         res.cookie("accessToken", accessToken, cookieOpts(req, 15 * 60 * 1000, "/api"));
@@ -389,6 +391,7 @@ router.post("/refresh", async (req, res) => {
             return {
                 status: 200,
                 body: { ok: true },
+                userId: user.id,
                 accessToken: newAccessToken,
                 refreshToken: newRefreshToken,
                 refreshDays,
@@ -405,6 +408,7 @@ router.post("/refresh", async (req, res) => {
             result.refreshToken,
             cookieOpts(req, result.refreshDays * 24 * 60 * 60 * 1000, REFRESH_COOKIE_PATH)
         );
+        await safelyRecordUserActivity(pool, req, result.userId, { eventType: "refresh", recordEvent: false });
 
         return res.json(result.body);
     } catch (err) {

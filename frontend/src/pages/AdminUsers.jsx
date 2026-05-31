@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiLogout } from "../api/api";
 import { useAdminUsers } from "../hooks/useAdminUsers";
-import { fetchAdminWalletTransactions } from "../api/adminUsersApi";
+import { fetchAdminWalletTransactions, fetchUserActivity } from "../api/adminUsersApi";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import CreateUserCard from "../components/adminUsers/CreateUserCard";
 import TopupCard from "../components/adminUsers/TopupCard";
@@ -51,6 +51,31 @@ function getUserStatusMeta(status) {
     };
 }
 
+function formatDateTime(value) {
+    if (!value) return "Sin registro";
+    try {
+        return new Date(value).toLocaleString("es-CO", {
+            timeZone: "America/Bogota",
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+        });
+    } catch {
+        return "Sin registro";
+    }
+}
+
+function formatDeviceType(value) {
+    const type = String(value || "").toLowerCase();
+    if (type === "mobile") return "Movil";
+    if (type === "tablet") return "Tablet";
+    if (type === "desktop") return "Escritorio";
+    if (type === "bot") return "Bot";
+    return "Desconocido";
+}
+
 const selStyle = {
     appearance: "none", height: 32, padding: "0 24px 0 10px",
     background: "var(--bg0)", color: "var(--text)",
@@ -72,6 +97,10 @@ export default function AdminUsers() {
     const { user, setUser } = useAuth();
     const [activeTab, setActiveTab] = useState("list");
     const [historyUser, setHistoryUser] = useState(null);
+    const [activityUser, setActivityUser] = useState(null);
+    const [activityData, setActivityData] = useState(null);
+    const [activityLoading, setActivityLoading] = useState(false);
+    const [activityError, setActivityError] = useState("");
     const [search, setSearch] = useState("");
     const [roleFilter, setRoleFilter] = useState("all");
 
@@ -86,6 +115,23 @@ export default function AdminUsers() {
     } = useAdminUsers();
 
     const API_BASE = getApiBase();
+
+    async function openActivity(userToInspect) {
+        if (!userToInspect?.id) return;
+        setActivityUser(userToInspect);
+        setActivityData(null);
+        setActivityError("");
+        setActivityLoading(true);
+
+        try {
+            const data = await fetchUserActivity(userToInspect.id);
+            setActivityData(data);
+        } catch (e) {
+            setActivityError(e?.message || "No se pudo cargar la actividad del usuario.");
+        } finally {
+            setActivityLoading(false);
+        }
+    }
 
     async function updateUserStatus(targetUser, newStatus) {
         const currentStatus = String(targetUser?.status || "").toLowerCase();
@@ -279,15 +325,16 @@ export default function AdminUsers() {
                                                     {["ID", "Usuario", "Rol", "Estado", "Moneda", "Saldo", "Ganancia", "Inversión", "Acciones"].map(h => (
                                                         <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                                     ))}
+                                                    <th style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>Conexion</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {loading ? (
-                                                    <tr><td colSpan={9} style={{ padding: "60px", textAlign: "center" }}>
+                                                    <tr><td colSpan={10} style={{ padding: "60px", textAlign: "center" }}>
                                                         <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                                                     </td></tr>
                                                 ) : filteredUsers.length === 0 ? (
-                                                    <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                                    <tr><td colSpan={10} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                                         <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
                                                         {hasActiveFilters ? "Sin resultados para esa búsqueda." : "No hay usuarios registrados."}
                                                     </td></tr>
@@ -389,6 +436,21 @@ export default function AdminUsers() {
                                                                     </button>
                                                                 </div>
                                                             </td>
+                                                            <td style={{ padding: "13px 16px", minWidth: 180 }}>
+                                                                <button
+                                                                    onClick={() => openActivity(u)}
+                                                                    style={{ background: "rgba(99,102,241,0.1)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.28)", borderRadius: 8, padding: "6px 10px", fontSize: 11, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font)", textAlign: "left" }}
+                                                                    title="Ver ingresos y dispositivos"
+                                                                >
+                                                                    {Number(u.device_count || 0)} dispositivo{Number(u.device_count || 0) === 1 ? "" : "s"}
+                                                                </button>
+                                                                <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 700, marginTop: 6, whiteSpace: "nowrap" }}>
+                                                                    {formatDateTime(u.last_seen_at || u.last_login_at)}
+                                                                </div>
+                                                                <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 2, maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={u.last_device_label || ""}>
+                                                                    {u.last_device_label || "Sin dispositivo"}{u.last_ip_address ? ` - ${u.last_ip_address}` : ""}
+                                                                </div>
+                                                            </td>
                                                         </tr>
                                                     );
                                                 })}
@@ -475,6 +537,101 @@ export default function AdminUsers() {
                             </div>
                             <div style={{ padding: 20, overflowY: "auto" }}>
                                 <TransactionsList userId={historyUser.id} fetchFn={fetchAdminWalletTransactions} />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {activityUser && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 9999, padding: 20 }}
+                        onClick={e => { if (e.target === e.currentTarget) setActivityUser(null); }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }}
+                            style={{ width: "100%", maxWidth: 980, background: "#0d1117", borderRadius: 16, border: "1px solid rgba(255,255,255,0.1)", maxHeight: "90vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 80px rgba(0,0,0,0.8)" }}>
+                            <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800 }}>Actividad de ingreso</h2>
+                                    <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--muted)" }}>{activityUser.email}</p>
+                                </div>
+                                <button onClick={() => setActivityUser(null)}
+                                    style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text)", borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "var(--font)", fontWeight: 600, fontSize: 13 }}>
+                                    Cerrar
+                                </button>
+                            </div>
+                            <div style={{ padding: 20, overflowY: "auto" }}>
+                                {activityLoading ? (
+                                    <div style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>Cargando actividad...</div>
+                                ) : activityError ? (
+                                    <div style={{ padding: 14, borderRadius: 10, background: "rgba(239,68,68,.1)", border: "1px solid rgba(239,68,68,.3)", color: "#ef4444", fontWeight: 700 }}>{activityError}</div>
+                                ) : (
+                                    <>
+                                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 18 }}>
+                                            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 14 }}>
+                                                <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Ultima conexion</div>
+                                                <div style={{ marginTop: 6, color: "var(--text)", fontWeight: 900 }}>{formatDateTime(activityData?.summary?.lastSeenAt || activityUser.last_seen_at || activityUser.last_login_at)}</div>
+                                            </div>
+                                            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 14 }}>
+                                                <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Dispositivos</div>
+                                                <div style={{ marginTop: 6, color: "#a5b4fc", fontWeight: 900, fontSize: 20 }}>{activityData?.summary?.deviceCount || 0}</div>
+                                            </div>
+                                            <div style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 14 }}>
+                                                <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", fontWeight: 800 }}>Ingresos registrados</div>
+                                                <div style={{ marginTop: 6, color: "#10b981", fontWeight: 900, fontSize: 20 }}>{activityData?.summary?.totalLogins || 0}</div>
+                                            </div>
+                                        </div>
+
+                                        <h3 style={{ margin: "0 0 10px", fontSize: 14, color: "var(--text)" }}>Dispositivos detectados</h3>
+                                        <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
+                                            {(activityData?.devices || []).length ? activityData.devices.map((item) => (
+                                                <div key={item.id} style={{ border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 12, background: "rgba(255,255,255,0.03)" }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                                                        <div>
+                                                            <div style={{ color: "var(--text)", fontWeight: 900 }}>{item.device_label || "Dispositivo desconocido"}</div>
+                                                            <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 3 }}>{formatDeviceType(item.device_type)} - IP {item.ip_address || "sin IP"}</div>
+                                                        </div>
+                                                        <div style={{ textAlign: "right", color: "var(--muted)", fontSize: 12 }}>
+                                                            <div>Ultimo: <b style={{ color: "var(--text)" }}>{formatDateTime(item.last_seen_at)}</b></div>
+                                                            <div>Primer ingreso: {formatDateTime(item.first_seen_at)}</div>
+                                                            <div>Logins: {Number(item.login_count || 0)}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 11, wordBreak: "break-word" }}>{item.user_agent || "Sin user-agent"}</div>
+                                                </div>
+                                            )) : (
+                                                <div style={{ padding: 18, color: "var(--muted)", textAlign: "center", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12 }}>Sin dispositivos registrados todavia.</div>
+                                            )}
+                                        </div>
+
+                                        <h3 style={{ margin: "0 0 10px", fontSize: 14, color: "var(--text)" }}>Ultimos ingresos</h3>
+                                        <div style={{ overflowX: "auto" }}>
+                                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                                                <thead>
+                                                    <tr style={{ background: "rgba(255,255,255,0.04)", textAlign: "left" }}>
+                                                        {["Fecha", "Evento", "Dispositivo", "IP"].map((h) => (
+                                                            <th key={h} style={{ padding: "10px 12px", color: "var(--muted)", textTransform: "uppercase", fontSize: 10 }}>{h}</th>
+                                                        ))}
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(activityData?.events || []).length ? activityData.events.map((item) => (
+                                                        <tr key={item.id} style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
+                                                            <td style={{ padding: "10px 12px", color: "var(--text)", whiteSpace: "nowrap" }}>{formatDateTime(item.created_at)}</td>
+                                                            <td style={{ padding: "10px 12px", color: "#a5b4fc", fontWeight: 800 }}>{item.event_type}</td>
+                                                            <td style={{ padding: "10px 12px", color: "var(--text)" }}>{item.device_label || "Desconocido"}</td>
+                                                            <td style={{ padding: "10px 12px", color: "var(--muted)" }}>{item.ip_address || "sin IP"}</td>
+                                                        </tr>
+                                                    )) : (
+                                                        <tr><td colSpan={4} style={{ padding: 18, color: "var(--muted)", textAlign: "center" }}>Sin ingresos registrados.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </motion.div>
                     </motion.div>

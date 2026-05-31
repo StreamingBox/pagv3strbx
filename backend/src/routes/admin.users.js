@@ -41,10 +41,43 @@ router.get("/admin/users", requireAuth, requireRole("admin"), async (req, res) =
         const total = countRows[0].total;
 
         const [rows] = await pool.query(
-            `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at,
+            `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at, u.last_login_at,
                COALESCE(w.balance, 0) AS balance, 
                COALESCE(w.profit_total, 0) AS profit_total,
                COALESCE(w.currency, 'COP') AS currency,
+               (SELECT COUNT(*)
+                  FROM user_devices d
+                 WHERE d.user_id = u.id) AS device_count,
+               (SELECT d.last_seen_at
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_seen_at,
+               (SELECT d.device_label
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_device_label,
+               (SELECT d.device_type
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_device_type,
+               (SELECT d.browser_name
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_browser_name,
+               (SELECT d.os_name
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_os_name,
+               (SELECT d.ip_address
+                  FROM user_devices d
+                 WHERE d.user_id = u.id
+                 ORDER BY d.last_seen_at DESC, d.id DESC
+                 LIMIT 1) AS last_ip_address,
                (
                  SELECT COALESCE(SUM(ABS(t.amount)), 0)
                  FROM wallet_transactions t
@@ -86,6 +119,58 @@ router.get("/admin/users/stats", requireAuth, requireRole("admin"), async (req, 
         return res.json(rows);
     } catch (err) {
         console.error("API Error at " + req.originalUrl + ":", err.message);
+        return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.get("/admin/users/:id/activity", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const userId = Number(req.params.id);
+        if (!Number.isFinite(userId) || userId <= 0) {
+            return res.status(400).json({ message: "Usuario invalido." });
+        }
+
+        const [userRows] = await pool.query(
+            "SELECT id, name, email, role, status, last_login_at FROM users WHERE id = ? LIMIT 1",
+            [userId]
+        );
+        if (!userRows.length) {
+            return res.status(404).json({ message: "Usuario no encontrado." });
+        }
+
+        const [devices] = await pool.query(
+            `SELECT id, device_label, device_type, browser_name, os_name, ip_address, user_agent,
+                    first_seen_at, last_seen_at, login_count, last_event
+               FROM user_devices
+              WHERE user_id = ?
+              ORDER BY last_seen_at DESC, id DESC
+              LIMIT 100`,
+            [userId]
+        );
+
+        const [events] = await pool.query(
+            `SELECT id, event_type, device_label, device_type, browser_name, os_name, ip_address, user_agent, created_at
+               FROM user_login_events
+              WHERE user_id = ?
+              ORDER BY created_at DESC, id DESC
+              LIMIT 50`,
+            [userId]
+        );
+
+        const totalLogins = devices.reduce((sum, item) => sum + Number(item.login_count || 0), 0);
+
+        return res.json({
+            user: userRows[0],
+            summary: {
+                deviceCount: devices.length,
+                totalLogins,
+                lastSeenAt: devices[0]?.last_seen_at || userRows[0].last_login_at || null,
+            },
+            devices,
+            events,
+        });
+    } catch (err) {
+        console.error("GET /admin/users/:id/activity Error:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }
 });

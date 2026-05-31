@@ -303,11 +303,50 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const offset = (page - 1) * limit;
 
         const { q, platform, email, accountEmail } = req.query;
+        const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
+        const notResoldLaterSql = `
+            NOT EXISTS (
+                SELECT 1
+                FROM order_items oi_later
+                JOIN orders o_later ON o_later.id = oi_later.order_id
+                JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
+                JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
+                WHERE s_later.id <> s.id
+                  AND s_later.status != 'cancelled'
+                  AND (
+                    (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
+                    OR (
+                      COALESCE(acc.email, '') <> ''
+                      AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
+                      AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
+                      AND (
+                        acc_later.platform_id = acc.platform_id
+                        OR EXISTS (
+                          SELECT 1
+                          FROM platform_fallbacks pf
+                          WHERE COALESCE(pf.is_active, 1) = 1
+                            AND (
+                              (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
+                              OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
+                            )
+                        )
+                      )
+                    )
+                  )
+                  AND o_later.created_at > COALESCE((
+                    SELECT MAX(o_current.created_at)
+                    FROM order_items oi_current
+                    JOIN orders o_current ON o_current.id = oi_current.order_id
+                    WHERE oi_current.subscription_id = s.id
+                  ), '1000-01-01')
+            )
+        `;
 
         // Por defecto: <= 7 días (para el admin es mejor un margen un poco mayor, o igual 3)
         // Usaremos <= 7 días 
         let whereCols = [
             "s.status != 'cancelled'",
+            notResoldLaterSql,
         ];
         let params = [];
 
@@ -330,7 +369,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                 params.push(`%${qRaw}%`);
             }
         } else {
-            whereCols.push("s.expires_at <= DATE_ADD(NOW(), INTERVAL 7 DAY)");
+            whereCols.push(`${effectiveExpiresSql} <= DATE_ADD(NOW(), INTERVAL 7 DAY)`);
         }
 
         if (platform) {
@@ -351,18 +390,18 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         // Optional: filter by attended status
         const attended = req.query.attended;
         if (attended !== undefined && attended !== "all") {
-            whereCols.push("s.is_attended = ?");
+            whereCols.push("COALESCE(s.is_attended, 0) = ?");
             params.push(Number(attended) === 1 ? 1 : 0);
         } else if (attended === undefined || attended === "0") {
-            whereCols.push("s.is_attended = 0");
+            whereCols.push("COALESCE(s.is_attended, 0) = 0");
         }
 
         // New: Filter by expiry status (vencidos, hoy)
         const expiryFilter = req.query.expiryFilter; // 'vencidos', 'hoy', 'all'
         if (expiryFilter === "vencidos") {
-            whereCols.push("DATE(s.expires_at) < DATE(NOW())");
+            whereCols.push(`DATE(${effectiveExpiresSql}) < DATE(NOW())`);
         } else if (expiryFilter === "hoy") {
-            whereCols.push("DATE(s.expires_at) = DATE(NOW())");
+            whereCols.push(`DATE(${effectiveExpiresSql}) = DATE(NOW())`);
         }
 
         const whereSql = "WHERE " + whereCols.join(" AND ");
@@ -400,7 +439,9 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                ) AS order_code,
                s.platform_id,
                s.platform_account_id,
-               s.expires_at,
+               s.expires_at AS subscription_expires_at,
+               ${effectiveExpiresSql} AS expires_at,
+               ${effectiveExpiresSql} AS effective_expires_at,
                s.status,
                s.price,
                s.currency,
@@ -417,14 +458,15 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
              ORDER BY
-               (SELECT MIN(ex.expires_at)
+               (SELECT MIN(COALESCE(ex_acc.expires_at, ex.expires_at))
                 FROM subscriptions ex
+                LEFT JOIN platform_accounts ex_acc ON ex_acc.id = ex.platform_account_id
                 WHERE ex.platform_account_id = s.platform_account_id
                   AND ex.status != 'cancelled'
                   AND ex.platform_account_id IS NOT NULL
                ) ASC,
                COALESCE(acc.email, '') ASC,
-               s.expires_at ASC
+               ${effectiveExpiresSql} ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
         );
@@ -518,10 +560,46 @@ router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), as
     try {
         const [rows] = await pool.query(
             `SELECT COUNT(*) as count
-             FROM subscriptions
-             WHERE status != 'cancelled'
-               AND is_attended = 0
-               AND DATE(expires_at) <= DATE(NOW())`
+             FROM subscriptions s
+             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+             WHERE s.status != 'cancelled'
+               AND COALESCE(s.is_attended, 0) = 0
+               AND DATE(COALESCE(acc.expires_at, s.expires_at)) <= DATE(NOW())
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM order_items oi_later
+                   JOIN orders o_later ON o_later.id = oi_later.order_id
+                   JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
+                   JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
+                   WHERE s_later.id <> s.id
+                     AND s_later.status != 'cancelled'
+                     AND (
+                       (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
+                       OR (
+                         COALESCE(acc.email, '') <> ''
+                         AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
+                         AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
+                         AND (
+                           acc_later.platform_id = acc.platform_id
+                           OR EXISTS (
+                             SELECT 1
+                             FROM platform_fallbacks pf
+                             WHERE COALESCE(pf.is_active, 1) = 1
+                               AND (
+                                 (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
+                                 OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
+                               )
+                           )
+                         )
+                       )
+                     )
+                     AND o_later.created_at > COALESCE((
+                       SELECT MAX(o_current.created_at)
+                       FROM order_items oi_current
+                       JOIN orders o_current ON o_current.id = oi_current.order_id
+                       WHERE oi_current.subscription_id = s.id
+                     ), '1000-01-01')
+               )`
         );
         return res.json({ count: rows[0].count });
     } catch (err) {

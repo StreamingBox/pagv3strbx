@@ -101,11 +101,50 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
         const offset = (page - 1) * limit;
 
         const { q, platform } = req.query;
+        const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
+        const notResoldLaterSql = `
+            NOT EXISTS (
+                SELECT 1
+                FROM order_items oi_later
+                JOIN orders o_later ON o_later.id = oi_later.order_id
+                JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
+                JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
+                WHERE s_later.id <> s.id
+                  AND s_later.status != 'cancelled'
+                  AND (
+                    (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
+                    OR (
+                      COALESCE(acc.email, '') <> ''
+                      AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
+                      AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
+                      AND (
+                        acc_later.platform_id = acc.platform_id
+                        OR EXISTS (
+                          SELECT 1
+                          FROM platform_fallbacks pf
+                          WHERE COALESCE(pf.is_active, 1) = 1
+                            AND (
+                              (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
+                              OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
+                            )
+                        )
+                      )
+                    )
+                  )
+                  AND o_later.created_at > COALESCE((
+                    SELECT MAX(o_current.created_at)
+                    FROM order_items oi_current
+                    JOIN orders o_current ON o_current.id = oi_current.order_id
+                    WHERE oi_current.subscription_id = s.id
+                  ), '1000-01-01')
+            )
+        `;
 
         let whereCols = [
             "s.user_id = ?",
             "s.status != 'cancelled'",
-            "s.expires_at <= DATE_ADD(NOW(), INTERVAL 3 DAY)",
+            notResoldLaterSql,
+            `${effectiveExpiresSql} <= DATE_ADD(NOW(), INTERVAL 3 DAY)`,
             "IFNULL(s.is_attended, 0) = 0"
         ];
         let params = [userId];
@@ -128,6 +167,7 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
             `SELECT COUNT(*) as total
              FROM subscriptions s
              JOIN platforms p ON p.id = s.platform_id
+             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}`,
             params
         );
@@ -139,7 +179,9 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
                s.id,
                s.platform_id,
                s.platform_account_id,
-               s.expires_at,
+               s.expires_at AS subscription_expires_at,
+               ${effectiveExpiresSql} AS expires_at,
+               ${effectiveExpiresSql} AS effective_expires_at,
                s.status,
                p.name AS platform_name,
                p.slug AS platform_slug,
@@ -150,7 +192,7 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
              JOIN platforms p ON p.id = s.platform_id
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
-             ORDER BY s.expires_at ASC
+             ORDER BY ${effectiveExpiresSql} ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
         );
@@ -175,11 +217,47 @@ router.get("/orders/expiring-count", requireAuth, async (req, res) => {
         const userId = req.user.id;
         const [rows] = await pool.query(
             `SELECT COUNT(*) as count
-             FROM subscriptions
-             WHERE user_id = ?
-               AND status != 'cancelled'
-               AND IFNULL(is_attended, 0) = 0
-               AND expires_at <= DATE_ADD(NOW(), INTERVAL 3 DAY)`,
+             FROM subscriptions s
+             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+             WHERE s.user_id = ?
+               AND s.status != 'cancelled'
+               AND IFNULL(s.is_attended, 0) = 0
+               AND COALESCE(acc.expires_at, s.expires_at) <= DATE_ADD(NOW(), INTERVAL 3 DAY)
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM order_items oi_later
+                   JOIN orders o_later ON o_later.id = oi_later.order_id
+                   JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
+                   JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
+                   WHERE s_later.id <> s.id
+                     AND s_later.status != 'cancelled'
+                     AND (
+                       (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
+                       OR (
+                         COALESCE(acc.email, '') <> ''
+                         AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
+                         AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
+                         AND (
+                           acc_later.platform_id = acc.platform_id
+                           OR EXISTS (
+                             SELECT 1
+                             FROM platform_fallbacks pf
+                             WHERE COALESCE(pf.is_active, 1) = 1
+                               AND (
+                                 (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
+                                 OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
+                               )
+                           )
+                         )
+                       )
+                     )
+                     AND o_later.created_at > COALESCE((
+                       SELECT MAX(o_current.created_at)
+                       FROM order_items oi_current
+                       JOIN orders o_current ON o_current.id = oi_current.order_id
+                       WHERE oi_current.subscription_id = s.id
+                     ), '1000-01-01')
+               )`,
             [userId]
         );
         return res.json({ count: rows[0].count });

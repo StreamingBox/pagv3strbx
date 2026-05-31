@@ -289,7 +289,7 @@ router.post(
                 `UPDATE subscriptions
             SET platform_account_id = ?,
                 delivered_platform_id = ?,
-                is_attended = 1
+                is_attended = 0
           WHERE id = ?`,
                 [newAcc.id, resolvedAccount.deliveredPlatformId, subscriptionId]
             );
@@ -328,7 +328,7 @@ router.post(
                     sub.old_account_email || null,
                     newAcc.id,
                     newAcc.email || null,
-                    sub.account_expires_at || null,
+                    sub.account_expires_at || sub.expires_at || null,
                 ]
             );
 

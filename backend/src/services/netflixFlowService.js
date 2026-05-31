@@ -29,6 +29,23 @@ function normalizeText(value) {
     return stripDiacritics(value).toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function normalizeTemporaryCodeCandidate(value) {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (digits.length !== 4) return "";
+    if (digits === "0000") return "";
+    if (/^20[0-9]{2}$/.test(digits)) return "";
+    return digits;
+}
+
+function firstTemporaryCodeCandidate(content) {
+    const matches = String(content || "").match(/\b(?:[0-9][\s.\-]*){4}\b/g) || [];
+    for (const match of matches) {
+        const candidate = normalizeTemporaryCodeCandidate(match);
+        if (candidate) return candidate;
+    }
+    return "";
+}
+
 function pageLooksExpired(content) {
     const normalized = normalizeText(content);
     return [
@@ -43,20 +60,43 @@ function pageLooksExpired(content) {
 function extractNetflixTemporaryCode(content) {
     const source = String(content || "");
     const textOnly = cheerio.load(`<body>${source}</body>`)("body").text().replace(/\s+/g, " ").trim();
+    const normalizedText = normalizeText(textOnly);
+    const normalizedSource = normalizeText(source.replace(/<[^>]+>/g, " "));
+
+    const $ = cheerio.load(source || "<body></body>");
+    let isolatedCode = "";
+    $("*").each((_, el) => {
+        if (isolatedCode) return;
+        const candidate = normalizeTemporaryCodeCandidate($(el).text());
+        if (candidate) isolatedCode = candidate;
+    });
+    if (isolatedCode) return isolatedCode;
+
     const patterns = [
-        /usa este codigo para ver netflix en tu dispositivo[\s\S]{0,180}?ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*([0-9]{4})/i,
-        /ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*([0-9]{4})/i,
-        /([0-9]{4})\s*(?:este codigo vence despues de 15 minutos|vence despues de 15 minutos)/i,
-        /(?:codigo|code)[^0-9]{0,40}([0-9]{4})/i,
+        /usa este codigo para ver netflix en tu dispositivo[\s\S]{0,260}?ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*((?:[0-9][\s.\-]*){4})/i,
+        /ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*((?:[0-9][\s.\-]*){4})/i,
+        /(?:codigo|code)[^0-9]{0,120}((?:[0-9][\s.\-]*){4})[^0-9]{0,180}(?:acceso temporal|temporary access|15 minutos|15 minutes|vence|expires)/i,
+        /(?:acceso temporal|temporary access)[^0-9]{0,180}((?:[0-9][\s.\-]*){4})/i,
+        /((?:[0-9][\s.\-]*){4})[^0-9]{0,180}(?:este codigo vence despues de 15 minutos|vence despues de 15 minutos|expires after 15 minutes|15 minutes)/i,
     ];
 
-    for (const haystack of [textOnly, source]) {
+    for (const haystack of [normalizedText, normalizedSource, textOnly, source]) {
         for (const pattern of patterns) {
             const match = haystack.match(pattern);
-            if (match?.[1] && !["0000", "2023", "2024", "2025", "2026"].includes(match[1])) {
-                return match[1];
+            const candidate = normalizeTemporaryCodeCandidate(match?.[1]);
+            if (candidate) {
+                return candidate;
             }
         }
+    }
+
+    if (
+        normalizedText.includes("acceso temporal")
+        || normalizedText.includes("temporary access")
+        || normalizedSource.includes("acceso temporal")
+        || normalizedSource.includes("temporary access")
+    ) {
+        return firstTemporaryCodeCandidate(`${textOnly}\n${source}`);
     }
 
     return "";
@@ -90,8 +130,8 @@ async function scrapeTemporalCode(link, depth = 0, visited = new Set()) {
         if (depth < 2) {
             const nestedLink = findNetflixButtonLink(
                 data,
-                ["obtener codigo", "obtener código", "get code", "continuar", "continue"],
-                ["netflix.com/account/travel/verify", "travel/verify", "netflix.com/account/travel"]
+                ["obtener codigo", "obtener código", "get code", "access code", "codigo temporal", "continuar", "continue"],
+                ["netflix.com/account/travel/verify", "travel/verify", "netflix.com/account/travel", "account/travel"]
             );
             if (nestedLink && nestedLink !== safeLink) {
                 return scrapeTemporalCode(nestedLink, depth + 1, visited);
@@ -117,7 +157,12 @@ function subjectMatchesAction(subject, action) {
     const normalizedAction = String(action || "code").toLowerCase();
 
     if (normalizedAction === "temporary") {
-        return s.includes("codigo de acceso temporal") || s.includes("temporary access code");
+        return s.includes("codigo de acceso temporal")
+            || s.includes("codigo temporal")
+            || s.includes("acceso temporal")
+            || s.includes("temporary access code")
+            || s.includes("temporary code")
+            || s.includes("temporary access");
     }
 
     if (normalizedAction === "approve") {
@@ -127,7 +172,14 @@ function subjectMatchesAction(subject, action) {
             || s.includes("request");
     }
 
-    if (s.includes("codigo de acceso temporal") || s.includes("temporary access code")) {
+    if (
+        s.includes("codigo de acceso temporal")
+        || s.includes("codigo temporal")
+        || s.includes("acceso temporal")
+        || s.includes("temporary access code")
+        || s.includes("temporary code")
+        || s.includes("temporary access")
+    ) {
         return false;
     }
 
@@ -252,6 +304,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
         let sawExpiredMatch = false;
         let sawSenderMatch = false;
         let sawTargetMatch = false;
+        let lastFlowFailure = null;
 
         for (const msg of messages) {
             const msgDate = safeToDate(msg?.attributes?.date);
@@ -303,8 +356,8 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
             if (action === "temporary") {
                 const buttonLink = findNetflixButtonLink(
                     html,
-                    ["obtener codigo", "obtener código", "get code"],
-                    ["netflix.com/account/travel/verify", "travel/verify"]
+                    ["obtener codigo", "obtener código", "get code", "access code", "codigo temporal", "continuar", "continue"],
+                    ["netflix.com/account/travel/verify", "travel/verify", "netflix.com/account/travel", "account/travel"]
                 );
 
                 if (buttonLink) {
@@ -313,6 +366,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                     if (result.ok || result.status === "expired") {
                         return { ...result, emailDate: msgDate };
                     }
+                    lastFlowFailure = result;
                 } else {
                     const $ = cheerio.load(html || "<body></body>");
                     let extractedCode = null;
@@ -342,6 +396,15 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                     if (extractedCode) {
                         return { ok: true, type: "code", code: extractedCode, emailDate: msgDate };
                     }
+                }
+
+                const extractedCode = extractNetflixTemporaryCode(`${subject}\n${text}\n${html}`);
+                if (extractedCode) {
+                    return { ok: true, type: "code", code: extractedCode, emailDate: msgDate };
+                }
+
+                if (lastFlowFailure && lastFlowFailure.status !== "not_found") {
+                    return { ...lastFlowFailure, emailDate: msgDate };
                 }
             }
 
@@ -396,6 +459,10 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
         if (!sawTargetMatch) {
             return { ok: false, status: "netflix_flow_miss", message: "No se encontraron correos nuevos de Netflix para el tipo de solicitud seleccionado." };
+        }
+
+        if (lastFlowFailure) {
+            return lastFlowFailure;
         }
 
         return { ok: false, status: "netflix_flow_miss", message: "Se detectó el correo de Netflix, pero no se pudo completar el flujo." };

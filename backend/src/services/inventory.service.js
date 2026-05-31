@@ -20,7 +20,7 @@ LEFT JOIN (
 /**
  * Construye WHERE dinámico + params para inventory/export.
  */
-function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, expiresTo }) {
+function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber, expiresFrom, expiresTo }) {
     const where = [];
     const params = [];
 
@@ -59,6 +59,17 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, e
         params.push(`%${assignedTo}%`);
     }
 
+    const profileFilter = String(profileNumber || "").trim();
+    if (profileFilter) {
+        const normalized = profileFilter.toLowerCase().replace(/\s+/g, "");
+        if (["sinperfil", "none", "null", "-", "—"].includes(normalized)) {
+            where.push("(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')");
+        } else {
+            where.push("CAST(pa.profile_number AS CHAR) = ?");
+            params.push(profileFilter);
+        }
+    }
+
     const from = parseDateOnly(expiresFrom);
     const to = parseDateOnly(expiresTo);
 
@@ -79,13 +90,14 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, expiresFrom, e
  * GET /admin/inventory
  */
 async function getInventory(query = {}) {
-    const { platformId, status, q, assignedTo, expiresFrom, expiresTo, page = 1, limit = 5 } = query;
+    const { platformId, status, q, assignedTo, profileNumber, expiresFrom, expiresTo, page = 1, limit = 5 } = query;
 
     const { whereSql, params } = buildInventoryWhere({
         platformId,
         status,
         q,
         assignedTo,
+        profileNumber,
         expiresFrom,
         expiresTo,
     });
@@ -156,7 +168,7 @@ async function getInventory(query = {}) {
         replaced_from_account_email: r.replaced_from_account_email || null,
         replacement_order_id: r.replacement_order_id || null,
         replacement_order_code: r.replacement_order_code || null,
-        display_expires_at: r.subscription_expires_at || r.expires_at,
+        display_expires_at: r.expires_at || r.subscription_expires_at,
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
 
@@ -174,13 +186,14 @@ async function getInventory(query = {}) {
  * Devuelve { filename, csv } para que el route sete headers y responda.
  */
 async function exportInventoryCsv(query = {}) {
-    const { platformId, status, q, assignedTo, expiresFrom, expiresTo } = query;
+    const { platformId, status, q, assignedTo, profileNumber, expiresFrom, expiresTo } = query;
 
     const { whereSql, params } = buildInventoryWhere({
         platformId,
         status,
         q,
         assignedTo,
+        profileNumber,
         expiresFrom,
         expiresTo,
     });
@@ -234,7 +247,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.status),
             escapeCsv(r.sale_id || ""),
             escapeCsv(r.assigned_user_email || ""),
-            escapeCsv((r.subscription_expires_at || r.expires_at) ? formatDateOnlyBogota(r.subscription_expires_at || r.expires_at) : ""),
+            escapeCsv((r.expires_at || r.subscription_expires_at) ? formatDateOnlyBogota(r.expires_at || r.subscription_expires_at) : ""),
         ].join(",")
     );
 

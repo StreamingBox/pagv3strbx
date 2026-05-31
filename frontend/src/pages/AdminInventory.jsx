@@ -136,6 +136,7 @@ export default function AdminInventory() {
     const [status, setStatus] = useState(""); // available | assigned | sold | inactive | down
     const [q, setQ] = useState("");
     const [assignedTo, setAssignedTo] = useState("");
+    const [profileNumber, setProfileNumber] = useState("");
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
@@ -253,6 +254,7 @@ export default function AdminInventory() {
             if (status) params.set("status", status);
             if (q) params.set("q", q);
             if (assignedTo) params.set("assignedTo", assignedTo);
+            if (profileNumber.trim()) params.set("profileNumber", profileNumber.trim());
             params.set("page", pageNum);
             params.set("limit", currentLimit);
 
@@ -528,6 +530,20 @@ export default function AdminInventory() {
                                 </div>
                             </div>
 
+                            <div>
+                                <label style={{ display: "block", fontSize: 13, color: "var(--muted)", marginBottom: 8, fontWeight: 500 }}>
+                                    Perfil
+                                </label>
+                                <input
+                                    type="text"
+                                    inputMode="text"
+                                    style={inputStyle}
+                                    value={profileNumber}
+                                    onChange={(e) => setProfileNumber(e.target.value)}
+                                    placeholder="Ej: 5 o sin perfil"
+                                />
+                            </div>
+
                             <div style={{ display: "flex", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 16, marginTop: 12, gridColumn: "1 / -1" }}>
                                 <div style={{ fontSize: 13, color: "var(--muted)", display: "flex", gap: 8, flexWrap: "wrap", flex: "1 1 auto" }}>
                                     <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
@@ -536,6 +552,11 @@ export default function AdminInventory() {
                                     <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
                                         Registros: <b style={{ color: "var(--text)" }}>{total}</b>
                                     </div>
+                                    {profileNumber.trim() && (
+                                        <div style={{ background: "rgba(0,0,0,0.15)", padding: "6px 14px", borderRadius: 8, border: "1px solid var(--stroke2)", fontSize: 12, display: "flex", alignItems: "center", gap: 4 }}>
+                                            Perfil: <b style={{ color: "var(--text)" }}>{profileNumber.trim()}</b>
+                                        </div>
+                                    )}
                                 </div>
                                 <button type="submit" disabled={loading} style={{ height: 44, padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", flex: "1 1 auto", minWidth: 200 }}>
                                     Filtrar Inventario

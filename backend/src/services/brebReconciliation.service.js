@@ -114,15 +114,69 @@ function parseSpanishDateTime(raw) {
     return Number.isNaN(date.getTime()) ? null : date;
 }
 
+function parseBogotaNumericDateTime(raw) {
+    const source = normalizeText(raw);
+    const match = source.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (!match) return null;
+
+    const day = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const year = Number(match[3]);
+    const hour = Number(match[4]);
+    const minute = Number(match[5]);
+    const second = Number(match[6] || 0);
+
+    const date = new Date(Date.UTC(year, month, day, hour + BOGOTA_UTC_OFFSET_HOURS, minute, second, 0));
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isBrebReceiptSubject(subject) {
+    const s = normalizeText(subject).toLowerCase();
+    if (!s.includes("bre-b")) return false;
+    return s.includes("recibiste plata")
+        || s.includes("detalle de tu venta")
+        || s.includes("venta exitosa");
+}
+
 function parseBrebEmail(parsed, attributes = {}) {
     const subject = normalizeText(parsed?.subject || "");
-    if (!subject.toLowerCase().includes("recibiste plata por bre-b")) {
+    if (!isBrebReceiptSubject(subject)) {
         return null;
     }
 
     const haystack = buildMailHaystack(parsed);
     const match = haystack.match(/Recibiste\s+\$?\s*([0-9.,]+)\s+de\s+(.+?)(?:\s*-\s*|\s+)el\s+(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}\s+a\s+las\s+\d{1,2}:\d{2}\s*[ap]\.?\s*m\.?)/i);
-    if (!match) {
+    if (match) {
+        return {
+            uid: String(attributes?.uid || ""),
+            subject,
+            amount: parseEsCoMoney(match[1]),
+            senderName: normalizeName(match[2]),
+            senderNameRaw: normalizeText(match[2]),
+            receivedAt: parseSpanishDateTime(match[3]) || safeToDate(attributes?.date) || null,
+            receivedAtRaw: match[3],
+            parsed: true,
+            rawText: haystack,
+        };
+    }
+
+    const statusMatch = haystack.match(/Estado:?\s*(.+?)(?=\s*Fecha:|\s*Pagador:|\s*Banco:|\s*Referencia:|\s*Numero\s+de\s+transaccion:|\s*Metodo\s+de\s+pago:|$)/i);
+    const status = normalizeText(statusMatch?.[1] || "").toLowerCase();
+    if (status && !status.includes("aprobada")) {
+        return {
+            uid: String(attributes?.uid || ""),
+            subject,
+            receivedAt: safeToDate(attributes?.date) || null,
+            parsed: false,
+            rawText: haystack,
+        };
+    }
+
+    const amountMatch = haystack.match(/(?:Venta\s+exitosa\s+por|Monto:?)\s*\$?\s*([0-9.,]+)/i);
+    const payerMatch = haystack.match(/Pagador:?\s*(.+?)(?=\s*Banco:|\s*Referencia:|\s*Numero\s+de\s+transaccion:|\s*Metodo\s+de\s+pago:|$)/i);
+    const dateMatch = haystack.match(/Fecha:?\s*(\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}(?::\d{2})?)/i);
+
+    if (!amountMatch || !payerMatch || !dateMatch) {
         return {
             uid: String(attributes?.uid || ""),
             subject,
@@ -135,11 +189,11 @@ function parseBrebEmail(parsed, attributes = {}) {
     return {
         uid: String(attributes?.uid || ""),
         subject,
-        amount: parseEsCoMoney(match[1]),
-        senderName: normalizeName(match[2]),
-        senderNameRaw: normalizeText(match[2]),
-        receivedAt: parseSpanishDateTime(match[3]) || safeToDate(attributes?.date) || null,
-        receivedAtRaw: match[3],
+        amount: parseEsCoMoney(amountMatch[1]),
+        senderName: normalizeName(payerMatch[1]),
+        senderNameRaw: normalizeText(payerMatch[1]),
+        receivedAt: parseBogotaNumericDateTime(dateMatch[1]) || safeToDate(attributes?.date) || null,
+        receivedAtRaw: dateMatch[1],
         parsed: true,
         rawText: haystack,
     };
@@ -243,7 +297,7 @@ async function fetchRecentBrebEmails(limit = 15) {
             const headerPart = msg?.parts?.find((part) => part.which.includes("HEADER"));
             const headers = headerPart?.body || {};
             const subject = normalizeText(headers.subject?.[0] || "");
-            if (!subject.toLowerCase().includes("recibiste plata por bre-b")) continue;
+            if (!isBrebReceiptSubject(subject)) continue;
             const full = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
             const raw = full?.[0]?.parts?.find((part) => part.which === "");
             if (!raw?.body) continue;

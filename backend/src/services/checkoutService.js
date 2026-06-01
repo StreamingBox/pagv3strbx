@@ -32,6 +32,10 @@ function allocateComboPrices(comboPrice, comboItems) {
     });
 }
 
+function requiresInventoryAccount(plan) {
+    return String(plan?.type || "").trim().toLowerCase() !== "correo";
+}
+
 async function loadIndividualPlans(conn, platformPriceIds) {
     if (!platformPriceIds.length) return [];
 
@@ -274,15 +278,18 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
         for (const entry of purchaseEntries) {
             const plan = entry.plan;
-            const resolvedAccount = await findAvailableAccountForPlatform(conn, plan.platform_id);
+            const needsAccount = requiresInventoryAccount(plan);
+            const resolvedAccount = needsAccount
+                ? await findAvailableAccountForPlatform(conn, plan.platform_id)
+                : null;
 
-            if (!resolvedAccount?.account) {
+            if (needsAccount && !resolvedAccount?.account) {
                 const err = new Error(`No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
                 err.status = 409;
                 throw err;
             }
-            const account = resolvedAccount.account;
-            const deliveredPlatformId = resolvedAccount.deliveredPlatformId;
+            const account = resolvedAccount?.account || null;
+            const deliveredPlatformId = resolvedAccount?.deliveredPlatformId || (needsAccount ? null : plan.platform_id);
 
             const expiresAt = addDaysExact(new Date(), Number(plan.days));
             const expiresAtSql = toSqlDateTime(expiresAt);
@@ -298,7 +305,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                     plan.platform_id,
                     plan.platform_price_id,
                     plan.duration_id,
-                    account.id,
+                    account?.id || null,
                     deliveredPlatformId,
                     expiresAtSql,
                     itemPrice,
@@ -308,19 +315,21 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
             const subscriptionId = subIns.insertId;
 
-            await conn.query(
-                `UPDATE platform_accounts
-                 SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
-                 WHERE id=?`,
-                [userId, expiresAtSql, account.id]
-            );
+            if (account?.id) {
+                await conn.query(
+                    `UPDATE platform_accounts
+                     SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
+                     WHERE id=?`,
+                    [userId, expiresAtSql, account.id]
+                );
+            }
 
             const token = await insertCredentialLinkWithRetry(conn, {
                 subscriptionId,
                 createdByUserId: userId,
             });
 
-            const unitCost = Number(account.unit_cost || 0);
+            const unitCost = Number(account?.unit_cost || 0);
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             await conn.query(
                 `INSERT INTO order_items
@@ -339,8 +348,8 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 purchasedPlatformName: plan.platform_name,
                 purchasedPlatformSlug: plan.platform_slug,
                 deliveredPlatformId,
-                deliveredPlatformName: account.delivered_platform_name || plan.platform_name,
-                usedFallback: resolvedAccount.usedFallback,
+                deliveredPlatformName: account?.delivered_platform_name || plan.platform_name,
+                usedFallback: Boolean(resolvedAccount?.usedFallback),
             });
         }
 

@@ -9,6 +9,27 @@ function isEmailDelivery(plan) {
     return String(plan?.type || "").trim().toLowerCase() === "correo";
 }
 
+function normalizeProductName(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function isCanvaEmailActivationProduct(platformName) {
+    const normalized = normalizeProductName(platformName);
+    return normalized.includes("canva") && normalized.includes("correo");
+}
+
+function shouldAppendDeviceUsageRule(platformName) {
+    const normalized = normalizeProductName(platformName);
+    return normalized.includes("prime video completa")
+        || normalized.includes("microsoft office")
+        || isCanvaEmailActivationProduct(platformName);
+}
+
 function emailActivationServiceName(platformName) {
     const cleanName = String(platformName || "")
         .replace(/\s+a\s+correo\s*$/i, "")
@@ -27,7 +48,11 @@ function salesContactPhone() {
 
 function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
-    const hasCredentialItems = safeResults.some((result) => !isEmailDelivery(result?.plan || {}));
+    const hasDeviceUsageRuleItems = safeResults.some((result) => {
+        const plan = result?.plan || {};
+        const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
+        return shouldAppendDeviceUsageRule(platformName) && !isCanvaEmailActivationProduct(platformName);
+    });
     const lines = [];
 
     lines.push(`🧾 Orden: ${orderCode || "-"}`);
@@ -40,12 +65,20 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const url = credentialUrl(baseUrl, result?.token || "");
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
-        if (isEmailDelivery(plan)) {
+        if (isEmailDelivery(plan) && isCanvaEmailActivationProduct(platformName)) {
             const activationService = emailActivationServiceName(platformName);
             lines.push(`🖥️ ${platformName}`);
             lines.push(`📲 Para activar tu correo de ${activationService}, escribe este mensaje al WhatsApp ${salesContactPhone()}:`);
             lines.push("");
             lines.push(`Hola, quiero activar mi correo de ${activationService}. Orden: ${orderCode || "-"}. Producto: ${platformName}.`);
+            lines.push("");
+            continue;
+        }
+
+        if (isEmailDelivery(plan)) {
+            lines.push(`🖥️ ${platformName}`);
+            lines.push(`📅 Expira: ${formatDateOnlyBogota(result?.expiresAt)}`);
+            lines.push(`🔗 Enlace de credenciales: ${url}`);
             lines.push("");
             continue;
         }
@@ -75,7 +108,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         lines.push("");
     }
 
-    if (hasCredentialItems) {
+    if (hasDeviceUsageRuleItems) {
         lines.push("📌 Regla de uso: 1 pantalla = 1 dispositivo.");
         lines.push("La cuenta debe usarse únicamente en un solo equipo. No está permitido alternarla entre TV, celular u otros dispositivos, ni compartir el acceso. Si se detecta incumplimiento de esta regla, se procederá con la expulsión de la cuenta y se perderá la garantía del servicio.");
     }

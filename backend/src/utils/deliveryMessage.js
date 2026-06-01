@@ -5,8 +5,29 @@ function credentialUrl(baseUrl, token) {
     return `${cleanBaseUrl}/s/${token}`;
 }
 
+function isEmailDelivery(plan) {
+    return String(plan?.type || "").trim().toLowerCase() === "correo";
+}
+
+function emailActivationServiceName(platformName) {
+    const cleanName = String(platformName || "")
+        .replace(/\s+a\s+correo\s*$/i, "")
+        .trim();
+    const withoutDuration = cleanName
+        .replace(/\b(mensual|anual|semanal|trimestral|semestral|bimestral|\d+\s*(dias|días|meses?|años?|anos?))\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+    return withoutDuration || cleanName || "Canva";
+}
+
+function salesContactPhone() {
+    return String(process.env.SALES_CONTACT_PHONE || "3152485340").trim();
+}
+
 function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
+    const hasCredentialItems = safeResults.some((result) => !isEmailDelivery(result?.plan || {}));
     const lines = [];
 
     lines.push(`🧾 Orden: ${orderCode || "-"}`);
@@ -19,10 +40,12 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const url = credentialUrl(baseUrl, result?.token || "");
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
-        if (plan.type === "correo") {
+        if (isEmailDelivery(plan)) {
+            const activationService = emailActivationServiceName(platformName);
             lines.push(`🖥️ ${platformName}`);
-            lines.push(`📅 Expira: ${formatDateOnlyBogota(result?.expiresAt)}`);
-            lines.push(`🔗 Enlace de credenciales: ${url}`);
+            lines.push(`📲 Para activar tu correo de ${activationService}, escribe este mensaje al WhatsApp ${salesContactPhone()}:`);
+            lines.push("");
+            lines.push(`Hola, quiero activar mi correo de ${activationService}. Orden: ${orderCode || "-"}. Producto: ${platformName}.`);
             lines.push("");
             continue;
         }
@@ -52,7 +75,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         lines.push("");
     }
 
-    if (safeResults.length) {
+    if (hasCredentialItems) {
         lines.push("📌 Regla de uso: 1 pantalla = 1 dispositivo.");
         lines.push("La cuenta debe usarse únicamente en un solo equipo. No está permitido alternarla entre TV, celular u otros dispositivos, ni compartir el acceso. Si se detecta incumplimiento de esta regla, se procederá con la expulsión de la cuenta y se perderá la garantía del servicio.");
     }

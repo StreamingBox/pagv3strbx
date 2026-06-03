@@ -8,6 +8,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 const sanitize = require("./middleware/sanitize");
+const logger = require("./utils/logger");
 
 // ✅ Rutas
 const codesRoutes = require("./routes/codes");
@@ -83,7 +84,7 @@ function validateProductionConfig() {
 try {
     validateProductionConfig();
 } catch (error) {
-    console.error(error?.message || error);
+    logger.error("production_config_invalid", { error });
     process.exit(1);
 }
 
@@ -107,14 +108,14 @@ if (lockEnabled) {
                 }
             }
             if (alive) {
-                console.error("[boot] Otra instancia backend ya esta corriendo. Abortando para proteger la DB.");
+                logger.error("backend_instance_lock_active", { existingPid });
                 process.exit(1);
             }
         }
 
         fs.writeFileSync(instanceLockPath, String(process.pid), "utf8");
     } catch (e) {
-        console.error("[boot] Error inicializando lock de instancia:", e?.message || e);
+        logger.error("backend_instance_lock_init_failed", { error: e });
         process.exit(1);
     }
 }
@@ -349,10 +350,11 @@ app.use((req, res) => {
 app.use((err, req, res, _next) => {
     const status = Number(err?.status || err?.statusCode || 500);
     if (status >= 500) {
-        console.error("[http] error", {
+        logger.error("http_request_failed", {
             method: req.method,
             path: req.originalUrl,
-            message: err?.message || String(err),
+            status,
+            error: err,
         });
     }
     return res.status(status).json({
@@ -377,7 +379,7 @@ async function startServer() {
     }, 60 * 60 * 1000).unref();
 
     server.listen(port, () => {
-        console.log(`API running on :${port}`);
+        logger.info("api_started", { port: Number(port), nodeEnv: process.env.NODE_ENV || "development" });
         initBot();
         processPendingBrebTopups().catch(() => { });
         setInterval(() => {
@@ -387,7 +389,7 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-    console.error("[boot] Error iniciando backend:", err?.message || err);
+    logger.error("backend_start_failed", { error: err });
     releaseLock();
     try {
         server.close(() => process.exit(1));

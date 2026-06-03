@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version-file: ".nvmrc"
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -35,6 +35,14 @@ jobs:
       - name: Audit backend dependencies
         working-directory: backend
         run: npm audit --audit-level=high
+
+      - name: Check backend syntax
+        working-directory: backend
+        run: npm run check
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
 
       - name: Install frontend dependencies
         working-directory: frontend

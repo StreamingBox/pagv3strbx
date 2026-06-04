@@ -53,6 +53,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
+                { icon: "🔗", tone: "teal", title: "Links", hint: "Enlaces de credenciales.", path: "/admin/links" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
                 { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de pines generados.", path: "/admin/code-logs" },
             ],

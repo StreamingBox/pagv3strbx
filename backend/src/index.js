@@ -31,6 +31,7 @@ const adminPlatforms = require("./routes/admin.platforms");
 const adminOrders = require("./routes/admin.orders");
 const adminPrices = require("./routes/admin.prices");
 const adminDurations = require("./routes/admin.durations");
+const adminLinks = require("./routes/admin.links");
 
 const adminAccountsRoutes = require("./routes/admin.accounts.routes");
 const adminInventoryRoutes = require("./routes/admin.inventory.routes");
@@ -333,6 +334,7 @@ app.use("/api", adminInventoryRoutes);
 app.use("/api", adminOrders);
 app.use("/api", adminPrices);
 app.use("/api", adminDurations);
+app.use("/api", adminLinks);
 
 // Analytics
 app.use("/api", analyticsRoutes);

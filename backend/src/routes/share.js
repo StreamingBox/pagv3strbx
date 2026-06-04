@@ -77,6 +77,7 @@ async function loadCredentialByToken(token) {
   const [rows] = await pool.query(
     `SELECT
        cl.token,
+       cl.revoked_at,
        s.id AS order_id,
        s.expires_at,
        s.status,
@@ -121,6 +122,13 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     }
 
     const displayExpiresAt = r.account_expires_at || r.expires_at;
+    if (r.revoked_at) {
+      if (wantsJson(req)) {
+        return res.status(403).json({ ok: false, error: "Este link fue desactivado." });
+      }
+      return res.status(403).send("Este link fue desactivado.");
+    }
+
     const expired = r.account_expires_at
       ? isDateTimeExpired(r.account_expires_at)
       : isStoredDateOnlyExpired(r.expires_at);

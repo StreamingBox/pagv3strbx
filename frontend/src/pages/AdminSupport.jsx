@@ -309,13 +309,13 @@ export default function AdminSupport() {
                                     <option value="">Siguiente disponible</option>
                                     {replacementCandidates.map((candidate) => (
                                         <option key={candidate.id} value={candidate.id}>
-                                            #{candidate.id} · {candidate.email} · Perfil {candidate.profile_number ?? "â€”"}
+                                            #{candidate.id} · {candidate.email} · Perfil {candidate.profile_number ?? "—"}
                                         </option>
                                     ))}
                                 </select>
                                 <div style={{ marginTop: 8, fontSize: 12, color: "rgba(234,241,255,0.5)" }}>
                                     {replacementCandidates.length
-                                        ? "Puedes usar la siguiente disponible o seleccionar una cuenta especÃ­fica para el reemplazo."
+                                        ? "Puedes usar la siguiente disponible o seleccionar una cuenta específica para el reemplazo."
                                         : "No hay cuentas disponibles para reemplazo en este momento."}
                                 </div>
                             </div>

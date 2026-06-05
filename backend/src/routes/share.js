@@ -28,6 +28,25 @@ function wantsJson(req) {
   return accept.includes("application/json") && !accept.includes("text/html");
 }
 
+function normalizeWhatsappNumber(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  if (digits.length === 10 && digits.startsWith("3")) digits = `57${digits}`;
+  if (digits.length < 8 || digits.length > 15) return "";
+  return digits;
+}
+
+function buildSupportWhatsappUrl({ platformName, orderId }) {
+  const number = normalizeWhatsappNumber(process.env.SALES_CONTACT_PHONE || "3152485340");
+  if (!number) return "";
+
+  const accountText = platformName ? ` de ${platformName}` : "";
+  const text = encodeURIComponent(
+    `Hola, necesito solicitar un nuevo link para mi cuenta${accountText}. ID: ${orderId || "-"}.`
+  );
+  return `https://wa.me/${number}?text=${text}`;
+}
+
 /**
  * Límite extra solo para GET JSON de credenciales (además del límite global en index.js).
  * No cuenta peticiones HTML.
@@ -174,6 +193,10 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     const orderId = escapeHtml(r.order_id ?? "-");
     const expEsc = escapeHtml(exp);
     const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
+    const whatsappUrl = escapeHtml(buildSupportWhatsappUrl({
+      platformName: r.platform_name,
+      orderId: r.order_id,
+    }));
 
     const statusText = expired ? "Vencido" : "Activo";
     const statusClass = expired ? "danger" : "ok";
@@ -308,6 +331,47 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     }
     .status.ok{ color: var(--ok); font-weight:900; }
     .status.danger{ color: var(--danger); font-weight:900; }
+    .actions{
+      margin-top: 18px;
+      display:flex;
+    }
+    .whatsapp-btn{
+      width:100%;
+      min-height:44px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding: 11px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(32,212,106,.45);
+      background: linear-gradient(135deg, #20d46a, #16a34a);
+      color:#06140b;
+      font-size:14px;
+      line-height:1.2;
+      font-weight:900;
+      text-align:center;
+      text-decoration:none;
+      box-shadow: 0 12px 26px rgba(32,212,106,.22);
+    }
+    .whatsapp-btn:hover{
+      transform: translateY(-1px);
+      box-shadow: 0 16px 30px rgba(32,212,106,.26);
+    }
+    .whatsapp-icon{
+      width:22px;
+      height:22px;
+      border-radius:999px;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 22px;
+      background: rgba(255,255,255,.24);
+      color:#fff;
+      font-size:10px;
+      font-weight:900;
+      letter-spacing:0;
+    }
 
     .hint{
       margin-top: 12px;
@@ -332,6 +396,14 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     <div class="row"><div class="label">Estado:</div>
       <div class="value"><span class="status ${statusClass}">${escapeHtml(statusText)}</span></div>
     </div>
+
+    ${whatsappUrl ? `
+    <div class="actions">
+      <a class="whatsapp-btn" href="${whatsappUrl}" target="_blank" rel="noopener noreferrer" aria-label="Solicitar soporte por WhatsApp">
+        <span class="whatsapp-icon" aria-hidden="true">WA</span>
+        <span>Solicitar nuevo link por WhatsApp</span>
+      </a>
+    </div>` : ""}
 
     <div class="hint">Si el link expira, solicita uno nuevo.</div>
   </div>

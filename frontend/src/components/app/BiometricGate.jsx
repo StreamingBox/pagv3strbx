@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ShieldCheck, Fingerprint } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";

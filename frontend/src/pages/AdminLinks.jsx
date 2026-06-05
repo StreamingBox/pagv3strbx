@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { MessageCircle } from "lucide-react";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { apiDelete, apiGet, apiPatch } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -131,6 +132,23 @@ const S = {
         padding: "0 11px",
         fontFamily: "var(--font)",
         whiteSpace: "nowrap",
+    },
+    whatsappBtn: {
+        height: 34,
+        borderRadius: 9,
+        border: "1px solid rgba(34,197,94,0.34)",
+        background: "rgba(34,197,94,0.12)",
+        color: "#22c55e",
+        fontWeight: 850,
+        fontSize: 12,
+        cursor: "pointer",
+        padding: "0 11px",
+        fontFamily: "var(--font)",
+        whiteSpace: "nowrap",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        textDecoration: "none",
     },
     tableWrap: { overflowX: "auto", borderTop: "1px solid var(--stroke)" },
     table: { width: "100%", borderCollapse: "collapse", minWidth: 1040 },
@@ -300,6 +318,19 @@ export default function AdminLinks() {
             <a href={item.url} target="_blank" rel="noreferrer" style={{ ...S.ghostBtn, display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
                 Abrir
             </a>
+            {item.buyerWhatsapp?.url ? (
+                <a
+                    href={item.buyerWhatsapp.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={S.whatsappBtn}
+                    title="Contactar por WhatsApp al usuario que hizo la compra"
+                    aria-label={`Contactar por WhatsApp a ${item.buyerWhatsapp.label || item.user_name || item.user_email || "usuario"}`}
+                >
+                    <MessageCircle size={14} aria-hidden="true" />
+                    <span>{item.buyerWhatsapp.label || "WhatsApp"}</span>
+                </a>
+            ) : null}
             {item.status === "revoked" ? (
                 <button
                     type="button"

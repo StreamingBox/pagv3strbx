@@ -199,6 +199,8 @@ export default function Topups() {
         void loadWallet();
         void loadTopupConfig();
         void loadRequests();
+        // La carga inicial mezcla fallback local y configuración remota; debe ejecutarse solo al montar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {
@@ -206,6 +208,8 @@ export default function Topups() {
         if (!methods.length && (wallet?.currency || user?.currency)) {
             applyFallbackTopupConfig(wallet?.currency || user?.currency);
         }
+        // Evita rearmar métodos cuando cambia la función de fallback por estado auxiliar.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [topupConfig.methods, wallet?.currency, user?.currency]);
 
     const fallbackMethods = useMemo(

@@ -196,7 +196,7 @@ function createStyles({ C, dark, isMobile }) {
         heading: {
             fontSize: isMobile ? 24 : 28,
             fontWeight: 800,
-            letterSpacing: -0.5,
+            letterSpacing: 0,
             marginBottom: isMobile ? 18 : 24,
             color: C.text,
         },
@@ -261,7 +261,7 @@ function createStyles({ C, dark, isMobile }) {
             fontWeight: 800,
             color: "#fff",
             marginBottom: 16,
-            letterSpacing: -1,
+            letterSpacing: 0,
             lineHeight: 1.1,
         },
         overlayText: {
@@ -442,7 +442,7 @@ export default function Auth() {
                 body: JSON.stringify({ email, password }),
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data?.message || "Error al iniciar sesion.");
+            if (!res.ok) throw new Error(data?.message || "Error al iniciar sesión.");
             persistNativeAppCredentials(email, rememberLogin);
             setUser(data?.user || null);
             navigate(data?.user?.role === "admin" ? "/admin" : "/dashboard", { replace: true });
@@ -456,9 +456,9 @@ export default function Auth() {
     async function handleRegister(event) {
         event.preventDefault();
         setError("");
-        if (password !== confirmPassword) return setError("Las contrasenas no coinciden.");
-        if (password.length < 8) return setError("La contrasena debe tener minimo 8 caracteres.");
-        if (!acceptedTerms) return setError("Debes aceptar los Terminos y Condiciones.");
+        if (password !== confirmPassword) return setError("Las contraseñas no coinciden.");
+        if (password.length < 8) return setError("La contraseña debe tener mínimo 8 caracteres.");
+        if (!acceptedTerms) return setError("Debes aceptar los Términos y Condiciones.");
         setLoading(true);
         try {
             const res = await fetch(`${API_BASE}/auth/register`, {

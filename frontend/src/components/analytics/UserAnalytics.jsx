@@ -337,7 +337,7 @@ function UserOption({ checked, disabled, label, sublabel, emoji, onChange }) {
 }
 
 /* ── KPI Card ── */
-function KpiCard({ label, total, orders, topPlatform, color, idx }) {
+function KpiCard({ label, total, orders, topPlatform, color }) {
     return (
         <motion.div
             variants={itemVariants}
@@ -530,19 +530,6 @@ function UserAnalyticsContent({ admin }) {
     }
 
     const primary = monthsData[0] ?? null;
-    const secondary = monthsData[1] ?? null;
-
-    const pctRaw = primary && secondary && secondary.total > 0
-        ? ((primary.total - secondary.total) / secondary.total * 100).toFixed(1)
-        : primary && secondary && secondary.total === 0 && primary.total > 0 ? "100" : null;
-    const pctNum = pctRaw !== null ? Number(pctRaw) : null;
-    const pctLabel = pctNum !== null ? `${pctNum >= 0 ? "+" : ""}${pctNum}%` : "—";
-    const pctColor = pctNum === null ? "var(--muted)" : pctNum >= 0 ? "#10b981" : "#ef4444";
-
-    const avgOrder = primary && primary.orders > 0
-        ? Math.round(primary.total / primary.orders).toLocaleString("es-CO")
-        : "—";
-    const topPlatform = primary?.distribution?.[0]?.name ?? null;
     const primaryMarginPct = Number(primary?.marginPct || 0);
     const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
     const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
@@ -755,7 +742,6 @@ function UserAnalyticsContent({ admin }) {
                             orders={m.orders}
                             topPlatform={m.distribution?.[0]?.name}
                             color={MONTH_COLORS[idx % MONTH_COLORS.length]}
-                            idx={idx}
                         />
                     ))}
                 </motion.div>

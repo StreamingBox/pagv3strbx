@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext.jsx";
@@ -127,7 +127,7 @@ export default function AdminTopups() {
         navigate("/", { replace: true });
     }
 
-    async function loadItems() {
+    const loadItems = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams();
@@ -141,9 +141,9 @@ export default function AdminTopups() {
         } finally {
             setLoading(false);
         }
-    }
+    }, [query, status]);
 
-    async function loadConfig() {
+    const loadConfig = useCallback(async () => {
         setConfigLoading(true);
         try {
             const response = await apiFetch("/admin/manual-topups/config", { method: "GET" });
@@ -154,11 +154,11 @@ export default function AdminTopups() {
         } finally {
             setConfigLoading(false);
         }
-    }
+    }, []);
 
     useEffect(() => {
         void loadItems();
-    }, [status]);
+    }, [loadItems]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -166,7 +166,7 @@ export default function AdminTopups() {
 
     useEffect(() => {
         void loadConfig();
-    }, []);
+    }, [loadConfig]);
 
     useEffect(() => {
         return () => {

@@ -4,7 +4,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiPost, apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
-import { slugifyLogo } from "../utils/platform.js";
 
 /* ─── Plataformas con colores de marca y nombres de archivo correctos ─── */
 const PLATFORMS = [

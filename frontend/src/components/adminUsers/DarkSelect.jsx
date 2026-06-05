@@ -34,8 +34,16 @@ export default function DarkSelect({ options = [], value, onChange, placeholder 
     }, []);
 
     useEffect(() => {
-        if (open) { setSearch(""); if (showSearch && searchRef.current) searchRef.current.focus(); }
+        if (open && showSearch && searchRef.current) searchRef.current.focus();
     }, [open, showSearch]);
+
+    function toggleOpen() {
+        setOpen((current) => {
+            const next = !current;
+            if (next) setSearch("");
+            return next;
+        });
+    }
 
     const triggerBase = {
         appearance: "none", width: "100%", height: 42, padding: "0 36px 0 14px",
@@ -52,7 +60,7 @@ export default function DarkSelect({ options = [], value, onChange, placeholder 
 
     return (
         <div ref={ref} style={{ position: "relative", width: "100%" }}>
-            <button type="button" disabled={disabled} onClick={() => !disabled && setOpen(v => !v)} style={triggerBase}>
+            <button type="button" disabled={disabled} onClick={() => !disabled && toggleOpen()} style={triggerBase}>
                 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: selected ? "var(--text)" : "var(--muted)" }}>
                     {selected ? selected.label : placeholder}
                 </span>

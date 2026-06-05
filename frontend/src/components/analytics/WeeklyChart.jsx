@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
     ResponsiveContainer, BarChart, Bar,
     AreaChart, Area,
@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import { apiGet } from "../../api/api";
 
-export const WEEK_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f59e0b", "#f43f5e", "#06b6d4"];
+const WEEK_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f59e0b", "#f43f5e", "#06b6d4"];
 
 const MONTH_SHORT = [
     "", "Ene", "Feb", "Mar", "Abr", "May", "Jun",
@@ -90,19 +90,22 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
     const [monthsData, setMonthsData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const selectedMonthKeyString = useMemo(() => selectedMonthKeys.join(","), [selectedMonthKeys]);
+    const selectedUserIdString = useMemo(() => selectedUserIds.join(","), [selectedUserIds]);
 
     const load = useCallback(async () => {
-        if (!selectedMonthKeys.length) { setMonthsData([]); return; }
+        const monthKeys = selectedMonthKeyString.split(",").filter(Boolean);
+        if (!monthKeys.length) { setMonthsData([]); return; }
         setLoading(true);
         setError("");
         try {
-            const promises = selectedMonthKeys.map(async (mk) => {
+            const promises = monthKeys.map(async (mk) => {
                 const [year, month] = mk.split("-").map(Number);
                 let url = `/analytics/sales/weekly?year=${year}&month=${month}`;
-                if (admin && selectedUserIds.length === 0) {
+                if (admin && !selectedUserIdString) {
                     url += `&global=true`;
-                } else if (admin && selectedUserIds.length > 0) {
-                    url += `&userIds=${selectedUserIds.join(",")}`;
+                } else if (admin && selectedUserIdString) {
+                    url += `&userIds=${selectedUserIdString}`;
                 }
                 const res = await apiGet(url);
                 if (!res.ok) throw new Error(res.data?.error || "Error al cargar datos semanales.");
@@ -119,7 +122,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
         } finally {
             setLoading(false);
         }
-    }, [JSON.stringify(selectedMonthKeys), admin, JSON.stringify(selectedUserIds)]);
+    }, [admin, selectedMonthKeyString, selectedUserIdString]);
 
     useEffect(() => { load(); }, [load]);
 

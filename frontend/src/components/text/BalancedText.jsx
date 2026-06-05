@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, react-hooks/set-state-in-effect */
 import { useEffect, useRef, useState } from "react";
 
 function getCanvasFont(style) {
@@ -43,7 +44,7 @@ function layoutText(context, words, maxWidth) {
 }
 
 export default function BalancedText({
-    as: Tag = "span",
+    as: Component = "span",
     text,
     className,
     maxLines = 2,
@@ -146,19 +147,21 @@ export default function BalancedText({
         };
     }, [maxLines, minWidthRatio, text]);
 
+    const content = balancedLines?.length
+        ? balancedLines.map((line, index) => (
+            <span
+                key={`${line}-${index}`}
+                className={lineClassName}
+                style={{ display: "block" }}
+            >
+                {line}
+            </span>
+        ))
+        : text;
+
     return (
-        <Tag ref={ref} className={className} title={title ?? text}>
-            {balancedLines?.length
-                ? balancedLines.map((line, index) => (
-                    <span
-                        key={`${line}-${index}`}
-                        className={lineClassName}
-                        style={{ display: "block" }}
-                    >
-                        {line}
-                    </span>
-                ))
-                : text}
-        </Tag>
+        <Component ref={ref} className={className} title={title ?? text}>
+            {content}
+        </Component>
     );
 }

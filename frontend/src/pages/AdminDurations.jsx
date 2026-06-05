@@ -316,15 +316,20 @@ function DurRow({ r, saving, onPatch, onDeactivate }) {
     const [days, setDays] = useState(String(r.days ?? ""));
     const [hovered, setHovered] = useState(false);
 
-    useEffect(() => {
-        setName(String(r.name ?? ""));
-        setDays(String(r.days ?? ""));
-    }, [r.name, r.days]);
-
     const rowStyle = {
         ...S.tdBorder,
         background: hovered ? "rgba(13,166,242,0.04)" : "transparent",
         transition: "background 0.15s",
+    };
+    const startEditing = () => {
+        setName(String(r.name ?? ""));
+        setDays(String(r.days ?? ""));
+        setEditing(true);
+    };
+    const cancelEditing = () => {
+        setName(String(r.name ?? ""));
+        setDays(String(r.days ?? ""));
+        setEditing(false);
     };
 
     return (
@@ -386,7 +391,7 @@ function DurRow({ r, saving, onPatch, onDeactivate }) {
                         <button
                             style={S.btnBlue}
                             disabled={saving}
-                            onClick={() => setEditing(true)}
+                            onClick={startEditing}
                             onMouseEnter={e => e.currentTarget.style.background = "rgba(13,166,242,0.22)"}
                             onMouseLeave={e => e.currentTarget.style.background = "rgba(13,166,242,0.12)"}
                         >
@@ -406,7 +411,7 @@ function DurRow({ r, saving, onPatch, onDeactivate }) {
                             <button
                                 style={S.btnCancel}
                                 disabled={saving}
-                                onClick={() => setEditing(false)}
+                                onClick={cancelEditing}
                             >
                                 Cancelar
                             </button>

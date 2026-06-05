@@ -35,9 +35,16 @@ function CustomSelect({ options, value, onChange, placeholder = "Seleccionar..."
     useEffect(() => {
         if (open && searchRef.current) {
             searchRef.current.focus();
-            setSearch("");
         }
     }, [open]);
+
+    function toggleOpen() {
+        setOpen((current) => {
+            const next = !current;
+            if (next) setSearch("");
+            return next;
+        });
+    }
 
     return (
         <div ref={ref} style={{ position: "relative", width: "100%" }}>
@@ -45,7 +52,7 @@ function CustomSelect({ options, value, onChange, placeholder = "Seleccionar..."
             <button
                 type="button"
                 disabled={disabled}
-                onClick={() => setOpen(v => !v)}
+                onClick={toggleOpen}
                 style={{
                     ...inputStyle, cursor: "pointer", textAlign: "left",
                     display: "flex", alignItems: "center", justifyContent: "space-between",

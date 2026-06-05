@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import DatePicker from "../DatePicker.jsx";
 
@@ -241,7 +241,6 @@ export default function TransactionsList({ fetchFn, userId, users }) {
     const [searchInput, setSearchInput] = useState(""); // input controlado
     const [selectedTx, setSelectedTx] = useState(null);
     const [showUserDrop, setShowUserDrop] = useState(false);
-    const [exporting, setExporting] = useState(false);
     const userDropRef = useRef(null);
 
     // Close user dropdown on outside click
@@ -253,7 +252,7 @@ export default function TransactionsList({ fetchFn, userId, users }) {
         return () => document.removeEventListener("mousedown", handler);
     }, [showUserDrop]);
 
-    async function loadData(pageNum, currentLimit, typeF = filterType, userF = filterUser, qF = search, fromF = dateFrom, toF = dateTo) {
+    const loadData = useCallback(async (pageNum, currentLimit, typeF = filterType, userF = filterUser, qF = search, fromF = dateFrom, toF = dateTo) => {
         setLoading(true);
         setError("");
         try {
@@ -275,9 +274,9 @@ export default function TransactionsList({ fetchFn, userId, users }) {
         } finally {
             setLoading(false);
         }
-    }
+    }, [dateFrom, dateTo, fetchFn, filterType, filterUser, search, userId]);
 
-    useEffect(() => { loadData(1, limit, filterType, filterUser, search, dateFrom, dateTo); }, [userId, filterType, filterUser, search, dateFrom, dateTo]);
+    useEffect(() => { loadData(1, limit, filterType, filterUser, search, dateFrom, dateTo); }, [dateFrom, dateTo, filterType, filterUser, limit, loadData, search]);
 
     // Submit search on Enter
     function handleSearchKeyDown(e) {

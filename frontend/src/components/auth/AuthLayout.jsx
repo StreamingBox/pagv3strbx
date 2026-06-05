@@ -21,7 +21,14 @@ export default function AuthLayout({
             <div style={S.orb2} />
             <div style={S.gridBg} />
 
-            <MotionButton style={S.themeBtn} whileHover={{ scale: 1.08 }} onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}>
+            <MotionButton
+                type="button"
+                style={S.themeBtn}
+                aria-label={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                title={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                whileHover={{ scale: 1.08 }}
+                onClick={() => setTheme((value) => value === "dark" ? "light" : "dark")}
+            >
                 {theme === "dark" ? <Sun size={20} /> : <Moon size={20} />}
             </MotionButton>
 
@@ -45,19 +52,19 @@ export default function AuthLayout({
                             <>
                                 <div style={S.overlayTitle}>BIENVENIDO</div>
                                 <p style={S.overlayText}>
-                                    No tienes cuenta?<br />Registrate y comienza a disfrutar de Streaming Box.
+                                    ¿No tienes cuenta?<br />Regístrate y comienza a disfrutar de Streaming Box.
                                 </p>
-                                <MotionButton style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
-                                    Registrate
+                                <MotionButton type="button" style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
+                                    Regístrate
                                 </MotionButton>
                             </>
                         ) : (
                             <>
                                 <div style={S.overlayTitle}>DE VUELTA</div>
                                 <p style={S.overlayText}>
-                                    Ya tienes cuenta?<br />Inicia sesion para continuar con tu experiencia.
+                                    ¿Ya tienes cuenta?<br />Inicia sesión para continuar con tu experiencia.
                                 </p>
-                                <MotionButton style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
+                                <MotionButton type="button" style={S.overlayBtn} whileHover={{ background: "rgba(255,255,255,.25)", transform: "translateY(-2px)" }} onClick={toggle}>
                                     Ingresar
                                 </MotionButton>
                             </>
@@ -71,7 +78,7 @@ export default function AuthLayout({
                 (c) Streaming Box 2026
                 <span className="tos-sep">-</span>
                 <button className="tos-link" style={S.legalLink} type="button" onClick={() => setShowTerms(true)}>
-                    Terminos y Condiciones
+                    Términos y Condiciones
                 </button>
             </div>
             <TermsModal open={showTerms} onClose={() => setShowTerms(false)} />

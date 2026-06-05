@@ -96,7 +96,7 @@ export default function AdminUploadLogs() {
         }
     }, [search, typeFilter, limit]);
 
-    useEffect(() => { fetchLogs(1); }, [typeFilter]);
+    useEffect(() => { fetchLogs(1); }, [fetchLogs]);
 
     async function handleClean() {
         setCleaning(true);

@@ -434,10 +434,6 @@ export default function Sidebar({
                             <span>↩</span> Cerrar sesión
                         </MotionButton>
 
-                        <div className="sb-status">
-                            <span className="sb-status-dot" />
-                            <span>Server Status: Online</span>
-                        </div>
                     </>
                 )}
             </aside>

@@ -30,6 +30,34 @@ function cleanBaseUrl() {
     return String(process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
 
+function normalizeWhatsappNumber(value) {
+    let digits = String(value || "").replace(/\D/g, "");
+    if (digits.startsWith("00")) digits = digits.slice(2);
+    if (digits.length === 10 && digits.startsWith("3")) digits = `57${digits}`;
+    if (digits.length < 8 || digits.length > 15) return "";
+    return digits;
+}
+
+function buildBuyerWhatsapp(row) {
+    const raw = String(row.buyer_whatsapp || "").trim();
+    const number = normalizeWhatsappNumber(raw);
+    if (!number) return null;
+
+    const name = String(row.user_name || "").trim();
+    const purchase = `${row.order_code ? ` ${row.order_code}` : ""}${row.platform_name ? ` de ${row.platform_name}` : ""}`;
+    const text = encodeURIComponent(
+        `${name ? `Hola ${name}` : "Hola"}, te contacto de soporte por tu compra${purchase}.`
+            .replace(/\s+/g, " ")
+            .trim()
+    );
+
+    return {
+        label: raw || number,
+        number,
+        url: `https://wa.me/${number}?text=${text}`,
+    };
+}
+
 function linkStatus(row) {
     if (row.revoked_at) return "revoked";
     if (!row.subscription_id) return "expired";
@@ -130,6 +158,7 @@ router.get("/admin/links", requireAuth, requireRole("admin"), async (req, res) =
                 u.id AS user_id,
                 u.name AS user_name,
                 u.email AS user_email,
+                NULLIF(TRIM(u.whatsapp), '') AS buyer_whatsapp,
                 p.name AS platform_name,
                 p.type AS platform_type,
                 a.email AS account_email,
@@ -151,6 +180,7 @@ router.get("/admin/links", requireAuth, requireRole("admin"), async (req, res) =
             ...row,
             status: linkStatus(row),
             url: `${baseUrl}/s/${row.token}`,
+            buyerWhatsapp: buildBuyerWhatsapp(row),
         }));
 
         return res.json({

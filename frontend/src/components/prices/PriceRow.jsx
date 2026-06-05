@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 const fmtCOP = (n) => new Intl.NumberFormat("es-CO").format(Number(n || 0));
@@ -19,14 +19,10 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
     const [usd, setUsd] = useState(r.price_usd ?? "");
     const [isRenewable, setIsRenewable] = useState(!!r.is_renewable);
 
-    useEffect(() => {
-        setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? "");
-        setIsRenewable(!!r.is_renewable);
-    }, [r.price_cop, r.price_mxn, r.price_usd, r.is_renewable]);
-
     const anyActive = useMemo(() => Boolean(r.active_cop || r.active_mxn || r.active_usd), [r.active_cop, r.active_mxn, r.active_usd]);
 
     const reset = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setIsRenewable(!!r.is_renewable); setEditing(false); };
+    const startEditing = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setIsRenewable(!!r.is_renewable); setEditing(true); };
 
     const onSave = async () => {
         const payload = {};
@@ -104,7 +100,7 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
             <td style={{ padding: "12px 16px", whiteSpace: "nowrap" }}>
                 {!editing ? (
                     <div style={{ display: "flex", gap: 6 }}>
-                        <button disabled={saving} onClick={() => setEditing(true)}
+                        <button disabled={saving} onClick={startEditing}
                             style={{ background: "rgba(13,166,242,0.08)", color: "#0da6f2", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 7, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)" }}>
                             Editar
                         </button>

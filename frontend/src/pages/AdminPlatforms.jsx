@@ -272,12 +272,6 @@ export default function AdminPlatforms() {
         );
     }, [platforms, q]);
 
-    const catMap = useMemo(() => {
-        const m = {};
-        categories.forEach(c => { m[c.id] = c.name; });
-        return m;
-    }, [categories]);
-
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden>

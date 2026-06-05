@@ -23,7 +23,7 @@ export function useAdminPrices() {
     const [totalPages, setTotalPages] = useState(1);
     const [q, setQ] = useState("");
 
-    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5, queryStr = q) => {
+    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5, queryStr = "") => {
         setLoading(true);
         setError("");
 
@@ -86,7 +86,7 @@ export function useAdminPrices() {
                 setSaving(false);
             }
         },
-        [loadAll]
+        [limit, loadAll, page, q]
     );
 
     const toggleAll = useCallback(

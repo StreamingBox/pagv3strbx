@@ -36,8 +36,8 @@ function normalizeWhatsappNumber(value) {
   return digits;
 }
 
-function buildAccountHelpWhatsappUrl({ platformName, orderId }) {
-  const number = normalizeWhatsappNumber(process.env.SALES_CONTACT_PHONE || "3152485340");
+function buildAccountHelpWhatsappUrl({ platformName, orderId, buyerWhatsapp }) {
+  const number = normalizeWhatsappNumber(buyerWhatsapp);
   if (!number) return "";
 
   const text = encodeURIComponent(
@@ -105,11 +105,13 @@ async function loadCredentialByToken(token) {
        a.pin,
        a.profile_number,
        a.expires_at AS account_expires_at,
+       NULLIF(TRIM(u.whatsapp), '') AS buyer_whatsapp,
        p.type AS platform_type
      FROM credential_links cl
      JOIN subscriptions s ON s.id = cl.subscription_id
      JOIN platforms p ON p.id = s.platform_id
      LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
+     LEFT JOIN users u ON u.id = s.user_id
      WHERE cl.token = ?
      LIMIT 1`,
     [token]
@@ -166,6 +168,11 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       ? daysRemainingStoredDateOnly(formatDateOnlyBogota(r.account_expires_at))
       : daysRemainingStoredDateOnly(r.expires_at);
     const isEmailMode = r.platform_type === "correo";
+    const rawWhatsappUrl = buildAccountHelpWhatsappUrl({
+      platformName: r.platform_name,
+      orderId: r.order_id,
+      buyerWhatsapp: r.buyer_whatsapp,
+    });
 
     res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
     res.set("Pragma", "no-cache");
@@ -184,6 +191,8 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         daysRemaining: remaining,
         status: r.status,
         platformType: r.platform_type,
+        showWhatsapp: Boolean(rawWhatsappUrl),
+        waLink: rawWhatsappUrl || null,
         isEmailMode,
       });
     }
@@ -192,10 +201,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     const orderId = escapeHtml(r.order_id ?? "-");
     const expEsc = escapeHtml(exp);
     const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
-    const whatsappUrl = escapeHtml(buildAccountHelpWhatsappUrl({
-      platformName: r.platform_name,
-      orderId: r.order_id,
-    }));
+    const whatsappUrl = escapeHtml(rawWhatsappUrl);
 
     const statusText = expired ? "Vencido" : "Activo";
     const statusClass = expired ? "danger" : "ok";

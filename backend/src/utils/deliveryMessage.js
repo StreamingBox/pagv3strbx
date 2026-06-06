@@ -23,13 +23,6 @@ function isCanvaEmailActivationProduct(platformName) {
     return normalized.includes("canva") && normalized.includes("correo");
 }
 
-function shouldAppendDeviceUsageRule(platformName) {
-    const normalized = normalizeProductName(platformName);
-    return normalized.includes("prime video completa")
-        || normalized.includes("microsoft office")
-        || isCanvaEmailActivationProduct(platformName);
-}
-
 function emailActivationServiceName(platformName) {
     const cleanName = String(platformName || "")
         .replace(/\s+a\s+correo\s*$/i, "")
@@ -50,8 +43,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
-        const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
-        return shouldAppendDeviceUsageRule(platformName) && !isCanvaEmailActivationProduct(platformName);
+        return !isEmailDelivery(plan);
     });
     const lines = [];
 

@@ -59,17 +59,17 @@ test("non-Canva correo products keep the generic credential link message", () =>
     assert.doesNotMatch(message, /Regla de uso/);
 });
 
-test("selected credential products include the one-device usage rule", () => {
-    for (const platformName of ["Prime Video Completa", "Microsoft Office 365"]) {
+test("credential products include the one-device usage rule", () => {
+    for (const platformName of ["Prime Video Completa", "Microsoft Office 365", "Netflix", "Disney Estándar"]) {
         const message = buildSingleItemMessage({ platformName });
         assert.match(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
     }
 });
 
-test("regular credential products do not include the one-device usage rule", () => {
+test("regular credential products keep credentials and the one-device usage rule", () => {
     const message = buildSingleItemMessage({ platformName: "Netflix" });
 
     assert.match(message, /Netflix/);
     assert.match(message, /Correo: cliente@example\.com/);
-    assert.doesNotMatch(message, /Regla de uso/);
+    assert.match(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
 });

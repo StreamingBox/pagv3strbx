@@ -3,6 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, currencyAliases } = require("../utils/currency");
+const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 
 const router = express.Router();
 
@@ -39,20 +40,43 @@ function cleanPrices(prices) {
         .filter((row) => ["COP", "MXN", "USD"].includes(row.currency) && Number.isFinite(row.price) && row.price >= 0);
 }
 
-async function getCatalogCombosForCurrency(currency) {
-    const aliases = currencyAliases(currency, "COP");
+function cleanLiteComboConfig(body = {}) {
+    const hasLitePrice = body.lite_price_cop !== undefined && body.lite_price_cop !== null && String(body.lite_price_cop).trim() !== "";
+    const litePrice = hasLitePrice ? Number(body.lite_price_cop) : null;
+    if (hasLitePrice && (!Number.isFinite(litePrice) || litePrice < 0)) {
+        const err = new Error("lite_price_cop debe ser un numero COP valido.");
+        err.status = 400;
+        throw err;
+    }
+    return {
+        hasLitePrice,
+        hasLiteVisibility: body.show_in_lite !== undefined,
+        litePrice,
+        showInLite: body.show_in_lite ? 1 : 0,
+    };
+}
+
+async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") {
+    const liteCatalog = isLiteChannel(salesChannel);
+    const liteFlag = liteCatalog ? 1 : 0;
+    const aliases = liteCatalog ? ["COP"] : currencyAliases(currency, "COP");
     const placeholders = aliases.map(() => "?").join(",");
 
     const [combos] = await pool.query(
         `SELECT c.id, c.name, c.slug, c.description, c.badge, c.sort_order,
-                cp.price, cp.compare_at_price, cp.currency
+                CASE WHEN ? = 1 THEN cp.lite_price_cop ELSE cp.price END AS price,
+                CASE WHEN ? = 1 THEN NULL ELSE cp.compare_at_price END AS compare_at_price,
+                CASE WHEN ? = 1 THEN 'COP' ELSE cp.currency END AS currency
          FROM combos c
          JOIN combo_prices cp ON cp.combo_id = c.id
          WHERE c.is_active = 1
-           AND cp.is_active = 1
-           AND UPPER(cp.currency) IN (${placeholders})
+           AND (
+                (? = 1 AND UPPER(cp.currency) = 'COP' AND COALESCE(cp.show_in_lite, 0) = 1 AND cp.lite_price_cop IS NOT NULL)
+                OR
+                (? = 0 AND cp.is_active = 1 AND UPPER(cp.currency) IN (${placeholders}))
+           )
          ORDER BY c.sort_order ASC, c.name ASC`,
-        aliases
+        [liteFlag, liteFlag, liteFlag, liteFlag, liteFlag, ...aliases]
     );
 
     if (!combos.length) return [];
@@ -68,8 +92,8 @@ async function getCatalogCombosForCurrency(currency) {
             ci.quantity,
             ci.sort_order,
             pp.id AS platformPriceId,
-            pp.price AS itemPrice,
-            pp.currency AS itemCurrency,
+            CASE WHEN ? = 1 THEN COALESCE(pp.lite_price_cop, pp.price) ELSE pp.price END AS itemPrice,
+            CASE WHEN ? = 1 THEN 'COP' ELSE pp.currency END AS itemCurrency,
             pp.is_renewable,
             p.name AS platformName,
             p.slug AS platformSlug,
@@ -107,7 +131,7 @@ async function getCatalogCombosForCurrency(currency) {
          ) fs ON fs.platform_id = p.id
          WHERE ci.combo_id IN (${comboPlaceholders})
          ORDER BY ci.combo_id ASC, ci.sort_order ASC, p.name ASC`,
-        [...aliases, ...comboIds]
+        [liteFlag, liteFlag, ...aliases, ...comboIds]
     );
 
     const [expectedRows] = await pool.query(
@@ -172,9 +196,10 @@ async function getCatalogCombosForCurrency(currency) {
 router.get("/combos", requireAuth, async (req, res) => {
     try {
         const userId = req.user?.id || req.user?.sub;
+        const salesChannel = getSalesChannel(req);
         const [urows] = await pool.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
-        const userCurrency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
-        const combos = await getCatalogCombosForCurrency(userCurrency);
+        const userCurrency = isLiteChannel(salesChannel) ? "COP" : normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
+        const combos = await getCatalogCombosForCurrency(userCurrency, salesChannel);
         return res.json(combos);
     } catch (err) {
         console.error("GET /combos error:", err);
@@ -207,7 +232,7 @@ router.get("/admin/combos", requireAuth, requireRole("admin"), async (_req, res)
         );
 
         const [prices] = await pool.query(
-            `SELECT id, combo_id, currency, price, compare_at_price, is_active
+            `SELECT id, combo_id, currency, price, compare_at_price, lite_price_cop, show_in_lite, is_active
              FROM combo_prices
              WHERE combo_id IN (${placeholders})
              ORDER BY combo_id ASC, currency ASC`,
@@ -240,6 +265,7 @@ router.post("/admin/combos", requireAuth, requireRole("admin"), async (req, res)
     const conn = await pool.getConnection();
     try {
         const { name, slug, description, badge, is_active, sort_order, items, prices } = req.body || {};
+        const liteConfig = cleanLiteComboConfig(req.body || {});
         const comboName = String(name || "").trim();
         if (!comboName) return res.status(400).json({ message: "El nombre del combo es obligatorio." });
 
@@ -283,12 +309,34 @@ router.post("/admin/combos", requireAuth, requireRole("admin"), async (req, res)
             );
         }
 
+        if (liteConfig.hasLitePrice || liteConfig.hasLiteVisibility) {
+            await conn.query(
+                `INSERT INTO combo_prices (combo_id, currency, price, is_active, lite_price_cop, show_in_lite)
+                 VALUES (?, 'COP', ?, 0, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    lite_price_cop = COALESCE(?, lite_price_cop),
+                    show_in_lite = COALESCE(?, show_in_lite),
+                    updated_at = NOW()`,
+                [
+                    comboId,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : 0,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : null,
+                    liteConfig.hasLiteVisibility ? liteConfig.showInLite : 0,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : null,
+                    liteConfig.hasLiteVisibility ? liteConfig.showInLite : null,
+                ]
+            );
+        }
+
         await conn.commit();
         return res.status(201).json({ ok: true, id: comboId });
     } catch (err) {
         try { await conn.rollback(); } catch { }
         if (String(err?.code || "").includes("ER_DUP_ENTRY")) {
             return res.status(409).json({ message: "Ya existe un combo con ese slug o item duplicado." });
+        }
+        if (err?.status) {
+            return res.status(err.status).json({ message: err.message });
         }
         console.error("POST /admin/combos error:", err);
         return res.status(500).json({ message: "Error guardando combo." });
@@ -304,6 +352,7 @@ router.patch("/admin/combos/:id", requireAuth, requireRole("admin"), async (req,
         if (!Number.isInteger(comboId) || comboId <= 0) return res.status(400).json({ message: "Combo invalido." });
 
         const { name, slug, description, badge, is_active, sort_order, items, prices } = req.body || {};
+        const liteConfig = cleanLiteComboConfig(req.body || {});
         const comboName = name !== undefined ? String(name || "").trim() : null;
         if (name !== undefined && !comboName) return res.status(400).json({ message: "El nombre del combo es obligatorio." });
 
@@ -311,7 +360,9 @@ router.patch("/admin/combos/:id", requireAuth, requireRole("admin"), async (req,
         if (items !== undefined && !cleanItems.length) return res.status(400).json({ message: "Agrega al menos una plataforma al combo." });
 
         const cleanPriceRows = prices !== undefined ? cleanPrices(prices) : null;
-        if (prices !== undefined && !cleanPriceRows.length) return res.status(400).json({ message: "Agrega al menos un precio valido." });
+        if (prices !== undefined && !cleanPriceRows.length && !liteConfig.hasLitePrice && !liteConfig.hasLiteVisibility) {
+            return res.status(400).json({ message: "Agrega al menos un precio valido." });
+        }
 
         const finalSlug = slug !== undefined || comboName ? slugify(slug || comboName) : null;
 
@@ -360,12 +411,34 @@ router.patch("/admin/combos/:id", requireAuth, requireRole("admin"), async (req,
             }
         }
 
+        if (liteConfig.hasLitePrice || liteConfig.hasLiteVisibility) {
+            await conn.query(
+                `INSERT INTO combo_prices (combo_id, currency, price, is_active, lite_price_cop, show_in_lite)
+                 VALUES (?, 'COP', ?, 0, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    lite_price_cop = COALESCE(?, lite_price_cop),
+                    show_in_lite = COALESCE(?, show_in_lite),
+                    updated_at = NOW()`,
+                [
+                    comboId,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : 0,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : null,
+                    liteConfig.hasLiteVisibility ? liteConfig.showInLite : 0,
+                    liteConfig.hasLitePrice ? liteConfig.litePrice : null,
+                    liteConfig.hasLiteVisibility ? liteConfig.showInLite : null,
+                ]
+            );
+        }
+
         await conn.commit();
         return res.json({ ok: true });
     } catch (err) {
         try { await conn.rollback(); } catch { }
         if (String(err?.code || "").includes("ER_DUP_ENTRY")) {
             return res.status(409).json({ message: "Ya existe un combo con ese slug o item duplicado." });
+        }
+        if (err?.status) {
+            return res.status(err.status).json({ message: err.message });
         }
         console.error("PATCH /admin/combos error:", err);
         return res.status(500).json({ message: "Error actualizando combo." });

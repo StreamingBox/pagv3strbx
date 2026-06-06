@@ -23,6 +23,8 @@ router.get("/admin/prices", requireAuth, requireRole("admin"), async (req, res) 
         d.days,
         pp.price,
         pp.currency,
+        pp.lite_price_cop,
+        pp.show_in_lite,
         pp.is_active,
         pp.created_at,
         pp.updated_at
@@ -87,6 +89,9 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
                 MAX(CASE WHEN pp.currency='COP' THEN pp.price END)     AS price_cop,
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.price END)     AS price_mxn,
                 MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.price END)     AS price_usd,
+
+                MAX(CASE WHEN pp.currency='COP' THEN pp.lite_price_cop END) AS lite_price_cop,
+                MAX(CASE WHEN pp.currency='COP' THEN pp.show_in_lite END) AS show_in_lite,
 
                 MAX(CASE WHEN pp.currency='COP' THEN pp.is_active END) AS active_cop,
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.is_active END) AS active_mxn,
@@ -174,20 +179,28 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
     const conn = await pool.getConnection();
 
     try {
-        const { platform_id, duration_id, prices, is_renewable } = req.body || {};
+        const { platform_id, duration_id, prices, is_renewable, lite_price_cop, show_in_lite } = req.body || {};
         const pid = Number(platform_id);
         const did = Number(duration_id);
         const renewable = is_renewable ? 1 : 0;
+        const hasLitePrice = lite_price_cop !== undefined && lite_price_cop !== null && String(lite_price_cop).trim() !== "";
+        const hasLiteVisibility = show_in_lite !== undefined;
+        const litePrice = hasLitePrice ? Number(lite_price_cop) : null;
+        const liteVisible = hasLiteVisibility ? (show_in_lite ? 1 : 0) : null;
 
-        if (!pid || !did || !prices || typeof prices !== "object") {
-            return res.status(400).json({ message: "platform_id, duration_id y prices son obligatorios." });
+        if (!pid || !did) {
+            return res.status(400).json({ message: "platform_id y duration_id son obligatorios." });
         }
 
-        const entries = Object.entries(prices)
+        if (hasLitePrice && (!Number.isFinite(litePrice) || litePrice < 0)) {
+            return res.status(400).json({ message: "lite_price_cop debe ser un numero COP valido." });
+        }
+
+        const entries = Object.entries(prices && typeof prices === "object" ? prices : {})
             .map(([cur, val]) => [normalizeCurrency(String(cur).toUpperCase(), String(cur).toUpperCase()), Number(val)])
             .filter(([cur, val]) => ["COP", "MXN", "USD"].includes(cur) && Number.isFinite(val) && val >= 0);
 
-        if (!entries.length) {
+        if (!entries.length && !hasLitePrice && !hasLiteVisibility) {
             return res.status(400).json({ message: "prices debe incluir al menos una moneda válida (COP/MXN/USD)." });
         }
 
@@ -205,6 +218,31 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
             updated_at = NOW()
         `,
                 [pid, did, price, currency, renewable]
+            );
+        }
+
+        if (hasLitePrice || hasLiteVisibility) {
+            await conn.query(
+                `
+          INSERT INTO platform_prices
+            (platform_id, duration_id, price, currency, is_active, is_renewable, lite_price_cop, show_in_lite)
+          VALUES (?, ?, ?, 'COP', 0, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            lite_price_cop = COALESCE(?, lite_price_cop),
+            show_in_lite = COALESCE(?, show_in_lite),
+            is_renewable = VALUES(is_renewable),
+            updated_at = NOW()
+        `,
+                [
+                    pid,
+                    did,
+                    hasLitePrice ? litePrice : 0,
+                    renewable,
+                    hasLitePrice ? litePrice : null,
+                    hasLiteVisibility ? liteVisible : 0,
+                    hasLitePrice ? litePrice : null,
+                    hasLiteVisibility ? liteVisible : null,
+                ]
             );
         }
 
@@ -233,11 +271,17 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
 router.patch("/admin/prices/:id", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { id } = req.params;
-        const { price, is_active, is_renewable } = req.body || {};
+        const { price, is_active, is_renewable, lite_price_cop, show_in_lite } = req.body || {};
 
         // si no mandan nada, no hacemos nada
-        if (price === undefined && is_active === undefined && is_renewable === undefined) {
-            return res.status(400).json({ message: "Debes enviar price, is_active o is_renewable." });
+        if (
+            price === undefined &&
+            is_active === undefined &&
+            is_renewable === undefined &&
+            lite_price_cop === undefined &&
+            show_in_lite === undefined
+        ) {
+            return res.status(400).json({ message: "Debes enviar price, is_active, is_renewable o Lite." });
         }
 
         await pool.query(
@@ -245,9 +289,18 @@ router.patch("/admin/prices/:id", requireAuth, requireRole("admin"), async (req,
        SET price        = COALESCE(?, price),
            is_active    = COALESCE(?, is_active),
            is_renewable = COALESCE(?, is_renewable),
+           lite_price_cop = COALESCE(?, lite_price_cop),
+           show_in_lite = COALESCE(?, show_in_lite),
            updated_at   = NOW()
        WHERE id = ?`,
-            [price ?? null, is_active ?? null, is_renewable ?? null, id]
+            [
+                price ?? null,
+                is_active ?? null,
+                is_renewable ?? null,
+                lite_price_cop ?? null,
+                show_in_lite === undefined ? null : (show_in_lite ? 1 : 0),
+                id,
+            ]
         );
 
         return res.json({ ok: true });

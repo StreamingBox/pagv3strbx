@@ -3,6 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, currencyAliases } = require("../utils/currency");
+const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 
 const router = express.Router();
 
@@ -20,14 +21,17 @@ const router = express.Router();
 router.get("/catalog", requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id || req.user?.sub;
+    const salesChannel = getSalesChannel(req);
+    const liteCatalog = isLiteChannel(salesChannel);
+    const liteFlag = liteCatalog ? 1 : 0;
 
     // 1) Leer moneda del usuario
     const [urows] = await pool.query(
       "SELECT currency FROM users WHERE id = ? LIMIT 1",
       [userId]
     );
-    const userCurrency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
-    const aliases = currencyAliases(userCurrency, "COP");
+    const userCurrency = liteCatalog ? "COP" : normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
+    const aliases = liteCatalog ? ["COP"] : currencyAliases(userCurrency, "COP");
     const currencyPlaceholders = aliases.map(() => "?").join(",");
     const allowedCurrencySql = aliases.map(() => "FIND_IN_SET(?, UPPER(REPLACE(p.allowed_currencies, ' ', ''))) > 0").join(" OR ");
 
@@ -52,8 +56,8 @@ router.get("/catalog", requireAuth, async (req, res) => {
         d.name AS durationName,
         d.days,
 
-        pp.price,
-        pp.currency,
+        CASE WHEN ? = 1 THEN pp.lite_price_cop ELSE pp.price END AS price,
+        CASE WHEN ? = 1 THEN 'COP' ELSE pp.currency END AS currency,
         pp.is_renewable,
 
         CASE
@@ -95,13 +99,25 @@ router.get("/catalog", requireAuth, async (req, res) => {
 
       LEFT JOIN categories c ON c.id = p.category_id
 
-      WHERE pp.is_active = 1
-        AND p.is_active = 1
-        AND UPPER(pp.currency) IN (${currencyPlaceholders})
+      WHERE p.is_active = 1
         AND (
-          p.allowed_currencies IS NULL
-          OR p.allowed_currencies = ''
-          OR ${allowedCurrencySql}
+          (
+            ? = 1
+            AND UPPER(pp.currency) = 'COP'
+            AND COALESCE(pp.show_in_lite, 0) = 1
+            AND pp.lite_price_cop IS NOT NULL
+          )
+          OR
+          (
+            ? = 0
+            AND pp.is_active = 1
+            AND UPPER(pp.currency) IN (${currencyPlaceholders})
+            AND (
+              p.allowed_currencies IS NULL
+              OR p.allowed_currencies = ''
+              OR ${allowedCurrencySql}
+            )
+          )
         )
 
       ORDER BY
@@ -110,7 +126,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.name ASC,
         d.days ASC
       `,
-      [...aliases, ...aliases]
+      [liteFlag, liteFlag, liteFlag, liteFlag, ...aliases, ...aliases]
     );
 
     res.set("Cache-Control", "private, no-store, no-cache, must-revalidate");

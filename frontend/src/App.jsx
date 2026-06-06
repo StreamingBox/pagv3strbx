@@ -10,6 +10,7 @@ import Dashboard from "./pages/Dashboard.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
 import CredentialRedirect from "./pages/CredentialRedirect.jsx";
+import { isLiteSite } from "./config/siteVariant.js";
 
 // ─── Lazy imports (admin + menos frecuentes) ───────────────────────────
 const Admin = lazy(() => import("./pages/Admin.jsx"));
@@ -60,12 +61,17 @@ function RedirectByRole() {
     return <Navigate to="/dashboard" replace />;
 }
 
+function HiddenOnLite({ children }) {
+    if (isLiteSite()) return <Navigate to="/dashboard" replace />;
+    return children;
+}
+
 /* ==========================================
    APP ROUTES
 ========================================== */
 export default function App() {
     const { user, authLoading } = useAuth();
-    const showInstallPrompt = !authLoading && !!user?.id;
+    const showInstallPrompt = !isLiteSite() && !authLoading && !!user?.id;
 
     return (
         <>
@@ -135,7 +141,9 @@ export default function App() {
                     path="/analytics"
                     element={
                         <ProtectedRoute roles={["admin", "user"]}>
-                            <UserAnalyticsPage />
+                            <HiddenOnLite>
+                                <UserAnalyticsPage />
+                            </HiddenOnLite>
                         </ProtectedRoute>
                     }
                 />
@@ -145,7 +153,9 @@ export default function App() {
                     path="/codes"
                     element={
                         <ProtectedRoute roles={["admin", "user"]}>
-                            <Codes />
+                            <HiddenOnLite>
+                                <Codes />
+                            </HiddenOnLite>
                         </ProtectedRoute>
                     }
                 />
@@ -384,7 +394,9 @@ export default function App() {
                     path="/advertising"
                     element={
                         <ProtectedRoute roles={["admin", "user"]}>
-                            <Advertising />
+                            <HiddenOnLite>
+                                <Advertising />
+                            </HiddenOnLite>
                         </ProtectedRoute>
                     }
                 />

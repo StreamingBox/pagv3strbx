@@ -74,6 +74,8 @@ export function useAdminPrices() {
                             durationId: Number(durationId),
                             prices: payload.prices || {},
                             is_renewable: payload.is_renewable,
+                            lite_price_cop: payload.lite_price_cop,
+                            show_in_lite: payload.show_in_lite,
                         },
                     ],
                 };

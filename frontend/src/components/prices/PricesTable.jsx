@@ -57,18 +57,18 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead>
                         <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                            {["Plataforma", "Duración", "🇨🇴 COP", "🇲🇽 MXN", "🇺🇸 USD", "Renovable", "Activo", "Acciones"].map(h => (
+                            {["Plataforma", "Duración", "🇨🇴 COP", "🇲🇽 MXN", "🇺🇸 USD", "Lite COP", "Renovable", "Activo", "Acciones"].map(h => (
                                 <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                             ))}
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center" }}>
+                            <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center" }}>
                                 <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                             </td></tr>
                         ) : prices.length === 0 ? (
-                            <tr><td colSpan={8} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                            <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                 <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
                                 No hay planes aún.
                             </td></tr>
@@ -79,8 +79,14 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                                 idx={idx}
                                 saving={saving}
                                 onToggleAll={() => onToggleAll(r)}
-                                onSaveMulti={(pricesObj, isRenewable) =>
-                                    onSaveMulti({ platform_id: r.platform_id, duration_id: r.duration_id, prices: pricesObj, is_renewable: isRenewable })
+                                onSaveMulti={(pricesObj, isRenewable, liteConfig = {}) =>
+                                    onSaveMulti({
+                                        platform_id: r.platform_id,
+                                        duration_id: r.duration_id,
+                                        prices: pricesObj,
+                                        is_renewable: isRenewable,
+                                        ...liteConfig,
+                                    })
                                 }
                             />
                         ))}

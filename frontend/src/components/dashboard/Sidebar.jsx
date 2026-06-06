@@ -9,6 +9,7 @@ import { displayCurrency } from "../../utils/currency.js";
 import { isSidebarMobile, useResponsiveSidebar } from "../sidebar/AppSidebar.jsx";
 
 import { getApiBase } from "../../config/apiBase.js";
+import { isLiteSite } from "../../config/siteVariant.js";
 import { isNativeAndroidApp } from "../../native/biometricAuth.js";
 
 const API_BASE = getApiBase();
@@ -26,7 +27,6 @@ const NAV_ITEMS = [
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
     { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
-    { key: "support", label: "Soporte", icon: "🛠️", path: null },
 ];
 
 export default function Sidebar({
@@ -56,10 +56,11 @@ export default function Sidebar({
         }
     });
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
+    const liteSite = isLiteSite();
     const activePath = window.location.pathname;
 
     const APK_URL = `/downloads/streaming-box-android.apk?v=${encodeURIComponent(APK_RELEASE_ID)}`;
-    const showApkButton = !isNativeAndroidApp();
+    const showApkButton = !liteSite && !isNativeAndroidApp();
     const hasNewApkRelease = showApkButton && apkDownloadedRelease !== APK_RELEASE_ID;
 
     function downloadApk() {
@@ -202,66 +203,70 @@ export default function Sidebar({
                                     </span>
                                 </div>
 
-                                <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "10px 0 8px" }} />
+                                {!liteSite && (
+                                    <>
+                                        <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "10px 0 8px" }} />
 
-                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                                    <span
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            borderRadius: "50%",
-                                            background: "rgba(16,185,129,0.18)",
-                                            border: "1px solid rgba(16,185,129,0.35)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            fontSize: 11,
-                                            flexShrink: 0,
-                                        }}
-                                    >
-                                        📈
-                                    </span>
-                                    <span className="sb-profit-label" style={{ flex: 1, fontSize: 12 }}>Ganancias totales</span>
-                                    <span className="sb-profit-value" style={{ fontSize: 13, fontWeight: 800, color: "#10b981" }}>
-                                        +{Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
-                                    </span>
-                                </div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                            <span
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    borderRadius: "50%",
+                                                    background: "rgba(16,185,129,0.18)",
+                                                    border: "1px solid rgba(16,185,129,0.35)",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    fontSize: 11,
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                📈
+                                            </span>
+                                            <span className="sb-profit-label" style={{ flex: 1, fontSize: 12 }}>Ganancias totales</span>
+                                            <span className="sb-profit-value" style={{ fontSize: 13, fontWeight: 800, color: "#10b981" }}>
+                                                +{Number(wallet?.profit_total || 0).toLocaleString("es-CO")}
+                                            </span>
+                                        </div>
 
-                                <div style={{ height: 1, background: "rgba(255,255,255,0.04)", margin: "4px 0" }} />
+                                        <div style={{ height: 1, background: "rgba(255,255,255,0.04)", margin: "4px 0" }} />
 
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 8,
-                                        borderLeft: "2.5px solid #13c8ec",
-                                        paddingLeft: 8,
-                                        marginTop: 4,
-                                    }}
-                                >
-                                    <span
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            borderRadius: "50%",
-                                            background: "rgba(19,200,236,0.15)",
-                                            border: "1px solid rgba(19,200,236,0.4)",
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                            fontSize: 11,
-                                            fontWeight: 900,
-                                            color: "#13c8ec",
-                                            flexShrink: 0,
-                                        }}
-                                    >
-                                        $
-                                    </span>
-                                    <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>Inversión total</span>
-                                    <span style={{ fontSize: 13, fontWeight: 800, color: "#13c8ec" }}>
-                                        {Number(wallet?.total_invested || 0).toLocaleString("es-CO")}
-                                    </span>
-                                </div>
+                                        <div
+                                            style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 8,
+                                                borderLeft: "2.5px solid #13c8ec",
+                                                paddingLeft: 8,
+                                                marginTop: 4,
+                                            }}
+                                        >
+                                            <span
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    borderRadius: "50%",
+                                                    background: "rgba(19,200,236,0.15)",
+                                                    border: "1px solid rgba(19,200,236,0.4)",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    fontSize: 11,
+                                                    fontWeight: 900,
+                                                    color: "#13c8ec",
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                $
+                                            </span>
+                                            <span style={{ flex: 1, fontSize: 12, color: "var(--muted)" }}>Inversión total</span>
+                                            <span style={{ fontSize: 13, fontWeight: 800, color: "#13c8ec" }}>
+                                                {Number(wallet?.total_invested || 0).toLocaleString("es-CO")}
+                                            </span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -297,6 +302,7 @@ export default function Sidebar({
                         <nav className="sb-nav">
                             {NAV_ITEMS
                                 .filter((item, index, arr) => arr.findIndex((x) => x.key === item.key) === index)
+                                .filter((item) => !liteSite || !["advertising", "analytics", "codes"].includes(item.key))
                                 .map((item) => {
                                 const isActive = activePath === item.path;
                                 const handler = actionMap[item.key];

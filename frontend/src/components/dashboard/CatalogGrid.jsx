@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { getPlatformLogo } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
+import { isLiteSite } from "../../config/siteVariant.js";
 
 const MotionDiv = motion.div;
 const MotionButton = motion.button;
@@ -56,6 +57,7 @@ function hexToRgba(hex, alpha) {
 }
 
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
+    const liteSite = isLiteSite();
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
         const aUnlim = a.platformType === 'correo';
@@ -182,10 +184,10 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 <span className={`stock-dot${outOfStock ? " stock-dot--out" : ""}`} />
                                 <span className="catalog-card__stock-text">
                                     {isUnlimited
-                                        ? "Stock: ∞"
+                                        ? (liteSite ? "Disponible" : "Stock: ∞")
                                         : outOfStock
                                             ? "Sin Stock"
-                                            : `Stock: ${Math.max(stock - inCartCount, 0)}`
+                                            : (liteSite ? "Disponible" : `Stock: ${Math.max(stock - inCartCount, 0)}`)
                                     }
                                 </span>
                             </div>

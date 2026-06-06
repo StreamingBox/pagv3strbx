@@ -6,6 +6,7 @@ const { checkoutService } = require("../services/checkoutService");
 const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
 const { renewSubscription } = require("../services/renewal.service");
 const { notifyRenewalSale } = require("../services/telegramBot");
+const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 
 const router = express.Router();
 
@@ -15,8 +16,9 @@ router.post("/checkout", requireAuth, async (req, res) => {
         const userId = req.user.id;
         const items = Array.isArray(req.body?.items) ? req.body.items : [];
         const combos = Array.isArray(req.body?.combos) ? req.body.combos : [];
+        const salesChannel = getSalesChannel(req);
 
-        const recordProfit = !!req.body?.recordProfit;
+        const recordProfit = !isLiteChannel(salesChannel) && !!req.body?.recordProfit;
         const profitAmount = Number(req.body?.profitAmount || 0);
 
         const data = await checkoutService({
@@ -25,6 +27,7 @@ router.post("/checkout", requireAuth, async (req, res) => {
             combos,
             recordProfit,
             profitAmount,
+            salesChannel,
         });
 
         return res.status(201).json(data);

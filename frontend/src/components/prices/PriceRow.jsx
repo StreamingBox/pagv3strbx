@@ -17,20 +17,25 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
     const [cop, setCop] = useState(r.price_cop ?? "");
     const [mxn, setMxn] = useState(r.price_mxn ?? "");
     const [usd, setUsd] = useState(r.price_usd ?? "");
+    const [liteCop, setLiteCop] = useState(r.lite_price_cop ?? "");
+    const [showInLite, setShowInLite] = useState(!!r.show_in_lite);
     const [isRenewable, setIsRenewable] = useState(!!r.is_renewable);
 
     const anyActive = useMemo(() => Boolean(r.active_cop || r.active_mxn || r.active_usd), [r.active_cop, r.active_mxn, r.active_usd]);
 
-    const reset = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setIsRenewable(!!r.is_renewable); setEditing(false); };
-    const startEditing = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setIsRenewable(!!r.is_renewable); setEditing(true); };
+    const reset = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setLiteCop(r.lite_price_cop ?? ""); setShowInLite(!!r.show_in_lite); setIsRenewable(!!r.is_renewable); setEditing(false); };
+    const startEditing = () => { setCop(r.price_cop ?? ""); setMxn(r.price_mxn ?? ""); setUsd(r.price_usd ?? ""); setLiteCop(r.lite_price_cop ?? ""); setShowInLite(!!r.show_in_lite); setIsRenewable(!!r.is_renewable); setEditing(true); };
 
     const onSave = async () => {
         const payload = {};
         if (cop !== "" && Number.isFinite(Number(cop))) payload.COP = Number(cop);
         if (mxn !== "" && Number.isFinite(Number(mxn))) payload.MXN = Number(mxn);
         if (usd !== "" && Number.isFinite(Number(usd))) payload.USD = Number(usd);
-        if (!Object.keys(payload).length) { reset(); return; }
-        await onSaveMulti(payload, isRenewable);
+        if (!Object.keys(payload).length && liteCop === "") { reset(); return; }
+        await onSaveMulti(payload, isRenewable, {
+            lite_price_cop: liteCop !== "" ? Number(liteCop) : undefined,
+            show_in_lite: showInLite,
+        });
         setEditing(false);
     };
 
@@ -73,6 +78,23 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
             {/* USD */}
             <td style={{ padding: "12px 16px", color: "var(--muted)" }}>
                 {editing ? <input style={numInput} type="number" value={usd} onChange={e => setUsd(e.target.value)} /> : fmtPlain(r.price_usd)}
+            </td>
+
+            {/* Lite COP */}
+            <td style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 800 }}>
+                {editing ? (
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input style={numInput} type="number" value={liteCop} onChange={e => setLiteCop(e.target.value)} />
+                        <label style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--muted)", fontSize: 11 }}>
+                            <input type="checkbox" checked={showInLite} onChange={e => setShowInLite(e.target.checked)} />
+                            Ver
+                        </label>
+                    </div>
+                ) : r.show_in_lite ? (
+                    <span style={{ color: "#10b981" }}>{fmtCOP(r.lite_price_cop || 0)}</span>
+                ) : (
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>Oculto</span>
+                )}
             </td>
 
             {/* Renovable */}

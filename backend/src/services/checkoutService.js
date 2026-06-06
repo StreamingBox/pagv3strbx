@@ -6,6 +6,7 @@ const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
+const { isLiteChannel } = require("../utils/salesChannel");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -36,8 +37,10 @@ function requiresInventoryAccount(plan) {
     return String(plan?.type || "").trim().toLowerCase() !== "correo";
 }
 
-async function loadIndividualPlans(conn, platformPriceIds) {
+async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "reseller") {
     if (!platformPriceIds.length) return [];
+    const liteCatalog = isLiteChannel(salesChannel);
+    const liteFlag = liteCatalog ? 1 : 0;
 
     const placeholders = platformPriceIds.map(() => "?").join(",");
     const [planRows] = await conn.query(
@@ -45,8 +48,8 @@ async function loadIndividualPlans(conn, platformPriceIds) {
             pp.id AS platform_price_id,
             pp.platform_id,
             pp.duration_id,
-            pp.price,
-            pp.currency,
+            CASE WHEN ? = 1 THEN pp.lite_price_cop ELSE pp.price END AS price,
+            CASE WHEN ? = 1 THEN 'COP' ELSE pp.currency END AS currency,
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
@@ -55,8 +58,14 @@ async function loadIndividualPlans(conn, platformPriceIds) {
          FROM platform_prices pp
          JOIN durations d ON d.id = pp.duration_id
          JOIN platforms p ON p.id = pp.platform_id
-         WHERE pp.id IN (${placeholders}) AND pp.is_active = 1`,
-        platformPriceIds
+         WHERE pp.id IN (${placeholders})
+           AND p.is_active = 1
+           AND (
+             (? = 1 AND UPPER(pp.currency) = 'COP' AND COALESCE(pp.show_in_lite, 0) = 1 AND pp.lite_price_cop IS NOT NULL)
+             OR
+             (? = 0 AND pp.is_active = 1)
+           )`,
+        [liteFlag, liteFlag, ...platformPriceIds, liteFlag, liteFlag]
     );
 
     const byId = new Map(planRows.map((p) => [Number(p.platform_price_id), p]));
@@ -71,21 +80,28 @@ async function loadIndividualPlans(conn, platformPriceIds) {
     return platformPriceIds.map((id) => byId.get(Number(id)));
 }
 
-async function loadComboEntries(conn, comboRequests, currency) {
+async function loadComboEntries(conn, comboRequests, currency, salesChannel = "reseller") {
     if (!comboRequests.length) return [];
+    const liteCatalog = isLiteChannel(salesChannel);
+    const liteFlag = liteCatalog ? 1 : 0;
 
     const comboIds = [...new Set(comboRequests.map((combo) => combo.comboId))];
     const comboPlaceholders = comboIds.map(() => "?").join(",");
 
     const [comboRows] = await conn.query(
-        `SELECT c.id, c.name, cp.price, cp.currency
+        `SELECT c.id, c.name,
+                CASE WHEN ? = 1 THEN cp.lite_price_cop ELSE cp.price END AS price,
+                CASE WHEN ? = 1 THEN 'COP' ELSE cp.currency END AS currency
          FROM combos c
          JOIN combo_prices cp ON cp.combo_id = c.id
          WHERE c.id IN (${comboPlaceholders})
            AND c.is_active = 1
-           AND cp.is_active = 1
-           AND UPPER(cp.currency) = ?`,
-        [...comboIds, currency]
+           AND (
+             (? = 1 AND UPPER(cp.currency) = 'COP' AND COALESCE(cp.show_in_lite, 0) = 1 AND cp.lite_price_cop IS NOT NULL)
+             OR
+             (? = 0 AND cp.is_active = 1 AND UPPER(cp.currency) = ?)
+           )`,
+        [liteFlag, liteFlag, ...comboIds, liteFlag, liteFlag, currency]
     );
 
     const comboMap = new Map(comboRows.map((combo) => [Number(combo.id), combo]));
@@ -104,8 +120,8 @@ async function loadComboEntries(conn, comboRequests, currency) {
             pp.id AS platform_price_id,
             pp.platform_id,
             pp.duration_id,
-            pp.price,
-            pp.currency,
+            CASE WHEN ? = 1 THEN COALESCE(pp.lite_price_cop, pp.price) ELSE pp.price END AS price,
+            CASE WHEN ? = 1 THEN 'COP' ELSE pp.currency END AS currency,
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
@@ -120,7 +136,7 @@ async function loadComboEntries(conn, comboRequests, currency) {
          JOIN platforms p ON p.id = pp.platform_id AND p.is_active = 1
          WHERE ci.combo_id IN (${comboPlaceholders})
          ORDER BY ci.combo_id ASC, ci.sort_order ASC, ci.id ASC`,
-        [currency, ...comboIds]
+        [liteFlag, liteFlag, currency, ...comboIds]
     );
 
     const [expectedRows] = await conn.query(
@@ -171,7 +187,8 @@ async function loadComboEntries(conn, comboRequests, currency) {
     return entries;
 }
 
-async function checkoutService({ userId, items, combos, recordProfit, profitAmount }) {
+async function checkoutService({ userId, items, combos, recordProfit, profitAmount, salesChannel = "reseller" }) {
+    const liteCheckout = isLiteChannel(salesChannel);
     const platformPriceIds = (Array.isArray(items) ? items : [])
         .map((x) => Number(x?.platformPriceId))
         .filter((n) => Number.isFinite(n) && n > 0);
@@ -196,7 +213,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         throw err;
     }
 
-    if (recordProfit && (!Number.isFinite(profitAmount) || profitAmount < 0)) {
+    if (!liteCheckout && recordProfit && (!Number.isFinite(profitAmount) || profitAmount < 0)) {
         const err = new Error("profitAmount debe ser un numero >= 0.");
         err.status = 400;
         throw err;
@@ -207,10 +224,10 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
     try {
         await conn.beginTransaction();
 
-        const individualPlans = await loadIndividualPlans(conn, platformPriceIds);
+        const individualPlans = await loadIndividualPlans(conn, platformPriceIds, salesChannel);
         let currency = normalizeCurrency(individualPlans[0]?.currency || "", "");
         if (!currency) {
-            const [urows] = await conn.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
+            const [urows] = liteCheckout ? [[{ currency: "COP" }]] : await conn.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
             currency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
         }
 
@@ -221,7 +238,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             comboName: null,
         }));
 
-        purchaseEntries.push(...await loadComboEntries(conn, comboRequests, currency));
+        purchaseEntries.push(...await loadComboEntries(conn, comboRequests, currency, salesChannel));
 
         const mixedCurrency = purchaseEntries.some((entry) => !sameCurrency(entry.plan.currency || "COP", currency));
         if (mixedCurrency) {
@@ -356,7 +373,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         }
 
         const newBalance = balance - total;
-        const profitToAdd = recordProfit ? Number(profitAmount || 0) : 0;
+        const profitToAdd = !liteCheckout && recordProfit ? Number(profitAmount || 0) : 0;
 
         await conn.query(
             "UPDATE wallets SET balance = ?, profit_total = profit_total + ? WHERE id = ?",

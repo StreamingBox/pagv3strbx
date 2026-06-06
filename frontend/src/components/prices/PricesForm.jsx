@@ -134,6 +134,8 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
     const [priceCOP, setPriceCOP] = useState("");
     const [priceMXN, setPriceMXN] = useState("");
     const [priceUSD, setPriceUSD] = useState("");
+    const [litePriceCOP, setLitePriceCOP] = useState("");
+    const [showInLite, setShowInLite] = useState(false);
     const [success, setSuccess] = useState("");
 
     const selectedPlatform = useMemo(() => platforms.find(p => String(p.id) === String(platformId)), [platforms, platformId]);
@@ -141,8 +143,8 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
 
     const canSave = useMemo(() => {
         if (!platformId || !durationId) return false;
-        return priceCOP !== "" || priceMXN !== "" || priceUSD !== "";
-    }, [platformId, durationId, priceCOP, priceMXN, priceUSD]);
+        return priceCOP !== "" || priceMXN !== "" || priceUSD !== "" || litePriceCOP !== "" || showInLite;
+    }, [platformId, durationId, priceCOP, priceMXN, priceUSD, litePriceCOP, showInLite]);
 
     const platformOptions = useMemo(() => platforms.map(p => ({ value: p.id, label: `#${p.id} – ${p.name}` })), [platforms]);
     const durationOptions = useMemo(() => durations.map(d => ({ value: d.id, label: `${d.name} (${d.days} días)` })), [durations]);
@@ -153,9 +155,16 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
         if (priceMXN !== "") prices.MXN = Number(priceMXN);
         if (priceUSD !== "") prices.USD = Number(priceUSD);
 
-        await onSaveMulti({ platform_id: Number(platformId), duration_id: Number(durationId), prices, is_renewable: isRenewable });
+        await onSaveMulti({
+            platform_id: Number(platformId),
+            duration_id: Number(durationId),
+            prices,
+            is_renewable: isRenewable,
+            lite_price_cop: litePriceCOP !== "" ? Number(litePriceCOP) : undefined,
+            show_in_lite: showInLite,
+        });
 
-        setPlatformId(""); setDurationId(""); setPriceCOP(""); setPriceMXN(""); setPriceUSD(""); setIsRenewable(false);
+        setPlatformId(""); setDurationId(""); setPriceCOP(""); setPriceMXN(""); setPriceUSD(""); setLitePriceCOP(""); setShowInLite(false); setIsRenewable(false);
         setSuccess("✅ Precios guardados correctamente.");
         setTimeout(() => setSuccess(""), 4000);
     }
@@ -209,6 +218,7 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
                     { label: "co Precio COP", value: priceCOP, set: setPriceCOP, placeholder: "0" },
                     { label: "mx Precio MXN", value: priceMXN, set: setPriceMXN, placeholder: "0" },
                     { label: "us Precio USD", value: priceUSD, set: setPriceUSD, placeholder: "0.00" },
+                    { label: "Lite COP", value: litePriceCOP, set: setLitePriceCOP, placeholder: "0" },
                 ].map(f => (
                     <div key={f.label}>
                         <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.label}</label>
@@ -239,6 +249,24 @@ export default function PricesForm({ platforms, durations, saving, onSaveMulti }
                         }} />
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>¿Es Renovable?</span>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => setShowInLite(v => !v)}>
+                    <div style={{
+                        width: 42, height: 24, borderRadius: 12,
+                        background: showInLite ? "#10b981" : "rgba(255,255,255,0.1)",
+                        border: showInLite ? "1px solid rgba(16,185,129,0.5)" : "1px solid var(--stroke)",
+                        position: "relative", transition: "background 0.2s",
+                        boxShadow: showInLite ? "0 0 10px rgba(16,185,129,0.25)" : "none"
+                    }}>
+                        <div style={{
+                            width: 18, height: 18, borderRadius: "50%", background: "white",
+                            position: "absolute", top: 2, left: showInLite ? 20 : 2,
+                            transition: "left 0.2s", boxShadow: "0 1px 4px rgba(0,0,0,0.3)"
+                        }} />
+                    </div>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Mostrar en Lite</span>
                 </label>
 
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", flex: 1, justifyContent: "flex-end" }}>

@@ -14,6 +14,8 @@ const emptyForm = {
     is_active: true,
     sort_order: 0,
     prices: { COP: "", MXN: "", USD: "" },
+    lite_price_cop: "",
+    show_in_lite: false,
     items: [{ platform_id: "", duration_id: "", quantity: 1 }],
 };
 
@@ -23,6 +25,14 @@ function toPriceMap(prices = []) {
         if (map[price.currency] !== undefined) map[price.currency] = String(Number(price.price || 0));
     }
     return map;
+}
+
+function toLiteConfig(prices = []) {
+    const cop = prices.find((price) => String(price.currency).toUpperCase() === "COP");
+    return {
+        lite_price_cop: cop?.lite_price_cop != null ? String(Number(cop.lite_price_cop || 0)) : "",
+        show_in_lite: Boolean(cop?.show_in_lite),
+    };
 }
 
 function SearchSelect({ label, value, options, placeholder, searchPlaceholder, onChange, getOptionLabel, getOptionMeta }) {
@@ -273,6 +283,7 @@ export default function AdminCombos() {
             is_active: Number(combo.is_active) === 1,
             sort_order: Number(combo.sort_order || 0),
             prices: toPriceMap(combo.prices),
+            ...toLiteConfig(combo.prices),
             items: combo.items?.length
                 ? combo.items.map((item) => ({
                     platform_id: String(item.platform_id),
@@ -296,6 +307,8 @@ export default function AdminCombos() {
             badge: form.badge,
             is_active: form.is_active,
             sort_order: Number(form.sort_order || 0),
+            lite_price_cop: form.lite_price_cop !== "" ? Number(form.lite_price_cop) : undefined,
+            show_in_lite: form.show_in_lite,
             prices: Object.fromEntries(
                 Object.entries(form.prices).filter(([, value]) => value !== "" && Number(value) >= 0)
             ),
@@ -400,6 +413,16 @@ export default function AdminCombos() {
                                     </label>
                                 ))}
                             </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "minmax(150px, 1fr) auto", gap: 12, alignItems: "end", marginTop: 12 }}>
+                                <label>
+                                    <span style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>Lite COP</span>
+                                    <input className="input" type="number" min="0" step="1" value={form.lite_price_cop} onChange={(e) => setField("lite_price_cop", e.target.value)} />
+                                </label>
+                                <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 13, paddingBottom: 10 }}>
+                                    <input type="checkbox" checked={form.show_in_lite} onChange={(e) => setField("show_in_lite", e.target.checked)} />
+                                    Mostrar en Lite
+                                </label>
+                            </div>
                         </div>
 
                         <div style={{ marginTop: 16 }}>
@@ -480,6 +503,11 @@ export default function AdminCombos() {
                                                     {(combo.prices || []).filter((p) => p.is_active).map((price) => (
                                                         <div key={price.currency}>{Number(price.price).toLocaleString("es-CO")} {displayCurrency(price.currency)}</div>
                                                     ))}
+                                                    {(combo.prices || []).some((p) => p.show_in_lite) ? (
+                                                        <div style={{ color: "#10b981", fontWeight: 850, marginTop: 4 }}>
+                                                            Lite: {Number((combo.prices || []).find((p) => p.show_in_lite)?.lite_price_cop || 0).toLocaleString("es-CO")} COP
+                                                        </div>
+                                                    ) : null}
                                                 </td>
                                                 <td style={{ padding: "13px 14px", color: "var(--muted)" }}>
                                                     {(combo.items || []).map((item) => (

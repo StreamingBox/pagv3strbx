@@ -9,6 +9,7 @@ const requireAuth = require("../middleware/requireAuth");
 const { sendPasswordResetEmail } = require("../services/mailService");
 const { notifyUserRegistered } = require("../services/telegramBot");
 const { safelyRecordUserActivity } = require("../services/userActivity.service");
+const { isLiteRequest, getSalesChannel } = require("../utils/salesChannel");
 const router = express.Router();
 
 /**
@@ -130,6 +131,7 @@ router.post("/register", async (req, res) => {
         }
 
         const emailClean = email.trim().toLowerCase();
+        const accountType = isLiteRequest(req) ? "customer" : "reseller";
 
         // Check for existing email
         const [existing] = await pool.query(
@@ -143,8 +145,8 @@ router.post("/register", async (req, res) => {
         const passwordHash = await bcrypt.hash(password, 12);
 
         const [result] = await pool.query(
-            "INSERT INTO users (name, email, password_hash, role, status, currency) VALUES (?, ?, ?, 'user', 'pending', 'COP')",
-            [name.trim(), emailClean, passwordHash]
+            "INSERT INTO users (name, email, password_hash, role, status, currency, account_type) VALUES (?, ?, ?, 'user', 'pending', 'COP', ?)",
+            [name.trim(), emailClean, passwordHash, accountType]
         );
 
         notifyUserRegistered(result.insertId).catch((tgErr) => {
@@ -295,7 +297,7 @@ router.post("/login", async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            "SELECT id, name, email, password_hash, role, status, currency FROM users WHERE email = ? LIMIT 1",
+            "SELECT id, name, email, password_hash, role, status, currency, account_type FROM users WHERE email = ? LIMIT 1",
             [email.trim().toLowerCase()]
         );
 
@@ -327,7 +329,15 @@ router.post("/login", async (req, res) => {
 
         return res.json({
             ok: true,
-            user: { id: user.id, name: user.name, email: user.email, role: user.role, currency: user.currency },
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                currency: user.currency,
+                accountType: user.account_type || "reseller",
+                salesChannel: getSalesChannel(req),
+            },
         });
     } catch (err) {
         console.error("LOGIN ERROR DETAILS:", err.message);
@@ -372,7 +382,7 @@ router.post("/refresh", async (req, res) => {
             }
 
             const [urows] = await conn.query(
-                "SELECT id, role, status, name, email, currency FROM users WHERE id = ? LIMIT 1",
+                "SELECT id, role, status, name, email, currency, account_type FROM users WHERE id = ? LIMIT 1",
                 [rt.user_id]
             );
             if (!urows.length) {
@@ -462,7 +472,7 @@ router.get("/me", requireAuth, async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            "SELECT id, name, email, role, status, currency FROM users WHERE id = ? LIMIT 1",
+            "SELECT id, name, email, role, status, currency, account_type FROM users WHERE id = ? LIMIT 1",
             [userId]
         );
 
@@ -473,7 +483,15 @@ router.get("/me", requireAuth, async (req, res) => {
 
         return res.json({
             ok: true,
-            user: { id: u.id, name: u.name, email: u.email, role: u.role, currency: u.currency },
+            user: {
+                id: u.id,
+                name: u.name,
+                email: u.email,
+                role: u.role,
+                currency: u.currency,
+                accountType: u.account_type || "reseller",
+                salesChannel: getSalesChannel(req),
+            },
         });
     } catch (err) {
         console.error(err);

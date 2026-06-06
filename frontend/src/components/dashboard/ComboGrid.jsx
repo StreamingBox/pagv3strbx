@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { useState } from "react";
 import { getPlatformLogo, getInitials, slugifyLogo } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
+import { isLiteSite } from "../../config/siteVariant.js";
 
 const MotionArticle = motion.article;
 const MotionButton = motion.button;
@@ -62,6 +63,7 @@ function ComboPlatformLogo({ item }) {
 }
 
 export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
+    const liteSite = isLiteSite();
     if (!Array.isArray(combos) || !combos.length) return null;
 
     return (
@@ -124,7 +126,7 @@ export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
                                     ) : null}
                                 </div>
                                 <span style={{ color: outOfStock ? "#ef4444" : "#10b981", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}>
-                                    {outOfStock ? "Sin stock" : `Stock: ${Math.max(stock - inCartCount, 0)}`}
+                                    {outOfStock ? "Sin stock" : (liteSite ? "Disponible" : `Stock: ${Math.max(stock - inCartCount, 0)}`)}
                                 </span>
                             </div>
 

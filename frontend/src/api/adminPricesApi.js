@@ -54,12 +54,16 @@ function normalizeMultiBody(payload) {
     const duration_id = payload?.duration_id ?? payload?.durationId;
     const prices = payload?.prices ?? {};
     const is_renewable = payload?.is_renewable !== undefined ? payload.is_renewable : payload?.isRenewable;
+    const lite_price_cop = payload?.lite_price_cop ?? payload?.litePriceCop;
+    const show_in_lite = payload?.show_in_lite ?? payload?.showInLite;
 
     return {
         platform_id: platform_id != null ? Number(platform_id) : platform_id,
         duration_id: duration_id != null ? Number(duration_id) : duration_id,
         prices,
         is_renewable: !!is_renewable,
+        ...(lite_price_cop !== undefined ? { lite_price_cop } : {}),
+        ...(show_in_lite !== undefined ? { show_in_lite: !!show_in_lite } : {}),
     };
 }
 

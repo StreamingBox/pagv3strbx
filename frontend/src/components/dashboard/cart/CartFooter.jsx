@@ -1,5 +1,6 @@
 import ProfitBox from "./ProfitBox.jsx";
 import { displayCurrency } from "../../../utils/currency.js";
+import { isLiteSite } from "../../../config/siteVariant.js";
 
 export default function CartFooter({
     cartTotal,
@@ -15,6 +16,8 @@ export default function CartFooter({
     profitAmount,
     setProfitAmount,
 }) {
+    const liteSite = isLiteSite();
+
     return (
         <section className="cart-footer">
             <div className="cart-totalBlock">
@@ -29,15 +32,17 @@ export default function CartFooter({
                     Vaciar
                 </button>
 
-                <ProfitBox
-                    wallet={wallet}
-                    profitOpen={profitOpen}
-                    setProfitOpen={setProfitOpen}
-                    recordProfit={recordProfit}
-                    setRecordProfit={setRecordProfit}
-                    profitAmount={profitAmount}
-                    setProfitAmount={setProfitAmount}
-                />
+                {!liteSite ? (
+                    <ProfitBox
+                        wallet={wallet}
+                        profitOpen={profitOpen}
+                        setProfitOpen={setProfitOpen}
+                        recordProfit={recordProfit}
+                        setRecordProfit={setRecordProfit}
+                        profitAmount={profitAmount}
+                        setProfitAmount={setProfitAmount}
+                    />
+                ) : null}
 
                 <button className="btn" onClick={onCheckout} disabled={buyLoading}>
                     {buyLoading ? "Procesando..." : "Finalizar compra"}

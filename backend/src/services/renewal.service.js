@@ -21,6 +21,7 @@ async function renewSubscription({
                 s.status, IFNULL(s.is_attended, 0) AS is_attended,
                 d.days, p.name AS platform_name, p.slug AS platform_slug, u.email AS user_email,
                 p.type AS platform_type,
+                p.show_device_rule AS platform_show_device_rule,
                 pa.expires_at AS account_expires_at,
                 pp.is_renewable,
                 pp.price AS renewable_price
@@ -338,6 +339,7 @@ async function renewSubscription({
                 platform_name: sub.platform_name,
                 platform_slug: sub.platform_slug,
                 type: sub.platform_type,
+                show_device_rule: sub.platform_show_device_rule,
             },
             account: account || {},
             expiresAt: account?.expires_at || newExpiry,

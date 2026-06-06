@@ -2,13 +2,17 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { buildDeliveryMessage } = require("../src/utils/deliveryMessage");
 
-function buildSingleItemMessage({ platformName, type = "normal", account = {} }) {
+function buildSingleItemMessage({ platformName, type = "normal", account = {}, showDeviceRule }) {
     return buildDeliveryMessage({
         orderCode: "ORD-TEST",
         baseUrl: "https://strbx.com.co",
         results: [{
             subscriptionId: 123,
-            plan: { type, platform_name: platformName },
+            plan: {
+                type,
+                platform_name: platformName,
+                ...(showDeviceRule === undefined ? {} : { show_device_rule: showDeviceRule }),
+            },
             purchasedPlatformName: platformName,
             account: {
                 email: "cliente@example.com",
@@ -72,4 +76,12 @@ test("regular credential products keep credentials and the one-device usage rule
     assert.match(message, /Netflix/);
     assert.match(message, /Correo: cliente@example\.com/);
     assert.match(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
+});
+
+test("credential products can disable the one-device usage rule", () => {
+    const message = buildSingleItemMessage({ platformName: "Disney Estándar", showDeviceRule: 0 });
+
+    assert.match(message, /Disney Estándar/);
+    assert.match(message, /Correo: cliente@example\.com/);
+    assert.doesNotMatch(message, /Regla de uso/);
 });

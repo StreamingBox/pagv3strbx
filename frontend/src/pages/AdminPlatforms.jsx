@@ -39,6 +39,12 @@ function normalizePromoColor(value) {
     return `#${hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex}`.toUpperCase();
 }
 
+function deviceRuleEnabled(value) {
+    if (value === undefined || value === null || value === "") return true;
+    if (value === false) return false;
+    return String(value).trim().toLowerCase() !== "0" && String(value).trim().toLowerCase() !== "false";
+}
+
 export default function AdminPlatforms() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
@@ -57,6 +63,7 @@ export default function AdminPlatforms() {
     const [type, setType] = useState("normal");
     const [isPromo, setIsPromo] = useState(false);
     const [promoColor, setPromoColor] = useState(DEFAULT_PROMO_COLOR);
+    const [showDeviceRule, setShowDeviceRule] = useState(true);
 
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
@@ -106,12 +113,13 @@ export default function AdminPlatforms() {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
                 type,
+                show_device_rule: showDeviceRule ? 1 : 0,
                 is_promo: isPromo,
                 promo_color: isPromo ? normalizePromoColor(promoColor) : null
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setType("normal"); setSlugManual(false);
-            setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR);
+            setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -196,6 +204,7 @@ export default function AdminPlatforms() {
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
                 type: editingPlatform.type || 'normal',
+                show_device_rule: deviceRuleEnabled(editingPlatform.show_device_rule) ? 1 : 0,
                 is_promo: editingPlatform.is_promo === 1 || editingPlatform.is_promo === true,
                 promo_color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
                     ? normalizePromoColor(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)
@@ -219,6 +228,14 @@ export default function AdminPlatforms() {
             if (!r.ok) throw new Error(r.data?.message || "Error.");
             await load();
         } catch (e) { setError(e?.message || "Error actualizando estado."); }
+    }
+
+    async function updateDeviceRule(platformId, enabled) {
+        try {
+            const r = await apiPatch(`/admin/platforms/${platformId}`, { show_device_rule: enabled ? 1 : 0 });
+            if (!r.ok) throw new Error(r.data?.message || "Error.");
+            await load();
+        } catch (e) { setError(e?.message || "Error actualizando regla de uso."); }
     }
 
     async function uploadLogo(platformId, slug, file) {
@@ -390,6 +407,13 @@ export default function AdminPlatforms() {
                                 </label>
                             </div>
                             <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Regla 1 dispositivo</label>
+                                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, height: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${showDeviceRule ? "rgba(16,185,129,0.34)" : "var(--stroke)"}`, background: showDeviceRule ? "rgba(16,185,129,0.10)" : "var(--bg0)", cursor: "pointer" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: showDeviceRule ? "#10b981" : "var(--muted)" }}>{showDeviceRule ? "Se muestra" : "Oculta"}</span>
+                                    <input type="checkbox" checked={showDeviceRule} onChange={e => setShowDeviceRule(e.target.checked)} />
+                                </label>
+                            </div>
+                            <div>
                                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Color Neon</label>
                                 <div style={{ display: "flex", alignItems: "center", gap: 10, height: 42, padding: "0 10px", background: "var(--bg0)", border: `1px solid ${isPromo ? `${promoColor}88` : "var(--stroke)"}`, borderRadius: 10, boxShadow: isPromo ? `0 0 16px ${promoColor}22 inset` : "none", opacity: isPromo ? 1 : 0.5 }}>
                                     <input type="color" value={normalizePromoColor(promoColor)} disabled={!isPromo} onChange={e => setPromoColor(e.target.value.toUpperCase())} style={{ width: 34, height: 24, padding: 0, border: "none", background: "transparent", cursor: isPromo ? "pointer" : "not-allowed" }} />
@@ -489,18 +513,18 @@ export default function AdminPlatforms() {
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,0.25)", textAlign: "left" }}>
-                                        {["ID", "Nombre", "Slug", "Modo", "Promo", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
+                                        {["ID", "Nombre", "Slug", "Modo", "Regla", "Promo", "Categoría", "Venta Int.", "Logo", "Activo"].map(h => (
                                             <th key={h} style={{ padding: "12px 16px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>{h}</th>
                                         ))}
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center" }}>
+                                        <tr><td colSpan={10} style={{ padding: "60px 20px", textAlign: "center" }}>
                                             <div style={{ width: 32, height: 32, border: "3px solid var(--stroke)", borderTopColor: "#0da6f2", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto" }} />
                                         </td></tr>
                                     ) : filtered.length === 0 ? (
-                                        <tr><td colSpan={9} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
+                                        <tr><td colSpan={10} style={{ padding: "60px 20px", textAlign: "center", color: "var(--muted)" }}>
                                             <div style={{ fontSize: 36, marginBottom: 10 }}>📭</div>
                                             {q ? "Sin resultados." : "No hay plataformas aún."}
                                         </td></tr>
@@ -548,6 +572,27 @@ export default function AdminPlatforms() {
                                                     }}>
                                                         {p.type === "correo" ? "A CORREO" : "NORMAL"}
                                                     </span>
+                                                </td>
+
+                                                <td style={{ padding: "12px 16px" }}>
+                                                    <button
+                                                        onClick={() => updateDeviceRule(p.id, !deviceRuleEnabled(p.show_device_rule))}
+                                                        title={deviceRuleEnabled(p.show_device_rule) ? "Ocultar regla en entregas" : "Mostrar regla en entregas"}
+                                                        style={{
+                                                            background: deviceRuleEnabled(p.show_device_rule) ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.05)",
+                                                            color: deviceRuleEnabled(p.show_device_rule) ? "#10b981" : "var(--muted)",
+                                                            border: deviceRuleEnabled(p.show_device_rule) ? "1px solid rgba(16,185,129,0.35)" : "1px solid var(--stroke)",
+                                                            padding: "5px 12px",
+                                                            borderRadius: 20,
+                                                            fontSize: 11,
+                                                            fontWeight: 800,
+                                                            cursor: "pointer",
+                                                            whiteSpace: "nowrap",
+                                                            fontFamily: "var(--font)"
+                                                        }}
+                                                    >
+                                                        {deviceRuleEnabled(p.show_device_rule) ? "Activa" : "Oculta"}
+                                                    </button>
                                                 </td>
 
                                                 <td style={{ padding: "12px 16px" }}>
@@ -697,6 +742,13 @@ export default function AdminPlatforms() {
                                         <option value="normal">Normal (Control de stock)</option>
                                         <option value="correo">A Correo (Sin Stock, Automático)</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Regla 1 dispositivo</label>
+                                    <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, height: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${deviceRuleEnabled(editingPlatform.show_device_rule) ? "rgba(16,185,129,0.34)" : "var(--stroke)"}`, background: deviceRuleEnabled(editingPlatform.show_device_rule) ? "rgba(16,185,129,0.10)" : "var(--bg0)", cursor: "pointer" }}>
+                                        <span style={{ fontSize: 13, fontWeight: 700, color: deviceRuleEnabled(editingPlatform.show_device_rule) ? "#10b981" : "var(--muted)" }}>{deviceRuleEnabled(editingPlatform.show_device_rule) ? "Se muestra en entregas" : "No se muestra"}</span>
+                                        <input type="checkbox" checked={deviceRuleEnabled(editingPlatform.show_device_rule)} onChange={e => setEditingPlatform({ ...editingPlatform, show_device_rule: e.target.checked ? 1 : 0 })} />
+                                    </label>
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                                     <div>

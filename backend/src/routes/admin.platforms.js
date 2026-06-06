@@ -118,7 +118,7 @@ router.delete("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin")
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, type,
-        is_promo, promo_color
+        is_promo, promo_color, show_device_rule
     } = req.body || {};
 
     if (!name || !slug) {
@@ -127,14 +127,15 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
 
     const promoEnabled = is_promo ? 1 : 0;
     const promoColor = promoEnabled ? (normalizePromoColor(promo_color) || "#22D3EE") : null;
+    const showDeviceRule = show_device_rule === undefined ? 1 : (show_device_rule ? 1 : 0);
 
     const [r] = await pool.query(
         `INSERT INTO platforms (
             name, slug, category_id, type, is_active, allowed_currencies, 
-            is_promo, promo_color
+            is_promo, promo_color, show_device_rule
          )
-         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?)`,
-        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor]
+         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?)`,
+        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showDeviceRule]
     );
 
     res.status(201).json({
@@ -146,7 +147,8 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         is_active: 1,
         allowed_currencies: "COP,MXN,USD",
         is_promo: promoEnabled,
-        promo_color: promoColor
+        promo_color: promoColor,
+        show_device_rule: showDeviceRule
     });
 });
 
@@ -156,7 +158,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, type, allowed_currencies,
-        is_promo, promo_color
+        is_promo, promo_color, show_device_rule
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -188,6 +190,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const promoFlag = is_promo !== undefined ? (is_promo ? 1 : 0) : null;
     const normalizedPromoColor = promo_color !== undefined ? normalizePromoColor(promo_color) : null;
+    const showDeviceRule = show_device_rule !== undefined ? (show_device_rule ? 1 : 0) : null;
 
     await pool.query(
         `UPDATE platforms
@@ -198,6 +201,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          type = COALESCE(?, type),
          allowed_currencies = COALESCE(?, allowed_currencies),
          is_promo = COALESCE(?, is_promo),
+         show_device_rule = COALESCE(?, show_device_rule),
          promo_color = CASE
             WHEN ? = 0 THEN NULL
             WHEN ? = 1 THEN COALESCE(?, promo_color, '#22D3EE')
@@ -212,6 +216,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             type ?? null,
             allowedCurrenciesCSV ?? null,
             promoFlag,
+            showDeviceRule,
             promoFlag,
             promoFlag,
             normalizedPromoColor,

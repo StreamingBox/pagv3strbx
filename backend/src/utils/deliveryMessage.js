@@ -9,6 +9,14 @@ function isEmailDelivery(plan) {
     return String(plan?.type || "").trim().toLowerCase() === "correo";
 }
 
+function shouldShowDeviceUsageRule(plan) {
+    const value = plan?.show_device_rule ?? plan?.showDeviceRule;
+    if (value === undefined || value === null || value === "") return true;
+    if (value === false) return false;
+    const normalized = String(value).trim().toLowerCase();
+    return normalized !== "0" && normalized !== "false";
+}
+
 function normalizeProductName(value) {
     return String(value || "")
         .normalize("NFD")
@@ -43,7 +51,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
-        return !isEmailDelivery(plan);
+        return !isEmailDelivery(plan) && shouldShowDeviceUsageRule(plan);
     });
     const lines = [];
 

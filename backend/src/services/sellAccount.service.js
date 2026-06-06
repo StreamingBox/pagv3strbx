@@ -56,7 +56,7 @@ async function sellAccountFromInventory(payload) {
 
         // 2. Obtener datos del plan/precio
         const [priceRows] = await conn.query(
-            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type
+            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type, p.show_device_rule
              FROM platform_prices pp
              JOIN durations d ON d.id = pp.duration_id
              JOIN platforms p ON p.id = pp.platform_id

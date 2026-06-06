@@ -50,7 +50,8 @@ async function loadIndividualPlans(conn, platformPriceIds) {
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
-            p.type
+            p.type,
+            p.show_device_rule
          FROM platform_prices pp
          JOIN durations d ON d.id = pp.duration_id
          JOIN platforms p ON p.id = pp.platform_id
@@ -108,7 +109,8 @@ async function loadComboEntries(conn, comboRequests, currency) {
             d.days,
             p.name AS platform_name,
             p.slug AS platform_slug,
-            p.type
+            p.type,
+            p.show_device_rule
          FROM combo_items ci
          JOIN platform_prices pp ON pp.platform_id = ci.platform_id
             AND pp.duration_id = ci.duration_id

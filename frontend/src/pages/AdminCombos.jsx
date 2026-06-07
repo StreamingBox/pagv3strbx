@@ -19,6 +19,34 @@ const emptyForm = {
     items: [{ platform_id: "", duration_id: "", quantity: 1 }],
 };
 
+const comboFilterInputStyle = {
+    width: "100%",
+    height: 44,
+    borderRadius: 10,
+    border: "1px solid var(--stroke)",
+    background: "var(--bg0)",
+    color: "var(--text)",
+    padding: "0 14px 0 40px",
+    fontFamily: "var(--font)",
+    fontSize: 14,
+    fontWeight: 750,
+    outline: "none",
+    boxSizing: "border-box",
+};
+
+const comboFilterSelectStyle = {
+    height: 44,
+    borderRadius: 10,
+    border: "1px solid var(--stroke)",
+    background: "var(--bg0)",
+    color: "var(--text)",
+    padding: "0 12px",
+    fontFamily: "var(--font)",
+    fontSize: 13,
+    fontWeight: 800,
+    outline: "none",
+};
+
 function toPriceMap(prices = []) {
     const map = { COP: "", MXN: "", USD: "" };
     for (const price of prices) {
@@ -175,12 +203,55 @@ export default function AdminCombos() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+    const [comboQuery, setComboQuery] = useState("");
+    const [comboStatus, setComboStatus] = useState("all");
+    const [comboLite, setComboLite] = useState("all");
 
     const durationById = useMemo(() => new Map(durations.map((d) => [Number(d.id), d])), [durations]);
     const activePlatforms = useMemo(
         () => platforms.filter((platform) => Number(platform.is_active) === 1),
         [platforms]
     );
+    const filteredCombos = useMemo(() => {
+        const q = comboQuery.trim().toLowerCase();
+
+        return combos.filter((combo) => {
+            const active = Number(combo.is_active) === 1;
+            const visibleInLite = (combo.prices || []).some((price) => Number(price.show_in_lite) === 1);
+
+            if (comboStatus === "active" && !active) return false;
+            if (comboStatus === "inactive" && active) return false;
+            if (comboLite === "visible" && !visibleInLite) return false;
+            if (comboLite === "hidden" && visibleInLite) return false;
+
+            if (!q) return true;
+
+            const itemsText = (combo.items || [])
+                .map((item) => [
+                    item.platform_name,
+                    item.duration_name,
+                    durationById.get(Number(item.duration_id))?.name,
+                    item.quantity,
+                ].filter(Boolean).join(" "))
+                .join(" ");
+            const pricesText = (combo.prices || [])
+                .map((price) => [price.currency, price.price, price.lite_price_cop].filter(Boolean).join(" "))
+                .join(" ");
+            const haystack = [
+                combo.name,
+                combo.slug,
+                combo.description,
+                combo.badge,
+                active ? "activo" : "inactivo",
+                visibleInLite ? "lite visible" : "lite oculto",
+                itemsText,
+                pricesText,
+            ].filter(Boolean).join(" ").toLowerCase();
+
+            return haystack.includes(q);
+        });
+    }, [comboLite, comboQuery, comboStatus, combos, durationById]);
+    const hasComboFilters = Boolean(comboQuery.trim()) || comboStatus !== "all" || comboLite !== "all";
 
     function platformOptionsFor(selectedPlatformId) {
         const selectedId = Number(selectedPlatformId || 0);
@@ -475,13 +546,70 @@ export default function AdminCombos() {
                     </form>
 
                     <section style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden" }}>
-                        <div style={{ padding: "15px 18px", borderBottom: "1px solid var(--stroke)", fontWeight: 900 }}>
-                            Combos creados
+                        <div style={{ display: "grid", gap: 14, padding: "15px 18px", borderBottom: "1px solid var(--stroke)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 900 }}>
+                                    <span>Combos creados</span>
+                                    <span style={{ background: "rgba(99,51,255,0.12)", border: "1px solid rgba(99,51,255,0.25)", color: "#8b5cf6", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 900 }}>
+                                        {hasComboFilters ? `${filteredCombos.length}/${combos.length}` : combos.length}
+                                    </span>
+                                </div>
+                                {hasComboFilters ? (
+                                    <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>
+                                        Filtros activos
+                                    </span>
+                                ) : null}
+                            </div>
+
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                <div style={{ position: "relative", flex: "1 1 420px", minWidth: 260 }}>
+                                    <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 15, opacity: 0.45, pointerEvents: "none" }}>🔎</span>
+                                    <input
+                                        style={comboFilterInputStyle}
+                                        value={comboQuery}
+                                        onChange={(event) => setComboQuery(event.target.value)}
+                                        placeholder="Buscar por combo, slug o plataforma..."
+                                    />
+                                </div>
+                                <select
+                                    style={{ ...comboFilterSelectStyle, flex: "1 1 150px", maxWidth: 190 }}
+                                    value={comboStatus}
+                                    onChange={(event) => setComboStatus(event.target.value)}
+                                >
+                                    <option value="all">Todos</option>
+                                    <option value="active">Activos</option>
+                                    <option value="inactive">Inactivos</option>
+                                </select>
+                                <select
+                                    style={{ ...comboFilterSelectStyle, flex: "1 1 150px", maxWidth: 190 }}
+                                    value={comboLite}
+                                    onChange={(event) => setComboLite(event.target.value)}
+                                >
+                                    <option value="all">Lite todos</option>
+                                    <option value="visible">Lite visible</option>
+                                    <option value="hidden">Lite oculto</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    disabled={!hasComboFilters}
+                                    onClick={() => {
+                                        setComboQuery("");
+                                        setComboStatus("all");
+                                        setComboLite("all");
+                                    }}
+                                    style={{ width: "auto", minWidth: 110, height: 44, padding: "0 16px", borderRadius: 10, opacity: hasComboFilters ? 1 : 0.45 }}
+                                >
+                                    Limpiar
+                                </button>
+                            </div>
                         </div>
                         {loading ? (
                             <div style={{ padding: 24, color: "var(--muted)" }}>Cargando...</div>
                         ) : !combos.length ? (
                             <div style={{ padding: 24, color: "var(--muted)" }}>No hay combos creados.</div>
+                        ) : !filteredCombos.length ? (
+                            <div style={{ padding: 24, color: "var(--muted)" }}>No hay combos con esos filtros.</div>
                         ) : (
                             <div style={{ overflowX: "auto" }}>
                                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -493,7 +621,7 @@ export default function AdminCombos() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {combos.map((combo) => (
+                                        {filteredCombos.map((combo) => (
                                             <tr key={combo.id} style={{ borderTop: "1px solid var(--stroke)" }}>
                                                 <td style={{ padding: "13px 14px" }}>
                                                     <div style={{ fontWeight: 850 }}>{combo.name}</div>

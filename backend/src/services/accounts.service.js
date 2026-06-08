@@ -150,9 +150,20 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
         `UPDATE platform_accounts
      SET password = ?,
          updated_at = CURRENT_TIMESTAMP
-     WHERE platform_id = ?
-       AND LOWER(email) = LOWER(?)
+     WHERE LOWER(email) = LOWER(?)
        AND id <> ?
+       AND (
+         platform_accounts.platform_id = ?
+         OR EXISTS (
+            SELECT 1
+              FROM platform_fallbacks pf
+             WHERE COALESCE(pf.is_active, 1) = 1
+               AND (
+                 (pf.source_platform_id = ? AND pf.fallback_platform_id = platform_accounts.platform_id)
+                 OR (pf.source_platform_id = platform_accounts.platform_id AND pf.fallback_platform_id = ?)
+               )
+         )
+       )
        AND LOWER(TRIM(COALESCE(status, ''))) NOT IN (${PASSWORD_PROPAGATION_BLOCKED_STATUSES.map(() => "?").join(",")})
        AND (
          TRIM(COALESCE(status, '')) = ''
@@ -171,9 +182,11 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
        )`,
         [
             password,
-            pid,
             emailValue,
             newId,
+            pid,
+            pid,
+            pid,
             ...PASSWORD_PROPAGATION_BLOCKED_STATUSES,
             ...PASSWORD_PROPAGATION_STATUSES,
         ]

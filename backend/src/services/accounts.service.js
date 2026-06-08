@@ -6,7 +6,8 @@ const {
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
 
-const ACTIVE_STATUSES = ["available", "assigned"];
+const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
+const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
 
 function parsePositiveNumber(value) {
     if (value === undefined || value === null || value === "") return null;
@@ -151,10 +152,31 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
          updated_at = CURRENT_TIMESTAMP
      WHERE platform_id = ?
        AND LOWER(email) = LOWER(?)
-       AND status IN (${ACTIVE_STATUSES.map(() => "?").join(",")})
-       AND (expires_at IS NULL OR expires_at >= UTC_TIMESTAMP())
-       AND id <> ?`,
-        [password, pid, emailValue, ...ACTIVE_STATUSES, newId]
+       AND id <> ?
+       AND LOWER(TRIM(COALESCE(status, ''))) NOT IN (${PASSWORD_PROPAGATION_BLOCKED_STATUSES.map(() => "?").join(",")})
+       AND (
+         TRIM(COALESCE(status, '')) = ''
+         OR LOWER(TRIM(status)) IN (${PASSWORD_PROPAGATION_STATUSES.map(() => "?").join(",")})
+         OR EXISTS (
+            SELECT 1
+              FROM subscriptions s
+             WHERE s.platform_account_id = platform_accounts.id
+               AND s.status = 'active'
+               AND (
+                 platform_accounts.expires_at IS NULL
+                 OR platform_accounts.expires_at >= UTC_TIMESTAMP()
+                 OR s.expires_at >= UTC_TIMESTAMP()
+               )
+         )
+       )`,
+        [
+            password,
+            pid,
+            emailValue,
+            newId,
+            ...PASSWORD_PROPAGATION_BLOCKED_STATUSES,
+            ...PASSWORD_PROPAGATION_STATUSES,
+        ]
     );
 }
 

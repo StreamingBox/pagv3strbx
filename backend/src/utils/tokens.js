@@ -13,8 +13,14 @@ async function cleanupExpiredCredentialLinks(connOrPool) {
            LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
           WHERE s.id IS NULL
              OR s.status <> 'active'
-             OR (a.expires_at IS NOT NULL AND a.expires_at < UTC_TIMESTAMP())
-             OR (a.expires_at IS NULL AND s.expires_at < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))`
+             OR (
+                a.expires_at IS NOT NULL
+                AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+             )
+             OR (
+                a.expires_at IS NULL
+                AND DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+             )`
     );
     return Number(result?.affectedRows || 0);
 }

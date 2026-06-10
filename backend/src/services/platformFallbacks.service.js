@@ -26,7 +26,7 @@ async function getPlatformFallbacks(conn, sourcePlatformId = null) {
             SELECT platform_id, COUNT(*) AS stock
             FROM platform_accounts
             WHERE status = 'available'
-              AND (expires_at IS NULL OR expires_at > NOW())
+              AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
             GROUP BY platform_id
          ) stock ON stock.platform_id = pf.fallback_platform_id
          ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -65,6 +65,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
                         WHERE source_platform_id = ? AND is_active = 1
                     )
                )
+               AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
              LIMIT 1
              FOR UPDATE`,
             [specificAccountId, excludeAccountId || 0, requestedPlatformId, requestedPlatformId]
@@ -95,7 +96,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
          JOIN platforms p ON p.id = pa.platform_id AND p.is_active = 1
          WHERE pa.status = 'available'
            AND pa.id <> ?
-           AND (pa.expires_at IS NULL OR pa.expires_at > NOW())
+           AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
          ORDER BY candidate.priority ASC, pa.id ASC
          LIMIT 1
          FOR UPDATE`,

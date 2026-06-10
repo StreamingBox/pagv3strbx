@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import { currentBogotaDateOnly, formatDateOnlyDisplay, normalizeDateOnly } from "../utils/datetime";
 
 const LOGO_URL = "/api/branding/logo";
 const STATUS_LABELS = { active: "Activo", expired: "Vencido", cancelled: "Cancelado" };
@@ -14,16 +15,6 @@ async function apiFetch(path, opts = {}) {
     const res = await baseApiFetch(path, opts);
     if (!res.ok) throw new Error(res.data?.message || "Error en la solicitud");
     return res.data;
-}
-
-function bogotaDateOnly(value) {
-    if (!value) return "";
-    return new Intl.DateTimeFormat("en-CA", {
-        timeZone: "America/Bogota",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-    }).format(new Date(value));
 }
 
 function formatBogotaDateTime(value) {
@@ -222,9 +213,11 @@ export default function AdminRenewals() {
         alignItems: "end",
     }), []);
 
+    const renewalExpiryDate = normalizeDateOnly(order?.expires_date || order?.effective_expires_at || order?.expires_at);
+    const renewalTodayDate = currentBogotaDateOnly();
     const renewalBlockedReason = order?.renewal?.block_reason
         || (Number(order?.is_renewable) !== 1 ? "Este plan no tiene renovación habilitada." : "")
-        || (order?.expires_at && bogotaDateOnly(order.expires_at) < bogotaDateOnly(new Date())
+        || (renewalExpiryDate && renewalExpiryDate < renewalTodayDate
             ? "La suscripción ya no está dentro del día permitido para renovar."
             : "");
 
@@ -524,7 +517,7 @@ export default function AdminRenewals() {
                                         ["Plataforma", order.platform_name],
                                         ["Duración", `${order.duration_name} (${order.days} días)`],
                                         ["Precio actual", `${Number(overridePrice || order.price || 0).toLocaleString("es-CO")} ${order.currency}`],
-                                        ["Vencimiento", order.expires_at ? formatBogotaDate(order.expires_at) : "—"],
+                                        ["Vencimiento", formatDateOnlyDisplay(order.expires_date || order.effective_expires_at || order.expires_at)],
                                         ["Atención", order.is_attended ? "Atendida" : "Pendiente"],
                                         ["Cuenta", order.account_email || "Usuario local"],
                                     ].map(([label, val]) => (

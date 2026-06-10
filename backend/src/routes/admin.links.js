@@ -2,7 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
-const { formatDateOnlyBogota, formatStoredDateOnly } = require("../utils/date");
+const { formatDateOnlyBogota, formatStoredDateOnly, isExpiryDateExpired } = require("../utils/date");
 
 const router = express.Router();
 
@@ -11,8 +11,14 @@ const ACTIVE_LINK_WHERE = `
     AND s.id IS NOT NULL
     AND s.status = 'active'
     AND (
-        (a.expires_at IS NOT NULL AND a.expires_at >= UTC_TIMESTAMP())
-        OR (a.expires_at IS NULL AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+        (
+            a.expires_at IS NOT NULL
+            AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+        )
+        OR (
+            a.expires_at IS NULL
+            AND DATE(s.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+        )
     )
 `;
 
@@ -21,8 +27,14 @@ const EXPIRED_LINK_WHERE = `
     AND (
         s.id IS NULL
         OR s.status <> 'active'
-        OR (a.expires_at IS NOT NULL AND a.expires_at < UTC_TIMESTAMP())
-        OR (a.expires_at IS NULL AND s.expires_at < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+        (
+            a.expires_at IS NOT NULL
+            AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+        )
+        OR (
+            a.expires_at IS NULL
+            AND DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+        )
     )
 `;
 
@@ -63,9 +75,7 @@ function linkStatus(row) {
     if (!row.subscription_id) return "expired";
     if (row.subscription_status !== "active") return "expired";
     if (row.account_expires_at) {
-        const expiresAt = row.account_expires_at instanceof Date ? row.account_expires_at : new Date(row.account_expires_at);
-        if (Number.isNaN(expiresAt.getTime())) return "expired";
-        return expiresAt.getTime() >= Date.now() ? "active" : "expired";
+        return isExpiryDateExpired(row.account_expires_at) ? "expired" : "active";
     }
     const expiresAt = formatStoredDateOnly(row.subscription_expires_at);
     if (expiresAt === "-") return "expired";

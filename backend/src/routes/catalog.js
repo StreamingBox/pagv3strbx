@@ -76,7 +76,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
           COUNT(*) AS stock
         FROM platform_accounts
         WHERE status = 'available'
-          AND (expires_at IS NULL OR expires_at > NOW())
+          AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
 
@@ -90,7 +90,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
           SELECT platform_id, COUNT(*) AS stock
           FROM platform_accounts
           WHERE status = 'available'
-            AND (expires_at IS NULL OR expires_at > NOW())
+            AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
           GROUP BY platform_id
         ) stock ON stock.platform_id = pf.fallback_platform_id
         WHERE pf.is_active = 1
@@ -168,7 +168,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
       JOIN durations d ON d.id = pp.duration_id
       LEFT JOIN (
         SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
-        WHERE status = 'available' AND (expires_at IS NULL OR expires_at > NOW())
+        WHERE status = 'available' AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
       LEFT JOIN (
@@ -176,7 +176,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         FROM platform_fallbacks pf
         LEFT JOIN (
           SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
-          WHERE status = 'available' AND (expires_at IS NULL OR expires_at > NOW())
+          WHERE status = 'available' AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
           GROUP BY platform_id
         ) stock ON stock.platform_id = pf.fallback_platform_id
         WHERE pf.is_active = 1

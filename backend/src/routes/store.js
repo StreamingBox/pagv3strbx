@@ -105,6 +105,9 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
 
         const { q, platform } = req.query;
         const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
+        const effectiveExpiresDateSql =
+            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
         const notResoldLaterSql = `
             NOT EXISTS (
                 SELECT 1
@@ -147,7 +150,7 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
             "s.user_id = ?",
             "s.status != 'cancelled'",
             notResoldLaterSql,
-            `${effectiveExpiresSql} <= DATE_ADD(NOW(), INTERVAL 3 DAY)`,
+            `${effectiveExpiresDateSql} <= DATE_ADD(${todayBogotaSql}, INTERVAL 3 DAY)`,
             "IFNULL(s.is_attended, 0) = 0"
         ];
         let params = [userId];
@@ -185,6 +188,8 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
                s.expires_at AS subscription_expires_at,
                ${effectiveExpiresSql} AS expires_at,
                ${effectiveExpiresSql} AS effective_expires_at,
+               ${effectiveExpiresDateSql} AS expires_date,
+               DATEDIFF(${effectiveExpiresDateSql}, ${todayBogotaSql}) AS days_remaining,
                s.status,
                p.name AS platform_name,
                p.slug AS platform_slug,
@@ -195,7 +200,7 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
              JOIN platforms p ON p.id = s.platform_id
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
-             ORDER BY ${effectiveExpiresSql} ASC
+             ORDER BY ${effectiveExpiresDateSql} ASC, ${effectiveExpiresSql} ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
         );
@@ -225,7 +230,8 @@ router.get("/orders/expiring-count", requireAuth, async (req, res) => {
              WHERE s.user_id = ?
                AND s.status != 'cancelled'
                AND IFNULL(s.is_attended, 0) = 0
-               AND COALESCE(acc.expires_at, s.expires_at) <= DATE_ADD(NOW(), INTERVAL 3 DAY)
+               AND (CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END)
+                   <= DATE_ADD(DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)), INTERVAL 3 DAY)
                AND NOT EXISTS (
                    SELECT 1
                    FROM order_items oi_later

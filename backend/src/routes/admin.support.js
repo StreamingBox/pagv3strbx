@@ -3,7 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { formatDateOnlyBogota, isDateTimeExpired } = require("../utils/date");
+const { formatDateOnlyBogota, isExpiryDateExpired } = require("../utils/date");
 const { findAvailableAccountForPlatform } = require("../services/platformFallbacks.service");
 
 const router = express.Router();
@@ -63,7 +63,7 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId }) 
            JOIN platforms p ON p.id = pa.platform_id
           WHERE pa.status = 'available'
             AND pa.id <> ?
-            AND (pa.expires_at IS NULL OR pa.expires_at > NOW())
+            AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
           ORDER BY candidate.priority ASC, pa.id ASC`,
         [platformId, platformId, Number(currentAccountId || 0)]
     );
@@ -247,7 +247,9 @@ router.post(
                 return res.status(409).json({ message: "La subscription no estÃ¡ activa." });
             }
 
-            const expired = isDateTimeExpired(sub.account_expires_at || sub.expires_at);
+            const expired = sub.account_expires_at
+                ? isExpiryDateExpired(sub.account_expires_at)
+                : isExpiryDateExpired(sub.expires_at, { storedDateOnly: true });
             if (expired) {
                 await conn.rollback();
                 return res.status(409).json({ message: "La subscription ya estÃ¡ vencida." });

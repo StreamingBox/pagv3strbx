@@ -6,7 +6,7 @@ const {
   daysRemainingStoredDateOnly,
   formatDateOnlyBogota,
   formatStoredDateOnly,
-  isDateTimeExpired,
+  isExpiryDateExpired,
   isStoredDateOnlyExpired,
 } = require("../utils/date");
 const router = express.Router();
@@ -150,7 +150,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     }
 
     const expired = r.account_expires_at
-      ? isDateTimeExpired(r.account_expires_at)
+      ? isExpiryDateExpired(r.account_expires_at)
       : isStoredDateOnlyExpired(r.expires_at);
     const statusOk = r.status === "active";
     if (expired || !statusOk) {

@@ -165,7 +165,10 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
         pa.email AS account_email,
         pa.password AS account_password,
         pa.pin AS account_pin,
-        pa.profile_number AS account_profile
+        pa.profile_number AS account_profile,
+        pa.expires_at AS account_expires_at,
+        COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at,
+        CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END AS expires_date
       FROM subscriptions s
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
@@ -304,6 +307,9 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
 
         const { q, platform, email, accountEmail } = req.query;
         const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
+        const effectiveExpiresDateSql =
+            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
         const notResoldLaterSql = `
             NOT EXISTS (
                 SELECT 1
@@ -369,7 +375,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                 params.push(`%${qRaw}%`);
             }
         } else {
-            whereCols.push(`${effectiveExpiresSql} <= DATE_ADD(NOW(), INTERVAL 7 DAY)`);
+            whereCols.push(`${effectiveExpiresDateSql} <= DATE_ADD(${todayBogotaSql}, INTERVAL 7 DAY)`);
         }
 
         if (platform) {
@@ -399,9 +405,9 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         // New: Filter by expiry status (vencidos, hoy)
         const expiryFilter = req.query.expiryFilter; // 'vencidos', 'hoy', 'all'
         if (expiryFilter === "vencidos") {
-            whereCols.push(`DATE(${effectiveExpiresSql}) < DATE(NOW())`);
+            whereCols.push(`${effectiveExpiresDateSql} < ${todayBogotaSql}`);
         } else if (expiryFilter === "hoy") {
-            whereCols.push(`DATE(${effectiveExpiresSql}) = DATE(NOW())`);
+            whereCols.push(`${effectiveExpiresDateSql} = ${todayBogotaSql}`);
         }
 
         const whereSql = "WHERE " + whereCols.join(" AND ");
@@ -440,8 +446,11 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                s.platform_id,
                s.platform_account_id,
                s.expires_at AS subscription_expires_at,
+               acc.expires_at AS account_expires_at,
                ${effectiveExpiresSql} AS expires_at,
                ${effectiveExpiresSql} AS effective_expires_at,
+               ${effectiveExpiresDateSql} AS expires_date,
+               DATEDIFF(${effectiveExpiresDateSql}, ${todayBogotaSql}) AS days_remaining,
                s.status,
                s.price,
                s.currency,
@@ -458,7 +467,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
              ORDER BY
-               (SELECT MIN(COALESCE(ex_acc.expires_at, ex.expires_at))
+               (SELECT MIN(CASE WHEN ex_acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(ex_acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(ex.expires_at) END)
                 FROM subscriptions ex
                 LEFT JOIN platform_accounts ex_acc ON ex_acc.id = ex.platform_account_id
                 WHERE ex.platform_account_id = s.platform_account_id
@@ -466,6 +475,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                   AND ex.platform_account_id IS NOT NULL
                ) ASC,
                COALESCE(acc.email, '') ASC,
+               ${effectiveExpiresDateSql} ASC,
                ${effectiveExpiresSql} ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
@@ -558,13 +568,16 @@ router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), asyn
 // ✅ Count pending expirations (Admin)
 router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
     try {
+        const effectiveExpiresDateSql =
+            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
         const [rows] = await pool.query(
             `SELECT COUNT(*) as count
              FROM subscriptions s
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              WHERE s.status != 'cancelled'
                AND COALESCE(s.is_attended, 0) = 0
-               AND DATE(COALESCE(acc.expires_at, s.expires_at)) <= DATE(NOW())
+               AND ${effectiveExpiresDateSql} <= ${todayBogotaSql}
                AND NOT EXISTS (
                    SELECT 1
                    FROM order_items oi_later

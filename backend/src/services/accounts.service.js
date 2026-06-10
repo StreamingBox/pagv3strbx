@@ -175,8 +175,8 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
                AND s.status = 'active'
                AND (
                  platform_accounts.expires_at IS NULL
-                 OR platform_accounts.expires_at >= UTC_TIMESTAMP()
-                 OR s.expires_at >= UTC_TIMESTAMP()
+                 OR DATE(DATE_SUB(platform_accounts.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                 OR DATE(s.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
                )
          )
        )`,

@@ -7,6 +7,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { loadXlsx } from "../utils/loadXlsx.js";
+import { daysUntilDateOnly, formatDateOnlyDisplay } from "../utils/datetime";
 
 async function apiFetch(path, opts = {}) {
     const res = await baseApiFetch(path, opts);
@@ -266,7 +267,7 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, nav
 
             {/* ── Filas de perfiles de esta cuenta ── */}
             {!collapsed && group.rows.map((item, idx) => {
-                const daysLeft = getDaysLeft(item.expires_at);
+                const daysLeft = getDaysLeft(item);
                 const isSaving = savingIds.includes(item.id);
                 const isOutsideFilter =
                     attendedFilter === "0" ? !!item.is_attended :
@@ -314,7 +315,7 @@ function AccountGroup({ group, getDaysLeft, renderDaysBadge, toggleAttended, nav
                             }
                         </td>
                         <td style={{ padding: "12px 16px", fontSize: 12, color: "var(--muted)", fontWeight: 500 }}>
-                            {item.expires_at ? new Date(item.expires_at).toLocaleDateString("es-CO", { timeZone: "America/Bogota", day: 'numeric', month: 'short', year: 'numeric' }) : "—"}
+                            {formatDateOnlyDisplay(item.expires_date || item.expires_at)}
                         </td>
                         <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -478,7 +479,7 @@ export default function AdminExpirations() {
                 CUENTA_EMAIL: o.account_email,
                 CUENTA_PASS: o.account_password,
                 PERFIL: o.profile_number || "—",
-                EXPIRACION: o.expires_at ? new Date(o.expires_at).toLocaleDateString() : "—",
+                EXPIRACION: formatDateOnlyDisplay(o.expires_date || o.expires_at),
                 ATENDIDO: o.is_attended ? "SÍ" : "NO"
             }));
 
@@ -553,17 +554,9 @@ export default function AdminExpirations() {
         }
     }
 
-    function getDaysLeft(expiryStr) {
-        if (!expiryStr) return null;
-        // Normalizar ambas fechas a medianoche para comparar días exactos
-        const expiry = new Date(expiryStr);
-        expiry.setHours(0, 0, 0, 0);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const diffTime = expiry.getTime() - today.getTime();
-        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
+    function getDaysLeft(item) {
+        if (Number.isFinite(Number(item?.days_remaining))) return Number(item.days_remaining);
+        return daysUntilDateOnly(item?.expires_date || item?.expires_at);
     }
 
     function renderDaysBadge(days) {

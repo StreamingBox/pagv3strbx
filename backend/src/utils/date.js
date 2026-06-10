@@ -87,6 +87,16 @@ function currentBogotaDateOnly(now = new Date()) {
     return formatDateOnlyBogota(now);
 }
 
+function formatExpiryDateOnly(value, { storedDateOnly = false } = {}) {
+    return storedDateOnly ? formatStoredDateOnly(value) : formatDateOnlyBogota(value);
+}
+
+function isExpiryDateExpired(value, { storedDateOnly = false, now = new Date() } = {}) {
+    const expiresAt = formatExpiryDateOnly(value, { storedDateOnly });
+    if (expiresAt === "-") return true;
+    return expiresAt < formatDateOnlyBogota(now);
+}
+
 function isStoredDateOnlyExpired(value, now = new Date()) {
     const expiresAt = formatStoredDateOnly(value);
     if (expiresAt === "-") return true;
@@ -114,7 +124,9 @@ module.exports = {
     currentBogotaDateOnly,
     daysRemainingStoredDateOnly,
     formatDateOnlyBogota,
+    formatExpiryDateOnly,
     formatStoredDateOnly,
+    isExpiryDateExpired,
     isDateTimeExpired,
     isStoredDateOnlyExpired,
     parseDateOnly,

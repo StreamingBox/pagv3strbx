@@ -72,13 +72,15 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber,
 
     const from = parseDateOnly(expiresFrom);
     const to = parseDateOnly(expiresTo);
+    const effectiveExpiresDateSql =
+        "CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) END";
 
     if (from) {
-        where.push("DATE(COALESCE(active_sub.expires_at, pa.expires_at)) >= ?");
+        where.push(`${effectiveExpiresDateSql} >= ?`);
         params.push(from);
     }
     if (to) {
-        where.push("DATE(COALESCE(active_sub.expires_at, pa.expires_at)) <= ?");
+        where.push(`${effectiveExpiresDateSql} <= ?`);
         params.push(to);
     }
 

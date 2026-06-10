@@ -112,7 +112,7 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
             SELECT platform_id, COUNT(*) AS stock
             FROM platform_accounts
             WHERE status = 'available'
-              AND (expires_at IS NULL OR expires_at > NOW())
+              AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
             GROUP BY platform_id
          ) s ON s.platform_id = p.id
          LEFT JOIN (
@@ -123,7 +123,7 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
                 SELECT platform_id, COUNT(*) AS stock
                 FROM platform_accounts
                 WHERE status = 'available'
-                  AND (expires_at IS NULL OR expires_at > NOW())
+                  AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
                 GROUP BY platform_id
             ) stock ON stock.platform_id = pf.fallback_platform_id
             WHERE pf.is_active = 1

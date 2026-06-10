@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar";
+import { daysUntilDateOnly, formatDateOnlyDisplay } from "../utils/datetime";
 async function apiFetch(path, opts = {}) {
     const res = await baseApiFetch(path, opts);
     if (!res.ok) throw new Error(res.data?.message || "Error en la solicitud");
@@ -77,10 +78,9 @@ export default function UserExpirations() {
         return () => { mounted = false; clearTimeout(t); };
     }, [page, q, platform]);
 
-    function getDaysLeft(expiryStr) {
-        if (!expiryStr) return null;
-        const diff = new Date(expiryStr) - new Date();
-        return Math.ceil(diff / (1000 * 60 * 60 * 24));
+    function getDaysLeft(item) {
+        if (Number.isFinite(Number(item?.days_remaining))) return Number(item.days_remaining);
+        return daysUntilDateOnly(item?.expires_date || item?.expires_at);
     }
 
     function renderDaysBadge(days) {
@@ -178,7 +178,7 @@ export default function UserExpirations() {
                                         <tr><td colSpan={5} style={{ padding: 30, textAlign: "center", color: "var(--muted)" }}>No tienes cuentas próximas a vencer en este momento.</td></tr>
                                     ) : (
                                         items.map((item) => {
-                                            const daysLeft = getDaysLeft(item.expires_at);
+                                            const daysLeft = getDaysLeft(item);
                                             return (
                                                 <tr key={item.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                                                     <td style={{ padding: "12px 8px", fontFamily: "monospace", opacity: 0.8 }}>{item.id}</td>
@@ -192,7 +192,7 @@ export default function UserExpirations() {
                                                         {item.profile_number && <span style={{ opacity: 0.5 }}> (P{item.profile_number})</span>}
                                                     </td>
                                                     <td style={{ padding: "12px 8px", fontSize: 11, color: "var(--muted)" }}>
-                                                        {item.expires_at ? new Date(item.expires_at).toLocaleDateString("es-CO") : "—"}
+                                                        {formatDateOnlyDisplay(item.expires_date || item.expires_at)}
                                                     </td>
                                                     <td style={{ padding: "12px 8px" }}>
                                                         {renderDaysBadge(daysLeft)}

@@ -1,8 +1,4 @@
-const { currentBogotaDateOnly, formatDateOnlyBogota, formatStoredDateOnly } = require("./date");
-
-function formatRenewalDateOnly(value, useStoredDateOnly = false) {
-    return useStoredDateOnly ? formatStoredDateOnly(value) : formatDateOnlyBogota(value);
-}
+const { currentBogotaDateOnly, formatExpiryDateOnly } = require("./date");
 
 function getRenewalEligibility({
     expiresAt,
@@ -25,7 +21,7 @@ function getRenewalEligibility({
     if (!isRenewable) {
         return {
             canRenew: false,
-            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
+            expiresOnDate: formatExpiryDateOnly(expiresAt, { storedDateOnly: expiresAtIsDateOnly }),
             reason: "Este plan no tiene renovación habilitada.",
         };
     }
@@ -33,7 +29,7 @@ function getRenewalEligibility({
     if (String(status || "").toLowerCase() === "cancelled") {
         return {
             canRenew: false,
-            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
+            expiresOnDate: formatExpiryDateOnly(expiresAt, { storedDateOnly: expiresAtIsDateOnly }),
             reason: "La suscripción está cancelada.",
         };
     }
@@ -41,7 +37,7 @@ function getRenewalEligibility({
     if (Number(isAttended) === 1) {
         return {
             canRenew: false,
-            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
+            expiresOnDate: formatExpiryDateOnly(expiresAt, { storedDateOnly: expiresAtIsDateOnly }),
             reason: "La suscripción ya fue atendida desde vencimientos.",
         };
     }
@@ -49,12 +45,12 @@ function getRenewalEligibility({
     if (isYoutubeMusic && Number(renewalCount || 0) >= 2) {
         return {
             canRenew: false,
-            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
+            expiresOnDate: formatExpiryDateOnly(expiresAt, { storedDateOnly: expiresAtIsDateOnly }),
             reason: "YouTube Music solo permite 2 renovaciones. Esta cuenta ya alcanzó el límite.",
         };
     }
 
-    const expiresOnDate = formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly);
+    const expiresOnDate = formatExpiryDateOnly(expiresAt, { storedDateOnly: expiresAtIsDateOnly });
     if (!expiresOnDate || expiresOnDate === "-") {
         return {
             canRenew: false,

@@ -13,6 +13,7 @@ const {
     parseDateOnly,
     toSqlDateTime,
 } = require("../src/utils/date");
+const { getRenewalEligibility } = require("../src/utils/renewals");
 
 test("currency utilities normalize USD and USDT consistently", () => {
     assert.equal(normalizeCurrency(" usdt "), "USD");
@@ -40,4 +41,31 @@ test("date utilities convert datetimes and calculate expiry safely", () => {
     assert.equal(toSqlDateTime(addDaysExact(base, 30)), "2026-07-01 00:00:00");
     assert.equal(isStoredDateOnlyExpired("2026-05-31", new Date("2026-06-01T12:00:00Z")), true);
     assert.equal(isStoredDateOnlyExpired("2026-06-02", new Date("2026-06-01T12:00:00Z")), false);
+});
+
+test("renewal eligibility keeps stored date-only expirations available through the displayed day", () => {
+    const eligibility = getRenewalEligibility({
+        expiresAt: new Date("2026-06-10T00:00:00Z"),
+        expiresAtIsDateOnly: true,
+        isRenewable: true,
+        status: "active",
+        isAttended: 0,
+        now: new Date("2026-06-10T17:00:00Z"),
+    });
+
+    assert.equal(eligibility.canRenew, true);
+    assert.equal(eligibility.expiresOnDate, "2026-06-10");
+});
+
+test("renewal eligibility uses Bogota day for real account datetimes", () => {
+    const eligibility = getRenewalEligibility({
+        expiresAt: new Date("2026-06-10T22:02:34Z"),
+        isRenewable: true,
+        status: "active",
+        isAttended: 0,
+        now: new Date("2026-06-10T23:30:00Z"),
+    });
+
+    assert.equal(eligibility.canRenew, true);
+    assert.equal(eligibility.expiresOnDate, "2026-06-10");
 });

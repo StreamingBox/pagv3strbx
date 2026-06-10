@@ -59,8 +59,12 @@ async function renewSubscription({
         throw err;
     }
 
+    const effectiveExpiresAt = sub.account_expires_at || sub.expires_at;
+    const effectiveExpiresAtIsDateOnly = !sub.account_expires_at;
+
     const eligibility = getRenewalEligibility({
-        expiresAt: sub.expires_at,
+        expiresAt: effectiveExpiresAt,
+        expiresAtIsDateOnly: effectiveExpiresAtIsDateOnly,
         isRenewable: Number(sub.is_renewable) === 1,
         status: sub.status,
         isAttended: sub.is_attended,
@@ -106,7 +110,7 @@ async function renewSubscription({
         throw err;
     }
 
-    const previousExpiry = parseDateTime(sub.expires_at);
+    const previousExpiry = parseDateTime(effectiveExpiresAt);
     if (!previousExpiry) {
         const err = new Error("La suscripcion no tiene una fecha de vencimiento valida para renovar.");
         err.status = 400;

@@ -1,7 +1,12 @@
-const { currentBogotaDateOnly, formatDateOnlyBogota } = require("./date");
+const { currentBogotaDateOnly, formatDateOnlyBogota, formatStoredDateOnly } = require("./date");
+
+function formatRenewalDateOnly(value, useStoredDateOnly = false) {
+    return useStoredDateOnly ? formatStoredDateOnly(value) : formatDateOnlyBogota(value);
+}
 
 function getRenewalEligibility({
     expiresAt,
+    expiresAtIsDateOnly = false,
     isRenewable,
     status,
     isAttended,
@@ -20,7 +25,7 @@ function getRenewalEligibility({
     if (!isRenewable) {
         return {
             canRenew: false,
-            expiresOnDate: formatDateOnlyBogota(expiresAt),
+            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
             reason: "Este plan no tiene renovación habilitada.",
         };
     }
@@ -28,7 +33,7 @@ function getRenewalEligibility({
     if (String(status || "").toLowerCase() === "cancelled") {
         return {
             canRenew: false,
-            expiresOnDate: formatDateOnlyBogota(expiresAt),
+            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
             reason: "La suscripción está cancelada.",
         };
     }
@@ -36,7 +41,7 @@ function getRenewalEligibility({
     if (Number(isAttended) === 1) {
         return {
             canRenew: false,
-            expiresOnDate: formatDateOnlyBogota(expiresAt),
+            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
             reason: "La suscripción ya fue atendida desde vencimientos.",
         };
     }
@@ -44,12 +49,12 @@ function getRenewalEligibility({
     if (isYoutubeMusic && Number(renewalCount || 0) >= 2) {
         return {
             canRenew: false,
-            expiresOnDate: formatDateOnlyBogota(expiresAt),
+            expiresOnDate: formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly),
             reason: "YouTube Music solo permite 2 renovaciones. Esta cuenta ya alcanzó el límite.",
         };
     }
 
-    const expiresOnDate = formatDateOnlyBogota(expiresAt);
+    const expiresOnDate = formatRenewalDateOnly(expiresAt, expiresAtIsDateOnly);
     if (!expiresOnDate || expiresOnDate === "-") {
         return {
             canRenew: false,

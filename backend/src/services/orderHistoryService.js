@@ -102,6 +102,7 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
          a.pin,
          a.profile_number,
          a.access_url,
+         a.expires_at AS account_expires_at,
          cl.token
        FROM subscriptions s
        LEFT JOIN durations d ON d.id = s.duration_id
@@ -122,7 +123,8 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
                 subscription_status: r.subscription_status,
                 is_attended: r.is_attended,
                 starts_at: r.starts_at,
-                expires_at: r.subscription_expires_at,
+                expires_at: r.account_expires_at || r.subscription_expires_at,
+                expires_at_is_date_only: !r.account_expires_at,
                 duration_name: r.duration_name,
                 renewal_count: Number(r.renewal_count || 0),
                 renewal_price: Number(r.renewal_price ?? r.subscription_price ?? 0),
@@ -150,6 +152,7 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
         const extra = detailsMap.get(it.subscription_id) || null;
         const renewal = getRenewalEligibility({
             expiresAt: extra?.expires_at ?? null,
+            expiresAtIsDateOnly: Boolean(extra?.expires_at_is_date_only),
             isRenewable: Boolean(extra?.is_renewable),
             status: extra?.subscription_status ?? null,
             isAttended: extra?.is_attended ?? 0,
@@ -189,6 +192,9 @@ async function getRenewalsHistory({
     page = 1,
     limit = 10,
 }) {
+    const effectiveExpiresSql = "COALESCE(pa.expires_at, s.expires_at)";
+    const effectiveExpiresDateSql =
+        "CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
     const where = [
         `s.user_id = ?`,
         `COALESCE(pp.is_renewable, 0) = 1`,
@@ -218,8 +224,8 @@ async function getRenewalsHistory({
     if (availability === "available") {
         where.push(`LOWER(COALESCE(s.status, '')) != 'cancelled'`);
         where.push(`COALESCE(s.is_attended, 0) = 0`);
-        where.push(`s.expires_at IS NOT NULL`);
-        where.push(`DATE(DATE_SUB(s.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`);
+        where.push(`${effectiveExpiresSql} IS NOT NULL`);
+        where.push(`${effectiveExpiresDateSql} >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`);
         where.push(`NOT (
           (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
             OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -231,8 +237,8 @@ async function getRenewalsHistory({
         where.push(`(
           LOWER(COALESCE(s.status, '')) = 'cancelled' OR
           COALESCE(s.is_attended, 0) = 1 OR
-          s.expires_at IS NULL OR
-          DATE(DATE_SUB(s.expires_at, INTERVAL 5 HOUR)) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) OR
+          ${effectiveExpiresSql} IS NULL OR
+          ${effectiveExpiresDateSql} < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) OR
           (
             (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
               OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -275,6 +281,8 @@ async function getRenewalsHistory({
            s.is_attended,
            s.starts_at AS subscription_starts_at,
            s.expires_at AS subscription_expires_at,
+           pa.expires_at AS account_expires_at,
+           ${effectiveExpiresSql} AS effective_expires_at,
            s.price AS subscription_price,
            s.currency AS subscription_currency,
            p.id AS platform_id,
@@ -303,10 +311,10 @@ async function getRenewalsHistory({
          WHERE ${whereSql}
          ORDER BY
            CASE
-             WHEN DATE(DATE_SUB(s.expires_at, INTERVAL 5 HOUR)) = DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) THEN 0
+             WHEN ${effectiveExpiresDateSql} = DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) THEN 0
              ELSE 1
            END ASC,
-           s.expires_at ASC,
+           ${effectiveExpiresSql} ASC,
            o.created_at DESC
          LIMIT ?, ?`,
         [...params, offset, safeLimit]
@@ -314,7 +322,8 @@ async function getRenewalsHistory({
 
     const items = rows.map((row) => {
         const renewal = getRenewalEligibility({
-            expiresAt: row.subscription_expires_at,
+            expiresAt: row.effective_expires_at || row.subscription_expires_at,
+            expiresAtIsDateOnly: !row.account_expires_at,
             isRenewable: true,
             status: row.subscription_status,
             isAttended: row.is_attended,
@@ -337,7 +346,9 @@ async function getRenewalsHistory({
             duration_name: row.duration_name,
             subscription_status: row.subscription_status,
             subscription_starts_at: row.subscription_starts_at,
-            subscription_expires_at: row.subscription_expires_at,
+            subscription_expires_at: row.effective_expires_at || row.subscription_expires_at,
+            original_subscription_expires_at: row.subscription_expires_at,
+            account_expires_at: row.account_expires_at,
             renewal: {
                 is_renewable: true,
                 can_renew_now: renewal.canRenew,

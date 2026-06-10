@@ -83,8 +83,8 @@ function formatStoredDateOnly(value) {
     return d.toISOString().slice(0, 10);
 }
 
-function currentBogotaDateOnly() {
-    return formatDateOnlyBogota(new Date());
+function currentBogotaDateOnly(now = new Date()) {
+    return formatDateOnlyBogota(now);
 }
 
 function isStoredDateOnlyExpired(value, now = new Date()) {

@@ -310,6 +310,9 @@ router.post("/orders/:id/renew", requireAuth, async (req, res) => {
             currency: result.currency,
             newBalance: result.newBalance,
             orderCode: result.renewalOrderCode,
+            subscriptionId: result.subscriptionId,
+            renewalOrderId: result.renewalOrderId,
+            previousOrderCode: result.previousOrderCode,
         }).catch((e) => console.error("[TelegramBot] notifyRenewalSale error:", e?.message || e));
 
         return res.json({

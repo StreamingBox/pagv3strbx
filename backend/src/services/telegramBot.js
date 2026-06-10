@@ -1088,7 +1088,18 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
     }
 }
 
-async function notifyRenewalSale({ seller, platform, total, currency, newBalance, orderCode }) {
+async function notifyRenewalSale({
+    seller,
+    platform,
+    total,
+    currency,
+    newBalance,
+    orderCode,
+    subscriptionId,
+    renewalOrderId,
+    previousOrderCode,
+    actor,
+}) {
     if (!bot || AUTHORIZED.size === 0) return;
 
     const totalLabel = `${Number(total || 0).toLocaleString("es-CO")} ${currency || ""}`.trim();
@@ -1101,10 +1112,14 @@ async function notifyRenewalSale({ seller, platform, total, currency, newBalance
             "🔁 Renovación registrada",
             `👤 Cliente: ${seller || "-"}`,
             `🖥️ Plataforma: ${platform || "-"}`,
+            `🆔 Suscripción renovada: #${subscriptionId || "-"}`,
+            `🧾 Orden original: ${previousOrderCode || "-"}`,
+            `🆕 Renovación ID: ${renewalOrderId || "-"}`,
+            `🧾 Orden renovación: ${orderCode || "-"}`,
+            actor ? `👤 Procesado por: ${actor}` : "",
             `💰 Valor: ${totalLabel}`,
             `💳 Saldo restante: ${balanceLabel}`,
-            `🧾 Orden: ${orderCode || "-"}`,
-        ].join("\n")
+        ].filter(Boolean).join("\n")
     );
 }
 

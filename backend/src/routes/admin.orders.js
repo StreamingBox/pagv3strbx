@@ -3,6 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { renewSubscription } = require("../services/renewal.service");
+const { notifyRenewalSale } = require("../services/telegramBot");
 
 const router = express.Router();
 
@@ -216,6 +217,24 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
         });
 
         await conn.commit();
+
+        const [userRows] = await pool.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
+            [result.userId]
+        );
+        const buyer = userRows?.[0] || null;
+        notifyRenewalSale({
+            seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
+            platform: result.platformName,
+            total: result.amountCharged,
+            currency: result.currency,
+            newBalance: result.newBalance,
+            orderCode: result.renewalOrderCode,
+            subscriptionId: result.subscriptionId,
+            renewalOrderId: result.renewalOrderId,
+            previousOrderCode: result.previousOrderCode,
+            actor: req.user.email || req.user.name || "admin",
+        }).catch((e) => console.error("[TelegramBot] notifyRenewalSale admin error:", e?.message || e));
 
         return res.json(result);
     } catch (err) {

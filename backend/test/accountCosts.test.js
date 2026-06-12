@@ -16,12 +16,45 @@ test("screen cost is stored directly as the unit cost", () => {
     );
 });
 
+test("Excel screen cost ignores normalized blank legacy columns", () => {
+    assert.deepEqual(
+        resolveCostModel({
+            costMode: "PANTALLA",
+            costAmount: 1040,
+            unitCost: "",
+            motherCostTotal: "",
+            motherProfilesTotal: 1,
+        }),
+        {
+            parentCostTotal: null,
+            parentProfilesTotal: null,
+            unitCost: 1040,
+        }
+    );
+});
+
 test("full account cost is divided by its sellable screens", () => {
     assert.deepEqual(
         resolveCostModel({
             costMode: "cuenta",
             costAmount: "54.000",
             motherProfilesTotal: "5",
+        }),
+        {
+            parentCostTotal: 54000,
+            parentProfilesTotal: 5,
+            unitCost: 10800,
+        }
+    );
+});
+
+test("Excel full account cost ignores a blank legacy total", () => {
+    assert.deepEqual(
+        resolveCostModel({
+            costMode: "CUENTA",
+            costAmount: 54000,
+            motherCostTotal: "",
+            motherProfilesTotal: 5,
         }),
         {
             parentCostTotal: 54000,

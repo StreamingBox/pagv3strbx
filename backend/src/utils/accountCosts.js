@@ -26,6 +26,10 @@ function normalizeCostMode(value) {
     return "";
 }
 
+function firstNonBlank(...values) {
+    return values.find((value) => value !== undefined && value !== null && String(value).trim() !== "");
+}
+
 function resolveCostModel({
     costMode,
     costAmount,
@@ -35,7 +39,9 @@ function resolveCostModel({
     motherProfilesTotal,
 }) {
     const mode = normalizeCostMode(costMode);
-    const directCost = parsePositiveNumber(unitCost ?? screenCost ?? (mode === "screen" ? costAmount : null));
+    const directCost = parsePositiveNumber(
+        firstNonBlank(unitCost, screenCost, mode === "screen" ? costAmount : null)
+    );
 
     if (directCost) {
         return {
@@ -46,7 +52,7 @@ function resolveCostModel({
     }
 
     const total = parsePositiveNumber(
-        motherCostTotal ?? (mode === "account" ? costAmount : null)
+        firstNonBlank(motherCostTotal, mode === "account" ? costAmount : null)
     );
     const profiles = parsePositiveInt(motherProfilesTotal);
     if (!total || !profiles) {

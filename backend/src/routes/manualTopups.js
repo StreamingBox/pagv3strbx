@@ -399,7 +399,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
     } catch (err) {
         try { await conn.rollback(); } catch { }
         console.error("Error POST /wallet/manual-topups:", err);
-        return res.status(500).json({ message: err?.message || "No se pudo crear la solicitud de recarga." });
+        return res.status(500).json({ message: "No se pudo crear la solicitud de recarga. Intenta nuevamente." });
     } finally {
         conn.release();
     }

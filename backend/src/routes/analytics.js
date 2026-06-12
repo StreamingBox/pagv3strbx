@@ -128,7 +128,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                 p.name AS platform_name,
                 COUNT(oi.id) AS platform_sales_count,
                 SUM(oi.price) AS platform_revenue,
-                SUM(COALESCE(oi.cost_amount, pa.unit_cost, 0)) AS platform_cost
+                SUM(COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS platform_cost
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN platforms p ON p.id = oi.platform_id
@@ -429,13 +429,14 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             if (isAdmin) {
                 let profitQ = `
                     SELECT
-                        SUM(COALESCE(oi.cost_amount, pa.unit_cost, 0)) AS cost_total,
+                        SUM(COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS cost_total,
+                        SUM(oi.price - COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS net_profit,
                         SUM(
-                            COALESCE(
-                                oi.profit_amount,
-                                oi.price - COALESCE(oi.cost_amount, pa.unit_cost, 0)
-                            )
-                        ) AS net_profit
+                            CASE
+                                WHEN COALESCE(NULLIF(oi.cost_amount, 0), NULLIF(pa.unit_cost, 0)) IS NULL THEN 1
+                                ELSE 0
+                            END
+                        ) AS missing_cost_count
                     FROM order_items oi
                     JOIN orders o ON o.id = oi.order_id
                     LEFT JOIN subscriptions s ON s.id = oi.subscription_id
@@ -454,11 +455,14 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 const [[profitRow]] = await pool.query(profitQ, profitParams);
                 const costTotal = Number(profitRow?.cost_total || 0);
                 const netProfit = Number(profitRow?.net_profit || 0);
+                const missingCostCount = Number(profitRow?.missing_cost_count || 0);
                 const marginPct = total > 0 ? Number(((netProfit / total) * 100).toFixed(2)) : 0;
 
                 monthData.costTotal = costTotal;
                 monthData.netProfit = netProfit;
                 monthData.marginPct = marginPct;
+                monthData.missingCostCount = missingCostCount;
+                monthData.balanceComplete = missingCostCount === 0;
             }
 
             return monthData;

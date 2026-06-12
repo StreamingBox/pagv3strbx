@@ -534,6 +534,7 @@ function UserAnalyticsContent({ admin }) {
     const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
     const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
     const selectedNetProfit = monthsData.reduce((sum, m) => sum + Number(m.netProfit || 0), 0);
+    const selectedMissingCostCount = monthsData.reduce((sum, m) => sum + Number(m.missingCostCount || 0), 0);
     const selectedMarginPct = selectedRevenueTotal > 0
         ? Number(((selectedNetProfit / selectedRevenueTotal) * 100).toFixed(2))
         : 0;
@@ -749,20 +750,40 @@ function UserAnalyticsContent({ admin }) {
 
             {/* Rentabilidad admin */}
             {admin && viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
-                <motion.div
-                    variants={itemVariants}
-                    style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                        gap: 12,
-                        marginBottom: 20,
-                    }}
-                >
-                    <InsightChip emoji="💰" label="Utilidad Neta (Periodo)" value={`$${selectedNetProfit.toLocaleString("es-CO")}`} color={selectedNetProfit >= 0 ? "#10b981" : "#ef4444"} />
-                    <InsightChip emoji="🧾" label="Costo Total (Periodo)" value={`$${selectedCostTotal.toLocaleString("es-CO")}`} color="#f59e0b" />
-                    <InsightChip emoji="📈" label="Margen % (Periodo)" value={`${selectedMarginPct.toLocaleString("es-CO")} %`} color={selectedMarginPct >= 0 ? "#10b981" : "#ef4444"} />
-                    <InsightChip emoji="🎯" label={`Margen ${primary?.label || "Mes"}`} value={`${primaryMarginPct.toLocaleString("es-CO")} %`} color={primaryMarginPct >= 0 ? "#10b981" : "#ef4444"} />
-                </motion.div>
+                <>
+                    <motion.div
+                        variants={itemVariants}
+                        style={{
+                            marginBottom: 12,
+                            padding: "12px 14px",
+                            borderRadius: 8,
+                            border: selectedMissingCostCount > 0 ? "1px solid rgba(245,158,11,0.3)" : "1px solid rgba(16,185,129,0.25)",
+                            background: selectedMissingCostCount > 0 ? "rgba(245,158,11,0.08)" : "rgba(16,185,129,0.07)",
+                            color: selectedMissingCostCount > 0 ? "#f59e0b" : "#10b981",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            lineHeight: 1.45,
+                        }}
+                    >
+                        {selectedMissingCostCount > 0
+                            ? `Balance provisional: ${selectedMissingCostCount} venta${selectedMissingCostCount === 1 ? "" : "s"} todavía no tiene${selectedMissingCostCount === 1 ? "" : "n"} costo registrado. Corrige el costo desde Inventario para completar la utilidad neta.`
+                            : "Balance completo: todas las ventas del periodo tienen costo registrado."}
+                    </motion.div>
+                    <motion.div
+                        variants={itemVariants}
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                            gap: 12,
+                            marginBottom: 20,
+                        }}
+                    >
+                        <InsightChip emoji="💰" label={selectedMissingCostCount > 0 ? "Utilidad provisional" : "Utilidad neta"} value={`$${selectedNetProfit.toLocaleString("es-CO")}`} color={selectedNetProfit >= 0 ? "#10b981" : "#ef4444"} />
+                        <InsightChip emoji="🧾" label="Costo registrado" value={`$${selectedCostTotal.toLocaleString("es-CO")}`} color="#f59e0b" />
+                        <InsightChip emoji="📈" label="Margen del periodo" value={`${selectedMarginPct.toLocaleString("es-CO")} %`} color={selectedMarginPct >= 0 ? "#10b981" : "#ef4444"} />
+                        <InsightChip emoji="🎯" label={`Margen ${primary?.label || "Mes"}`} value={`${primaryMarginPct.toLocaleString("es-CO")} %`} color={primaryMarginPct >= 0 ? "#10b981" : "#ef4444"} />
+                    </motion.div>
+                </>
             )}
 
             {/* Charts — solo en modo mensual */}

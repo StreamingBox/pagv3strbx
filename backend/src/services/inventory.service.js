@@ -8,6 +8,7 @@ const {
     normalizeOptionalValue,
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
+const { validateCostModelInput } = require("../utils/accountCosts");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "disabled"]);
 
@@ -138,6 +139,9 @@ async function getInventory(query = {}) {
       pa.password,
       pa.pin,
       pa.profile_number,
+      pa.parent_account_cost_total,
+      pa.parent_profiles_total,
+      pa.unit_cost,
       pa.status,
       pa.assigned_to_user_id,
       u.email AS assigned_user_email,
@@ -213,6 +217,9 @@ async function exportInventoryCsv(query = {}) {
       pa.password,
       pa.pin,
       pa.profile_number,
+      pa.parent_account_cost_total,
+      pa.parent_profiles_total,
+      pa.unit_cost,
       pa.status,
       u.email AS assigned_user_email,
       COALESCE(active_sub.id, latest_replacement.subscription_id) AS sale_id,
@@ -237,6 +244,9 @@ async function exportInventoryCsv(query = {}) {
         "password",
         "pin",
         "profile_number",
+        "account_cost_total",
+        "account_profiles_total",
+        "unit_cost",
         "status",
         "sale_id",
         "assigned_to",
@@ -251,6 +261,9 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.password),
             escapeCsv(r.pin),
             escapeCsv(r.profile_number),
+            escapeCsv(r.parent_account_cost_total),
+            escapeCsv(r.parent_profiles_total),
+            escapeCsv(r.unit_cost),
             escapeCsv(r.status),
             escapeCsv(r.sale_id || ""),
             escapeCsv(r.assigned_user_email || ""),
@@ -281,6 +294,9 @@ async function getInventoryAccountDetail(id) {
             pa.password,
             pa.pin,
             pa.profile_number,
+            pa.parent_account_cost_total,
+            pa.parent_profiles_total,
+            pa.unit_cost,
             pa.status,
             pa.assigned_to_user_id,
             u.email AS assigned_user_email,
@@ -407,6 +423,11 @@ async function patchInventory(id, body = {}) {
         reset_assign,
         expires_at,
         expiresAt,
+        costMode,
+        costAmount,
+        unitCost,
+        motherCostTotal,
+        motherProfilesTotal,
     } = body;
 
     const accountId = Number(id);
@@ -524,6 +545,32 @@ async function patchInventory(id, body = {}) {
             }
             sets.push("expires_at = ?");
             params.push(expOnly ? toSqlDateStart(expOnly) : null);
+        }
+
+        const hasCostFields = [
+            "costMode",
+            "costAmount",
+            "unitCost",
+            "motherCostTotal",
+            "motherProfilesTotal",
+        ].some(has);
+
+        if (hasCostFields) {
+            const costInput = {
+                costMode,
+                costAmount,
+                unitCost,
+                motherCostTotal,
+                motherProfilesTotal,
+            };
+            const costModel = validateCostModelInput(costInput);
+
+            sets.push("parent_account_cost_total = ?");
+            params.push(costModel.parentCostTotal);
+            sets.push("parent_profiles_total = ?");
+            params.push(costModel.parentProfilesTotal);
+            sets.push("unit_cost = ?");
+            params.push(costModel.unitCost);
         }
 
         if (refreshIdentity) {

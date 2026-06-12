@@ -23,6 +23,7 @@ async function renewSubscription({
                 p.type AS platform_type,
                 p.show_device_rule AS platform_show_device_rule,
                 pa.expires_at AS account_expires_at,
+                pa.unit_cost AS account_unit_cost,
                 pp.is_renewable,
                 pp.price AS renewable_price
          FROM subscriptions s
@@ -123,6 +124,7 @@ async function renewSubscription({
     const previousAccountId = Number(sub.platform_account_id || 0) || null;
     let finalAccountId = previousAccountId;
     let accountChanged = false;
+    let renewalUnitCost = Number(sub.account_unit_cost || 0);
 
     if (allowAccountChange && newAccountId) {
         finalAccountId = Number(newAccountId);
@@ -134,7 +136,7 @@ async function renewSubscription({
 
         if (finalAccountId !== previousAccountId) {
             const [newAccountRows] = await conn.query(
-                `SELECT id, platform_id, status
+                `SELECT id, platform_id, status, unit_cost
                  FROM platform_accounts
                  WHERE id = ?
                  LIMIT 1
@@ -162,6 +164,7 @@ async function renewSubscription({
             }
 
             accountChanged = true;
+            renewalUnitCost = Number(newAccount.unit_cost || 0);
         }
     }
 
@@ -236,9 +239,18 @@ async function renewSubscription({
     const renewalOrderId = renewalOrderIns.insertId;
 
     await conn.query(
-        `INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price)
-         VALUES (?, ?, ?, ?, ?)`,
-        [renewalOrderId, subscriptionId, sub.platform_id, sub.platform_price_id, amount]
+        `INSERT INTO order_items
+            (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+            renewalOrderId,
+            subscriptionId,
+            sub.platform_id,
+            sub.platform_price_id,
+            amount,
+            renewalUnitCost,
+            Number((amount - renewalUnitCost).toFixed(2)),
+        ]
     );
 
     let walletId = null;

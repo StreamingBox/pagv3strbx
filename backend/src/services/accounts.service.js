@@ -5,37 +5,13 @@ const {
     normalizeProfileForAccount,
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
+const {
+    resolveCostModel,
+    validateCostModelInput,
+} = require("../utils/accountCosts");
 
 const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
 const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
-
-function parsePositiveNumber(value) {
-    if (value === undefined || value === null || value === "") return null;
-    const n = Number(String(value).replace(",", "."));
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return n;
-}
-
-function parsePositiveInt(value) {
-    if (value === undefined || value === null || value === "") return null;
-    const n = Number.parseInt(String(value), 10);
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return n;
-}
-
-function resolveCostModel({ motherCostTotal, motherProfilesTotal }) {
-    const total = parsePositiveNumber(motherCostTotal);
-    const profiles = parsePositiveInt(motherProfilesTotal);
-    if (!total || !profiles) {
-        return { parentCostTotal: null, parentProfilesTotal: null, unitCost: null };
-    }
-    const unitCost = Number((total / profiles).toFixed(2));
-    return {
-        parentCostTotal: Number(total.toFixed(2)),
-        parentProfilesTotal: profiles,
-        unitCost,
-    };
-}
 
 async function resolvePlatform(conn, { platformId, platformName }) {
     let pid = platformId ? Number(platformId) : null;
@@ -206,10 +182,15 @@ async function createAccountOne(conn, body) {
     const identityProf = normalizeProfileForIdentity(profileNumber);
     const accountProf = normalizeProfileForAccount(profileNumber);
     const exp = expiresAt ? toSqlDateStart(expiresAt) : null;
-    const costModel = resolveCostModel({
+    const costInput = {
+        costMode: body.costMode ?? body.tipoCosto,
+        costAmount: body.costAmount ?? body.valorCosto,
+        unitCost: body.unitCost ?? body.costoPantalla,
+        screenCost: body.screenCost,
         motherCostTotal: body.motherCostTotal ?? body.parentAccountCostTotal,
         motherProfilesTotal: body.motherProfilesTotal ?? body.parentProfilesTotal,
-    });
+    };
+    const costModel = validateCostModelInput(costInput);
 
     const { pid, pname } = await resolvePlatform(conn, { platformId, platformName });
 
@@ -254,22 +235,29 @@ async function resolvePlatformsByName(rows) {
 
 function normalizeBulkRows(rows) {
     return rows.map((r) => {
-        const platformId = r.platformId ? Number(r.platformId) : null;
-        const platformName = String(r.platformName || r.platform || r.platform_name || "").trim();
+        const platformId = (r.platformId ?? r.plataformaId)
+            ? Number(r.platformId ?? r.plataformaId)
+            : null;
+        const platformName = String(
+            r.platformName || r.platform || r.platform_name || r.plataforma || ""
+        ).trim();
 
-        const rawProfile = r.profileNumber ?? r.profile_number ?? r.profile ?? "";
+        const rawProfile = r.profileNumber ?? r.profile_number ?? r.profile ?? r.perfil ?? "";
         const profileNumber = normalizeOptionalValue(rawProfile); // string o null
 
         return {
             platformId,
             platformName,
-            email: String(r.email || "").trim(),
-            password: String(r.password || "").trim(),
+            email: String(r.email || r.correo || "").trim(),
+            password: String(r.password || r.contrasena || r.clave || "").trim(),
             pin: normalizeOptionalValue(r.pin),
             profileNumber,
-            expiresAt: String(r.expiresAt || r.expires_at || "").trim(),
+            expiresAt: String(r.expiresAt || r.expires_at || r.expiracion || "").trim(),
+            costMode: r.costMode ?? r.tipoCosto ?? r.tipo_costo ?? "",
+            costAmount: r.costAmount ?? r.valorCosto ?? r.valor_costo ?? "",
+            unitCost: r.unitCost ?? r.costoPantalla ?? r.costo_pantalla ?? "",
             motherCostTotal: r.motherCostTotal ?? r.parentAccountCostTotal ?? r.costoCuentaMadre ?? "",
-            motherProfilesTotal: r.motherProfilesTotal ?? r.parentProfilesTotal ?? r.cantidadPerfiles ?? "",
+            motherProfilesTotal: r.motherProfilesTotal ?? r.parentProfilesTotal ?? r.cantidadPerfiles ?? r.totalPantallas ?? "",
         };
     });
 }
@@ -294,7 +282,7 @@ async function bulkInsertAccounts(conn, rows) {
     let inserted = 0;
     const missingPlatforms = new Set();
 
-    for (const r of candidates) {
+    for (const [rowIndex, r] of candidates.entries()) {
         let pid = r.platformId;
         if (!pid) pid = mapByName.get(String(r.platformName).toLowerCase()) || null;
 
@@ -306,10 +294,20 @@ async function bulkInsertAccounts(conn, rows) {
         const identityProf = normalizeProfileForIdentity(r.profileNumber);
         const accountProf = normalizeProfileForAccount(r.profileNumber);
         const exp = r.expiresAt ? toSqlDateStart(r.expiresAt) : null;
-        const costModel = resolveCostModel({
+        const costInput = {
+            costMode: r.costMode,
+            costAmount: r.costAmount,
+            unitCost: r.unitCost,
             motherCostTotal: r.motherCostTotal,
             motherProfilesTotal: r.motherProfilesTotal,
-        });
+        };
+        let costModel;
+        try {
+            costModel = validateCostModelInput(costInput);
+        } catch (err) {
+            err.message = `Fila ${rowIndex + 2}: ${err.message}`;
+            throw err;
+        }
 
         const identityId = await upsertIdentity(conn, {
             pid,

@@ -162,6 +162,9 @@ export default function AdminInventory() {
         profile_number: "",
         expiresAt: "",
         status: "available",
+        costMode: "screen",
+        costAmount: "",
+        motherProfilesTotal: "",
     });
     const [editError, setEditError] = useState("");
     const [supportModal, setSupportModal] = useState({ open: false, item: null });
@@ -185,6 +188,12 @@ export default function AdminInventory() {
             String(u.name || "").toLowerCase().includes(low)
         );
     }, [users, userSearch]);
+    const editCostAmount = Number(editData.costAmount || 0);
+    const editProfilesTotal = Number(editData.motherProfilesTotal || 0);
+    const editUnitCost = editData.costMode === "account"
+        ? (editCostAmount > 0 && editProfilesTotal > 0 ? editCostAmount / editProfilesTotal : 0)
+        : editCostAmount;
+    const editCostIncomplete = editData.costMode === "account" && editCostAmount > 0 && editProfilesTotal <= 0;
 
     async function logout() {
         try { await apiLogout(); } catch (e) { console.error(e); }
@@ -315,6 +324,8 @@ export default function AdminInventory() {
 
     function openEdit(item) {
         if (!item) return;
+        const hasAccountCost = Number(item.parent_account_cost_total || 0) > 0
+            && Number(item.parent_profiles_total || 0) > 0;
         setEditError("");
         setEditData({
             email: item.email || "",
@@ -323,6 +334,9 @@ export default function AdminInventory() {
             profile_number: item.profile_number ?? "",
             expiresAt: normalizeDateOnly(item.display_expires_at || item.expires_at),
             status: item.status || "available",
+            costMode: hasAccountCost ? "account" : "screen",
+            costAmount: hasAccountCost ? item.parent_account_cost_total : (item.unit_cost ?? ""),
+            motherProfilesTotal: hasAccountCost ? item.parent_profiles_total : "",
         });
         setEditModal({ open: true, item });
     }
@@ -331,6 +345,10 @@ export default function AdminInventory() {
         if (!editModal.item?.id) return;
         if (!String(editData.email || "").trim()) {
             setEditError("El correo es obligatorio.");
+            return;
+        }
+        if (editCostIncomplete) {
+            setEditError("Indica cuantas pantallas vendibles tiene la cuenta completa.");
             return;
         }
 
@@ -345,6 +363,9 @@ export default function AdminInventory() {
                 profile_number: editData.profile_number,
                 expiresAt: editData.expiresAt,
                 status: editData.status,
+                costMode: editData.costMode,
+                costAmount: editData.costAmount,
+                motherProfilesTotal: editData.costMode === "account" ? editData.motherProfilesTotal : "",
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo guardar la cuenta.");
 
@@ -914,7 +935,7 @@ export default function AdminInventory() {
                             initial={{ opacity: 0, scale: 0.94, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.94, y: 20 }}
-                            style={{ background: "var(--bg1)", border: "1px solid var(--stroke)", borderRadius: 24, width: "100%", maxWidth: 680, padding: 28, boxShadow: "0 20px 80px rgba(0,0,0,0.5)", position: "relative", overflow: "hidden" }}
+                            style={{ background: "var(--bg1)", border: "1px solid var(--stroke)", borderRadius: 24, width: "100%", maxWidth: 680, maxHeight: "calc(100vh - 40px)", overflowY: "auto", padding: 28, boxShadow: "0 20px 80px rgba(0,0,0,0.5)", position: "relative" }}
                         >
                             <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 6, background: "linear-gradient(90deg, #10b981 0%, #0da6f2 100%)" }} />
                             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 22 }}>
@@ -1008,8 +1029,74 @@ export default function AdminInventory() {
                                 </div>
                             </div>
 
+                            <div style={{ marginTop: 18, paddingTop: 18, borderTop: "1px solid var(--stroke2)" }}>
+                                <div style={{ fontSize: 12, color: "var(--text)", marginBottom: 10, fontWeight: 800, textTransform: "uppercase" }}>Costo para balance neto</div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                                    {[
+                                        { value: "screen", label: "Costo por pantalla" },
+                                        { value: "account", label: "Cuenta completa" },
+                                    ].map((option) => {
+                                        const active = editData.costMode === option.value;
+                                        return (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setEditData((prev) => ({ ...prev, costMode: option.value }))}
+                                                style={{
+                                                    height: 42,
+                                                    borderRadius: 8,
+                                                    border: active ? "1px solid #0da6f2" : "1px solid var(--stroke)",
+                                                    background: active ? "rgba(13,166,242,0.12)" : "var(--bg0)",
+                                                    color: active ? "#0da6f2" : "var(--text)",
+                                                    fontSize: 12,
+                                                    fontWeight: 800,
+                                                    cursor: "pointer",
+                                                }}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginTop: 14 }}>
+                                    <div>
+                                        <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>
+                                            {editData.costMode === "account" ? "Costo total de la cuenta (COP)" : "Costo de la pantalla (COP)"}
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            style={inputStyle}
+                                            placeholder={editData.costMode === "account" ? "Ej: 54000" : "Ej: 10800"}
+                                            value={editData.costAmount}
+                                            onChange={(e) => setEditData((prev) => ({ ...prev, costAmount: e.target.value }))}
+                                        />
+                                    </div>
+                                    {editData.costMode === "account" && (
+                                        <div>
+                                            <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Pantallas vendibles</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                style={inputStyle}
+                                                placeholder="Ej: 5"
+                                                value={editData.motherProfilesTotal}
+                                                onChange={(e) => setEditData((prev) => ({ ...prev, motherProfilesTotal: e.target.value }))}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div style={{ marginTop: 12, padding: "11px 13px", borderRadius: 8, background: editCostIncomplete ? "rgba(239,68,68,0.08)" : "rgba(16,185,129,0.08)", border: `1px solid ${editCostIncomplete ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.25)"}`, color: editCostIncomplete ? "#ef4444" : "#10b981", fontSize: 13, fontWeight: 800 }}>
+                                    Costo por venta: {editUnitCost > 0 ? `$${editUnitCost.toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "sin registrar"}
+                                </div>
+                            </div>
+
                             <div style={{ marginTop: 18, background: "rgba(13,166,242,0.08)", border: "1px solid rgba(13,166,242,0.22)", borderRadius: 14, padding: "12px 14px", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
-                                Para quitar perfil, PIN o fecha, deja el campo vacío y guarda. Para seguir vendiendo la cuenta, deja el estado en Disponible.
+                                Para quitar perfil, PIN, fecha o costo, deja el campo vacío y guarda. Para seguir vendiendo la cuenta, deja el estado en Disponible.
                             </div>
 
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
@@ -1020,7 +1107,7 @@ export default function AdminInventory() {
                                     className="btn-primary"
                                     style={{ height: 44, minWidth: 160, borderRadius: 12, background: "#10b981", color: "white", fontWeight: 800, border: "none", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.75 : 1 }}
                                     onClick={handleEditSave}
-                                    disabled={saving}
+                                    disabled={saving || editCostIncomplete}
                                 >
                                     {saving ? "Guardando..." : "Guardar cambios"}
                                 </button>
@@ -1186,6 +1273,7 @@ function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDet
                                                 <DetailStat label="Contraseña" value={it.password} mono />
                                                 <DetailStat label="Pin" value={it.pin} mono />
                                                 <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
+                                                <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />
                                                 <DetailStat label="ID venta" value={it.sale_id ? `#${it.sale_id}` : "—"} mono tone="accent" />
                                                 <DetailStat label="Asignada a" value={it.assigned_user_email || "—"} />
                                                 <DetailStat label="Expiración" value={formatBogotaDate(it.display_expires_at || it.expires_at)} tone="warning" />
@@ -1356,6 +1444,7 @@ function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDet
                                         <DetailStat label="Contraseña" value={it.password} mono />
                                         <DetailStat label="Pin" value={it.pin} mono />
                                         <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
+                                        <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />
                                         <DetailStat label="ID venta" value={it.sale_id ? `#${it.sale_id}` : "—"} mono tone="accent" />
                                         <DetailStat label="Asignada a" value={it.assigned_user_email || "—"} />
                                         <DetailStat label="Expiración" value={formatBogotaDate(it.display_expires_at || it.expires_at)} tone="warning" />

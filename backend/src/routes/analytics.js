@@ -4,6 +4,11 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 
 const router = express.Router();
+const DEFAULT_NET_PROFIT_TRACKING_START_AT = "2026-06-12 13:36:47";
+const configuredNetProfitStartAt = String(process.env.NET_PROFIT_TRACKING_START_AT || "").trim();
+const NET_PROFIT_TRACKING_START_AT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(configuredNetProfitStartAt)
+    ? configuredNetProfitStartAt
+    : DEFAULT_NET_PROFIT_TRACKING_START_AT;
 
 /**
  * Returns daily sales comparison for current month vs previous month.
@@ -429,6 +434,8 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             if (isAdmin) {
                 let profitQ = `
                     SELECT
+                        COUNT(oi.id) AS tracked_sales_count,
+                        SUM(oi.price) AS tracked_revenue,
                         SUM(COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS cost_total,
                         SUM(oi.price - COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS net_profit,
                         SUM(
@@ -443,8 +450,9 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
                     WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
                       AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                      AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
                 `;
-                const profitParams = [year, month];
+                const profitParams = [year, month, NET_PROFIT_TRACKING_START_AT];
 
                 if (!isGlobalAdmin) {
                     const placeholders = targetUserIds.map(() => "?").join(",");
@@ -453,11 +461,16 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 }
 
                 const [[profitRow]] = await pool.query(profitQ, profitParams);
+                const trackedSalesCount = Number(profitRow?.tracked_sales_count || 0);
+                const trackedRevenue = Number(profitRow?.tracked_revenue || 0);
                 const costTotal = Number(profitRow?.cost_total || 0);
                 const netProfit = Number(profitRow?.net_profit || 0);
                 const missingCostCount = Number(profitRow?.missing_cost_count || 0);
-                const marginPct = total > 0 ? Number(((netProfit / total) * 100).toFixed(2)) : 0;
+                const marginPct = trackedRevenue > 0 ? Number(((netProfit / trackedRevenue) * 100).toFixed(2)) : 0;
 
+                monthData.netProfitTrackingStartAt = NET_PROFIT_TRACKING_START_AT;
+                monthData.trackedSalesCount = trackedSalesCount;
+                monthData.trackedRevenue = trackedRevenue;
                 monthData.costTotal = costTotal;
                 monthData.netProfit = netProfit;
                 monthData.marginPct = marginPct;

@@ -51,6 +51,17 @@ function monthKey(year, month) {
     return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+function formatTrackingStart(value) {
+    if (!value) return "el inicio del control de costos";
+    const date = new Date(`${String(value).replace(" ", "T")}-05:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("es-CO", {
+        dateStyle: "long",
+        timeStyle: "short",
+        timeZone: "America/Bogota",
+    }).format(date);
+}
+
 function getApiPayload(res) {
     return res?.data ?? res ?? {};
 }
@@ -530,14 +541,15 @@ function UserAnalyticsContent({ admin }) {
     }
 
     const primary = monthsData[0] ?? null;
-    const primaryMarginPct = Number(primary?.marginPct || 0);
-    const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
+    const selectedTrackedRevenue = monthsData.reduce((sum, m) => sum + Number(m.trackedRevenue || 0), 0);
+    const selectedTrackedSalesCount = monthsData.reduce((sum, m) => sum + Number(m.trackedSalesCount || 0), 0);
     const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
     const selectedNetProfit = monthsData.reduce((sum, m) => sum + Number(m.netProfit || 0), 0);
     const selectedMissingCostCount = monthsData.reduce((sum, m) => sum + Number(m.missingCostCount || 0), 0);
-    const selectedMarginPct = selectedRevenueTotal > 0
-        ? Number(((selectedNetProfit / selectedRevenueTotal) * 100).toFixed(2))
+    const selectedMarginPct = selectedTrackedRevenue > 0
+        ? Number(((selectedNetProfit / selectedTrackedRevenue) * 100).toFixed(2))
         : 0;
+    const trackingStartLabel = formatTrackingStart(monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt);
 
     const isComparingUsers = admin && selectedUserIds.length >= 2;
 
@@ -744,7 +756,7 @@ function UserAnalyticsContent({ admin }) {
                     {monthsData.map((m, idx) => (
                         <KpiCard
                             key={m.label}
-                            label={m.label}
+                            label={`Historial ${m.label}`}
                             total={m.total}
                             orders={m.orders}
                             topPlatform={m.distribution?.[0]?.name}
@@ -772,8 +784,10 @@ function UserAnalyticsContent({ admin }) {
                         }}
                     >
                         {selectedMissingCostCount > 0
-                            ? `Balance provisional: ${selectedMissingCostCount} venta${selectedMissingCostCount === 1 ? "" : "s"} todavía no tiene${selectedMissingCostCount === 1 ? "" : "n"} costo registrado. Corrige el costo desde Inventario para completar la utilidad neta.`
-                            : "Balance completo: todas las ventas del periodo tienen costo registrado."}
+                            ? `Balance neto desde ${trackingStartLabel}: ${selectedMissingCostCount} venta${selectedMissingCostCount === 1 ? "" : "s"} actual${selectedMissingCostCount === 1 ? "" : "es"} no tiene${selectedMissingCostCount === 1 ? "" : "n"} costo registrado. Las ventas anteriores no se incluyen ni necesitan corregirse.`
+                            : selectedTrackedSalesCount > 0
+                                ? `Balance neto activo desde ${trackingStartLabel}. Incluye ${selectedTrackedSalesCount} venta${selectedTrackedSalesCount === 1 ? "" : "s"}; todo lo anterior queda solamente como historial.`
+                                : `El balance neto comienza el ${trackingStartLabel}. Las ventas anteriores se conservan como historial y no afectan la utilidad ni el margen.`}
                     </motion.div>
                     <motion.div
                         variants={itemVariants}
@@ -784,10 +798,10 @@ function UserAnalyticsContent({ admin }) {
                             marginBottom: 20,
                         }}
                     >
-                        <InsightChip emoji="💰" label={selectedMissingCostCount > 0 ? "Utilidad provisional" : "Utilidad neta"} value={`$${selectedNetProfit.toLocaleString("es-CO")}`} color={selectedNetProfit >= 0 ? "#10b981" : "#ef4444"} />
+                        <InsightChip emoji="💵" label="Ingresos con seguimiento" value={`$${selectedTrackedRevenue.toLocaleString("es-CO")}`} color="#0da6f2" />
                         <InsightChip emoji="🧾" label="Costo registrado" value={`$${selectedCostTotal.toLocaleString("es-CO")}`} color="#f59e0b" />
-                        <InsightChip emoji="📈" label="Margen del periodo" value={`${selectedMarginPct.toLocaleString("es-CO")} %`} color={selectedMarginPct >= 0 ? "#10b981" : "#ef4444"} />
-                        <InsightChip emoji="🎯" label={`Margen ${primary?.label || "Mes"}`} value={`${primaryMarginPct.toLocaleString("es-CO")} %`} color={primaryMarginPct >= 0 ? "#10b981" : "#ef4444"} />
+                        <InsightChip emoji="💰" label={selectedMissingCostCount > 0 ? "Utilidad provisional" : "Utilidad neta"} value={`$${selectedNetProfit.toLocaleString("es-CO")}`} color={selectedNetProfit >= 0 ? "#10b981" : "#ef4444"} />
+                        <InsightChip emoji="📈" label="Margen actual" value={`${selectedMarginPct.toLocaleString("es-CO")} %`} color={selectedMarginPct >= 0 ? "#10b981" : "#ef4444"} />
                     </motion.div>
                 </>
             )}

@@ -560,10 +560,16 @@ function UserAnalyticsContent({ admin }) {
                                 background: "linear-gradient(135deg, var(--accent), #8b5cf6)",
                                 fontSize: 16, flexShrink: 0,
                             }}>📊</span>
-                            {admin ? "Analíticas Globales" : "Mis Analíticas de Ventas"}
+                            {admin ? "Balance y Ganancias Netas" : "Mis Analíticas de Ventas"}
                         </h1>
                         <p style={{ margin: "6px 0 0 42px", fontSize: 13, color: "var(--muted)" }}>
-                            {isComparingUsers ? "Comparando usuarios en el mes seleccionado" : viewMode === "weekly" ? "Desglose semanal del mes seleccionado" : "Selecciona hasta 6 meses para comparar"}
+                            {admin
+                                ? "Consulta ingresos, costos registrados, utilidad real y margen por periodo"
+                                : isComparingUsers
+                                    ? "Comparando usuarios en el mes seleccionado"
+                                    : viewMode === "weekly"
+                                        ? "Desglose semanal del mes seleccionado"
+                                        : "Selecciona hasta 6 meses para comparar"}
                         </p>
                     </div>
 

@@ -15,7 +15,7 @@ const NAV_GROUPS = [
     {
         title: "Ventas & Finanzas",
         links: [
-            { path: "/admin/analytics", label: "Estadisticas", icon: "📊" },
+            { path: "/admin/analytics", label: "Ganancias Netas", icon: "📊" },
             { path: "/admin/sales-top", label: "Top de Ventas", icon: "🏆" },
             { path: "/admin/transactions", label: "Transacciones / Saldo", icon: "💲" },
             { path: "/admin/topups", label: "Recargas", icon: "💸" },

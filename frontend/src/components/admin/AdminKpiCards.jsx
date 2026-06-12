@@ -40,7 +40,7 @@ export default function AdminKpiCards({ onNavigate }) {
         {
             groupName: "Ventas & Finanzas",
             items: [
-                { icon: "📊", tone: "blue", title: "Estadísticas", hint: "Ventas: mes actual vs anterior.", path: "/admin/analytics" },
+                { icon: "📊", tone: "blue", title: "Ganancias Netas", hint: "Ingresos, costos, utilidad y margen.", path: "/admin/analytics" },
                 { icon: "🏆", tone: "violet", title: "Top de Ventas", hint: "Ranking mensual por vendedor.", path: "/admin/sales-top" },
                 { icon: "💲", tone: "amber", title: "Transacciones / Saldo", hint: "Global y por usuario.", path: "/admin/transactions" },
                 { icon: "💸", tone: "sky", title: "Recargas", hint: "Comprobantes y aprobaciones.", path: "/admin/topups" },

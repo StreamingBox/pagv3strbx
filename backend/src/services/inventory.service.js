@@ -4,7 +4,12 @@
 const pool = require("../db");
 const { escapeCsv } = require("../utils/csv");
 const { formatDateOnlyBogota, parseDateOnly, toSqlDateStart } = require("../utils/date");
-const { normalizeOptionalValue } = require("../utils/normalize");
+const {
+    normalizeOptionalValue,
+    normalizeProfileForIdentity,
+} = require("../utils/normalize");
+
+const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "disabled"]);
 
 const LATEST_REPLACEMENT_JOIN = `
 LEFT JOIN (
@@ -404,7 +409,8 @@ async function patchInventory(id, body = {}) {
         expiresAt,
     } = body;
 
-    if (!id) {
+    const accountId = Number(id);
+    if (!Number.isInteger(accountId) || accountId <= 0) {
         const err = new Error("id requerido.");
         err.status = 400;
         throw err;
@@ -418,53 +424,160 @@ async function patchInventory(id, body = {}) {
            expires_at = NULL,
            status = 'available'
        WHERE id = ?`,
-            [id]
+            [accountId]
         );
         return { ok: true, reset: true };
     }
 
-    const expOnly = parseDateOnly(expiresAt) || parseDateOnly(expires_at);
-    const expSql = expOnly ? toSqlDateStart(expOnly) : null;
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
 
-    // Nota: normalizeOptionalValue para que "" -> null (no pisa con vacío si no quieres)
-    const emailNorm = email === undefined ? null : normalizeOptionalValue(email);
-    const passNorm = password === undefined ? null : normalizeOptionalValue(password);
-    const pinNorm = pin === undefined ? null : normalizeOptionalValue(pin);
+        const [[current]] = await conn.query(
+            `SELECT id, identity_id, platform_id, email, password, pin, profile_number
+             FROM platform_accounts
+             WHERE id = ?
+             FOR UPDATE`,
+            [accountId]
+        );
 
-    // profile_number: si viene "" -> null; si viene número -> number
-    let profNorm = null;
-    if (profile_number !== undefined) {
-        const profStr = normalizeOptionalValue(profile_number);
-        if (profStr === null) profNorm = null;
-        else {
-            const n = Number(profStr);
-            profNorm = Number.isFinite(n) ? n : null;
+        if (!current) {
+            const err = new Error("Cuenta no encontrada.");
+            err.status = 404;
+            throw err;
         }
-    } else {
-        profNorm = null; // no se usará si viene undefined por COALESCE
+
+        const sets = [];
+        const params = [];
+        const has = (key) => Object.prototype.hasOwnProperty.call(body, key);
+
+        let nextEmail = current.email;
+        let nextPassword = current.password;
+        let nextPin = current.pin;
+        let nextProfile = current.profile_number;
+        let refreshIdentity = false;
+
+        if (has("status")) {
+            const cleanStatus = normalizeOptionalValue(status);
+            if (!cleanStatus || !EDITABLE_STATUSES.has(cleanStatus)) {
+                const err = new Error("Estado invalido.");
+                err.status = 400;
+                throw err;
+            }
+            sets.push("status = ?");
+            params.push(cleanStatus);
+        }
+
+        if (has("email")) {
+            const cleanEmail = normalizeOptionalValue(email);
+            if (!cleanEmail) {
+                const err = new Error("Correo requerido.");
+                err.status = 400;
+                throw err;
+            }
+            nextEmail = cleanEmail;
+            sets.push("email = ?");
+            params.push(cleanEmail);
+            refreshIdentity = true;
+        }
+
+        if (has("password")) {
+            nextPassword = normalizeOptionalValue(password);
+            sets.push("password = ?");
+            params.push(nextPassword);
+            refreshIdentity = true;
+        }
+
+        if (has("pin")) {
+            nextPin = normalizeOptionalValue(pin);
+            sets.push("pin = ?");
+            params.push(nextPin);
+            refreshIdentity = true;
+        }
+
+        if (has("profile_number")) {
+            const profStr = normalizeOptionalValue(profile_number);
+            if (profStr === null) {
+                nextProfile = null;
+            } else {
+                const n = Number(profStr);
+                if (!Number.isInteger(n) || n < 0) {
+                    const err = new Error("Perfil invalido.");
+                    err.status = 400;
+                    throw err;
+                }
+                nextProfile = n;
+            }
+            sets.push("profile_number = ?");
+            params.push(nextProfile);
+            refreshIdentity = true;
+        }
+
+        if (has("expiresAt") || has("expires_at")) {
+            const rawExpires = has("expiresAt") ? expiresAt : expires_at;
+            const expText = normalizeOptionalValue(rawExpires);
+            const expOnly = expText ? parseDateOnly(expText) : null;
+            if (expText && !expOnly) {
+                const err = new Error("Fecha de expiracion invalida.");
+                err.status = 400;
+                throw err;
+            }
+            sets.push("expires_at = ?");
+            params.push(expOnly ? toSqlDateStart(expOnly) : null);
+        }
+
+        if (refreshIdentity) {
+            const identityProfile = normalizeProfileForIdentity(nextProfile);
+            const [identityResult] = await conn.query(
+                `INSERT INTO account_identities (platform_id, email, profile_number, last_password, last_pin)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                   last_password = VALUES(last_password),
+                   last_pin = VALUES(last_pin),
+                   updated_at = CURRENT_TIMESTAMP`,
+                [current.platform_id, nextEmail, identityProfile, nextPassword, nextPin]
+            );
+
+            let identityId = identityResult.insertId || null;
+            if (!identityId) {
+                const [[identityRow]] = await conn.query(
+                    `SELECT id
+                     FROM account_identities
+                     WHERE platform_id = ?
+                       AND LOWER(email) = LOWER(?)
+                       AND profile_number = ?
+                     LIMIT 1`,
+                    [current.platform_id, nextEmail, identityProfile]
+                );
+                identityId = identityRow?.id || null;
+            }
+
+            if (identityId) {
+                sets.push("identity_id = ?");
+                params.push(identityId);
+            }
+        }
+
+        if (!sets.length) {
+            await conn.commit();
+            return { ok: true, unchanged: true };
+        }
+
+        await conn.query(
+            `UPDATE platform_accounts
+             SET ${sets.join(", ")}
+             WHERE id = ?`,
+            [...params, accountId]
+        );
+
+        await conn.commit();
+        return { ok: true };
+    } catch (err) {
+        await conn.rollback();
+        throw err;
+    } finally {
+        conn.release();
     }
-
-    await pool.query(
-        `UPDATE platform_accounts
-     SET status         = COALESCE(?, status),
-         email          = COALESCE(?, email),
-         password       = COALESCE(?, password),
-         pin            = COALESCE(?, pin),
-         profile_number = COALESCE(?, profile_number),
-         expires_at     = COALESCE(?, expires_at)
-     WHERE id = ?`,
-        [
-            status ?? null,
-            email === undefined ? null : emailNorm,
-            password === undefined ? null : passNorm,
-            pin === undefined ? null : pinNorm,
-            profile_number === undefined ? null : profNorm,
-            expSql,
-            id,
-        ]
-    );
-
-    return { ok: true };
 }
 
 module.exports = {

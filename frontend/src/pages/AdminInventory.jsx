@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { apiGet, apiPatch, apiPost, apiLogout } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
-import { formatBogotaDate } from "../utils/datetime.js";
+import { formatBogotaDate, normalizeDateOnly } from "../utils/datetime.js";
 
 const LOGO_URL = "/api/branding/logo";
 
@@ -154,6 +154,16 @@ export default function AdminInventory() {
     });
     const [sellCompleted, setSellCompleted] = useState(false);
     const [sellDeliveryMessage, setSellDeliveryMessage] = useState("");
+    const [editModal, setEditModal] = useState({ open: false, item: null });
+    const [editData, setEditData] = useState({
+        email: "",
+        password: "",
+        pin: "",
+        profile_number: "",
+        expiresAt: "",
+        status: "available",
+    });
+    const [editError, setEditError] = useState("");
     const [supportModal, setSupportModal] = useState({ open: false, item: null });
     const [supportInfo, setSupportInfo] = useState(null);
     const [supportLoading, setSupportLoading] = useState(false);
@@ -298,6 +308,56 @@ export default function AdminInventory() {
             await loadInventory(page);
         } catch (e) {
             setError(e?.message || "Error actualizando.");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function openEdit(item) {
+        if (!item) return;
+        setEditError("");
+        setEditData({
+            email: item.email || "",
+            password: item.password || "",
+            pin: item.pin || "",
+            profile_number: item.profile_number ?? "",
+            expiresAt: normalizeDateOnly(item.display_expires_at || item.expires_at),
+            status: item.status || "available",
+        });
+        setEditModal({ open: true, item });
+    }
+
+    async function handleEditSave() {
+        if (!editModal.item?.id) return;
+        if (!String(editData.email || "").trim()) {
+            setEditError("El correo es obligatorio.");
+            return;
+        }
+
+        setSaving(true);
+        setEditError("");
+        setError("");
+        try {
+            const r = await apiPatch(`/api/admin/inventory/${editModal.item.id}`, {
+                email: editData.email,
+                password: editData.password,
+                pin: editData.pin,
+                profile_number: editData.profile_number,
+                expiresAt: editData.expiresAt,
+                status: editData.status,
+            });
+            if (!r.ok) throw new Error(r.data?.message || "No se pudo guardar la cuenta.");
+
+            const editedId = editModal.item.id;
+            setDetailById((prev) => {
+                const next = { ...prev };
+                delete next[editedId];
+                return next;
+            });
+            setEditModal({ open: false, item: null });
+            await loadInventory(page);
+        } catch (e) {
+            setEditError(e?.message || "No se pudo guardar la cuenta.");
         } finally {
             setSaving(false);
         }
@@ -603,6 +663,7 @@ export default function AdminInventory() {
                                                 saving={saving}
                                                 onOpenDetail={() => ensureAccountDetail(it.id)}
                                                 onUpdate={(patch) => updateItem(it.id, patch)}
+                                                onEdit={() => openEdit(it)}
                                                 onSupport={() => openSupport(it)}
                                                 onSell={() => {
                                                     setUserSearch("");
@@ -846,6 +907,128 @@ export default function AdminInventory() {
                     </div>
                 )}
             </AnimatePresence>
+            <AnimatePresence>
+                {editModal.open && (
+                    <div className="modal-overlay" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.94, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.94, y: 20 }}
+                            style={{ background: "var(--bg1)", border: "1px solid var(--stroke)", borderRadius: 24, width: "100%", maxWidth: 680, padding: 28, boxShadow: "0 20px 80px rgba(0,0,0,0.5)", position: "relative", overflow: "hidden" }}
+                        >
+                            <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 6, background: "linear-gradient(90deg, #10b981 0%, #0da6f2 100%)" }} />
+                            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 22 }}>
+                                <div>
+                                    <h2 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: "var(--text)" }}>Editar cuenta #{editModal.item?.id}</h2>
+                                    <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--muted)" }}>
+                                        {editModal.item?.platform_name || "Cuenta"} · los cambios no desactivan el stock.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    onClick={() => setEditModal({ open: false, item: null })}
+                                    disabled={saving}
+                                    style={{ height: 34, padding: "0 12px", borderRadius: 10 }}
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+
+                            {editError && (
+                                <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", borderRadius: 12, padding: "12px 14px", fontSize: 13, fontWeight: 700, marginBottom: 16 }}>
+                                    {editError}
+                                </div>
+                            )}
+
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Correo</label>
+                                    <input
+                                        type="email"
+                                        style={inputStyle}
+                                        value={editData.email}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, email: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Contraseña</label>
+                                    <input
+                                        type="text"
+                                        style={inputStyle}
+                                        value={editData.password}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>PIN</label>
+                                    <input
+                                        type="text"
+                                        style={inputStyle}
+                                        placeholder="Opcional"
+                                        value={editData.pin}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, pin: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Perfil / pantalla</label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="1"
+                                        style={inputStyle}
+                                        placeholder="Ej: 1, 2, 3..."
+                                        value={editData.profile_number}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, profile_number: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Expiración</label>
+                                    <input
+                                        type="date"
+                                        style={inputStyle}
+                                        value={editData.expiresAt}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, expiresAt: e.target.value }))}
+                                    />
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Estado</label>
+                                    <select
+                                        style={inputStyle}
+                                        value={editData.status}
+                                        onChange={(e) => setEditData((prev) => ({ ...prev, status: e.target.value }))}
+                                    >
+                                        <option value="available">Disponible</option>
+                                        <option value="assigned">Asignada</option>
+                                        <option value="sold">Vendida</option>
+                                        <option value="inactive">Inactiva</option>
+                                        <option value="down">Caída</option>
+                                        <option value="disabled">Deshabilitada</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: 18, background: "rgba(13,166,242,0.08)", border: "1px solid rgba(13,166,242,0.22)", borderRadius: 14, padding: "12px 14px", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
+                                Para quitar perfil, PIN o fecha, deja el campo vacío y guarda. Para seguir vendiendo la cuenta, deja el estado en Disponible.
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
+                                <button className="btn-ghost" style={{ height: 44, padding: "0 18px" }} onClick={() => setEditModal({ open: false, item: null })} disabled={saving}>
+                                    Cancelar
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    style={{ height: 44, minWidth: 160, borderRadius: 12, background: "#10b981", color: "white", fontWeight: 800, border: "none", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.75 : 1 }}
+                                    onClick={handleEditSave}
+                                    disabled={saving}
+                                >
+                                    {saving ? "Guardando..." : "Guardar cambios"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -897,7 +1080,7 @@ function InventoryTimelineItem({ entry }) {
     );
 }
 
-function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDetail, onUpdate, onSell, onSupport }) {
+function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDetail, onUpdate, onEdit, onSell, onSupport }) {
     const [show, setShow] = useState(false);
 
     useEffect(() => {
@@ -963,6 +1146,9 @@ function InvRow({ it, detail, detailLoading, detailError, idx, saving, onOpenDet
                         </button>
                         <button className="btn-ghost" disabled={saving} onClick={() => setShow((s) => !s)} style={{ ...rowBtnStyle, border: show ? "1px solid #10b981" : "1px solid var(--stroke)", color: show ? "#10b981" : "var(--text)", background: show ? "rgba(16,185,129,0.1)" : "var(--input-bg)" }}>
                             {show ? "Ocultar" : "Credenciales"}
+                        </button>
+                        <button className="btn-ghost" disabled={saving} onClick={onEdit} style={{ ...rowBtnStyle, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.35)", fontWeight: 700 }}>
+                            Editar
                         </button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "available" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar disponible">🟢</button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "inactive" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar inactiva">⚪</button>

@@ -1,6 +1,4 @@
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
 
 const pool = require("../db");
 const {
@@ -13,6 +11,10 @@ const {
     sanitizeMatchedSenderName,
 } = require("../utils/manualTopupText");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const {
+    getManualTopupProofPath,
+    getProofContentType,
+} = require("../utils/manualTopupProofStorage");
 
 const PROOF_TOKEN_TTL_MINUTES = 10;
 
@@ -94,31 +96,6 @@ function getPublicBaseUrl() {
     return String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
 }
 
-function getProofStoragePath(proofFileUrl) {
-    const raw = String(proofFileUrl || "").trim();
-    if (!raw) return null;
-    const filename = path.basename(raw);
-    const candidates = [
-        path.join(__dirname, "../../../frontend/public/topup-proofs", filename),
-        path.join(__dirname, "../../../frontend/dist/topup-proofs", filename),
-        path.join(__dirname, "../../frontend/public/topup-proofs", filename),
-        path.join(__dirname, "../../frontend/dist/topup-proofs", filename),
-    ];
-    for (const filePath of candidates) {
-        if (fs.existsSync(filePath)) return filePath;
-    }
-    return null;
-}
-
-function getProofContentType(filePath) {
-    const ext = String(path.extname(filePath || "")).toLowerCase();
-    if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-    if (ext === ".png") return "image/png";
-    if (ext === ".webp") return "image/webp";
-    if (ext === ".pdf") return "application/pdf";
-    return "application/octet-stream";
-}
-
 async function cleanupManualTopupProofTokens() {
     await pool.query(
         "DELETE FROM manual_topup_proof_tokens WHERE revoked_at IS NOT NULL OR expires_at <= UTC_TIMESTAMP()"
@@ -156,7 +133,7 @@ async function getManualTopupProofAccess(token) {
     );
     if (!rows.length) return null;
     const row = rows[0];
-    const filePath = getProofStoragePath(row.proof_file_url);
+    const filePath = getManualTopupProofPath(row.proof_file_url);
     if (!filePath) return null;
     return {
         token: row.token,

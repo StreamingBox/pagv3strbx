@@ -1,7 +1,5 @@
 const express = require("express");
 const multer = require("multer");
-const fs = require("fs");
-const path = require("path");
 
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
@@ -21,6 +19,7 @@ const {
 const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
 const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
 const { normalizeCurrency, sameCurrency, displayCurrency } = require("../utils/currency");
+const { saveManualTopupProof } = require("../utils/manualTopupProofStorage");
 
 const router = express.Router();
 const AUTO_RECONCILE_METHOD_KEYS = new Set(["breb", "binance"]);
@@ -190,36 +189,6 @@ function buildRequestCode() {
     return `REC-${stamp}-${rand}`;
 }
 
-function extFor(file) {
-    const mime = String(file?.mimetype || "").toLowerCase();
-    if (mime === "image/jpeg") return ".jpg";
-    if (mime === "image/png") return ".png";
-    if (mime === "image/webp") return ".webp";
-    if (mime === "application/pdf") return ".pdf";
-    return path.extname(String(file?.originalname || "")).toLowerCase() || ".bin";
-}
-
-function ensureProofDirs() {
-    const frontEndBase = path.join(__dirname, "../../../frontend");
-    const publicDir = path.join(frontEndBase, "public/topup-proofs");
-    const distDir = path.join(frontEndBase, "dist/topup-proofs");
-    if (!fs.existsSync(publicDir)) fs.mkdirSync(publicDir, { recursive: true });
-    if (!fs.existsSync(distDir)) fs.mkdirSync(distDir, { recursive: true });
-    return { publicDir, distDir };
-}
-
-function saveProofFile({ file, requestCode }) {
-    const { publicDir, distDir } = ensureProofDirs();
-    const filename = `${String(requestCode || "proof").toLowerCase()}${extFor(file)}`;
-    const publicPath = path.join(publicDir, filename);
-    const distPath = path.join(distDir, filename);
-    fs.writeFileSync(publicPath, file.buffer);
-    if (fs.existsSync(path.join(distDir, ".."))) {
-        fs.copyFileSync(publicPath, distPath);
-    }
-    return `/topup-proofs/${filename}`;
-}
-
 function escapeHtml(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -358,7 +327,7 @@ router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async 
         }
 
         const requestCode = buildRequestCode();
-        const proofFileUrl = req.file ? saveProofFile({ file: req.file, requestCode }) : "";
+        const proofFileUrl = req.file ? saveManualTopupProof({ file: req.file, requestCode }) : "";
 
         await conn.beginTransaction();
         const [ins] = await conn.query(

@@ -265,7 +265,7 @@ export default function AdminPlatforms() {
                 // Recargar lista para sincronizar
                 await load();
             } else {
-                setError("Error subiendo logo: " + (json.error || res.statusText));
+                setError("Error subiendo logo: " + (json.message || json.error || res.statusText));
             }
         } catch (err) {
             setError("Error de conexión: " + err.message);

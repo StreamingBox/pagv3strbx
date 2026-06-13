@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Info, ShoppingCart, X } from "lucide-react";
-import { getPlatformLogo } from "../../utils/platform.js";
+import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
 import { isLiteSite } from "../../config/siteVariant.js";
@@ -65,6 +65,40 @@ function detailLines(value) {
         .filter(Boolean);
 }
 
+function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
+    const candidates = useMemo(
+        () => getPlatformLogoCandidates(item?.platformSlug, item?.platformName),
+        [item?.platformSlug, item?.platformName]
+    );
+    const candidatesKey = candidates.join("|");
+    const [index, setIndex] = useState(0);
+
+    useEffect(() => {
+        setIndex(0);
+    }, [candidatesKey]);
+
+    const logoSrc = candidates[index] || null;
+
+    return (
+        <>
+            {logoSrc ? (
+                <img
+                    src={logoSrc}
+                    alt={item?.platformName || ""}
+                    className={className}
+                    onError={() => setIndex(current => current + 1)}
+                />
+            ) : null}
+            <div
+                className={fallbackClassName}
+                style={{ ...fallbackStyle, display: logoSrc ? "none" : "flex" }}
+            >
+                {item?.platformName}
+            </div>
+        </>
+    );
+}
+
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
     const liteSite = isLiteSite();
     const [selectedItem, setSelectedItem] = useState(null);
@@ -120,7 +154,6 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const outOfStock = !isUnlimited && stock <= 0;
                 const inCartCount = cartCountByPlatformPriceId?.get(item.platformPriceId) || 0;
                 const stockReached = !isUnlimited && inCartCount >= stock;
-                const logoSrc = getPlatformLogo(item.platformSlug, item.platformName);
                 const color = getPlatformColor(item.platformSlug, item.platformName);
                 const isPromo = item.platformPromo === 1 || item.platformPromo === true;
                 const promoColor = normalizePromoColor(item.platformPromoColor);
@@ -165,22 +198,12 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             className="catalog-card__banner"
                             style={{ background: color.bg }}
                         >
-                            <img
-                                src={logoSrc}
-                                alt={item.platformName}
+                            <CatalogLogo
+                                item={item}
                                 className="catalog-card__banner-img"
-                                onError={(e) => {
-                                    e.currentTarget.style.display = "none";
-                                    e.currentTarget.nextSibling.style.display = "flex";
-                                }}
+                                fallbackClassName="catalog-card__banner-fallback"
+                                fallbackStyle={{ color: color.accent }}
                             />
-                            {/* Fallback: nombre completo si no hay logo */}
-                            <div
-                                className="catalog-card__banner-fallback"
-                                style={{ display: "none", color: color.accent }}
-                            >
-                                {item.platformName}
-                            </div>
                         </div>
 
                         {/* Nombre, badge RENOVABLE y duración */}
@@ -331,10 +354,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
 
                         <div className="product-detail-summary">
                             <div className="product-detail-logo">
-                                <img
-                                    src={getPlatformLogo(selectedItem.platformSlug, selectedItem.platformName)}
-                                    alt=""
-                                />
+                                <CatalogLogo item={selectedItem} />
                             </div>
                             <div>
                                 <div className="product-detail-price">

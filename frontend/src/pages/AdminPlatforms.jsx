@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiGet, apiPost, apiPatch, apiDelete, apiLogout } from "../api/api";
+import { bumpPlatformLogoVersion } from "../utils/platform.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
@@ -260,6 +261,7 @@ export default function AdminPlatforms() {
             if (res.ok) {
                 setSuccessMsg(`✅ Logo de "${slug}" subido correctamente.`);
                 setTimeout(() => setSuccessMsg(""), 4000);
+                bumpPlatformLogoVersion();
                 // Busting individual de caché para esta plataforma
                 setLogoTimestamps(prev => ({ ...prev, [platformId]: Date.now() }));
                 // Recargar lista para sincronizar

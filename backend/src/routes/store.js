@@ -188,7 +188,7 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
                s.expires_at AS subscription_expires_at,
                ${effectiveExpiresSql} AS expires_at,
                ${effectiveExpiresSql} AS effective_expires_at,
-               ${effectiveExpiresDateSql} AS expires_date,
+               DATE_FORMAT(${effectiveExpiresDateSql}, '%Y-%m-%d') AS expires_date,
                DATEDIFF(${effectiveExpiresDateSql}, ${todayBogotaSql}) AS days_remaining,
                s.status,
                p.name AS platform_name,

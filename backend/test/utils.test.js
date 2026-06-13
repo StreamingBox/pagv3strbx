@@ -14,6 +14,8 @@ const {
     toSqlDateTime,
 } = require("../src/utils/date");
 const { getRenewalEligibility } = require("../src/utils/renewals");
+const { toCodeSlug } = require("../src/utils/platformSlugMap");
+const { extractFallbackCode } = require("../src/utils/codeExtraction");
 
 test("currency utilities normalize USD and USDT consistently", () => {
     assert.equal(normalizeCurrency(" usdt "), "USD");
@@ -68,4 +70,19 @@ test("renewal eligibility uses Bogota day for real account datetimes", () => {
 
     assert.equal(eligibility.canRenew, true);
     assert.equal(eligibility.expiresOnDate, "2026-06-10");
+});
+
+test("code lookup maps the ChatGPT personal product to ChatGPT codes", () => {
+    assert.equal(toCodeSlug("Chat Gpt, cuenta personal solo un dispositivo"), "chatgpt");
+    assert.equal(toCodeSlug("chat-gpt-cuenta-personal-solo-un-dispositivo"), "chatgpt");
+});
+
+test("code lookup extracts the current Spanish ChatGPT temporary code email", () => {
+    const haystack = [
+        "Tu codigo de inicio de sesion temporal de ChatGPT",
+        "Introduce este codigo de verificacion temporal para continuar:",
+        "741563",
+    ].join("\n");
+
+    assert.equal(extractFallbackCode(haystack), "741563");
 });

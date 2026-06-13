@@ -7,7 +7,7 @@ import Sidebar from "../components/dashboard/Sidebar.jsx";
 
 /* ─── Plataformas con colores de marca y nombres de archivo correctos ─── */
 const PLATFORMS = [
-    { slug: "chatgpt", logoSlug: "chatgpt", label: "ChatGPT", icon: "🤖", accent: "#10a37f", bg: "rgba(16,163,127,0.12)", border: "rgba(16,163,127,0.3)" },
+    { slug: "chat-gpt-cuenta-personal-solo-un-dispositivo", logoSlug: "chatgpt", label: "ChatGpt Cuenta Personal", icon: "🤖", accent: "#10a37f", bg: "rgba(16,163,127,0.12)", border: "rgba(16,163,127,0.3)" },
     { slug: "chatgpt-business", logoSlug: "chatgpt", label: "ChatGPT Business", icon: "💼", accent: "#10a37f", bg: "rgba(16,163,127,0.10)", border: "rgba(16,163,127,0.3)" },
     { slug: "spotify", logoSlug: "spotify-3-meses", label: "Spotify", icon: "🎵", accent: "#1db954", bg: "rgba(29,185,84,0.12)", border: "rgba(29,185,84,0.3)" },
     { slug: "netflix", logoSlug: "netflix", label: "Netflix", icon: "🎬", accent: "#e50914", bg: "rgba(229,9,20,0.12)", border: "rgba(229,9,20,0.3)" },
@@ -15,12 +15,7 @@ const PLATFORMS = [
 ];
 
 const DISPLAY_PLATFORMS = PLATFORMS
-    .filter((platform) => platform.slug !== "chatgpt-business")
-    .map((platform) => (
-        platform.slug === "chatgpt"
-            ? { ...platform, label: "ChatGpt Cuenta Personal" }
-            : platform
-    ));
+    .filter((platform) => platform.slug !== "chatgpt-business");
 
 /* ─── Estilos globales del componente (fuera del render para no recrear en cada update) ─── */
 const S = {

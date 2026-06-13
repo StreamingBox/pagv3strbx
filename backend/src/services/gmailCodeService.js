@@ -2,6 +2,7 @@
 const { simpleParser } = require("mailparser");
 const cheerio = require("cheerio");
 const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
+const { extractFallbackCode } = require("../utils/codeExtraction");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
     // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
@@ -30,23 +31,6 @@ function buildHaystack(parsed) {
     return [subject, textBody, htmlText, htmlBody]
         .filter(Boolean)
         .join("\n");
-}
-
-function extractFallbackCode(haystack) {
-    const patterns = [
-        /(?:tu\s+código\s+de\s+chatgpt\s+es|your\s+chatgpt\s+code\s+is)[^0-9]{0,30}([0-9]{6})/i,
-        /(?:introduce|enter)\s+(?:este|this)?\s*temporary\s*verification\s*code[^0-9]{0,30}([0-9]{6})/i,
-        /(?:código|codigo)\s+de\s+verificación[^0-9]{0,40}([0-9]{4,8})/i,
-        /verification\s+code\s+is[^0-9]{0,20}([0-9]{4,8})/i,
-        /verification\s+code[^0-9]{0,20}([0-9]{4,8})/i,
-    ];
-
-    for (const pattern of patterns) {
-        const match = String(haystack || "").match(pattern);
-        if (match?.[1]) return match[1];
-    }
-
-    return null;
 }
 
 /**

@@ -1,6 +1,9 @@
 const pool = require("../db");
 const { notifyOutOfStockPlatforms } = require("./telegramBot");
-const { calculateStockAlertTransitions } = require("../utils/stockAlertTransitions");
+const {
+    calculateStockAlertTransitions,
+    isInventoryTrackedPlatform,
+} = require("../utils/stockAlertTransitions");
 
 const DEFAULT_INTERVAL_MS = 2 * 60 * 1000;
 let checkRunning = false;
@@ -10,6 +13,7 @@ async function getPublishedPlatformStock() {
         SELECT
             p.id AS platform_id,
             p.name AS platform_name,
+            p.type AS platform_type,
             COALESCE(direct_stock.stock, 0) AS direct_stock,
             COALESCE(fallback_stock.stock, 0) AS fallback_stock,
             CASE
@@ -55,7 +59,7 @@ async function getPublishedPlatformStock() {
         WHERE p.is_active = 1
         ORDER BY p.name ASC
     `);
-    return rows;
+    return rows.filter(isInventoryTrackedPlatform);
 }
 
 async function saveStockStates(stockRows, notifiedPlatformIds) {

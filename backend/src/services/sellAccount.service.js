@@ -4,6 +4,7 @@ const { makeOrderCode } = require("../utils/orderCode");
 const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { sendOrderDeliveryEmail } = require("./mailService");
+const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 
 /**
  * Vende una cuenta específica desde el inventario.
@@ -183,6 +184,7 @@ async function sellAccountFromInventory(payload) {
         }
 
         await conn.commit();
+        schedulePlatformStockAlertCheck();
 
         // 6. Preparar respuesta y correo de entrega
         const results = [{

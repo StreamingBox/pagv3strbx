@@ -7,6 +7,7 @@ const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
 const { isLiteChannel } = require("../utils/salesChannel");
+const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -397,6 +398,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         }
 
         await conn.commit();
+        schedulePlatformStockAlertCheck();
 
         const buyerInfo = await pool.query(
             "SELECT name, email FROM users WHERE id = ? LIMIT 1",

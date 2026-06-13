@@ -5,8 +5,9 @@ const {
     isInventoryTrackedPlatform,
 } = require("../utils/stockAlertTransitions");
 
-const DEFAULT_INTERVAL_MS = 2 * 60 * 1000;
+const DEFAULT_INTERVAL_MS = 30 * 1000;
 let checkRunning = false;
+let scheduledCheck = null;
 
 async function getPublishedPlatformStock() {
     const [rows] = await pool.query(`
@@ -130,19 +131,28 @@ async function checkPlatformStockAlerts() {
 
 function startPlatformStockAlertMonitor() {
     const intervalMs = Math.max(
-        30 * 1000,
+        10 * 1000,
         Number(process.env.STOCK_ALERT_INTERVAL_MS || DEFAULT_INTERVAL_MS)
     );
-    const run = () => checkPlatformStockAlerts().catch(error => {
-        console.error("[StockAlert] Error revisando inventario:", error?.message || error);
-    });
 
-    setTimeout(run, 5000).unref();
-    setInterval(run, intervalMs).unref();
+    schedulePlatformStockAlertCheck(5000);
+    setInterval(() => schedulePlatformStockAlertCheck(0), intervalMs).unref();
     console.log(`[StockAlert] Monitor iniciado cada ${Math.round(intervalMs / 1000)} segundos.`);
+}
+
+function schedulePlatformStockAlertCheck(delayMs = 1500) {
+    if (scheduledCheck) clearTimeout(scheduledCheck);
+    scheduledCheck = setTimeout(() => {
+        scheduledCheck = null;
+        checkPlatformStockAlerts().catch(error => {
+            console.error("[StockAlert] Error revisando inventario:", error?.message || error);
+        });
+    }, Math.max(0, Number(delayMs) || 0));
+    scheduledCheck.unref();
 }
 
 module.exports = {
     checkPlatformStockAlerts,
+    schedulePlatformStockAlertCheck,
     startPlatformStockAlertMonitor,
 };

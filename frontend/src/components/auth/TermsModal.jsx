@@ -51,17 +51,19 @@ export default function TermsModal({ open, onClose }) {
                                 Queda prohibido compartir accesos, revender sin autorización, automatizar consultas mediante scraping o bots, vulnerar la seguridad de la plataforma o usarla para fines ilícitos.</p>
                             <p><strong>5. Pagos, Saldos y Reembolsos</strong><br />
                                 Los saldos acreditados en wallet se consideran consumibles dentro de la plataforma. Salvo obligación legal o falla comprobable del servicio, las compras son finales y no reembolsables.</p>
-                            <p><strong>6. Disponibilidad y Servicios de Terceros</strong><br />
+                            <p><strong>6. Compra Mínima Mensual para Revendedores COP</strong><br />
+                                Las cuentas de revendedor configuradas en moneda COP deben realizar compras por un mínimo de $30.000 COP durante cada mes calendario. El cumplimiento se evalúa al finalizar el mes y, si no se alcanza el mínimo, la cuenta será deshabilitada automáticamente. La regla se aplica después de completar el primer mes calendario de actividad y no aplica a cuentas Lite ni a usuarios configurados en otras monedas.</p>
+                            <p><strong>7. Disponibilidad y Servicios de Terceros</strong><br />
                                 Algunas prestaciones dependen de proveedores externos. Streaming Box no garantiza continuidad absoluta ni responde por cambios, bloqueos o interrupciones causadas por terceros.</p>
-                            <p><strong>7. Suspensión o Cierre de Cuenta</strong><br />
+                            <p><strong>8. Suspensión o Cierre de Cuenta</strong><br />
                                 Podemos limitar, suspender o cerrar cuentas por incumplimientos, actividad sospechosa, fraude o riesgos de seguridad, sin perjuicio de acciones adicionales que correspondan.</p>
-                            <p><strong>8. Limitación de Responsabilidad</strong><br />
+                            <p><strong>9. Limitación de Responsabilidad</strong><br />
                                 En la máxima medida permitida por la ley, Streaming Box no será responsable por daños indirectos, incidentales o lucro cesante derivados del uso o imposibilidad de uso de la plataforma.</p>
-                            <p><strong>9. Privacidad y Datos Personales</strong><br />
+                            <p><strong>10. Privacidad y Datos Personales</strong><br />
                                 Tratamos tus datos para operación, soporte, seguridad y cumplimiento. Al usar la plataforma aceptas este tratamiento conforme a la normativa aplicable.</p>
-                            <p><strong>10. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
+                            <p><strong>11. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
                                 Podemos actualizar estos términos en cualquier momento. La versión vigente será la publicada en la plataforma. Cualquier controversia se regirá por la ley aplicable y la jurisdicción competente del domicilio del operador.</p>
-                            <p className="tos-legal">Última actualización: 11 de marzo de 2026.<br />
+                            <p className="tos-legal">Última actualización: 13 de junio de 2026.<br />
                                 (c) 2026 Streaming Box. Todos los derechos reservados. Plataforma desarrollada y operada de forma privada.</p>
                         </div>
                     </MotionDiv>

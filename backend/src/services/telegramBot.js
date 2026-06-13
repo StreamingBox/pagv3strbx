@@ -1201,6 +1201,33 @@ async function notifyOutOfStockPlatforms(platforms) {
     return sent.length;
 }
 
+async function notifyMonthlyPurchaseEnforcement({ periodStart, requiredTotal, users }) {
+    if (!bot || AUTHORIZED.size === 0 || !Array.isArray(users) || users.length === 0) return 0;
+    const periodLabel = new Intl.DateTimeFormat("es-CO", {
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+    }).format(new Date(`${periodStart}T00:00:00Z`));
+    const visibleUsers = users.slice(0, 40);
+    const message = [
+        "📉 Compra mínima mensual",
+        "",
+        `Periodo evaluado: ${periodLabel}`,
+        `Mínimo requerido: ${Number(requiredTotal || 0).toLocaleString("es-CO")} COP`,
+        `Usuarios deshabilitados: ${users.length}`,
+        "",
+        ...visibleUsers.map(user => (
+            `• #${user.id} ${user.email || user.name || "Usuario"}: `
+            + `${Number(user.purchaseTotal || 0).toLocaleString("es-CO")} COP`
+        )),
+        users.length > visibleUsers.length
+            ? `• Y ${users.length - visibleUsers.length} usuarios más.`
+            : "",
+    ].filter(Boolean).join("\n");
+    const sent = await notifyAuthorizedChats(message);
+    return sent.length;
+}
+
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
     if (!BOT_ENABLED) {
@@ -1230,4 +1257,5 @@ module.exports = {
     notifyManualTopupAlert,
     notifyUserRegistered,
     notifyOutOfStockPlatforms,
+    notifyMonthlyPurchaseEnforcement,
 };

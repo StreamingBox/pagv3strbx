@@ -50,6 +50,7 @@ const pool = require("./db");
 const { runMigrations } = require("./migrations/runner");
 const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
+const { startPlatformStockAlertMonitor } = require("./services/stockAlertMonitor.service");
 
 function requireProdEnv(name, { minLength = 1 } = {}) {
     const value = String(process.env[name] || "").trim();
@@ -383,6 +384,7 @@ async function startServer() {
     server.listen(port, () => {
         logger.info("api_started", { port: Number(port), nodeEnv: process.env.NODE_ENV || "development" });
         initBot();
+        startPlatformStockAlertMonitor();
         processPendingBrebTopups().catch(() => { });
         setInterval(() => {
             processPendingBrebTopups().catch(() => { });

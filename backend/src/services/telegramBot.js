@@ -1180,6 +1180,27 @@ async function notifyUserRegistered(userOrId) {
     });
 }
 
+async function notifyOutOfStockPlatforms(platforms) {
+    if (!bot || AUTHORIZED.size === 0 || !Array.isArray(platforms) || platforms.length === 0) return 0;
+    const names = platforms
+        .map(item => String(item?.platform_name || item?.platformName || item?.name || "").trim())
+        .filter(Boolean);
+    if (!names.length) return 0;
+
+    const message = [
+        "🚨 Alerta de inventario",
+        "",
+        names.length === 1
+            ? "Esta plataforma quedó sin stock:"
+            : "Estas plataformas quedaron sin stock:",
+        ...names.map(name => `• ${name}`),
+        "",
+        "Revisa Inventario de Cuentas para cargar nuevas pantallas.",
+    ].join("\n");
+    const sent = await notifyAuthorizedChats(message);
+    return sent.length;
+}
+
 /* ─── Inicializar bot ─────────────────────────────────────────── */
 function initBot() {
     if (!BOT_ENABLED) {
@@ -1208,4 +1229,5 @@ module.exports = {
     notifyManualTopupStatusChanged,
     notifyManualTopupAlert,
     notifyUserRegistered,
+    notifyOutOfStockPlatforms,
 };

@@ -8,6 +8,7 @@ export default function CartFooter({
     buyLoading,
     onClear,
     onCheckout,
+    checkoutDisabled,
     wallet,
     profitOpen,
     setProfitOpen,
@@ -44,7 +45,12 @@ export default function CartFooter({
                     />
                 ) : null}
 
-                <button className="btn" onClick={onCheckout} disabled={buyLoading}>
+                <button
+                    className="btn"
+                    onClick={onCheckout}
+                    disabled={buyLoading || checkoutDisabled}
+                    title={checkoutDisabled ? "Confirma que leíste las características del producto" : "Finalizar compra"}
+                >
                     {buyLoading ? "Procesando..." : "Finalizar compra"}
                 </button>
             </div>

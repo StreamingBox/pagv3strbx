@@ -64,6 +64,7 @@ export default function AdminPlatforms() {
     const [isPromo, setIsPromo] = useState(false);
     const [promoColor, setPromoColor] = useState(DEFAULT_PROMO_COLOR);
     const [showDeviceRule, setShowDeviceRule] = useState(true);
+    const [productDetails, setProductDetails] = useState("");
 
     const [saving, setSaving] = useState(false);
     const [q, setQ] = useState("");
@@ -113,12 +114,14 @@ export default function AdminPlatforms() {
                 name: name.trim(), slug: slug.trim(),
                 category_id: categoryId ? Number(categoryId) : null,
                 type,
+                product_details: productDetails,
                 show_device_rule: showDeviceRule ? 1 : 0,
                 is_promo: isPromo,
                 promo_color: isPromo ? normalizePromoColor(promoColor) : null
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setType("normal"); setSlugManual(false);
+            setProductDetails("");
             setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
@@ -204,6 +207,7 @@ export default function AdminPlatforms() {
                 slug: editingPlatform.slug,
                 category_id: editingPlatform.category_id || null,
                 type: editingPlatform.type || 'normal',
+                product_details: editingPlatform.product_details || "",
                 show_device_rule: deviceRuleEnabled(editingPlatform.show_device_rule) ? 1 : 0,
                 is_promo: editingPlatform.is_promo === 1 || editingPlatform.is_promo === true,
                 promo_color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
@@ -421,6 +425,17 @@ export default function AdminPlatforms() {
                                 </div>
                             </div>
                         </div>
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Ficha del producto</label>
+                            <textarea
+                                style={{ ...inputStyle, height: 108, padding: "12px 14px", resize: "vertical", lineHeight: 1.5 }}
+                                value={productDetails}
+                                onChange={e => setProductDetails(e.target.value)}
+                                maxLength={5000}
+                                placeholder={"Escribe una característica o condición por línea.\nEj: Acceso para 1 dispositivo\nNo permite cambio de correo\nGarantía de 30 días"}
+                            />
+                            <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>Esta información se mostrará antes de agregar el producto y nuevamente antes de pagar.</div>
+                        </div>
                         <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                             <button className="btn" onClick={create} disabled={saving || !name.trim() || !slug.trim()}
                                 style={{ height: 42, padding: "0 22px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
@@ -552,7 +567,12 @@ export default function AdminPlatforms() {
                                                             style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", background: "rgba(255,255,255,0.05)", border: "1px solid var(--stroke2)", flexShrink: 0 }}
                                                             onError={e => { e.target.style.display = "none"; }}
                                                         />
-                                                        <span style={{ fontWeight: 700, color: "var(--text)" }}>{p.name}</span>
+                                                        <div>
+                                                            <div style={{ fontWeight: 700, color: "var(--text)" }}>{p.name}</div>
+                                                            <div style={{ marginTop: 3, fontSize: 10, color: String(p.product_details || "").trim() ? "#10b981" : "var(--muted)" }}>
+                                                                {String(p.product_details || "").trim() ? "Ficha configurada" : "Sin ficha"}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
 
@@ -717,7 +737,7 @@ export default function AdminPlatforms() {
                         <motion.div
                             initial={{ scale: 0.95, y: 15 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 15 }}
                             onClick={e => e.stopPropagation()}
-                            style={{ background: "var(--bg0)", border: "1px solid var(--stroke)", borderRadius: 20, width: "100%", maxWidth: 500, padding: 24, boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }}
+                            style={{ background: "var(--bg0)", border: "1px solid var(--stroke)", borderRadius: 20, width: "100%", maxWidth: 560, maxHeight: "90vh", overflowY: "auto", padding: 24, boxShadow: "0 24px 48px rgba(0,0,0,0.5)" }}
                         >
                             <h2 style={{ fontSize: 18, fontWeight: 800, marginTop: 0, marginBottom: 20 }}>Editar Plataforma</h2>
                             <form onSubmit={saveEditedPlatform} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -742,6 +762,17 @@ export default function AdminPlatforms() {
                                         <option value="normal">Normal (Control de stock)</option>
                                         <option value="correo">A Correo (Sin Stock, Automático)</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Ficha del producto</label>
+                                    <textarea
+                                        style={{ ...inputStyle, height: 130, padding: "12px 14px", resize: "vertical", lineHeight: 1.5 }}
+                                        value={editingPlatform.product_details || ""}
+                                        onChange={e => setEditingPlatform({ ...editingPlatform, product_details: e.target.value })}
+                                        maxLength={5000}
+                                        placeholder="Una característica o condición por línea"
+                                    />
+                                    <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>El cliente deberá revisar estas condiciones antes de finalizar la compra.</div>
                                 </div>
                                 <div>
                                     <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Regla 1 dispositivo</label>

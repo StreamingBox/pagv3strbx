@@ -88,6 +88,7 @@ export default function Dashboard() {
                 {
                     stock: Number(item.stock || 0),
                     isUnlimited: item.platformType === "correo",
+                    productDetails: item.productDetails || "",
                 },
             ])
         );
@@ -98,41 +99,51 @@ export default function Dashboard() {
             const comboCounts = new Map();
             let changed = false;
 
-            const next = prev.filter((item) => {
+            const next = [];
+            for (const item of prev) {
                 if (item.type === "combo") {
                     const stock = stockByComboId.get(item.comboId);
                     if (stock === undefined) {
                         changed = true;
-                        return false;
+                        continue;
                     }
 
                     const currentCount = comboCounts.get(item.comboId) || 0;
                     if (currentCount >= stock) {
                         changed = true;
-                        return false;
+                        continue;
                     }
 
                     comboCounts.set(item.comboId, currentCount + 1);
-                    return true;
+                    next.push(item);
+                    continue;
                 }
 
                 const stockInfo = stockByPlatformPriceId.get(item.platformPriceId);
                 if (!stockInfo) {
                     changed = true;
-                    return false;
+                    continue;
                 }
 
-                if (stockInfo.isUnlimited) return true;
+                const updatedItem = item.productDetails === stockInfo.productDetails
+                    ? item
+                    : { ...item, productDetails: stockInfo.productDetails };
+                if (updatedItem !== item) changed = true;
+
+                if (stockInfo.isUnlimited) {
+                    next.push(updatedItem);
+                    continue;
+                }
 
                 const currentCount = counts.get(item.platformPriceId) || 0;
                 if (currentCount >= stockInfo.stock) {
                     changed = true;
-                    return false;
+                    continue;
                 }
 
                 counts.set(item.platformPriceId, currentCount + 1);
-                return true;
-            });
+                next.push(updatedItem);
+            }
 
             return changed ? next : prev;
         });
@@ -180,6 +191,7 @@ export default function Dashboard() {
                     price: item.price,
                     currency: item.currency,
                     platformSlug: item.platformSlug,
+                    productDetails: item.productDetails || "",
                 },
             ];
         });

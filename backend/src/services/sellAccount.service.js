@@ -57,7 +57,7 @@ async function sellAccountFromInventory(payload) {
 
         // 2. Obtener datos del plan/precio
         const [priceRows] = await conn.query(
-            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type, p.show_device_rule
+            `SELECT pp.*, pp.id AS platform_price_id, d.days, p.name as platform_name, p.slug as platform_slug, p.type, p.show_device_rule, p.product_details
              FROM platform_prices pp
              JOIN durations d ON d.id = pp.duration_id
              JOIN platforms p ON p.id = pp.platform_id
@@ -137,7 +137,7 @@ async function sellAccountFromInventory(payload) {
 
         // 5.3 Crear Order Item
         await conn.query(
-            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 orderId,
                 subscriptionId,
@@ -146,6 +146,7 @@ async function sellAccountFromInventory(payload) {
                 totalAmount,
                 Number(account.unit_cost || 0),
                 Number((totalAmount - Number(account.unit_cost || 0)).toFixed(2)),
+                plan.product_details || null,
             ]
         );
 

@@ -46,6 +46,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.type AS platformType,
         p.is_promo AS platformPromo,
         p.promo_color AS platformPromoColor,
+        p.product_details AS productDetails,
 
         c.id AS categoryId,
         c.name AS categoryName,
@@ -153,6 +154,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         p.type AS platformType,
         p.is_promo AS platformPromo,
         p.promo_color AS platformPromoColor,
+        p.product_details AS productDetails,
         c.id AS categoryId,
         c.name AS categoryName,
         d.id AS durationId,

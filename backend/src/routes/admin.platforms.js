@@ -16,6 +16,11 @@ function normalizePromoColor(value) {
     return `#${hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex}`.toUpperCase();
 }
 
+function normalizeProductDetails(value) {
+    const text = String(value || "").replace(/\r\n/g, "\n").trim();
+    return text ? text.slice(0, 5000) : null;
+}
+
 // GET /admin/platforms
 // Devuelve plataformas + info de categoría (si existe)
 router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
@@ -118,7 +123,7 @@ router.delete("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin")
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, type,
-        is_promo, promo_color, show_device_rule
+        is_promo, promo_color, show_device_rule, product_details
     } = req.body || {};
 
     if (!name || !slug) {
@@ -132,10 +137,10 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const [r] = await pool.query(
         `INSERT INTO platforms (
             name, slug, category_id, type, is_active, allowed_currencies, 
-            is_promo, promo_color, show_device_rule
+            is_promo, promo_color, show_device_rule, product_details
          )
-         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?)`,
-        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showDeviceRule]
+         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?)`,
+        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showDeviceRule, normalizeProductDetails(product_details)]
     );
 
     res.status(201).json({
@@ -148,7 +153,8 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         allowed_currencies: "COP,MXN,USD",
         is_promo: promoEnabled,
         promo_color: promoColor,
-        show_device_rule: showDeviceRule
+        show_device_rule: showDeviceRule,
+        product_details: normalizeProductDetails(product_details)
     });
 });
 
@@ -158,7 +164,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, type, allowed_currencies,
-        is_promo, promo_color, show_device_rule
+        is_promo, promo_color, show_device_rule, product_details
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -191,6 +197,8 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const promoFlag = is_promo !== undefined ? (is_promo ? 1 : 0) : null;
     const normalizedPromoColor = promo_color !== undefined ? normalizePromoColor(promo_color) : null;
     const showDeviceRule = show_device_rule !== undefined ? (show_device_rule ? 1 : 0) : null;
+    const hasProductDetails = Object.prototype.hasOwnProperty.call(req.body || {}, "product_details");
+    const productDetails = hasProductDetails ? normalizeProductDetails(product_details) : null;
 
     await pool.query(
         `UPDATE platforms
@@ -202,6 +210,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
          allowed_currencies = COALESCE(?, allowed_currencies),
          is_promo = COALESCE(?, is_promo),
          show_device_rule = COALESCE(?, show_device_rule),
+         product_details = CASE WHEN ? = 1 THEN ? ELSE product_details END,
          promo_color = CASE
             WHEN ? = 0 THEN NULL
             WHEN ? = 1 THEN COALESCE(?, promo_color, '#22D3EE')
@@ -217,6 +226,8 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
             allowedCurrenciesCSV ?? null,
             promoFlag,
             showDeviceRule,
+            hasProductDetails ? 1 : 0,
+            productDetails,
             promoFlag,
             promoFlag,
             normalizedPromoColor,

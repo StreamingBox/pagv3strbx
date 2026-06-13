@@ -1,4 +1,6 @@
-import { motion } from "framer-motion";
+import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Info, ShoppingCart, X } from "lucide-react";
 import { getPlatformLogo } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
@@ -56,8 +58,23 @@ function hexToRgba(hex, alpha) {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+function detailLines(value) {
+    return String(value || "")
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+}
+
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
     const liteSite = isLiteSite();
+    const [selectedItem, setSelectedItem] = useState(null);
+    const selectedDetails = useMemo(() => detailLines(selectedItem?.productDetails), [selectedItem]);
+    const selectedIsUnlimited = selectedItem?.platformType === "correo";
+    const selectedStock = Number(selectedItem?.stock || 0);
+    const selectedInCart = selectedItem
+        ? (cartCountByPlatformPriceId?.get(selectedItem.platformPriceId) || 0)
+        : 0;
+    const selectedUnavailable = Boolean(selectedItem) && !selectedIsUnlimited && selectedInCart >= selectedStock;
     const sorted = [...catalog].sort((a, b) => {
         const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
         const aUnlim = a.platformType === 'correo';
@@ -79,7 +96,23 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
         return String(a.platformName || "").localeCompare(String(b.platformName || ""));
     });
 
+    function handleAdd(item) {
+        const details = detailLines(item.productDetails);
+        if (details.length) {
+            setSelectedItem(item);
+            return;
+        }
+        onAddToCart(item);
+    }
+
+    function confirmAdd() {
+        if (!selectedItem || selectedUnavailable) return;
+        onAddToCart(selectedItem);
+        setSelectedItem(null);
+    }
+
     return (
+        <>
         <div className="catalog-grid">
             {sorted.map((item, index) => {
                 const isUnlimited = item.platformType === 'correo';
@@ -179,6 +212,17 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>
 
+                            {detailLines(item.productDetails).length ? (
+                                <button
+                                    type="button"
+                                    className="catalog-card__details-btn"
+                                    onClick={() => setSelectedItem(item)}
+                                >
+                                    <Info size={14} />
+                                    Ver características
+                                </button>
+                            ) : null}
+
                             {/* Stock: punto + cantidad numérica */}
                             <div className="catalog-card__stock">
                                 <span className={`stock-dot${outOfStock ? " stock-dot--out" : ""}`} />
@@ -229,7 +273,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 <MotionButton
                                     className="catalog-card__btn"
                                     disabled={buyLoading || stockReached}
-                                    onClick={() => onAddToCart(item)}
+                                    onClick={() => handleAdd(item)}
                                     whileHover={stockReached ? {} : { scale: 1.08 }}
                                     whileTap={stockReached ? {} : { scale: 0.92 }}
                                     transition={{ type: "spring", stiffness: 500, damping: 20 }}
@@ -249,5 +293,82 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 );
             })}
         </div>
+        <AnimatePresence>
+            {selectedItem ? (
+                <motion.div
+                    className="product-detail-overlay"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setSelectedItem(null)}
+                >
+                    <motion.section
+                        className="product-detail-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="product-detail-title"
+                        initial={{ opacity: 0, scale: 0.96, y: 18 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.97, y: 10 }}
+                        onClick={event => event.stopPropagation()}
+                    >
+                        <header className="product-detail-header">
+                            <div>
+                                <div className="product-detail-eyebrow">Información antes de comprar</div>
+                                <h2 id="product-detail-title">{selectedItem.platformName}</h2>
+                                <div className="product-detail-plan">{selectedItem.durationName || "Por defecto"}</div>
+                            </div>
+                            <button
+                                type="button"
+                                className="product-detail-close"
+                                onClick={() => setSelectedItem(null)}
+                                aria-label="Cerrar detalles"
+                                title="Cerrar"
+                            >
+                                <X size={20} />
+                            </button>
+                        </header>
+
+                        <div className="product-detail-summary">
+                            <div className="product-detail-logo">
+                                <img
+                                    src={getPlatformLogo(selectedItem.platformSlug, selectedItem.platformName)}
+                                    alt=""
+                                />
+                            </div>
+                            <div>
+                                <div className="product-detail-price">
+                                    ${Number(selectedItem.price || 0).toLocaleString("es-CO")}
+                                    <span>{displayCurrency(selectedItem.currency, "COP")}</span>
+                                </div>
+                                <div className="product-detail-stock-label">
+                                    {selectedUnavailable ? "No hay más unidades disponibles" : "Disponible para compra"}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="product-detail-content">
+                            <h3>Características y condiciones</h3>
+                            <ul>
+                                {selectedDetails.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}
+                            </ul>
+                        </div>
+
+                        <div className="product-detail-notice">
+                            Revisa esta información cuidadosamente. También aparecerá en el carrito antes de finalizar la compra.
+                        </div>
+
+                        <div className="product-detail-actions">
+                            <button type="button" className="btn-ghost" onClick={() => setSelectedItem(null)}>Volver</button>
+                            <button type="button" className="btn" onClick={confirmAdd} disabled={buyLoading || selectedUnavailable}>
+                                <ShoppingCart size={17} />
+                                {selectedUnavailable ? "Sin disponibilidad" : "Agregar al carrito"}
+                            </button>
+                        </div>
+                    </motion.section>
+                </motion.div>
+            ) : null}
+        </AnimatePresence>
+        </>
     );
 }

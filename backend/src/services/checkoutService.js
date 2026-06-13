@@ -55,7 +55,8 @@ async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "resel
             p.name AS platform_name,
             p.slug AS platform_slug,
             p.type,
-            p.show_device_rule
+            p.show_device_rule,
+            p.product_details
          FROM platform_prices pp
          JOIN durations d ON d.id = pp.duration_id
          JOIN platforms p ON p.id = pp.platform_id
@@ -127,7 +128,8 @@ async function loadComboEntries(conn, comboRequests, currency, salesChannel = "r
             p.name AS platform_name,
             p.slug AS platform_slug,
             p.type,
-            p.show_device_rule
+            p.show_device_rule,
+            p.product_details
          FROM combo_items ci
          JOIN platform_prices pp ON pp.platform_id = ci.platform_id
             AND pp.duration_id = ci.duration_id
@@ -353,9 +355,9 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             await conn.query(
                 `INSERT INTO order_items
-                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name, delivered_platform_id)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName, deliveredPlatformId]
+                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name, delivered_platform_id, product_details_snapshot)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName, deliveredPlatformId, plan.product_details || null]
             );
 
             results.push({

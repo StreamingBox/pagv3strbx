@@ -22,6 +22,7 @@ async function renewSubscription({
                 d.days, p.name AS platform_name, p.slug AS platform_slug, u.email AS user_email,
                 p.type AS platform_type,
                 p.show_device_rule AS platform_show_device_rule,
+                p.product_details,
                 pa.expires_at AS account_expires_at,
                 pa.unit_cost AS account_unit_cost,
                 pp.is_renewable,
@@ -240,8 +241,8 @@ async function renewSubscription({
 
     await conn.query(
         `INSERT INTO order_items
-            (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, product_details_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             renewalOrderId,
             subscriptionId,
@@ -250,6 +251,7 @@ async function renewSubscription({
             amount,
             renewalUnitCost,
             Number((amount - renewalUnitCost).toFixed(2)),
+            sub.product_details || null,
         ]
     );
 

@@ -169,7 +169,10 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
         pa.profile_number AS account_profile,
         pa.expires_at AS account_expires_at,
         COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at,
-        CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END AS expires_date
+        DATE_FORMAT(
+          CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END,
+          '%Y-%m-%d'
+        ) AS expires_date
       FROM subscriptions s
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
@@ -468,7 +471,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                acc.expires_at AS account_expires_at,
                ${effectiveExpiresSql} AS expires_at,
                ${effectiveExpiresSql} AS effective_expires_at,
-               ${effectiveExpiresDateSql} AS expires_date,
+               DATE_FORMAT(${effectiveExpiresDateSql}, '%Y-%m-%d') AS expires_date,
                DATEDIFF(${effectiveExpiresDateSql}, ${todayBogotaSql}) AS days_remaining,
                s.status,
                s.price,

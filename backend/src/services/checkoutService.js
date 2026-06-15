@@ -8,6 +8,10 @@ const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
 const { isLiteChannel } = require("../utils/salesChannel");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
+const {
+    automaticProfitForEntry,
+    automaticUnitCostForPlan,
+} = require("../utils/profitCosts");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -36,27 +40,6 @@ function allocateComboPrices(comboPrice, comboItems) {
 
 function requiresInventoryAccount(plan) {
     return String(plan?.type || "").trim().toLowerCase() !== "correo";
-}
-
-function normalizeProductName(value) {
-    return String(value || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-}
-
-function isAutomaticFullProfitPlan(plan) {
-    const normalizedName = normalizeProductName(`${plan?.platform_name || ""} ${plan?.platform_slug || ""}`);
-    return String(plan?.type || "").trim().toLowerCase() === "correo"
-        && normalizedName.includes("notion");
-}
-
-function automaticProfitForEntry({ plan, salePrice, unitCost }) {
-    if (!isAutomaticFullProfitPlan(plan)) return 0;
-    if (Number(unitCost || 0) > 0) return 0;
-    return Number(Math.max(0, Number(salePrice || 0)).toFixed(2));
 }
 
 async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "reseller") {
@@ -373,7 +356,8 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 createdByUserId: userId,
             });
 
-            const unitCost = Number(account?.unit_cost || 0);
+            const inventoryUnitCost = Number(account?.unit_cost || 0);
+            const unitCost = inventoryUnitCost > 0 ? inventoryUnitCost : automaticUnitCostForPlan(plan);
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
             automaticProfitToAdd = Number((automaticProfitToAdd + automaticProfitForEntry({
                 plan,
@@ -505,6 +489,6 @@ module.exports = {
     checkoutService,
     __testing: {
         automaticProfitForEntry,
-        isAutomaticFullProfitPlan,
+        automaticUnitCostForPlan,
     },
 };

@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { GEMINI_5TB_COST_COP } = require("../utils/profitCosts");
 
 const router = express.Router();
 const DEFAULT_NET_PROFIT_TRACKING_START_AT = "2026-06-12 13:36:47";
@@ -9,6 +10,37 @@ const configuredNetProfitStartAt = String(process.env.NET_PROFIT_TRACKING_START_
 const NET_PROFIT_TRACKING_START_AT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(configuredNetProfitStartAt)
     ? configuredNetProfitStartAt
     : DEFAULT_NET_PROFIT_TRACKING_START_AT;
+
+function normalizedPlatformSql(alias = "p") {
+    return `LOWER(CONCAT_WS(' ', ${alias}.name, ${alias}.slug))`;
+}
+
+function knownNoCostPlatformSql(alias = "p") {
+    const normalized = normalizedPlatformSql(alias);
+    return `(${alias}.type = 'correo' AND ${normalized} LIKE '%notion%')`;
+}
+
+function gemini5TbPlatformSql(platformAlias = "p", orderAlias = "o") {
+    const normalized = normalizedPlatformSql(platformAlias);
+    return `(${platformAlias}.type = 'correo' AND UPPER(${orderAlias}.currency) = 'COP' AND ${normalized} LIKE '%gemini%' AND (${normalized} LIKE '%5 tb%' OR ${normalized} LIKE '%almacenamiento%'))`;
+}
+
+function analyticsCostSql({ orderAlias = "o", itemAlias = "oi", accountAlias = "pa", platformAlias = "p" } = {}) {
+    const recordedCost = `COALESCE(NULLIF(${itemAlias}.cost_amount, 0), NULLIF(${accountAlias}.unit_cost, 0))`;
+    return `CASE
+        WHEN ${recordedCost} IS NOT NULL THEN ${recordedCost}
+        WHEN ${gemini5TbPlatformSql(platformAlias, orderAlias)} THEN ${GEMINI_5TB_COST_COP}
+        WHEN ${knownNoCostPlatformSql(platformAlias)} THEN 0
+        ELSE 0
+    END`;
+}
+
+function analyticsMissingCostSql({ orderAlias = "o", itemAlias = "oi", accountAlias = "pa", platformAlias = "p" } = {}) {
+    const recordedCost = `COALESCE(NULLIF(${itemAlias}.cost_amount, 0), NULLIF(${accountAlias}.unit_cost, 0))`;
+    return `(${recordedCost} IS NULL
+        AND NOT ${gemini5TbPlatformSql(platformAlias, orderAlias)}
+        AND NOT ${knownNoCostPlatformSql(platformAlias)})`;
+}
 
 /**
  * Returns daily sales comparison for current month vs previous month.
@@ -133,7 +165,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                 p.name AS platform_name,
                 COUNT(oi.id) AS platform_sales_count,
                 SUM(oi.price) AS platform_revenue,
-                SUM(COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS platform_cost
+                SUM(${analyticsCostSql()}) AS platform_cost
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN platforms p ON p.id = oi.platform_id
@@ -436,11 +468,11 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     SELECT
                         COUNT(oi.id) AS tracked_sales_count,
                         SUM(oi.price) AS tracked_revenue,
-                        SUM(COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS cost_total,
-                        SUM(oi.price - COALESCE(NULLIF(oi.cost_amount, 0), pa.unit_cost, 0)) AS net_profit,
+                        SUM(${analyticsCostSql()}) AS cost_total,
+                        SUM(oi.price - ${analyticsCostSql()}) AS net_profit,
                         SUM(
                             CASE
-                                WHEN COALESCE(NULLIF(oi.cost_amount, 0), NULLIF(pa.unit_cost, 0)) IS NULL THEN 1
+                                WHEN ${analyticsMissingCostSql()} THEN 1
                                 ELSE 0
                             END
                         ) AS missing_cost_count

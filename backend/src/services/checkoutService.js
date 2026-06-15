@@ -38,6 +38,27 @@ function requiresInventoryAccount(plan) {
     return String(plan?.type || "").trim().toLowerCase() !== "correo";
 }
 
+function normalizeProductName(value) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function isAutomaticFullProfitPlan(plan) {
+    const normalizedName = normalizeProductName(`${plan?.platform_name || ""} ${plan?.platform_slug || ""}`);
+    return String(plan?.type || "").trim().toLowerCase() === "correo"
+        && normalizedName.includes("notion");
+}
+
+function automaticProfitForEntry({ plan, salePrice, unitCost }) {
+    if (!isAutomaticFullProfitPlan(plan)) return 0;
+    if (Number(unitCost || 0) > 0) return 0;
+    return Number(Math.max(0, Number(salePrice || 0)).toFixed(2));
+}
+
 async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "reseller") {
     if (!platformPriceIds.length) return [];
     const liteCatalog = isLiteChannel(salesChannel);
@@ -297,6 +318,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         );
         const orderId = ordIns.insertId;
         const results = [];
+        let automaticProfitToAdd = 0;
 
         for (const entry of purchaseEntries) {
             const plan = entry.plan;
@@ -353,6 +375,11 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
             const unitCost = Number(account?.unit_cost || 0);
             const itemProfit = Number((itemPrice - unitCost).toFixed(2));
+            automaticProfitToAdd = Number((automaticProfitToAdd + automaticProfitForEntry({
+                plan,
+                salePrice: itemPrice,
+                unitCost,
+            })).toFixed(2));
             await conn.query(
                 `INSERT INTO order_items
                     (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name, delivered_platform_id, product_details_snapshot)
@@ -376,7 +403,8 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         }
 
         const newBalance = balance - total;
-        const profitToAdd = !liteCheckout && recordProfit ? Number(profitAmount || 0) : 0;
+        const manualProfitToAdd = !liteCheckout && recordProfit ? Number(profitAmount || 0) : 0;
+        const profitToAdd = Number((automaticProfitToAdd + manualProfitToAdd).toFixed(2));
 
         await conn.query(
             "UPDATE wallets SET balance = ?, profit_total = profit_total + ? WHERE id = ?",
@@ -390,12 +418,21 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             [wallet.id, -Number(total), newBalance, orderId, `Orden ${orderCode}`]
         );
 
-        if (profitToAdd > 0) {
+        if (automaticProfitToAdd > 0) {
             await conn.query(
                 `INSERT INTO wallet_transactions
                     (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
                  VALUES (?, 'profit', ?, ?, 'order', ?, ?)`,
-                [wallet.id, Number(profitToAdd), newBalance, orderId, `Ganancia registrada en orden ${orderCode}`]
+                [wallet.id, automaticProfitToAdd, newBalance, orderId, `Ganancia automática producto sin costo: ${orderCode}`]
+            );
+        }
+
+        if (manualProfitToAdd > 0) {
+            await conn.query(
+                `INSERT INTO wallet_transactions
+                    (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+                 VALUES (?, 'profit', ?, ?, 'order', ?, ?)`,
+                [wallet.id, manualProfitToAdd, newBalance, orderId, `Ganancia registrada en orden ${orderCode}`]
             );
         }
 
@@ -464,4 +501,10 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
     }
 }
 
-module.exports = { checkoutService };
+module.exports = {
+    checkoutService,
+    __testing: {
+        automaticProfitForEntry,
+        isAutomaticFullProfitPlan,
+    },
+};

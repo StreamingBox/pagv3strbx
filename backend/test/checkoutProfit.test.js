@@ -34,7 +34,7 @@ test("regular inventory products do not add automatic full profit", () => {
     assert.equal(profit, 0);
 });
 
-test("Gemini 5 TB records net profit after fixed COP cost", () => {
+test("Gemini 5 TB has fixed COP cost without wallet profit", () => {
     const plan = {
         platform_name: "Link Gemini con 5 TB de almacenamiento",
         platform_slug: "link-gemini-con-5-tb-de-almacenamiento",
@@ -47,5 +47,5 @@ test("Gemini 5 TB records net profit after fixed COP cost", () => {
         plan,
         salePrice: 17000,
         unitCost: 0,
-    }), 10000);
+    }), 0);
 });

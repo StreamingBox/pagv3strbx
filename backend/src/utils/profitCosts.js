@@ -40,9 +40,9 @@ function automaticUnitCostForPlan(plan) {
 }
 
 function automaticProfitForEntry({ plan, salePrice, unitCost }) {
-    if (!isNotionEmailPlan(plan) && !isGemini5TbPlan(plan)) return 0;
+    if (!isNotionEmailPlan(plan)) return 0;
 
-    const cost = Number(unitCost || automaticUnitCostForPlan(plan) || 0);
+    const cost = Number(unitCost || 0);
     return Number((Number(salePrice || 0) - cost).toFixed(2));
 }
 

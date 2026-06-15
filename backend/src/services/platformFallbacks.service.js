@@ -37,6 +37,42 @@ async function getPlatformFallbacks(conn, sourcePlatformId = null) {
     return rows;
 }
 
+async function getCandidatePlatformsForPlatform(conn, platformId, additionalPlatformIds = []) {
+    const requestedPlatformId = Number(platformId);
+    if (!Number.isInteger(requestedPlatformId) || requestedPlatformId <= 0) {
+        const err = new Error("platformId invalido.");
+        err.status = 400;
+        throw err;
+    }
+
+    const candidates = [];
+    const seen = new Set();
+    const addCandidate = (value, source) => {
+        const id = Number(value);
+        if (!Number.isInteger(id) || id <= 0 || seen.has(id)) return;
+        seen.add(id);
+        candidates.push({ platformId: id, source });
+    };
+
+    addCandidate(requestedPlatformId, "requested");
+    for (const additionalPlatformId of additionalPlatformIds || []) {
+        addCandidate(additionalPlatformId, "historical");
+    }
+
+    const [fallbackRows] = await conn.query(
+        `SELECT fallback_platform_id
+           FROM platform_fallbacks
+          WHERE source_platform_id = ? AND is_active = 1
+          ORDER BY priority ASC, id ASC`,
+        [requestedPlatformId]
+    );
+    for (const row of fallbackRows) {
+        addCandidate(row.fallback_platform_id, "fallback");
+    }
+
+    return candidates;
+}
+
 async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     const requestedPlatformId = Number(platformId);
     const excludeAccountId = Number(options.excludeAccountId || 0);
@@ -48,6 +84,14 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
         throw err;
     }
 
+    const candidatePlatforms = await getCandidatePlatformsForPlatform(
+        conn,
+        requestedPlatformId,
+        options.additionalPlatformIds || []
+    );
+    const candidatePlatformIds = candidatePlatforms.map((candidate) => candidate.platformId);
+    const candidatePlaceholders = candidatePlatformIds.map(() => "?").join(",");
+
     if (specificAccountId > 0) {
         const [specificRows] = await conn.query(
             `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.profile_number, pa.access_url, pa.unit_cost,
@@ -57,18 +101,11 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
              WHERE pa.id = ?
                AND pa.status = 'available'
                AND pa.id <> ?
-               AND (
-                    pa.platform_id = ?
-                    OR pa.platform_id IN (
-                        SELECT fallback_platform_id
-                        FROM platform_fallbacks
-                        WHERE source_platform_id = ? AND is_active = 1
-                    )
-               )
+               AND pa.platform_id IN (${candidatePlaceholders})
                AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
              LIMIT 1
              FOR UPDATE`,
-            [specificAccountId, excludeAccountId || 0, requestedPlatformId, requestedPlatformId]
+            [specificAccountId, excludeAccountId || 0, ...candidatePlatformIds]
         );
 
         return specificRows[0]
@@ -83,24 +120,17 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
 
     const [rows] = await conn.query(
         `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.profile_number, pa.access_url, pa.unit_cost,
-                p.name AS delivered_platform_name, p.slug AS delivered_platform_slug,
-                candidate.priority
-         FROM (
-            SELECT ? AS platform_id, 0 AS priority
-            UNION ALL
-            SELECT fallback_platform_id AS platform_id, priority
-            FROM platform_fallbacks
-            WHERE source_platform_id = ? AND is_active = 1
-         ) candidate
-         JOIN platform_accounts pa ON pa.platform_id = candidate.platform_id
+                p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
+         FROM platform_accounts pa
          JOIN platforms p ON p.id = pa.platform_id AND p.is_active = 1
          WHERE pa.status = 'available'
            AND pa.id <> ?
+           AND pa.platform_id IN (${candidatePlaceholders})
            AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
-         ORDER BY candidate.priority ASC, pa.id ASC
+         ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), pa.id ASC
          LIMIT 1
          FOR UPDATE`,
-        [requestedPlatformId, requestedPlatformId, excludeAccountId || 0]
+        [excludeAccountId || 0, ...candidatePlatformIds, ...candidatePlatformIds]
     );
 
     return rows[0]
@@ -115,5 +145,6 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
 
 module.exports = {
     getPlatformFallbacks,
+    getCandidatePlatformsForPlatform,
     findAvailableAccountForPlatform,
 };

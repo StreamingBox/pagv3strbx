@@ -309,7 +309,7 @@ export default function AdminSupport() {
                                     <option value="">Siguiente disponible</option>
                                     {replacementCandidates.map((candidate) => (
                                         <option key={candidate.id} value={candidate.id}>
-                                            #{candidate.id} · {candidate.email} · Perfil {candidate.profile_number ?? "—"}
+                                            #{candidate.id} · {candidate.platformName || "Plataforma"} · {candidate.email} · Perfil {candidate.profile_number ?? "—"}
                                         </option>
                                     ))}
                                 </select>

@@ -56,6 +56,14 @@ export function getPlatformLogoCandidates(slug, name, ts) {
     if (raw.includes("netflix")) base.push("netflix", "netflix-internacional", "netflix-completa");
     if (raw.includes("prime") || raw.includes("amazon")) base.push("prime-video", "prime-video-completa");
     if (raw.includes("disney")) base.push("disney-premium", "disney-premium-completa", "disney-estandar", "disney");
+    if (raw.includes("directv") || raw.includes("directv go")) base.push("directv-go");
+    if (raw.includes("crunchy")) base.push("crunchyroll", "crunchyroll-completa");
+    if (raw.includes("max")) base.push("max");
+    if (raw.includes("vix")) base.push("vix");
+    if (raw.includes("canva")) base.push("canva", "canva-mensual-a-correo", "canva-anual-a-correo");
+    if (raw.includes("notion")) base.push("notion-a-correo", "notion");
+    if (raw.includes("gemini")) base.push("link-gemini-con-5-tb-de-almacenamiento", "gemini");
+    if (raw.includes("office") || raw.includes("microsoft")) base.push("microsoft-office-365");
     if (raw.includes("paramount")) base.push("paramount-completa");
     if (raw.includes("spotify")) base.push("spotify-3-meses");
     if (raw.includes("youtube")) base.push("youtube-music");

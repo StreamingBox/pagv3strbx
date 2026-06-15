@@ -4,7 +4,10 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { formatDateOnlyBogota, isExpiryDateExpired } = require("../utils/date");
-const { findAvailableAccountForPlatform } = require("../services/platformFallbacks.service");
+const {
+    findAvailableAccountForPlatform,
+    getCandidatePlatformsForPlatform,
+} = require("../services/platformFallbacks.service");
 
 const router = express.Router();
 
@@ -48,37 +51,47 @@ function buildAccountDeliveryMessage({ intro = "Detalle de la cuenta:", orderCod
     return lines.join("\n").trim();
 }
 
-async function getReplacementCandidates(conn, { platformId, currentAccountId }) {
+async function getReplacementCandidates(conn, { platformId, currentAccountId, additionalPlatformIds = [] }) {
+    const candidatePlatforms = await getCandidatePlatformsForPlatform(
+        conn,
+        platformId,
+        additionalPlatformIds
+    );
+    const candidatePlatformIds = candidatePlatforms.map((candidate) => candidate.platformId);
+    const candidatePlaceholders = candidatePlatformIds.map(() => "?").join(",");
+    const candidateByPlatformId = new Map(
+        candidatePlatforms.map((candidate, index) => [candidate.platformId, { ...candidate, priority: index }])
+    );
+
     const [rows] = await conn.query(
         `SELECT pa.id, pa.email, pa.password, pa.pin, pa.profile_number, pa.expires_at,
-                pa.platform_id, p.name AS platform_name, candidate.priority
-           FROM (
-                SELECT ? AS platform_id, 0 AS priority
-                UNION ALL
-                SELECT fallback_platform_id AS platform_id, priority
-                FROM platform_fallbacks
-                WHERE source_platform_id = ? AND is_active = 1
-           ) candidate
-           JOIN platform_accounts pa ON pa.platform_id = candidate.platform_id
+                pa.platform_id, p.name AS platform_name
+           FROM platform_accounts pa
            JOIN platforms p ON p.id = pa.platform_id
           WHERE pa.status = 'available'
             AND pa.id <> ?
+            AND pa.platform_id IN (${candidatePlaceholders})
             AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
-          ORDER BY candidate.priority ASC, pa.id ASC`,
-        [platformId, platformId, Number(currentAccountId || 0)]
+          ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), pa.id ASC`,
+        [Number(currentAccountId || 0), ...candidatePlatformIds, ...candidatePlatformIds]
     );
 
-    return rows.map((row) => ({
-        id: row.id,
-        email: row.email,
-        password: row.password,
-        pin: row.pin,
-        profile_number: row.profile_number,
-        expiresAt: row.expires_at || null,
-        platformId: row.platform_id,
-        platformName: row.platform_name,
-        isFallback: Number(row.platform_id) !== Number(platformId),
-    }));
+    return rows.map((row) => {
+        const candidate = candidateByPlatformId.get(Number(row.platform_id));
+        return {
+            id: row.id,
+            email: row.email,
+            password: row.password,
+            pin: row.pin,
+            profile_number: row.profile_number,
+            expiresAt: row.expires_at || null,
+            platformId: row.platform_id,
+            platformName: row.platform_name,
+            candidateSource: candidate?.source || "requested",
+            isHistorical: candidate?.source === "historical",
+            isFallback: Number(row.platform_id) !== Number(platformId),
+        };
+    });
 }
 
 async function getSubscriptionSupportInfo(conn, subscriptionId) {
@@ -93,6 +106,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         s.status,
         s.expires_at,
         s.platform_account_id,
+        s.delivered_platform_id,
         o.id AS order_id,
         o.order_code,
         p.name AS platform_name,
@@ -101,6 +115,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         a.password,
         a.pin,
         a.profile_number,
+        a.platform_id AS account_platform_id,
         a.expires_at AS account_expires_at
      FROM subscriptions s
      LEFT JOIN order_items oi ON oi.subscription_id = s.id
@@ -138,6 +153,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
     const replacementCandidates = await getReplacementCandidates(conn, {
         platformId: r.platform_id,
         currentAccountId: r.platform_account_id,
+        additionalPlatformIds: [r.delivered_platform_id, r.account_platform_id],
     });
 
     const message = buildAccountDeliveryMessage({
@@ -161,6 +177,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         orderCode: r.order_code,
         platformId: r.platform_id,
         platformName: r.platform_name,
+        deliveredPlatformId: r.delivered_platform_id,
         status: r.status,
         expiresAt: r.account_expires_at || r.expires_at,
         accountId: r.platform_account_id,
@@ -226,7 +243,8 @@ router.post(
 
             // Lock subscription
             const [subRows] = await conn.query(
-                `SELECT s.id, s.user_id, s.platform_id, s.status, s.expires_at, s.platform_account_id,
+                `SELECT s.id, s.user_id, s.platform_id, s.delivered_platform_id, s.status, s.expires_at, s.platform_account_id,
+                    pa.platform_id AS account_platform_id,
                     pa.expires_at AS account_expires_at, pa.email AS old_account_email
            FROM subscriptions s
            LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
@@ -258,6 +276,7 @@ router.post(
             const resolvedAccount = await findAvailableAccountForPlatform(conn, sub.platform_id, {
                 accountId: replacementAccountId || null,
                 excludeAccountId: sub.platform_account_id,
+                additionalPlatformIds: [sub.delivered_platform_id, sub.account_platform_id],
             });
 
             if (replacementAccountId && !resolvedAccount?.account) {

@@ -15,7 +15,7 @@ export default function CartResult({ result, onClose }) {
         <section className="cart-result kpi">
             <div className="cart-resultTitle">Compra realizada</div>
             <div className="cart-resultHint">
-                La orden fue creada. Copia este mensaje para entregar las credenciales.
+                La orden fue creada. Copia este mensaje para entregar la información al cliente.
             </div>
             {deliveryMessage ? (
                 <pre className="cart-resultPre">{deliveryMessage}</pre>

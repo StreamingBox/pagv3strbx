@@ -26,12 +26,16 @@ function normalizeProductName(value) {
         .trim();
 }
 
-function isCanvaEmailActivationProduct(platformName) {
+function isAssistedActivationProduct(platformName) {
     const normalized = normalizeProductName(platformName);
-    return normalized.includes("canva") && normalized.includes("correo");
+    return (
+        (normalized.includes("canva") && normalized.includes("correo")) ||
+        normalized.includes("notion") ||
+        normalized.includes("gemini")
+    );
 }
 
-function emailActivationServiceName(platformName) {
+function activationServiceName(platformName) {
     const cleanName = String(platformName || "")
         .replace(/\s+a\s+correo\s*$/i, "")
         .trim();
@@ -40,7 +44,7 @@ function emailActivationServiceName(platformName) {
         .replace(/\s{2,}/g, " ")
         .trim();
 
-    return withoutDuration || cleanName || "Canva";
+    return withoutDuration || cleanName || "el producto";
 }
 
 function salesContactPhone() {
@@ -65,12 +69,12 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const url = credentialUrl(baseUrl, result?.token || "");
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
-        if (isEmailDelivery(plan) && isCanvaEmailActivationProduct(platformName)) {
-            const activationService = emailActivationServiceName(platformName);
+        if (isEmailDelivery(plan) && isAssistedActivationProduct(platformName)) {
+            const activationService = activationServiceName(platformName);
             lines.push(`🖥️ ${platformName}`);
-            lines.push(`📲 Para activar tu correo de ${activationService}, escribe este mensaje al WhatsApp ${salesContactPhone()}:`);
+            lines.push(`📌 Nota de activación: comunícate al WhatsApp ${salesContactPhone()} para que te ayuden con la activación.`);
             lines.push("");
-            lines.push(`Hola, quiero activar mi correo de ${activationService}. Orden: ${orderCode || "-"}. Producto: ${platformName}.`);
+            lines.push(`Hola, necesito ayuda para activar ${activationService}. Orden: ${orderCode || "-"}. Producto: ${platformName}.`);
             lines.push("");
             continue;
         }
@@ -116,4 +120,9 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     return lines.join("\n").trim();
 }
 
-module.exports = { buildDeliveryMessage };
+module.exports = {
+    activationServiceName,
+    buildDeliveryMessage,
+    isAssistedActivationProduct,
+    salesContactPhone,
+};

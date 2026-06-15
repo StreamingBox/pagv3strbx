@@ -1,5 +1,10 @@
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+const {
+    activationServiceName,
+    isAssistedActivationProduct,
+    salesContactPhone,
+} = require("../utils/deliveryMessage");
 
 let transporterPromise = null;
 let salesTransporterPromise = null;
@@ -317,7 +322,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const subject = `${appName} | Orden ${orderCode} entregada`;
     const totalText = formatMoney(total, currency);
     const orderDateText = formatDateTime(new Date());
-    const salesContactPhone = String(process.env.SALES_CONTACT_PHONE || "3152485340").trim();
+    const contactPhone = salesContactPhone();
 
     const normalizedResults = Array.isArray(results) ? results : [];
     const itemCount = normalizedResults.length;
@@ -325,8 +330,14 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const itemBlocksText = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
         const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
-        const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = buildCredentialFields(result);
+        const assistedActivation = isAssistedActivationProduct(platformLabel);
+        const credentialUrl = !assistedActivation && result?.token ? `${baseUrl}/s/${result.token}` : null;
+        const fields = assistedActivation
+            ? [{
+                label: "Activación",
+                value: `Comunícate al WhatsApp ${contactPhone} para que te ayuden con la activación. Indica la orden ${orderCode}.`,
+            }]
+            : buildCredentialFields(result);
         const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${platformLabel}`];
         for (const field of fields) {
             if (field.label === "Correo") lines.push(`📧 ${renderTextField(field)}`);
@@ -352,15 +363,21 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
         "",
         itemBlocksText,
         "",
-        salesContactPhone ? `📞 Ventas y soporte: ${salesContactPhone}` : "",
+        contactPhone ? `📞 Ventas y soporte: ${contactPhone}` : "",
         "Si no reconoces esta compra, responde a este correo.",
     ].join("\n");
 
     const itemBlocksHtml = normalizedResults.map((result, index) => {
         const plan = result?.plan || {};
         const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
-        const credentialUrl = result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = buildCredentialFields(result);
+        const assistedActivation = isAssistedActivationProduct(platformLabel);
+        const credentialUrl = !assistedActivation && result?.token ? `${baseUrl}/s/${result.token}` : null;
+        const fields = assistedActivation
+            ? [{
+                label: "Activación",
+                value: `Comunícate al WhatsApp ${contactPhone} para que te ayuden con la activación. Indica la orden ${orderCode} y el producto ${activationServiceName(platformLabel)}.`,
+            }]
+            : buildCredentialFields(result);
 
         return `
             <div style="border:1px solid #cfd8ea;border-radius:16px;padding:18px 18px 14px;margin:0 0 18px;background:#f8fbff">
@@ -379,7 +396,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
                 <div style="background:#131a2a;padding:28px 30px;color:#ffffff">
                     <div style="font-size:18px;font-weight:700;opacity:.92;margin:0 0 8px">${escapeHtml(appName)}</div>
                     <div style="font-size:30px;font-weight:900;line-height:1.1;margin:0 0 6px">Compra exitosa</div>
-                    <div style="font-size:15px;color:#cbd5e1">Tu orden fue entregada y las credenciales ya estan disponibles.</div>
+                    <div style="font-size:15px;color:#cbd5e1">Tu orden fue entregada correctamente.</div>
                 </div>
                 <div style="padding:30px">
                     <div style="font-size:16px;font-weight:700;margin:0 0 10px">Hola ${escapeHtml(greetingName)},</div>
@@ -402,7 +419,7 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
                         <div style="font-size:14px;line-height:1.6;color:#475569;margin:0 0 10px">
                             Si necesitas ayuda con esta entrega o con una renovacion, puedes comunicarte con ventas.
                         </div>
-                        <div style="font-size:15px;color:#334155;margin:0 0 10px"><strong>Telefono:</strong> ${escapeHtml(salesContactPhone)}</div>
+                        <div style="font-size:15px;color:#334155;margin:0 0 10px"><strong>Telefono:</strong> ${escapeHtml(contactPhone)}</div>
                     </div>
 
                     <div style="font-size:13px;line-height:1.6;color:#64748b;margin-top:8px">

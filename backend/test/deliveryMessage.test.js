@@ -40,7 +40,7 @@ test("Canva correo uses WhatsApp activation instructions without credential link
 
         assert.match(message, /Canva Mensual a correo/);
         assert.match(message, /WhatsApp 3152485340/);
-        assert.match(message, /Hola, quiero activar mi correo de Canva/);
+        assert.match(message, /Hola, necesito ayuda para activar Canva/);
         assert.doesNotMatch(message, /Expira:/);
         assert.doesNotMatch(message, /Enlace de credenciales/);
         assert.doesNotMatch(message, /Regla de uso/);
@@ -68,6 +68,34 @@ test("credential products include the one-device usage rule", () => {
         const message = buildSingleItemMessage({ platformName });
         assert.match(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
     }
+});
+
+test("Notion correo uses assisted activation without expiration or credential link", () => {
+    const message = buildSingleItemMessage({
+        platformName: "Notion a correo",
+        type: "correo",
+        account: {},
+    });
+
+    assert.match(message, /Nota de activación/);
+    assert.match(message, /WhatsApp 3152485340/);
+    assert.match(message, /Orden: ORD-TEST/);
+    assert.doesNotMatch(message, /Expira:/);
+    assert.doesNotMatch(message, /Enlace de credenciales/);
+});
+
+test("Gemini link product uses assisted activation without expiration or credential link", () => {
+    const message = buildSingleItemMessage({
+        platformName: "Link Gemini con 5 TB de almacenamiento",
+        type: "correo",
+        account: {},
+    });
+
+    assert.match(message, /Nota de activación/);
+    assert.match(message, /WhatsApp 3152485340/);
+    assert.match(message, /necesito ayuda para activar Link Gemini con 5 TB de almacenamiento/);
+    assert.doesNotMatch(message, /Expira:/);
+    assert.doesNotMatch(message, /Enlace de credenciales/);
 });
 
 test("regular credential products keep credentials and the one-device usage rule", () => {

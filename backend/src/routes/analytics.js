@@ -478,6 +478,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                         ) AS missing_cost_count
                     FROM order_items oi
                     JOIN orders o ON o.id = oi.order_id
+                    JOIN platforms p ON p.id = oi.platform_id
                     LEFT JOIN subscriptions s ON s.id = oi.subscription_id
                     LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
                     WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?

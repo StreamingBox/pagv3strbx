@@ -582,6 +582,9 @@ function UserAnalyticsContent({ admin }) {
     const selectedAverageTicket = getAverageTicket(selectedRevenueTotal, selectedOrderTotal);
     const selectedProjectionTotal = monthlyProjections.reduce((sum, projection) => sum + Number(projection?.value || 0), 0);
     const selectedHasProjection = monthlyProjections.some((projection) => projection?.isProjection);
+    const selectedProjectionLabel = selectedHasProjection
+        ? monthsData.length > 1 ? "Proyección + cierre" : "Proyección mensual"
+        : "Cierre seleccionado";
     const selectedTrackedRevenue = monthsData.reduce((sum, m) => sum + Number(m.trackedRevenue || 0), 0);
     const selectedTrackedSalesCount = monthsData.reduce((sum, m) => sum + Number(m.trackedSalesCount || 0), 0);
     const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
@@ -851,7 +854,7 @@ function UserAnalyticsContent({ admin }) {
                     <InsightChip emoji="🎟️" label="Ticket promedio" value={formatCurrency(selectedAverageTicket)} color="#10b981" />
                     <InsightChip
                         emoji="📈"
-                        label={selectedHasProjection ? "Proyección mensual" : "Cierre seleccionado"}
+                        label={selectedProjectionLabel}
                         value={formatCurrency(selectedProjectionTotal)}
                         color="#8b5cf6"
                     />

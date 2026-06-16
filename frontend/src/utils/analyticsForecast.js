@@ -11,7 +11,7 @@ function number(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getBogotaToday(now = new Date()) {
+export function getBogotaToday(now = new Date()) {
     const parts = new Intl.DateTimeFormat("en-US", {
         timeZone: BOGOTA_TZ,
         year: "numeric",
@@ -23,11 +23,11 @@ function getBogotaToday(now = new Date()) {
     return { year: find("year"), month: find("month"), day: find("day") };
 }
 
-function daysInMonth(year, month) {
+export function daysInMonth(year, month) {
     return new Date(year, month, 0).getDate();
 }
 
-function latestDailyDay(daily = []) {
+export function latestDailyDay(daily = []) {
     return daily.reduce((max, row) => Math.max(max, number(row.day)), 0);
 }
 
@@ -63,6 +63,9 @@ export function getMonthProjection(monthData, now = new Date()) {
             value: total,
             label: "Cierre mensual",
             detail: `${totalDays || 0} días`,
+            elapsedDays: totalDays || 0,
+            totalDays: totalDays || 0,
+            dailyAverage: totalDays > 0 ? total / totalDays : 0,
             isProjection: false,
         };
     }
@@ -76,6 +79,9 @@ export function getMonthProjection(monthData, now = new Date()) {
         value: projected,
         label: "Proyección mensual",
         detail: `${elapsedDays}/${totalDays} días`,
+        elapsedDays,
+        totalDays,
+        dailyAverage: elapsedDays > 0 ? total / elapsedDays : 0,
         isProjection: true,
     };
 }

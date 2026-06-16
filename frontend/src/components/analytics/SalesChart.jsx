@@ -8,11 +8,13 @@ import {
     CartesianGrid,
     Tooltip,
     Legend,
-    BarChart,
+    ComposedChart,
     Bar,
+    Line,
 } from "recharts";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
+import { getMonthProjection } from "../../utils/analyticsForecast.js";
 
 function useIsLight() {
     const [light, setLight] = useState(
@@ -70,9 +72,27 @@ export default function SalesChart({ months = [], chartType = "area" }) {
         return <div style={{ color: "var(--muted)", padding: 20 }}>Cargando datos...</div>;
     }
 
-    // Recopilar todos los días con datos en cualquier mes
+    const projectionLines = months.map((m, i) => {
+        const projection = getMonthProjection(m);
+        if (!projection?.isProjection || !projection.totalDays || !projection.dailyAverage) return null;
+        return {
+            key: `projection_${i}`,
+            label: `Proyección ${m.label}`,
+            color: MONTH_COLORS[i % MONTH_COLORS.length],
+            startDay: projection.elapsedDays,
+            totalDays: projection.totalDays,
+            value: projection.dailyAverage,
+        };
+    }).filter(Boolean);
+
+    // Recopilar todos los días con datos o con línea proyectada en cualquier mes
     const allDays = new Set();
     months.forEach(m => m.daily.forEach(r => allDays.add(r.day)));
+    projectionLines.forEach((line) => {
+        for (let day = line.startDay; day <= line.totalDays; day += 1) {
+            allDays.add(day);
+        }
+    });
 
     if (allDays.size === 0) {
         return (
@@ -99,6 +119,9 @@ export default function SalesChart({ months = [], chartType = "area" }) {
             const row = { day };
             months.forEach((m, idx) => {
                 row[m.label] = dayMaps[idx][day] !== undefined ? dayMaps[idx][day] : null;
+            });
+            projectionLines.forEach((line) => {
+                row[line.key] = day >= line.startDay && day <= line.totalDays ? line.value : null;
             });
             return row;
         });
@@ -144,7 +167,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
         <div style={{ width: "100%", height: isMobile ? 260 : 320, minWidth: 0, overflow: "hidden" }}>
             {chartType === "bar" ? (
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart {...commonProps}>
+                    <ComposedChart {...commonProps}>
                         <defs>
                             {months.map((m, i) => (
                                 <linearGradient key={i} id={`barGrad${i}`} x1="0" y1="0" x2="0" y2="1">
@@ -160,7 +183,21 @@ export default function SalesChart({ months = [], chartType = "area" }) {
                                 radius={[4, 4, 0, 0]}
                             />
                         ))}
-                    </BarChart>
+                        {projectionLines.map((line) => (
+                            <Line
+                                key={line.key}
+                                type="monotone"
+                                dataKey={line.key}
+                                name={line.label}
+                                stroke={line.color}
+                                strokeWidth={2.5}
+                                strokeDasharray="7 5"
+                                dot={false}
+                                activeDot={{ r: 4, strokeWidth: 2 }}
+                                connectNulls
+                            />
+                        ))}
+                    </ComposedChart>
                 </ResponsiveContainer>
             ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -184,6 +221,20 @@ export default function SalesChart({ months = [], chartType = "area" }) {
                                 strokeWidth={i === 0 ? 3 : 2}
                                 strokeDasharray={i === 0 ? undefined : "5 4"}
                                 activeDot={{ r: 5, strokeWidth: 2, stroke: MONTH_COLORS[i % MONTH_COLORS.length], fill: light ? "#fff" : "#1a1f3c" }}
+                                connectNulls
+                            />
+                        ))}
+                        {projectionLines.map((line) => (
+                            <Line
+                                key={line.key}
+                                type="monotone"
+                                dataKey={line.key}
+                                name={line.label}
+                                stroke={line.color}
+                                strokeWidth={2.5}
+                                strokeDasharray="7 5"
+                                dot={false}
+                                activeDot={{ r: 4, strokeWidth: 2 }}
                                 connectNulls
                             />
                         ))}

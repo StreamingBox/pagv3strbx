@@ -31,6 +31,30 @@ export function latestDailyDay(daily = []) {
     return daily.reduce((max, row) => Math.max(max, number(row.day)), 0);
 }
 
+function average(values = []) {
+    const clean = values.map(number).filter((value) => Number.isFinite(value));
+    return clean.length ? clean.reduce((sum, value) => sum + value, 0) / clean.length : 0;
+}
+
+function weightedAverage(values = []) {
+    const clean = values.map(number);
+    const weightSum = clean.reduce((sum, _value, index) => sum + index + 1, 0);
+    if (!weightSum) return 0;
+    return clean.reduce((sum, value, index) => sum + value * (index + 1), 0) / weightSum;
+}
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(number(value), min), max);
+}
+
+function getDailyRevenueMap(daily = []) {
+    return daily.reduce((map, row) => {
+        const day = number(row.day);
+        if (day > 0) map[day] = number(row.revenue);
+        return map;
+    }, {});
+}
+
 function isBeforeMonth(year, month, today) {
     return year < today.year || (year === today.year && month < today.month);
 }
@@ -48,15 +72,92 @@ export function getAverageTicket(total, orders) {
     return count > 0 ? number(total) / count : 0;
 }
 
-export function getMonthProjection(monthData, now = new Date()) {
+export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new Date()) {
     const year = number(monthData?.year);
     const month = number(monthData?.month);
     const total = number(monthData?.total);
     const today = getBogotaToday(now);
     const totalDays = daysInMonth(year, month);
     const lastSaleDay = latestDailyDay(monthData?.daily);
-    const closed = isBeforeMonth(year, month, today);
     const current = isCurrentMonth(year, month, today);
+    if (!year || !month || !current || !totalDays) {
+        return null;
+    }
+
+    const elapsedDays = Math.min(Math.max(today.day, lastSaleDay, 1), totalDays);
+    const dailyMap = getDailyRevenueMap(monthData?.daily);
+    const actualValues = Array.from({ length: elapsedDays }, (_item, index) => dailyMap[index + 1] ?? 0);
+    const totalFromDaily = actualValues.reduce((sum, value) => sum + value, 0);
+    const actualTotal = total || totalFromDaily;
+    const currentPace = elapsedDays > 0 ? actualTotal / elapsedDays : 0;
+    const lastThree = actualValues.slice(-3);
+    const previousThree = actualValues.slice(-6, -3);
+    const recentWindow = actualValues.slice(-7);
+    const recentAverage = weightedAverage(recentWindow) || currentPace;
+    const previousAverage = average(previousThree) || currentPace;
+    const recentThreeAverage = average(lastThree) || recentAverage;
+    const dailySlope = (recentThreeAverage - previousAverage) / 3;
+
+    const peerDailyMaps = peerMonths
+        .filter((peer) => !isCurrentMonth(number(peer?.year), number(peer?.month), today))
+        .map((peer) => getDailyRevenueMap(peer?.daily))
+        .filter((map) => Object.keys(map).length > 0);
+    const peerValues = peerDailyMaps.flatMap((map) => Object.values(map).map(number));
+    const peerPace = average(peerValues);
+    const peerScale = peerPace > 0 && currentPace > 0 ? currentPace / peerPace : 1;
+    const maxActual = Math.max(...actualValues, currentPace, recentAverage, 1);
+    const forecastCap = Math.max(maxActual * 1.65, currentPace * 2.4, 1);
+
+    const series = [];
+    for (let day = 1; day <= elapsedDays; day += 1) {
+        const window = actualValues.slice(Math.max(0, day - 4), day);
+        series.push({
+            day,
+            value: weightedAverage(window),
+            phase: "history",
+        });
+    }
+
+    const forecastValues = [];
+    for (let day = elapsedDays + 1; day <= totalDays; day += 1) {
+        const daysAhead = day - elapsedDays;
+        const trendValue = recentAverage + dailySlope * Math.min(daysAhead, 7);
+        const peerDayValues = peerDailyMaps
+            .map((map) => number(map[day]))
+            .filter((value) => value > 0);
+        const peerPattern = average(peerDayValues) * peerScale;
+        const fallbackPattern = actualValues[day - 8] ?? recentAverage;
+        const patternValue = peerPattern > 0 ? peerPattern : fallbackPattern;
+        const blended = trendValue * 0.58 + patternValue * 0.42;
+        const forecastValue = clamp(blended, 0, forecastCap);
+        forecastValues.push(forecastValue);
+        series.push({
+            day,
+            value: forecastValue,
+            phase: "forecast",
+        });
+    }
+
+    const projectedTotal = actualTotal + forecastValues.reduce((sum, value) => sum + value, 0);
+    return {
+        value: projectedTotal,
+        label: "Proyección por tendencia",
+        detail: `${elapsedDays} reales · ${Math.max(totalDays - elapsedDays, 0)} estimados`,
+        elapsedDays,
+        totalDays,
+        dailyAverage: elapsedDays > 0 ? actualTotal / elapsedDays : 0,
+        series,
+        isProjection: true,
+    };
+}
+
+export function getMonthProjection(monthData, now = new Date(), options = {}) {
+    const year = number(monthData?.year);
+    const month = number(monthData?.month);
+    const total = number(monthData?.total);
+    const today = getBogotaToday(now);
+    const totalDays = daysInMonth(year, month);
+    const closed = isBeforeMonth(year, month, today);
 
     if (!year || !month || closed) {
         return {
@@ -70,19 +171,17 @@ export function getMonthProjection(monthData, now = new Date()) {
         };
     }
 
-    const elapsedDays = current
-        ? Math.min(Math.max(today.day, lastSaleDay, 1), totalDays)
-        : Math.max(lastSaleDay, 1);
+    const adaptiveProjection = buildMonthProjectionSeries(monthData, options.peerMonths || [], now);
+    if (adaptiveProjection) return adaptiveProjection;
 
-    const projected = elapsedDays > 0 ? (total / elapsedDays) * totalDays : total;
     return {
-        value: projected,
-        label: "Proyección mensual",
-        detail: `${elapsedDays}/${totalDays} días`,
-        elapsedDays,
-        totalDays,
-        dailyAverage: elapsedDays > 0 ? total / elapsedDays : 0,
-        isProjection: true,
+        value: total,
+        label: "Corte actual",
+        detail: `${totalDays || 0} días`,
+        elapsedDays: totalDays || 0,
+        totalDays: totalDays || 0,
+        dailyAverage: totalDays > 0 ? total / totalDays : 0,
+        isProjection: false,
     };
 }
 

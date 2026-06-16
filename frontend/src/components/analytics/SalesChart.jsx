@@ -14,7 +14,9 @@ import {
 } from "recharts";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
-import { getMonthProjection } from "../../utils/analyticsForecast.js";
+import { buildMonthProjectionSeries } from "../../utils/analyticsForecast.js";
+
+const PROJECTION_COLORS = ["#f59e0b", "#22d3ee", "#f43f5e"];
 
 function useIsLight() {
     const [light, setLight] = useState(
@@ -73,15 +75,17 @@ export default function SalesChart({ months = [], chartType = "area" }) {
     }
 
     const projectionLines = months.map((m, i) => {
-        const projection = getMonthProjection(m);
-        if (!projection?.isProjection || !projection.totalDays || !projection.dailyAverage) return null;
+        const projection = buildMonthProjectionSeries(m, months.filter((_month, index) => index !== i));
+        if (!projection?.isProjection || !projection.series?.length) return null;
         return {
             key: `projection_${i}`,
-            label: `Proyección ${m.label}`,
-            color: MONTH_COLORS[i % MONTH_COLORS.length],
-            startDay: projection.elapsedDays,
-            totalDays: projection.totalDays,
-            value: projection.dailyAverage,
+            label: `Estimación ${m.label}`,
+            color: PROJECTION_COLORS[i % PROJECTION_COLORS.length],
+            valuesByDay: projection.series.reduce((map, point) => {
+                map[point.day] = point.value;
+                return map;
+            }, {}),
+            series: projection.series,
         };
     }).filter(Boolean);
 
@@ -89,9 +93,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
     const allDays = new Set();
     months.forEach(m => m.daily.forEach(r => allDays.add(r.day)));
     projectionLines.forEach((line) => {
-        for (let day = line.startDay; day <= line.totalDays; day += 1) {
-            allDays.add(day);
-        }
+        line.series.forEach((point) => allDays.add(point.day));
     });
 
     if (allDays.size === 0) {
@@ -121,7 +123,7 @@ export default function SalesChart({ months = [], chartType = "area" }) {
                 row[m.label] = dayMaps[idx][day] !== undefined ? dayMaps[idx][day] : null;
             });
             projectionLines.forEach((line) => {
-                row[line.key] = day >= line.startDay && day <= line.totalDays ? line.value : null;
+                row[line.key] = line.valuesByDay[day] ?? null;
             });
             return row;
         });
@@ -190,10 +192,11 @@ export default function SalesChart({ months = [], chartType = "area" }) {
                                 dataKey={line.key}
                                 name={line.label}
                                 stroke={line.color}
-                                strokeWidth={2.5}
-                                strokeDasharray="7 5"
+                                strokeWidth={3}
+                                strokeDasharray="10 6 2 6"
+                                strokeLinecap="round"
                                 dot={false}
-                                activeDot={{ r: 4, strokeWidth: 2 }}
+                                activeDot={{ r: 5, strokeWidth: 2, fill: "#111827" }}
                                 connectNulls
                             />
                         ))}
@@ -231,10 +234,11 @@ export default function SalesChart({ months = [], chartType = "area" }) {
                                 dataKey={line.key}
                                 name={line.label}
                                 stroke={line.color}
-                                strokeWidth={2.5}
-                                strokeDasharray="7 5"
+                                strokeWidth={3}
+                                strokeDasharray="10 6 2 6"
+                                strokeLinecap="round"
                                 dot={false}
-                                activeDot={{ r: 4, strokeWidth: 2 }}
+                                activeDot={{ r: 5, strokeWidth: 2, fill: "#111827" }}
                                 connectNulls
                             />
                         ))}

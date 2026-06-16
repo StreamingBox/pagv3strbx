@@ -576,7 +576,9 @@ function UserAnalyticsContent({ admin }) {
     }
 
     const primary = monthsData[0] ?? null;
-    const monthlyProjections = monthsData.map((m) => getMonthProjection(m));
+    const monthlyProjections = monthsData.map((m, idx) => (
+        getMonthProjection(m, new Date(), { peerMonths: monthsData.filter((_month, peerIdx) => peerIdx !== idx) })
+    ));
     const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
     const selectedOrderTotal = monthsData.reduce((sum, m) => sum + Number(m.orders || 0), 0);
     const selectedAverageTicket = getAverageTicket(selectedRevenueTotal, selectedOrderTotal);

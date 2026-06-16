@@ -1,0 +1,32 @@
+.admin-analytics-main {
+    padding: 10px 20px 20px;
+    overflow-x: hidden;
+}
+
+.admin-analytics-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    padding: 6px 14px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+}
+
+@media (max-width: 900px) {
+    .admin-analytics-main {
+        padding: 76px 10px 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-analytics-main {
+        padding: 76px 8px 14px;
+    }
+
+    .admin-analytics-back {
+        width: 100%;
+        justify-content: center;
+        min-height: 38px;
+    }
+}

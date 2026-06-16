@@ -5,6 +5,7 @@ import DistributionChart from "./DistributionChart";
 import WeeklyChart from "./WeeklyChart";
 import { apiGet } from "../../api/api";
 import { MONTH_COLORS } from "./chartPalette.js";
+import useMediaQuery from "../../hooks/useMediaQuery.js";
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -136,9 +137,9 @@ const CTRL_STYLE = {
 };
 
 /* ── PillSelect (reemplaza <select> con diseño premium) ── */
-function PillSelect({ value, onChange, options, icon }) {
+function PillSelect({ value, onChange, options, icon, fullWidth = false }) {
     return (
-        <div style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+        <div style={{ position: "relative", display: "inline-flex", alignItems: "center", width: fullWidth ? "100%" : undefined, minWidth: 0 }}>
             {icon && (
                 <span style={{
                     position: "absolute", left: 10, fontSize: 13,
@@ -154,6 +155,8 @@ function PillSelect({ value, onChange, options, icon }) {
                     paddingLeft: icon ? 30 : 14,
                     paddingRight: 28,
                     minWidth: 80,
+                    width: fullWidth ? "100%" : undefined,
+                    justifyContent: fullWidth ? "center" : undefined,
                 }}
             >
                 {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
@@ -194,7 +197,7 @@ function UserDropdown({ users, selectedUserIds, setSelectedUserIds, onClose }) {
             transition={{ type: "spring", stiffness: 400, damping: 28 }}
             style={{
                 position: "absolute", top: "calc(100% + 10px)", right: 0,
-                width: 320, zIndex: 200,
+                width: "min(320px, calc(100vw - 32px))", zIndex: 200,
                 background: "var(--card)", backdropFilter: "blur(24px)",
                 border: "1px solid var(--stroke)",
                 borderRadius: 18, overflow: "hidden",
@@ -406,6 +409,8 @@ function UserAnalyticsContent({ admin }) {
     const [monthsData, setMonthsData] = useState([]);
     const [loadingData, setLoadingData] = useState(false);
     const [error, setError] = useState("");
+    const isMobile = useMediaQuery("(max-width: 640px)");
+    const isNarrow = useMediaQuery("(max-width: 430px)");
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -554,27 +559,29 @@ function UserAnalyticsContent({ admin }) {
     const isComparingUsers = admin && selectedUserIds.length >= 2;
 
     return (
-        <motion.div style={{ marginTop: 16 }} initial="hidden" animate="show" variants={containerVariants}>
+        <motion.div style={{ marginTop: isMobile ? 0 : 16, width: "100%", minWidth: 0 }} initial="hidden" animate="show" variants={containerVariants}>
 
             {/* ─── HEADER ─── */}
             <motion.div variants={itemVariants} style={{ marginBottom: 24 }}>
                 {/* Row: título + controles */}
                 <div style={{
                     display: "flex", justifyContent: "space-between", alignItems: "flex-start",
+                    flexDirection: isMobile ? "column" : "row",
                     flexWrap: "wrap", gap: 12, marginBottom: 18,
+                    minWidth: 0,
                 }}>
                     {/* Título */}
-                    <div>
-                        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: isMobile ? "100%" : undefined, minWidth: 0 }}>
+                        <h1 style={{ margin: 0, fontSize: isMobile ? 18 : 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.4px", display: "flex", alignItems: "center", gap: 8, lineHeight: 1.18, minWidth: 0 }}>
                             <span style={{
                                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                                width: 34, height: 34, borderRadius: 10,
+                                width: isMobile ? 30 : 34, height: isMobile ? 30 : 34, borderRadius: 10,
                                 background: "linear-gradient(135deg, var(--accent), #8b5cf6)",
                                 fontSize: 16, flexShrink: 0,
                             }}>📊</span>
                             {admin ? "Balance y Ganancias Netas" : "Mis Analíticas de Ventas"}
                         </h1>
-                        <p style={{ margin: "6px 0 0 42px", fontSize: 13, color: "var(--muted)" }}>
+                        <p style={{ margin: isMobile ? "6px 0 0" : "6px 0 0 42px", fontSize: 13, color: "var(--muted)", lineHeight: 1.35 }}>
                             {admin
                                 ? "Consulta ingresos, costos registrados, utilidad real y margen por periodo"
                                 : isComparingUsers
@@ -586,11 +593,19 @@ function UserAnalyticsContent({ admin }) {
                     </div>
 
                     {/* Controles derechos */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{
+                        display: isMobile ? "grid" : "flex",
+                        gridTemplateColumns: isNarrow ? "1fr" : "repeat(2, minmax(0, 1fr))",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        width: isMobile ? "100%" : undefined,
+                        minWidth: 0,
+                    }}>
 
                         {/* Admin: user picker */}
                         {admin && (
-                            <div style={{ position: "relative" }} ref={userDropRef}>
+                            <div style={{ position: "relative", minWidth: 0, width: isMobile ? "100%" : undefined }} ref={userDropRef}>
                                 <button
                                     onClick={() => setShowUserDrop(v => !v)}
                                     aria-label="Filtrar por usuario"
@@ -601,6 +616,9 @@ function UserAnalyticsContent({ admin }) {
                                         color: selectedUserIds.length > 0 ? "var(--accent)" : "var(--text)",
                                         border: selectedUserIds.length > 0 ? "1px solid rgba(13,166,242,0.35)" : "1px solid var(--stroke)",
                                         boxShadow: selectedUserIds.length > 0 ? "0 0 12px rgba(13,166,242,0.15)" : "0 2px 8px rgba(0,0,0,0.06)",
+                                        width: isMobile ? "100%" : undefined,
+                                        justifyContent: "center",
+                                        minWidth: 0,
                                     }}
                                 >
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -633,6 +651,7 @@ function UserAnalyticsContent({ admin }) {
                                 onChange={e => { setYear(Number(e.target.value)); setSelectedKeys([]); }}
                                 options={availableYears.map(y => ({ value: y, label: y }))}
                                 icon="📅"
+                                fullWidth={isMobile}
                             />
                         )}
 
@@ -649,6 +668,8 @@ function UserAnalyticsContent({ admin }) {
                             display: "inline-flex", background: "var(--bg0)",
                             border: "1px solid var(--stroke)", borderRadius: 12,
                             padding: 3, gap: 2,
+                            width: isMobile ? "100%" : undefined,
+                            minWidth: 0,
                         }}>
                             {[{ key: "monthly", icon: "📅", label: "Mensual" }, { key: "weekly", icon: "📊", label: "Semanal" }].map(tab => (
                                 <button
@@ -659,6 +680,8 @@ function UserAnalyticsContent({ admin }) {
                                         fontSize: 12, fontWeight: 700, fontFamily: "var(--font)",
                                         cursor: "pointer", border: "none",
                                         display: "inline-flex", alignItems: "center", gap: 5,
+                                        flex: isMobile ? 1 : undefined,
+                                        justifyContent: "center",
                                         background: viewMode === tab.key
                                             ? "linear-gradient(135deg, var(--accent), #8b5cf6)"
                                             : "transparent",
@@ -678,7 +701,9 @@ function UserAnalyticsContent({ admin }) {
                 {/* Selector de meses */}
                 <div style={{
                     background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 14,
-                    padding: "12px 16px",
+                    padding: isMobile ? "10px" : "12px 16px",
+                    minWidth: 0,
+                    overflow: "hidden",
                 }}>
                     {loadingMonths ? (
                         <div style={{ color: "var(--muted)", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
@@ -687,10 +712,11 @@ function UserAnalyticsContent({ admin }) {
                     ) : filteredMonths.length === 0 ? (
                         <div style={{ color: "var(--muted)", fontSize: 13 }}>Sin ventas registradas para {year}.</div>
                     ) : (
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", minWidth: 0 }}>
                             <span style={{
                                 fontSize: 11, fontWeight: 800, color: "var(--muted)",
                                 textTransform: "uppercase", letterSpacing: "0.8px", marginRight: 4, flexShrink: 0,
+                                width: isMobile ? "100%" : undefined,
                             }}>
                                 {viewMode === "weekly" ? "Mes a desglosar:" : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
                             </span>
@@ -752,7 +778,13 @@ function UserAnalyticsContent({ admin }) {
             {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     className="kpi-cards-grid"
-                    style={{ display: "grid", gap: 14, marginBottom: 20 }}>
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: isMobile ? 10 : 14,
+                        marginBottom: 20,
+                        minWidth: 0,
+                    }}>
                     {monthsData.map((m, idx) => (
                         <KpiCard
                             key={m.label}
@@ -761,6 +793,7 @@ function UserAnalyticsContent({ admin }) {
                             orders={m.orders}
                             topPlatform={m.distribution?.[0]?.name}
                             color={MONTH_COLORS[idx % MONTH_COLORS.length]}
+                            fullWidth={isMobile}
                         />
                     ))}
                 </motion.div>
@@ -793,9 +826,10 @@ function UserAnalyticsContent({ admin }) {
                         variants={itemVariants}
                         style={{
                             display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
                             gap: 12,
                             marginBottom: 20,
+                            minWidth: 0,
                         }}
                     >
                         <InsightChip emoji="💵" label="Ingresos con seguimiento" value={`$${selectedTrackedRevenue.toLocaleString("es-CO")}`} color="#0da6f2" />
@@ -813,15 +847,17 @@ function UserAnalyticsContent({ admin }) {
 
                     {/* Sales trend chart */}
                     <motion.div variants={itemVariants} style={{
-                        padding: "22px 24px", borderRadius: 18,
+                        padding: isMobile ? "16px 12px" : "22px 24px", borderRadius: 18,
                         background: "var(--card)", border: "1px solid var(--stroke)",
                         boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
+                        minWidth: 0,
+                        overflow: "hidden",
                     }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
                             <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)" }}>
                                 Tendencia de Ventas
                             </div>
-                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                                 {monthsData.map((m, i) => (
                                     <span key={i} style={{
                                         display: "inline-flex", alignItems: "center", gap: 5,
@@ -840,16 +876,23 @@ function UserAnalyticsContent({ admin }) {
                     </motion.div>
 
                     {/* Bottom row */}
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+                    <div style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(300px, 1fr))",
+                        gap: 16,
+                        minWidth: 0,
+                    }}>
 
                         {/* Distribution chart */}
                         {primary?.distribution && Array.isArray(primary.distribution) && primary.distribution.length > 0 && (
                             <motion.div variants={itemVariants} style={{
-                                flex: "1 1 300px", padding: "22px 24px", borderRadius: 18,
+                                padding: isMobile ? "16px 12px" : "22px 24px", borderRadius: 18,
                                 background: "var(--card)", border: "1px solid var(--stroke)",
                                 boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
+                                minWidth: 0,
+                                overflow: "hidden",
                             }}>
-                                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", marginBottom: 18 }}>
+                                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", marginBottom: 18, lineHeight: 1.25 }}>
                                     Ventas por plataforma · <span style={{ color: "var(--accent)" }}>{primary.label}</span>
                                 </div>
                                 <DistributionChart data={primary.distribution} />
@@ -859,21 +902,24 @@ function UserAnalyticsContent({ admin }) {
                         {/* Top products */}
                         {primary?.distribution && Array.isArray(primary.distribution) && primary.distribution.length > 0 && (
                             <motion.div variants={itemVariants} style={{
-                                flex: "1 1 300px", padding: "22px 24px", borderRadius: 18,
+                                padding: isMobile ? "16px 12px" : "22px 24px", borderRadius: 18,
                                 background: "var(--card)", border: "1px solid var(--stroke)",
                                 boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
                                 display: "flex", flexDirection: "column",
+                                minWidth: 0,
+                                overflow: "hidden",
                             }}>
-                                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", marginBottom: 18 }}>
+                                <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", marginBottom: 18, lineHeight: 1.25 }}>
                                     Top Productos · <span style={{ color: "var(--accent)" }}>{primary.label}</span>
                                 </div>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                     {primary.distribution.slice(0, 5).map((item, idx) => (
                                         <div key={idx} style={{
                                             display: "flex", alignItems: "center", gap: 12,
-                                            padding: "11px 14px", borderRadius: 12,
+                                            padding: isMobile ? "10px 9px" : "11px 14px", borderRadius: 12,
                                             background: "var(--bg0)", border: "1px solid var(--stroke2)",
                                             transition: "border-color 0.15s",
+                                            minWidth: 0,
                                         }}>
                                             <div style={{
                                                 width: 30, height: 30, borderRadius: 10, flexShrink: 0,
@@ -894,7 +940,11 @@ function UserAnalyticsContent({ admin }) {
                                             <span style={{
                                                 fontWeight: 900, fontSize: 12, color: "var(--accent)", flexShrink: 0,
                                                 background: "rgba(13,166,242,0.08)", padding: "3px 8px", borderRadius: 8,
-                                                marginLeft: 4
+                                                marginLeft: 4,
+                                                maxWidth: isMobile ? "44%" : undefined,
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                whiteSpace: "nowrap",
                                             }}>
                                                 ${Number(item.value).toLocaleString("es-CO")}
                                             </span>

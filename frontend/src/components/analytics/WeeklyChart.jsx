@@ -5,6 +5,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from "recharts";
 import { apiGet } from "../../api/api";
+import useMediaQuery from "../../hooks/useMediaQuery.js";
 
 const WEEK_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f59e0b", "#f43f5e", "#06b6d4"];
 
@@ -57,6 +58,7 @@ function MonthKpiCard({ monthData, color, monthKey }) {
     return (
         <div style={{
             flex: "1 1 180px",
+            minWidth: 0,
             background: "var(--card)",
             border: "1px solid var(--stroke)",
             borderRadius: 16,
@@ -70,10 +72,10 @@ function MonthKpiCard({ monthData, color, monthKey }) {
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: color, display: "inline-block" }} />
                 {monthKey}
             </div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.5px", lineHeight: 1 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.5px", lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis" }}>
                 {fmtFull(monthData?.total ?? 0)}
             </div>
-            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 7 }}>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 7, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
                 📦 {monthData?.orders ?? 0} órdenes
                 {bestWeek?.revenue > 0 && (
                     <span style={{ marginLeft: 8, color, fontWeight: 700 }}>
@@ -92,6 +94,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
     const [error, setError] = useState("");
     const selectedMonthKeyString = useMemo(() => selectedMonthKeys.join(","), [selectedMonthKeys]);
     const selectedUserIdString = useMemo(() => selectedUserIds.join(","), [selectedUserIds]);
+    const isMobile = useMediaQuery("(max-width: 640px)");
 
     const load = useCallback(async () => {
         const monthKeys = selectedMonthKeyString.split(",").filter(Boolean);
@@ -194,10 +197,15 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
     const ordersGeneral = monthsData.reduce((s, md) => s + (md.orders ?? 0), 0);
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, width: "100%" }}>
 
             {/* ─── KPI Cards por mes ─── */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+                minWidth: 0,
+            }}>
                 {monthsData.map((md, i) => (
                     <MonthKpiCard
                         key={md.monthKey}
@@ -210,9 +218,11 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
 
             {/* ─── Gráfica de barras agrupadas ─── */}
             <div style={{
-                padding: "22px 20px", borderRadius: 18,
+                padding: isMobile ? "16px 12px" : "22px 20px", borderRadius: 18,
                 background: "var(--card)", border: "1px solid var(--stroke)",
                 boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
+                minWidth: 0,
+                overflow: "hidden",
             }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 8 }}>
                     <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)" }}>
@@ -224,7 +234,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                         )}
                     </div>
                     {/* Leyenda de meses */}
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
                         {monthsData.map((md, i) => (
                             <span key={i} style={{
                                 display: "inline-flex", alignItems: "center", gap: 5,
@@ -240,12 +250,12 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                     </div>
                 </div>
 
-                <div style={{ width: "100%", height: 260 }}>
+                <div style={{ width: "100%", height: isMobile ? 240 : 260, minWidth: 0, overflow: "hidden" }}>
                     <ResponsiveContainer width="100%" height="100%">
                         {chartType === "area" ? (
                             <AreaChart
                                 data={chartData}
-                                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                                margin={isMobile ? { top: 10, right: 0, left: -10, bottom: 0 } : { top: 10, right: 10, left: 0, bottom: 0 }}
                             >
                                 <defs>
                                     {monthsData.map((_, i) => (
@@ -256,8 +266,8 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                                     ))}
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                                <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: axisColor, fontSize: 12, fontWeight: 700 }} dy={8} />
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={fmt} tick={{ fill: axisColor, fontSize: 11, fontWeight: 500 }} dx={-4} width={52} />
+                                <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: axisColor, fontSize: isMobile ? 10 : 12, fontWeight: 700 }} dy={8} />
+                                <YAxis axisLine={false} tickLine={false} tickFormatter={fmt} tick={{ fill: axisColor, fontSize: isMobile ? 10 : 11, fontWeight: 500 }} dx={isMobile ? -10 : -4} width={isMobile ? 34 : 52} />
                                 <Tooltip content={<WeekTooltip />} cursor={{ stroke: "rgba(255,255,255,0.07)", strokeWidth: 1, strokeDasharray: "4 3" }} />
                                 {monthsData.map((md, i) => (
                                     <Area
@@ -276,7 +286,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                         ) : (
                             <BarChart
                                 data={chartData}
-                                margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                                margin={isMobile ? { top: 10, right: 0, left: -10, bottom: 0 } : { top: 10, right: 10, left: 0, bottom: 0 }}
                                 barCategoryGap="25%"
                                 barGap={4}
                             >
@@ -289,8 +299,8 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                                     ))}
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                                <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: axisColor, fontSize: 12, fontWeight: 700 }} dy={8} />
-                                <YAxis axisLine={false} tickLine={false} tickFormatter={fmt} tick={{ fill: axisColor, fontSize: 11, fontWeight: 500 }} dx={-4} width={52} />
+                                <XAxis dataKey="week" axisLine={false} tickLine={false} tick={{ fill: axisColor, fontSize: isMobile ? 10 : 12, fontWeight: 700 }} dy={8} />
+                                <YAxis axisLine={false} tickLine={false} tickFormatter={fmt} tick={{ fill: axisColor, fontSize: isMobile ? 10 : 11, fontWeight: 500 }} dx={isMobile ? -10 : -4} width={isMobile ? 34 : 52} />
                                 <Tooltip content={<WeekTooltip />} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
                                 {monthsData.map((md, i) => (
                                     <Bar key={md.label} dataKey={md.label} fill={`url(#wkMonthGrad${i})`} radius={[5, 5, 0, 0]} maxBarSize={50} />
@@ -302,12 +312,17 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
             </div>
 
             {/* ─── Bottom row ─── */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: 12,
+                minWidth: 0,
+            }}>
 
                 {/* Mejor semana global */}
                 {bestEntry && bestEntry.revenue > 0 && (
                     <div style={{
-                        flex: "1 1 200px", padding: "20px 22px", borderRadius: 18,
+                        flex: "1 1 200px", padding: isMobile ? "16px 14px" : "20px 22px", borderRadius: 18,
                         background: "var(--card)", border: "1px solid var(--stroke)",
                         boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
                         borderTop: "3px solid #10b981",
@@ -337,7 +352,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
 
                 {/* Total general */}
                 <div style={{
-                    flex: "1 1 200px", padding: "20px 22px", borderRadius: 18,
+                    flex: "1 1 200px", padding: isMobile ? "16px 14px" : "20px 22px", borderRadius: 18,
                     background: "var(--card)", border: "1px solid var(--stroke)",
                     boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
                     borderTop: "3px solid #0da6f2",
@@ -365,7 +380,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                     const diffColor = diff === null ? "var(--muted)" : diff >= 0 ? "#10b981" : "#ef4444";
                     return (
                         <div style={{
-                            flex: "1 1 200px", padding: "20px 22px", borderRadius: 18,
+                            flex: "1 1 200px", padding: isMobile ? "16px 14px" : "20px 22px", borderRadius: 18,
                             background: "var(--card)", border: "1px solid var(--stroke)",
                             boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
                             borderTop: `3px solid ${diffColor}`,

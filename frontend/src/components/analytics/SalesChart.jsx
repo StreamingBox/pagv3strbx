@@ -12,6 +12,7 @@ import {
     Bar,
 } from "recharts";
 import { MONTH_COLORS } from "./chartPalette.js";
+import useMediaQuery from "../../hooks/useMediaQuery.js";
 
 function useIsLight() {
     const [light, setLight] = useState(
@@ -63,6 +64,7 @@ function CustomTooltip({ active, payload, label, light }) {
  */
 export default function SalesChart({ months = [], chartType = "area" }) {
     const light = useIsLight();
+    const isMobile = useMediaQuery("(max-width: 640px)");
 
     if (!months || months.length === 0) {
         return <div style={{ color: "var(--muted)", padding: 20 }}>Cargando datos...</div>;
@@ -113,11 +115,12 @@ export default function SalesChart({ months = [], chartType = "area" }) {
 
     const xAxis = (
         <XAxis dataKey="day" axisLine={false} tickLine={false}
-            tick={{ fill: axisColor, fontSize: 12, fontWeight: 500 }} dy={8} />
+            interval={isMobile ? "preserveStartEnd" : 0}
+            tick={{ fill: axisColor, fontSize: isMobile ? 10 : 12, fontWeight: 500 }} dy={8} />
     );
     const yAxis = (
         <YAxis axisLine={false} tickLine={false} tickFormatter={tickFormatter}
-            tick={{ fill: axisColor, fontSize: 12, fontWeight: 500 }} dx={-6} width={48} />
+            tick={{ fill: axisColor, fontSize: isMobile ? 10 : 12, fontWeight: 500 }} dx={isMobile ? -10 : -6} width={isMobile ? 34 : 48} />
     );
     const grid = <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />;
     const tooltipEl = (
@@ -127,16 +130,18 @@ export default function SalesChart({ months = [], chartType = "area" }) {
         />
     );
     const legendEl = (
-        <Legend wrapperStyle={{ fontSize: 13, fontWeight: 600, paddingTop: 14, color: axisColor }} />
+        <Legend wrapperStyle={{ fontSize: isMobile ? 11 : 13, fontWeight: 600, paddingTop: isMobile ? 8 : 14, color: axisColor, maxWidth: "100%" }} />
     );
 
     const commonProps = {
         data: chartData,
-        margin: { top: 16, right: 16, left: 0, bottom: 0 },
+        margin: isMobile
+            ? { top: 12, right: 0, left: -10, bottom: 0 }
+            : { top: 16, right: 16, left: 0, bottom: 0 },
     };
 
     return (
-        <div style={{ width: "100%", height: 320 }}>
+        <div style={{ width: "100%", height: isMobile ? 260 : 320, minWidth: 0, overflow: "hidden" }}>
             {chartType === "bar" ? (
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart {...commonProps}>

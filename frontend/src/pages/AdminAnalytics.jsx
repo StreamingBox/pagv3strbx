@@ -4,6 +4,7 @@ import { apiLogout } from "../api/api";
 import UserAnalytics from "../components/analytics/UserAnalytics.jsx";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import "../styles/analytics.css";
 
 const LOGO_URL = "/api/branding/logo";
 
@@ -42,11 +43,10 @@ export default function AdminAnalytics() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "10px 20px 20px" }}>
+                <main className="main admin-analytics-main">
                     <button
-                        className="btn-ghost"
+                        className="btn-ghost admin-analytics-back"
                         onClick={() => navigate("/admin")}
-                        style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, padding: "6px 14px", marginBottom: 10, borderRadius: 10 }}
                     >
                         <span>←</span>
                         <span>Volver al panel principal</span>

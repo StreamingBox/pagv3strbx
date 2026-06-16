@@ -1,4 +1,4 @@
-const VERSION = "strbx-pwa-v5";
+const VERSION = "strbx-pwa-v6";
 const ASSET_CACHE = `${VERSION}-assets`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/app-icon.svg", "/app-icon-maskable.svg", "/favicon.svg"];

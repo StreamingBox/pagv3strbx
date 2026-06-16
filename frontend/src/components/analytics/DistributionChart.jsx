@@ -5,6 +5,7 @@ import {
     Tooltip,
     ResponsiveContainer
 } from "recharts";
+import useMediaQuery from "../../hooks/useMediaQuery.js";
 
 const COLORS = [
     "#0da6f2", "#8b5cf6", "#10b981", "#f59e0b",
@@ -34,6 +35,8 @@ function CustomTooltip({ active, payload, total }) {
 }
 
 export default function DistributionChart({ data }) {
+    const isMobile = useMediaQuery("(max-width: 640px)");
+
     if (!data || data.length === 0) {
         return (
             <div style={{
@@ -61,11 +64,30 @@ export default function DistributionChart({ data }) {
     // Convertir a número para que Recharts no falle al renderizar el Pie
     const parsedData = data.map(d => ({ ...d, value: Number(d.value) }));
     const total = parsedData.reduce((sum, d) => sum + d.value, 0);
+    const chartSize = isMobile ? 150 : 200;
+    const innerRadius = isMobile ? 46 : 65;
+    const outerRadius = isMobile ? 70 : 95;
 
     return (
-        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{
+            display: "flex",
+            gap: isMobile ? 14 : 20,
+            alignItems: "center",
+            flexDirection: isMobile ? "column" : "row",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            minWidth: 0,
+            width: "100%",
+            overflow: "hidden",
+        }}>
             {/* Donut chart */}
-            <div style={{ flex: "0 0 200px", height: 200, position: "relative" }}>
+            <div style={{
+                flex: `0 0 ${chartSize}px`,
+                width: chartSize,
+                height: chartSize,
+                maxWidth: "100%",
+                position: "relative",
+            }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                         <Pie
@@ -74,9 +96,9 @@ export default function DistributionChart({ data }) {
                             nameKey="name"
                             cx="50%"
                             cy="50%"
-                            innerRadius={65}
-                            outerRadius={95}
-                            paddingAngle={4}
+                            innerRadius={innerRadius}
+                            outerRadius={outerRadius}
+                            paddingAngle={isMobile ? 3 : 4}
                             stroke="none"
                             cornerRadius={4}
                         >
@@ -101,22 +123,30 @@ export default function DistributionChart({ data }) {
                     <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
                         Cuota
                     </div>
-                    <div style={{ fontSize: 20, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
+                    <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 900, color: "var(--text)", marginTop: 2 }}>
                         100%
                     </div>
                 </div>
             </div>
 
             {/* Leyenda lateral */}
-            <div style={{ flex: 1, minWidth: 200, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{
+                flex: isMobile ? "1 1 100%" : 1,
+                minWidth: 0,
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                gap: isMobile ? 8 : 10,
+            }}>
                 {parsedData.slice(0, 8).map((entry, index) => {
                     const pct = total > 0 ? ((entry.value / total) * 100).toFixed(1) : "0";
                     return (
                         <div key={index} style={{
                             display: "flex", alignItems: "center", gap: 10,
                             background: "var(--card)", border: "1px solid var(--stroke)",
-                            padding: "8px 12px", borderRadius: 8,
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.05)"
+                            padding: isMobile ? "7px 9px" : "8px 12px", borderRadius: 8,
+                            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                            minWidth: 0,
                         }}>
                             <span style={{
                                 width: 12, height: 12, borderRadius: 4, flexShrink: 0,
@@ -124,12 +154,13 @@ export default function DistributionChart({ data }) {
                                 boxShadow: `0 0 8px ${COLORS[index % COLORS.length]}40`
                             }} />
                             <span style={{
-                                fontSize: 13, color: "var(--text)", fontWeight: 600,
+                                fontSize: isMobile ? 12 : 13, color: "var(--text)", fontWeight: 600,
                                 flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                                minWidth: 0,
                             }}>
                                 {entry.name}
                             </span>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: "var(--accent)", flexShrink: 0 }}>
+                            <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 800, color: "var(--accent)", flexShrink: 0 }}>
                                 {pct}%
                             </span>
                         </div>

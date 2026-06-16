@@ -127,7 +127,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
            AND pa.id <> ?
            AND pa.platform_id IN (${candidatePlaceholders})
            AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
-         ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), pa.id ASC
+         ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), RAND(), pa.id ASC
          LIMIT 1
          FOR UPDATE`,
         [excludeAccountId || 0, ...candidatePlatformIds, ...candidatePlatformIds]

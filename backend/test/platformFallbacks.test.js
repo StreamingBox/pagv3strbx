@@ -64,7 +64,7 @@ test("regular checkout still prioritizes direct stock before active fallbacks", 
                 return [[{ fallback_platform_id: 20 }]];
             }
 
-            assert.match(sql, /ORDER BY FIELD\(pa\.platform_id, \?,\?\)/);
+            assert.match(sql, /ORDER BY FIELD\(pa\.platform_id, \?,\?\), RAND\(\), pa\.id ASC/);
             assert.deepEqual(params, [0, 10, 20, 10, 20]);
             return [[{
                 id: 901,

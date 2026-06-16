@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { apiGet } from "../../api/api";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
+import { formatCurrency, getAverageTicket, getWeeklyProjection } from "../../utils/analyticsForecast.js";
 
 const WEEK_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f59e0b", "#f43f5e", "#06b6d4"];
 
@@ -53,7 +54,7 @@ function WeekTooltip({ active, payload, label }) {
 }
 
 /* ── Tarjeta KPI por mes ── */
-function MonthKpiCard({ monthData, color, monthKey }) {
+function MonthKpiCard({ monthData, color, monthKey, averageTicket, projection }) {
     const bestWeek = [...(monthData?.weeks ?? [])].sort((a, b) => b.revenue - a.revenue)[0];
     return (
         <div style={{
@@ -82,6 +83,35 @@ function MonthKpiCard({ monthData, color, monthKey }) {
                         · Mejor: {bestWeek.label}
                     </span>
                 )}
+            </div>
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: "1px solid var(--stroke2)",
+                minWidth: 0,
+            }}>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                        Ticket prom.
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#10b981", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {formatCurrency(averageTicket)}
+                    </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                        {projection?.isProjection ? "Proyección" : "Promedio"}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {formatCurrency(projection?.value)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {projection?.detail}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -195,6 +225,10 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
 
     const totalGeneral = monthsData.reduce((s, md) => s + (md.total ?? 0), 0);
     const ordersGeneral = monthsData.reduce((s, md) => s + (md.orders ?? 0), 0);
+    const weeklyProjections = monthsData.map((md) => getWeeklyProjection(md));
+    const averageTicketGeneral = getAverageTicket(totalGeneral, ordersGeneral);
+    const weeklyProjectionTotal = weeklyProjections.reduce((sum, projection) => sum + Number(projection?.value || 0), 0);
+    const hasWeeklyProjection = weeklyProjections.some((projection) => projection?.isProjection);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0, width: "100%" }}>
@@ -212,6 +246,8 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                         monthData={md}
                         color={WEEK_COLORS[i % WEEK_COLORS.length]}
                         monthKey={md.label}
+                        averageTicket={getAverageTicket(md.total, md.orders)}
+                        projection={weeklyProjections[i]}
                     />
                 ))}
             </div>
@@ -367,6 +403,46 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
                     </div>
                     <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
                         📦 {ordersGeneral} órdenes · {monthsData.length} mes{monthsData.length !== 1 ? "es" : ""}
+                    </div>
+                </div>
+
+                {/* Ticket promedio */}
+                <div style={{
+                    flex: "1 1 200px", padding: isMobile ? "16px 14px" : "20px 22px", borderRadius: 18,
+                    background: "var(--card)", border: "1px solid var(--stroke)",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
+                    borderTop: "3px solid #10b981",
+                    position: "relative", overflow: "hidden",
+                }}>
+                    <div style={{ position: "absolute", top: -15, right: -15, width: 70, height: 70, borderRadius: "50%", background: "rgba(16,185,129,0.12)", filter: "blur(20px)", pointerEvents: "none" }} />
+                    <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#10b981", marginBottom: 10 }}>
+                        🎟️ Ticket promedio
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.5px" }}>
+                        {formatCurrency(averageTicketGeneral)}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+                        {ordersGeneral} órdenes en el periodo
+                    </div>
+                </div>
+
+                {/* Proyección semanal */}
+                <div style={{
+                    flex: "1 1 200px", padding: isMobile ? "16px 14px" : "20px 22px", borderRadius: 18,
+                    background: "var(--card)", border: "1px solid var(--stroke)",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.06)",
+                    borderTop: "3px solid #8b5cf6",
+                    position: "relative", overflow: "hidden",
+                }}>
+                    <div style={{ position: "absolute", top: -15, right: -15, width: 70, height: 70, borderRadius: "50%", background: "rgba(139,92,246,0.14)", filter: "blur(20px)", pointerEvents: "none" }} />
+                    <div style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#8b5cf6", marginBottom: 10 }}>
+                        📈 {hasWeeklyProjection ? "Proyección semanal" : "Promedio semanal"}
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 900, color: "var(--text)", letterSpacing: "-0.5px" }}>
+                        {formatCurrency(weeklyProjectionTotal)}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 8 }}>
+                        {weeklyProjections.map((projection) => projection.detail).filter(Boolean).join(" · ")}
                     </div>
                 </div>
 

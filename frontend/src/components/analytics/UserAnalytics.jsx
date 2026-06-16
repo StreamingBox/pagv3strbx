@@ -6,6 +6,7 @@ import WeeklyChart from "./WeeklyChart";
 import { apiGet } from "../../api/api";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
+import { formatCurrency, getAverageTicket, getMonthProjection } from "../../utils/analyticsForecast.js";
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -351,7 +352,7 @@ function UserOption({ checked, disabled, label, sublabel, emoji, onChange }) {
 }
 
 /* ── KPI Card ── */
-function KpiCard({ label, total, orders, topPlatform, color }) {
+function KpiCard({ label, total, orders, topPlatform, color, averageTicket, projection }) {
     return (
         <motion.div
             variants={itemVariants}
@@ -382,6 +383,35 @@ function KpiCard({ label, total, orders, topPlatform, color }) {
             <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ whiteSpace: "nowrap" }}>📦 {orders} órd.</span>
                 {topPlatform && <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>🏆 {topPlatform}</span>}
+            </div>
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                gap: 8,
+                marginTop: 14,
+                paddingTop: 12,
+                borderTop: "1px solid var(--stroke2)",
+                minWidth: 0,
+            }}>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                        Ticket prom.
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color: "#10b981", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {formatCurrency(averageTicket)}
+                    </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px" }}>
+                        {projection?.isProjection ? "Proyección" : "Cierre"}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 900, color, marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {formatCurrency(projection?.value)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {projection?.detail}
+                    </div>
+                </div>
             </div>
         </motion.div>
     );
@@ -546,6 +576,12 @@ function UserAnalyticsContent({ admin }) {
     }
 
     const primary = monthsData[0] ?? null;
+    const monthlyProjections = monthsData.map((m) => getMonthProjection(m));
+    const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
+    const selectedOrderTotal = monthsData.reduce((sum, m) => sum + Number(m.orders || 0), 0);
+    const selectedAverageTicket = getAverageTicket(selectedRevenueTotal, selectedOrderTotal);
+    const selectedProjectionTotal = monthlyProjections.reduce((sum, projection) => sum + Number(projection?.value || 0), 0);
+    const selectedHasProjection = monthlyProjections.some((projection) => projection?.isProjection);
     const selectedTrackedRevenue = monthsData.reduce((sum, m) => sum + Number(m.trackedRevenue || 0), 0);
     const selectedTrackedSalesCount = monthsData.reduce((sum, m) => sum + Number(m.trackedSalesCount || 0), 0);
     const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
@@ -793,9 +829,32 @@ function UserAnalyticsContent({ admin }) {
                             orders={m.orders}
                             topPlatform={m.distribution?.[0]?.name}
                             color={MONTH_COLORS[idx % MONTH_COLORS.length]}
+                            averageTicket={getAverageTicket(m.total, m.orders)}
+                            projection={monthlyProjections[idx]}
                             fullWidth={isMobile}
                         />
                     ))}
+                </motion.div>
+            )}
+
+            {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
+                <motion.div
+                    variants={itemVariants}
+                    style={{
+                        display: "grid",
+                        gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
+                        gap: 12,
+                        marginBottom: 20,
+                        minWidth: 0,
+                    }}
+                >
+                    <InsightChip emoji="🎟️" label="Ticket promedio" value={formatCurrency(selectedAverageTicket)} color="#10b981" />
+                    <InsightChip
+                        emoji="📈"
+                        label={selectedHasProjection ? "Proyección mensual" : "Cierre seleccionado"}
+                        value={formatCurrency(selectedProjectionTotal)}
+                        color="#8b5cf6"
+                    />
                 </motion.div>
             )}
 

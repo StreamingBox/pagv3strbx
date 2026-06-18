@@ -36,6 +36,17 @@ const upload = multer({
     },
 });
 
+function uploadProof(req, res, next) {
+    upload.single("proof")(req, res, (err) => {
+        if (!err) return next();
+        const isFileSize = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+        const message = isFileSize
+            ? "El comprobante supera el tamaño permitido. Usa un archivo de máximo 5MB."
+            : (err?.message || "No se pudo leer el comprobante. Usa JPG, PNG, WEBP o PDF.");
+        return res.status(isFileSize ? 413 : 400).json({ ok: false, message });
+    });
+}
+
 async function ensureSettingsTable() {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS app_settings (
@@ -267,7 +278,7 @@ router.get("/wallet/manual-topups", requireAuth, async (req, res) => {
     }
 });
 
-router.post("/wallet/manual-topups", requireAuth, upload.single("proof"), async (req, res) => {
+router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) => {
     const conn = await pool.getConnection();
     try {
         const userId = getRequestUserId(req);

@@ -22,6 +22,27 @@ const HISTORY_TEXT_STYLE = {
     overflowWrap: "anywhere",
     wordBreak: "break-word",
 };
+const MAX_PROOF_FILE_SIZE = 5 * 1024 * 1024;
+const ALLOWED_PROOF_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+
+function getProofFileError(file) {
+    if (!file) return "";
+    if (file.size > MAX_PROOF_FILE_SIZE) {
+        return "El comprobante supera el tamaño permitido. Usa un archivo de máximo 5MB.";
+    }
+    if (!ALLOWED_PROOF_TYPES.has(String(file.type || "").toLowerCase())) {
+        return "Solo se permiten comprobantes en JPG, PNG, WEBP o PDF.";
+    }
+    return "";
+}
+
+function getManualTopupErrorMessage(error) {
+    const message = String(error?.message || "").trim();
+    if (/failed to fetch|networkerror|load failed|abort/i.test(message)) {
+        return "No se pudo conectar con el servidor para enviar la recarga. Revisa la conexión e intenta de nuevo.";
+    }
+    return message || "No se pudo enviar la solicitud.";
+}
 
 function getFallbackTopupMethods(currency) {
     const normalized = displayTopupCurrency(currency || "COP").toUpperCase();
@@ -311,6 +332,20 @@ export default function Topups() {
         };
     }, [hasOpenRequests]);
 
+    function handleProofFileChange(event) {
+        const file = event.target.files?.[0] || null;
+        const proofError = getProofFileError(file);
+        if (proofError) {
+            setProofFile(null);
+            setFormSuccess("");
+            setFormError(proofError);
+            event.target.value = "";
+            return;
+        }
+        setFormError("");
+        setProofFile(file);
+    }
+
     async function submitManualTopup() {
         setFormError("");
         setFormSuccess("");
@@ -335,6 +370,12 @@ export default function Topups() {
 
         if (!isBreb && !proofFile) {
             setFormError("Debes adjuntar el comprobante.");
+            return;
+        }
+
+        const proofError = getProofFileError(proofFile);
+        if (proofError) {
+            setFormError(proofError);
             return;
         }
 
@@ -373,7 +414,7 @@ export default function Topups() {
             );
             await loadRequests();
         } catch (error) {
-            setFormError(error?.message || "No se pudo enviar la solicitud.");
+            setFormError(getManualTopupErrorMessage(error));
         } finally {
             setSubmitting(false);
         }
@@ -562,7 +603,7 @@ export default function Topups() {
                                                         />
                                                     </label>
 
-                                                    <label
+                                                    <label className="topups-upload-zone topups-upload-zone--compact"
                                                         style={{
                                                             border: "1px dashed rgba(148,163,184,.45)",
                                                             borderRadius: 18,
@@ -575,10 +616,10 @@ export default function Topups() {
                                                             textAlign: "center",
                                                         }}
                                                     >
-                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={handleProofFileChange} />
                                                         <div>
                                                             <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
-                                                            <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Adjunta tu soporte si lo tienes"}</div>
+                                                            <div className="topups-upload-name">{proofFile ? proofFile.name : "Adjunta tu soporte si lo tienes"}</div>
                                                             <div className="wallet-small">Opcional. JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
                                                         </div>
                                                     </label>
@@ -609,7 +650,7 @@ export default function Topups() {
                                                         />
                                                     </label>
 
-                                                    <label
+                                                    <label className="topups-upload-zone"
                                                         style={{
                                                             border: "1px dashed rgba(148,163,184,.45)",
                                                             borderRadius: 18,
@@ -622,10 +663,10 @@ export default function Topups() {
                                                             textAlign: "center",
                                                         }}
                                                     >
-                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                        <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={handleProofFileChange} />
                                                         <div>
                                                             <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
-                                                            <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Sube tu comprobante de Binance"}</div>
+                                                            <div className="topups-upload-name">{proofFile ? proofFile.name : "Sube tu comprobante de Binance"}</div>
                                                             <div className="wallet-small">JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
                                                         </div>
                                                     </label>
@@ -645,7 +686,7 @@ export default function Topups() {
                                                     </div>
                                                 </>
                                             ) : (
-                                                <label
+                                                <label className="topups-upload-zone"
                                                     style={{
                                                         border: "1px dashed rgba(148,163,184,.45)",
                                                         borderRadius: 18,
@@ -658,10 +699,10 @@ export default function Topups() {
                                                         textAlign: "center",
                                                     }}
                                                 >
-                                                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={(event) => setProofFile(event.target.files?.[0] || null)} />
+                                                    <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" style={{ display: "none" }} onChange={handleProofFileChange} />
                                                     <div>
                                                         <div style={{ fontSize: 30, marginBottom: 10 }}>↑</div>
-                                                        <div style={{ fontWeight: 900, marginBottom: 6 }}>{proofFile ? proofFile.name : "Sube tu comprobante"}</div>
+                                                        <div className="topups-upload-name">{proofFile ? proofFile.name : "Sube tu comprobante"}</div>
                                                         <div className="wallet-small">JPG, PNG, WEBP o PDF. Máximo 5MB.</div>
                                                     </div>
                                                 </label>

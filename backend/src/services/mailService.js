@@ -9,6 +9,7 @@ const {
 let transporterPromise = null;
 let salesTransporterPromise = null;
 let topupTransporterPromise = null;
+let stockTransporterPromise = null;
 
 function redactResetUrlForLog(resetUrl) {
     const s = String(resetUrl || "");
@@ -104,9 +105,19 @@ function getTopupMailConfig() {
     };
 }
 
+function getStockMailConfig() {
+    const config = buildMailConfig("STOCK_") || getMailConfig();
+    if (!config) return null;
+    return {
+        ...config,
+        from: String(process.env.STOCK_MAIL_FROM || config.from || "Streaming Box Stock <stock@strbx.com.co>").trim(),
+    };
+}
+
 async function getTransporter(kind = "default") {
     const isSales = kind === "sales";
     const isTopup = kind === "topup";
+    const isStock = kind === "stock";
     if (isSales) {
         if (!salesTransporterPromise) {
             const config = getSalesMailConfig();
@@ -123,6 +134,15 @@ async function getTransporter(kind = "default") {
             topupTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
         }
         return topupTransporterPromise;
+    }
+
+    if (isStock) {
+        if (!stockTransporterPromise) {
+            const config = getStockMailConfig();
+            if (!config) return null;
+            stockTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
+        }
+        return stockTransporterPromise;
     }
 
     if (!transporterPromise) {
@@ -588,6 +608,109 @@ async function sendTopupRejectedEmail({ to, name, requestCode, amount, currency,
     });
 }
 
+function buildStockAvailableEmail({ greetingName, platformName, durationName, dashboardUrl }) {
+    const appName = process.env.APP_NAME || "Streaming Box";
+    const productLabel = String(platformName || "este producto").trim();
+    const durationLabel = String(durationName || "").trim();
+    const safeDashboardUrl = String(dashboardUrl || "").trim();
+    const subject = `${appName} | Ya hay stock de ${productLabel}`;
+
+    const text = [
+        `Hola ${greetingName || "cliente"},`,
+        "",
+        "Ya volvio el stock del producto que solicitaste:",
+        "",
+        `Producto: ${productLabel}`,
+        durationLabel ? `Duracion: ${durationLabel}` : "",
+        "Estado: Disponible nuevamente",
+        "",
+        safeDashboardUrl
+            ? `Puedes entrar y comprarlo antes de que se agote: ${safeDashboardUrl}`
+            : "Puedes entrar a Streaming Box y comprarlo antes de que se agote.",
+        "",
+        "Este aviso se envia porque pediste que te notificaramos cuando hubiera stock disponible.",
+        "",
+        appName,
+    ].filter(Boolean).join("\n");
+
+    const html = `
+        <div style="margin:0;padding:28px;background:#eaf0ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+            <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #dbe4f5;border-radius:20px;overflow:hidden">
+                <div style="background:#111827;padding:28px 30px;color:#ffffff">
+                    <div style="font-size:18px;font-weight:700;opacity:.92;margin:0 0 8px">${escapeHtml(appName)}</div>
+                    <div style="font-size:28px;font-weight:900;line-height:1.1;margin:0 0 6px">Stock disponible</div>
+                    <div style="font-size:15px;color:#cbd5e1">El producto que pediste ya volvio a estar disponible.</div>
+                </div>
+                <div style="padding:30px">
+                    <div style="font-size:16px;font-weight:700;margin:0 0 10px">Hola ${escapeHtml(greetingName || "cliente")},</div>
+                    <div style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 20px">
+                        Ya volvio el stock del producto que solicitaste. Puedes comprarlo antes de que se agote nuevamente.
+                    </div>
+                    <div style="border:1px solid #d8e1f0;border-radius:16px;background:#f8fbff;padding:16px 18px;margin:0 0 20px">
+                        <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Producto:</strong> ${escapeHtml(productLabel)}</div>
+                        ${durationLabel ? `<div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Duracion:</strong> ${escapeHtml(durationLabel)}</div>` : ""}
+                        <div style="font-size:15px;color:#16a34a;font-weight:800">Disponible nuevamente</div>
+                    </div>
+                    ${safeDashboardUrl ? `
+                        <div style="margin:0 0 20px">
+                            <a href="${escapeHtml(safeDashboardUrl)}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-weight:800;font-size:15px;padding:12px 18px;border-radius:12px">
+                                Comprar ahora
+                            </a>
+                        </div>
+                    ` : ""}
+                    <div style="font-size:13px;line-height:1.6;color:#64748b">
+                        Este aviso se envia porque pediste que te notificaramos cuando hubiera stock disponible.
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    return { subject, text, html };
+}
+
+async function sendStockAvailableEmail({ to, name, platformName, durationName }) {
+    const safeTo = String(to || "").trim();
+    if (!safeTo) throw new Error("Destino de correo invalido.");
+
+    const config = getStockMailConfig();
+    if (!config) {
+        console.warn(`[mail] No hay SMTP configurado para stock. Aviso de ${platformName || "producto"} para ${safeTo} no enviado por email.`);
+        return { ok: true, delivery: "log" };
+    }
+
+    const transporter = await getTransporter("stock");
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL || "https://strbx.com.co").replace(/\/+$/, "");
+    const dashboardUrl = `${baseUrl}/dashboard`;
+    const greetingName = String(name || "").trim() || "cliente";
+    const { subject, text, html } = buildStockAvailableEmail({
+        greetingName,
+        platformName,
+        durationName,
+        dashboardUrl,
+    });
+
+    try {
+        await transporter.sendMail({
+            from: config.from,
+            to: safeTo,
+            replyTo: config.from,
+            subject,
+            text,
+            html,
+            headers: {
+                "Auto-Submitted": "auto-generated",
+                "X-Auto-Response-Suppress": "All",
+                "X-Entity-Ref-ID": `stock-${String(platformName || "producto").slice(0, 80)}`,
+            },
+        });
+        return { ok: true, delivery: "email" };
+    } catch (err) {
+        console.error("[mail] Error enviando correo de stock:", err?.message || err);
+        return { ok: false, delivery: "error", message: err?.message || "No se pudo enviar el correo." };
+    }
+}
+
 module.exports = {
     sendPasswordResetEmail,
     sendOrderDeliveryEmail,
@@ -595,4 +718,5 @@ module.exports = {
     sendTopupReviewingEmail,
     sendTopupApprovedEmail,
     sendTopupRejectedEmail,
+    sendStockAvailableEmail,
 };

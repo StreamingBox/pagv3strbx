@@ -9,6 +9,7 @@ const {
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
+const { sendStockAvailableEmail } = require("./mailService");
 
 const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
 const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
@@ -81,7 +82,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     );
     
     // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
-    await resolveStockAlerts(conn, pid, pname);
+    await resolveStockAlertsWithEmail(conn, pid, pname);
     
     return ins.insertId;
 }
@@ -116,6 +117,55 @@ async function resolveStockAlerts(conn, pid, pname) {
         await conn.query(`
             UPDATE stock_subscriptions SET is_notified = TRUE WHERE id = ?
         `, [sub.sub_id]);
+    });
+
+    await Promise.all(notifyPromises);
+}
+
+async function resolveStockAlertsWithEmail(conn, pid, pname) {
+    if (!pid) return;
+
+    const [subs] = await conn.query(`
+        SELECT
+            ss.id AS sub_id,
+            ss.user_id,
+            u.email AS user_email,
+            u.name AS user_name,
+            p.name AS platform_name,
+            d.name AS duration_name
+        FROM stock_subscriptions ss
+        JOIN platform_prices pp ON pp.id = ss.platform_price_id
+        JOIN platforms p ON p.id = pp.platform_id
+        LEFT JOIN durations d ON d.id = pp.duration_id
+        JOIN users u ON u.id = ss.user_id
+        WHERE pp.platform_id = ? AND ss.is_notified = FALSE
+    `, [pid]);
+
+    if (!subs.length) return;
+
+    const notifyPromises = subs.map(async (sub) => {
+        const platformName = sub.platform_name || pname || "este producto";
+        const msg = `Ya hay stock disponible de ${platformName}. Ingresa al catalogo para comprar.`;
+
+        await conn.query(`
+            INSERT INTO user_notifications (user_id, message)
+            VALUES (?, ?)
+        `, [sub.user_id, msg]);
+
+        await conn.query(`
+            UPDATE stock_subscriptions SET is_notified = TRUE WHERE id = ?
+        `, [sub.sub_id]);
+
+        if (sub.user_email) {
+            sendStockAvailableEmail({
+                to: sub.user_email,
+                name: sub.user_name,
+                platformName,
+                durationName: sub.duration_name,
+            }).catch((mailErr) => {
+                console.error("[mail] sendStockAvailableEmail:", mailErr?.message || mailErr);
+            });
+        }
     });
 
     await Promise.all(notifyPromises);

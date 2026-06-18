@@ -1,0 +1,98 @@
+.admin-platforms-main,
+.admin-platforms-card{
+    min-width:0;
+    box-sizing:border-box;
+}
+
+.admin-platforms-create-grid{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:12px;
+    align-items:end;
+    margin-bottom:16px;
+    min-width:0;
+}
+
+.admin-platforms-fallback-grid{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) minmax(0, 1fr) minmax(86px, 110px) auto;
+    gap:12px;
+    align-items:end;
+    margin-bottom:16px;
+    min-width:0;
+}
+
+.admin-platforms-create-grid > *,
+.admin-platforms-fallback-grid > *{
+    min-width:0;
+}
+
+.admin-platforms-create-actions{
+    min-width:0;
+}
+
+.admin-platforms-create-grid input,
+.admin-platforms-create-grid select,
+.admin-platforms-create-grid textarea,
+.admin-platforms-fallback-grid input,
+.admin-platforms-fallback-grid select{
+    min-width:0;
+    max-width:100%;
+    box-sizing:border-box;
+}
+
+.admin-platforms-create-grid label,
+.admin-platforms-fallback-grid label{
+    min-width:0;
+}
+
+@media (max-width: 980px){
+    .admin-platforms-create-grid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-platforms-fallback-grid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 640px){
+    .admin-platforms-main{
+        padding:16px 14px 36px !important;
+    }
+
+    .admin-platforms-card{
+        padding:18px 14px !important;
+        border-radius:14px !important;
+    }
+
+    .admin-platforms-create-grid,
+    .admin-platforms-fallback-grid{
+        grid-template-columns:minmax(0, 1fr);
+        gap:12px;
+    }
+
+    .admin-platforms-fallback-grid > button{
+        width:100%;
+        justify-content:center;
+    }
+
+    .admin-platforms-create-actions{
+        justify-content:stretch !important;
+    }
+
+    .admin-platforms-create-actions .btn{
+        width:100%;
+        justify-content:center;
+    }
+}
+
+@media (max-width: 380px){
+    .admin-platforms-main{
+        padding:14px 10px 32px !important;
+    }
+
+    .admin-platforms-card{
+        padding:16px 12px !important;
+    }
+}

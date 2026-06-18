@@ -6,6 +6,7 @@ import { apiGet, apiPost, apiPatch, apiDelete, apiLogout } from "../api/api";
 import { bumpPlatformLogoVersion } from "../utils/platform.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
+import "../styles/admin-platforms.css";
 
 const LOGO_URL = "/api/branding/logo";
 
@@ -311,7 +312,7 @@ export default function AdminPlatforms() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "20px 24px 40px" }}>
+                <main className="main admin-platforms-main" style={{ padding: "20px 24px 40px" }}>
                     {/* ── Header ── */}
                     <motion.div
                         initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
@@ -353,13 +354,13 @@ export default function AdminPlatforms() {
                     </AnimatePresence>
 
                     {/* ── Create Card ── */}
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                    <motion.div className="admin-platforms-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "22px 24px", marginBottom: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.2)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                             <span style={{ fontSize: 16 }}>✨</span>
                             <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "var(--text)" }}>Nueva Plataforma</h3>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, alignItems: "end", marginBottom: 16 }}>
+                        <div className="admin-platforms-create-grid">
                             <div>
                                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Nombre *</label>
                                 <input style={inputStyle} placeholder="Ej: Netflix"
@@ -438,7 +439,7 @@ export default function AdminPlatforms() {
                             />
                             <div style={{ marginTop: 6, fontSize: 11, color: "var(--muted)" }}>Esta información se mostrará antes de agregar el producto y nuevamente antes de pagar.</div>
                         </div>
-                        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+                        <div className="admin-platforms-create-actions" style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
                             <button className="btn" onClick={create} disabled={saving || !name.trim() || !slug.trim()}
                                 style={{ height: 42, padding: "0 22px", fontSize: 14, fontWeight: 700, borderRadius: 10, whiteSpace: "nowrap" }}>
                                 {saving ? "Creando..." : "+ Crear"}
@@ -447,7 +448,7 @@ export default function AdminPlatforms() {
                     </motion.div>
 
                     {/* ── Table Card ── */}
-                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+                    <motion.div className="admin-platforms-card" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
                         style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: "20px 24px", marginBottom: 20, boxShadow: "0 8px 32px rgba(0,0,0,0.15)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
                             <div>
@@ -456,7 +457,7 @@ export default function AdminPlatforms() {
                             </div>
                             <span style={{ fontSize: 11, fontWeight: 800, color: "var(--muted)", border: "1px solid var(--stroke)", borderRadius: 999, padding: "4px 10px" }}>{fallbacks.length} reglas</span>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 110px auto", gap: 12, alignItems: "end", marginBottom: 16 }}>
+                        <div className="admin-platforms-fallback-grid">
                             <div>
                                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Si falta stock de</label>
                                 <select style={selStyle} value={fallbackSourceId} onChange={e => setFallbackSourceId(e.target.value)}>

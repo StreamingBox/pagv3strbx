@@ -89,14 +89,24 @@ export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new
     const actualValues = Array.from({ length: elapsedDays }, (_item, index) => dailyMap[index + 1] ?? 0);
     const totalFromDaily = actualValues.reduce((sum, value) => sum + value, 0);
     const actualTotal = total || totalFromDaily;
-    const currentPace = elapsedDays > 0 ? actualTotal / elapsedDays : 0;
-    const lastThree = actualValues.slice(-3);
-    const previousThree = actualValues.slice(-6, -3);
-    const recentWindow = actualValues.slice(-7);
+    if (actualTotal <= 0) return null;
+
+    // Today's revenue is still incomplete and must not create a false downward trend.
+    const completedDays = Math.min(Math.max(today.day - 1, 0), elapsedDays);
+    const trendValues = completedDays > 0
+        ? actualValues.slice(0, completedDays)
+        : actualValues;
+    const trendTotal = trendValues.reduce((sum, value) => sum + value, 0);
+    const currentPace = trendValues.length > 0
+        ? (trendTotal || actualTotal) / trendValues.length
+        : 0;
+    const recentWindow = trendValues.slice(-7);
+    const previousWindow = trendValues.slice(-14, -7);
     const recentAverage = weightedAverage(recentWindow) || currentPace;
-    const previousAverage = average(previousThree) || currentPace;
-    const recentThreeAverage = average(lastThree) || recentAverage;
-    const dailySlope = (recentThreeAverage - previousAverage) / 3;
+    const previousAverage = average(previousWindow) || currentPace;
+    const trendRatio = previousAverage > 0
+        ? clamp(recentAverage / previousAverage, 0.75, 1.25)
+        : 1;
 
     const peerDailyMaps = peerMonths
         .filter((peer) => !isCurrentMonth(number(peer?.year), number(peer?.month), today))
@@ -107,6 +117,12 @@ export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new
     const peerScale = peerPace > 0 && currentPace > 0 ? currentPace / peerPace : 1;
     const maxActual = Math.max(...actualValues, currentPace, recentAverage, 1);
     const forecastCap = Math.max(maxActual * 1.65, currentPace * 2.4, 1);
+    const positiveRecent = recentWindow.filter((value) => value > 0);
+    const forecastFloor = Math.max(
+        currentPace * 0.22,
+        average(positiveRecent) * 0.25,
+        1
+    );
 
     const series = [];
     for (let day = 1; day <= elapsedDays; day += 1) {
@@ -121,15 +137,22 @@ export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new
     const forecastValues = [];
     for (let day = elapsedDays + 1; day <= totalDays; day += 1) {
         const daysAhead = day - elapsedDays;
-        const trendValue = recentAverage + dailySlope * Math.min(daysAhead, 7);
+        const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+        const weekdayValues = trendValues.filter((_value, index) => (
+            new Date(Date.UTC(year, month - 1, index + 1)).getUTCDay() === weekday
+        ));
+        const weekdayPattern = weightedAverage(weekdayValues.slice(-4)) || recentAverage;
         const peerDayValues = peerDailyMaps
             .map((map) => number(map[day]))
             .filter((value) => value > 0);
         const peerPattern = average(peerDayValues) * peerScale;
-        const fallbackPattern = actualValues[day - 8] ?? recentAverage;
-        const patternValue = peerPattern > 0 ? peerPattern : fallbackPattern;
-        const blended = trendValue * 0.58 + patternValue * 0.42;
-        const forecastValue = clamp(blended, 0, forecastCap);
+        const seasonalPattern = peerPattern > 0
+            ? weekdayPattern * 0.55 + peerPattern * 0.45
+            : weekdayPattern;
+        const baseValue = recentAverage * 0.45 + currentPace * 0.2 + seasonalPattern * 0.35;
+        // Recent growth or decline fades gradually instead of extending as a line to zero.
+        const trendMultiplier = 1 + (trendRatio - 1) * Math.exp(-(daysAhead - 1) / 6);
+        const forecastValue = clamp(baseValue * trendMultiplier, forecastFloor, forecastCap);
         forecastValues.push(forecastValue);
         series.push({
             day,

@@ -10,7 +10,6 @@ Versión actual: `1.1.4`
 pagv3strbx/
 ├── backend/          API, lógica de negocio, auth, órdenes, renovaciones, códigos
 ├── frontend/         Panel web, dashboard de usuario, admin, APK Android
-├── go-backend/       Servicios auxiliares heredados/en transición
 ├── scripts/          Scripts de apoyo
 ├── deploy.sh         Script de despliegue
 └── ecosystem.config.cjs
@@ -66,8 +65,6 @@ Entre las variables importantes están:
 - `GMAIL_IMAP_PASS`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_IDS`
-- `INTERNAL_SERVICE_TOKEN` (obligatoria si los microservicios Go corren en produccion)
-- `GO_SERVICE_BIND_ADDR` (por defecto `127.0.0.1`)
 - `GOOGLE_DRIVE_CLIENT_ID`
 - `GOOGLE_DRIVE_CLIENT_SECRET`
 - `GOOGLE_DRIVE_REFRESH_TOKEN`
@@ -117,18 +114,6 @@ GOOGLE_DRIVE_PARENT_FOLDER_ID=xxxxxxxxxxxxxxxxxxxx
 - **Limpieza de temporales:** Los archivos subidos vía multer se almacenan en `.tmp-uploads/` y se eliminan automáticamente al terminar la carga a Drive.
 
 **Diseño técnico detallado:** Ver [DESIGN.md](./DESIGN.md).
-
-Para rotar el token interno, genera un valor nuevo fuera del repositorio:
-
-```bash
-openssl rand -hex 32
-```
-
-Luego actualiza `INTERNAL_SERVICE_TOKEN` en el entorno del VPS/PM2 y reinicia con:
-
-```bash
-pm2 restart ecosystem.config.cjs --env production --update-env
-```
 
 ## Desarrollo local
 
@@ -237,6 +222,7 @@ Esos archivos no deben perderse. Sin la misma clave de firma no podrás publicar
 El repo incluye:
 
 - `deploy.sh`
+- `scripts/deploy-on-ec2.sh`
 - `ecosystem.config.cjs`
 - `.github/workflows/security-validation.yml`
 
@@ -247,7 +233,7 @@ Según el entorno, normalmente el flujo es:
 3. compilar frontend
 4. reiniciar procesos del backend
 
-El despliegue ahora valida Go `1.26.2+`, exige `INTERNAL_SERVICE_TOKEN`, audita dependencias y recompila los binarios Go antes de reiniciar PM2.
+El despliegue audita dependencias, compila el frontend y reinicia el backend Node en PM2. El frontend se sirve como build estatico; las APIs se atienden desde Express bajo `/api`.
 
 ## Notas
 

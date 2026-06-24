@@ -6,12 +6,12 @@ Fecha de revision: 2026-04-25
 
 > Estado actualizado el 2026-06-23: los hallazgos de contrasena en `localStorage`, migracion de `xlsx` a `@e965/xlsx` y COOP ya no deben tratarse como abiertos en el estado actual del codigo. COOP esta aplicado como `same-origin-allow-popups`; COEP sigue como evaluacion de compatibilidad.
 
-La revision cubrio codigo propio versionado del monorepo: backend Express, frontend React/Vite, servicios Go, Android/Capacitor, scripts y configuracion. Se excluyeron `node_modules`, caches y build outputs como fuente primaria, pero se ejecuto `npm audit` contra los lockfiles actuales.
+La revision cubrio codigo propio versionado del monorepo: backend Express, frontend React/Vite, servicios Go heredados, Android/Capacitor, scripts y configuracion. Se excluyeron `node_modules`, caches y build outputs como fuente primaria, pero se ejecuto `npm audit` contra los lockfiles actuales.
 
 El riesgo remanente esta concentrado en estos frentes:
 
 1. La contrasena en `localStorage` fue corregida en codigo; queda como riesgo historico para usuarios que hayan usado builds anteriores y deban rotar contrasena si aplica.
-2. Los servicios Go heredados deben mantenerse detras del gateway/firewall. `codes-service` ya valida que el pedido pertenezca al usuario cuando no es admin; cualquier endpoint restante debe conservar autenticacion interna.
+2. Los servicios Go heredados fueron retirados del repo y del despliegue el 2026-06-24. La ruta de codigos y checkout productivo queda atendida por el backend Node.
 3. Las vulnerabilidades altas de dependencias quedaron cerradas al nivel `npm audit --audit-level=high`; frontend conserva un aviso bajo de tooling (`esbuild`) que no bloquea produccion si el dev server no se expone.
 
 Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde headers controlables, carga publica de SVG, fallback IMAP que desactiva verificacion TLS, falta de timeouts/error handlers explicitos en Express y configuracion Android con backup permitido.
@@ -36,36 +36,16 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
 - Riesgo operativo restante:
   - Usuarios que usaron builds anteriores pudieron quedar expuestos si un dispositivo ya estaba comprometido; evaluar rotacion de contrasenas para esos casos.
 
-### SBX-002 - Servicios Go con operaciones de negocio sin autenticacion visible
+### SBX-002 - Servicios Go con operaciones de negocio sin autenticacion visible (retirado)
 
-- Severidad: Critica si estan expuestos fuera de `localhost`; Alta si solo se ejecutan en red interna controlada
-- Ubicacion:
-  - `go-backend/codes-service/main.go:51`
-  - `go-backend/codes-service/handlers/codes.go:17`
-  - `go-backend/codes-service/handlers/codes.go:67`
-  - `go-backend/store-service/main.go:33`
-  - `go-backend/store-service/handlers/checkout.go:16`
-  - `go-backend/store-service/handlers/checkout.go:24`
-  - `go-backend/store-service/handlers/checkout.go:126`
-  - `go-backend/store-service/handlers/checkout.go:167`
-- Evidencia:
-  - `codes-service` registra `POST /api/codes/request` directamente con `handlers.RequestCodeHandler`.
-  - El handler contiene comentario indicando que se omite validacion de usuario.
-  - `store-service` registra `POST /api/checkout` directamente.
-  - El checkout toma `UserId` desde el body y lo usa para bloquear wallet, crear orden y suscripciones.
-- Impacto:
-  - Si los puertos `8001` o `8002` quedan accesibles, un atacante podria solicitar codigos de pedidos ajenos o ejecutar compras/checkout para otro usuario.
-  - El gateway Go actualmente proxyfowardea rutas no manejadas a Node, pero los binarios/servicios siguen siendo superficie si se arrancan con PM2 o manualmente.
-- Fix recomendado:
-  - Bindear microservicios heredados solo a `127.0.0.1` y bloquear puertos con firewall/security group.
-  - Agregar middleware de autenticacion JWT o mTLS/service token interno en cada servicio.
-  - Eliminar `userId` del body en `store-service`; derivarlo del token validado o de un header firmado por gateway.
-  - Retirar servicios Go del despliegue si ya estan reemplazados por Node.
-- Mitigacion temporal:
-  - No iniciar `go-codes-service` ni `go-store-service` en produccion si Node ya atiende esas rutas.
-  - Verificar PM2, Nginx y grupos de seguridad para que `8001/8002` no sean publicos.
-- Notas de falso positivo:
-  - Si una regla de infraestructura ya impide todo acceso externo y solo procesos confiables llaman esos puertos, el riesgo baja, pero esa proteccion no esta garantizada por el codigo.
+- Severidad original: Critica si estaban expuestos fuera de `localhost`; Alta si solo se ejecutaban en red interna controlada.
+- Estado actual: Retirado el 2026-06-24.
+- Evidencia actual:
+  - El directorio `go-backend/` fue eliminado del repo.
+  - `deploy.sh`, `ecosystem.config.cjs` y `.github/workflows/security-validation.yml` ya no compilan, arrancan ni prueban servicios Go.
+  - Produccion atiende codigos con `backend/src/routes/codes.js` y checkout con el backend Node.
+- Riesgo operativo restante:
+  - Verificar que no queden procesos externos antiguos en servidores no administrados por este repo. En la EC2 actual no habia procesos Go corriendo.
 
 ## Altos
 
@@ -362,13 +342,10 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
 ### SBX-015 - Artefactos binarios versionados
 
 - Severidad: Baja/Higiene
-- Ubicacion:
-  - `frontend/public/downloads/streaming-box-android.apk`
-  - `go-backend/codes-service/codes.exe`
-  - `go-backend/store-service/store.exe`
-  - `go-backend/api-gateway/api-gateway.exe~`
-- Evidencia:
-  - `git ls-files` muestra APK y ejecutables Go versionados.
+- Estado actual: Corregido en el indice Git.
+- Evidencia actual:
+  - La APK publica y los binarios Go heredados fueron retirados del control de versiones.
+  - `.gitignore` ignora `*.apk` y `*.exe~`.
 - Impacto:
   - Dificulta revision de cambios, trazabilidad y escaneo.
   - Puede distribuir builds antiguos o no reproducibles.
@@ -403,13 +380,12 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
 - `npm audit --json` en `backend`: fallo por vulnerabilidades reportadas; 25 totales, incluyendo 2 criticas y 11 altas. Estado historico; ver actualizacion 2026-06-23.
 - `npm audit --json` en `frontend`: fallo por vulnerabilidades reportadas; 11 totales, 8 altas. Estado historico; ver actualizacion 2026-06-23.
 - `npm audit --json` en raiz: fallo por 1 vulnerabilidad alta. Estado historico; ver actualizacion 2026-06-23.
-- `go version`: disponible, reporto Go `1.26.0`.
-- `govulncheck ./...`: no se pudo ejecutar porque `govulncheck` no esta instalado en el entorno.
+- Go: validacion historica no aplica al estado actual; los servicios Go heredados fueron retirados el 2026-06-24.
 
 ## Prioridad de remediacion sugerida
 
 1. Mantener eliminado el almacenamiento de contrasenas en Android/WebView y publicar/renovar builds cuando aplique.
-2. Verificar que servicios Go no esten expuestos; si se usan, agregar autenticacion antes de exponerlos.
+2. Verificar que no queden procesos Go antiguos fuera del repo en servidores no administrados.
 3. Fijar `FRONTEND_URL`/`PUBLIC_BASE_URL` y remover fallback a headers para enlaces sensibles.
 4. Mantener actualizaciones de dependencias y el bloqueo de `npm audit --audit-level=high`.
 5. Desactivar backup Android o excluir almacenamiento sensible.
@@ -417,7 +393,7 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
 7. Quitar fallback TLS inseguro para IMAP en produccion.
 8. Agregar timeouts/error handlers y mover migraciones fuera del arranque.
 9. Proteger o eliminar endpoints debug.
-10. Llevar `npm audit` y `govulncheck` a CI.
+10. Mantener `npm audit` en CI para raiz, backend y frontend.
 
 ## Estado de validacion posterior
 
@@ -443,13 +419,12 @@ Validacion realizada el 2026-04-25 despues de revisar el arbol de trabajo actual
 ### Pendiente antes de considerar la remediacion cerrada
 
 1. Mantener dependencias backend y frontend actualizadas; `xlsx` y `@chenglou/pretext` ya no son hallazgos abiertos.
-2. Proteger o retirar servicios Go heredados: actualmente `codes-service` y `store-service` siguen escuchando en `":" + port` y registran endpoints de negocio sin auth local visible.
+2. Servicios Go heredados: retirados del repo y del despliegue el 2026-06-24.
 3. Corregir IMAP TLS fallback: `connectImapWithTlsFallback` sigue reintentando con `rejectUnauthorized=false`; debe fallar cerrado en produccion.
-4. Instalar y ejecutar `govulncheck ./...` en cada modulo Go.
-5. Ejecutar smoke test del backend levantando servidor con variables reales de staging o entorno local completo.
-6. Probar manualmente flujos sensibles: login, refresh, logout, forgot/reset password, checkout, upload logo, branding logo y links `/s/:token`.
-7. Publicar una APK nueva para que `allowBackup=false` y la limpieza de contrasena lleguen a usuarios.
-8. Revisar si los cambios actuales deben documentarse como fixes en el reporte principal o separarse en una rama/commit de remediacion.
+4. Ejecutar smoke test del backend levantando servidor con variables reales de staging o entorno local completo.
+5. Probar manualmente flujos sensibles: login, refresh, logout, forgot/reset password, checkout, upload logo, branding logo y links `/s/:token`.
+6. Publicar una APK nueva para que `allowBackup=false` y la limpieza de contrasena lleguen a usuarios.
+7. Revisar si los cambios actuales deben documentarse como fixes en el reporte principal o separarse en una rama/commit de remediacion.
 
 ## Estado final de remediacion aplicada
 
@@ -464,10 +439,8 @@ Validacion realizada el 2026-04-25 despues de aplicar los fixes faltantes.
   - Frontend: `npm audit --audit-level=high` queda en 0 vulnerabilidades altas o criticas; queda un aviso bajo de tooling (`esbuild`).
   - Raiz: `npm audit --audit-level=high` queda en 0 vulnerabilidades altas o criticas.
 - Go:
-  - `codes-service` y `store-service` ahora escuchan por defecto en `127.0.0.1:<PORT>` y permiten override con `GO_SERVICE_BIND_ADDR`.
-  - En `GO_ENV=production`, ambos servicios exigen `INTERNAL_SERVICE_TOKEN` al arranque.
-  - Los endpoints `/api/*` de ambos servicios requieren `X-Internal-Service-Token`; `/health` queda publico.
-  - Los modulos Go declaran `toolchain go1.26.2` para evitar vulnerabilidades conocidas de la stdlib local Go 1.26.0.
+  - Estado historico: primero se endurecieron los servicios heredados.
+  - Estado actual 2026-06-24: los servicios Go fueron retirados del repo, despliegue y CI porque la produccion actual usa backend Node.
 - TLS:
   - `IMAP_TLS_INSECURE` y `NETFLIX_TLS_INSECURE` ya no habilitan TLS inseguro en produccion.
   - El fallback IMAP a `rejectUnauthorized=false` solo queda permitido fuera de produccion y si se habilita explicitamente.
@@ -483,25 +456,15 @@ Validacion realizada el 2026-04-25 despues de aplicar los fixes faltantes.
 - `npm audit --audit-level=high` en `backend`: OK, 0 vulnerabilidades altas o criticas.
 - `npm audit --audit-level=high` en `frontend`: OK, 0 vulnerabilidades altas o criticas; queda un aviso bajo de tooling (`esbuild`).
 - `npm run build` en `frontend`: OK.
-- Go 1.26.2 instalado localmente con `golang.org/dl/go1.26.2`.
-- `go1.26.2 test ./...`:
-  - `go-backend/api-gateway`: OK.
-  - `go-backend/codes-service`: OK.
-  - `go-backend/store-service`: OK.
-- `go1.26.2 run golang.org/x/vuln/cmd/govulncheck@latest ./...`:
-  - `api-gateway`: no vulnerabilities found.
-  - `codes-service`: 0 vulnerabilidades alcanzables; 1 vulnerabilidad en paquete importado no llamada.
-  - `store-service`: 0 vulnerabilidades alcanzables; 1 vulnerabilidad en paquete importado no llamada.
+- Servicios Go: no aplican en el estado actual porque fueron retirados del repo.
 
 ### Pendientes reales
 
 1. Publicar APK nueva para distribuir `allowBackup=false` y la eliminacion del guardado de contrasena.
-2. Configurar despliegue/CI para usar Go 1.26.2 o superior; con Go 1.26.0 `govulncheck` vuelve a reportar vulnerabilidades de stdlib.
-3. Definir y rotar `INTERNAL_SERVICE_TOKEN`; actualizar cualquier proxy/cliente interno si vuelve a llamar directamente a `codes-service` o `store-service`.
-4. Ejecutar pruebas manuales con servicios reales: login, refresh, logout, forgot/reset password, checkout, uploads, branding, Telegram polling y flujo IMAP.
-5. Revisar y limpiar deuda de `npm run lint`: el lint completo aun falla por deuda existente en `src` (imports no usados, `catch {}` vacios, reglas nuevas de hooks y `vite.config.js` sin globals Node). No bloquea build ni audits, pero debe corregirse en una tarea separada.
-6. Quitar o formalizar artefactos binarios versionados (`.apk`, `.exe`, backups) mediante releases/checksums.
-7. Validar headers reales con `curl -I` contra staging/produccion, porque parte de la postura HTTP depende de Nginx/edge.
+2. Ejecutar pruebas manuales con servicios reales: login, refresh, logout, forgot/reset password, checkout, uploads, branding, Telegram polling y flujo IMAP.
+3. Revisar y limpiar deuda de `npm run lint`: el lint completo aun falla por deuda existente en `src` (imports no usados, `catch {}` vacios, reglas nuevas de hooks y `vite.config.js` sin globals Node). No bloquea build ni audits, pero debe corregirse en una tarea separada.
+4. Quitar o formalizar artefactos binarios versionados (`.apk`, `.exe`, backups) mediante releases/checksums.
+5. Validar headers reales con `curl -I` contra staging/produccion, porque parte de la postura HTTP depende de Nginx/edge.
 
 ## Cierre operativo adicional
 
@@ -517,15 +480,12 @@ Validacion realizada el 2026-04-25 para cerrar los pendientes fuera de codigo qu
   - SHA-256: `A16D61070CC632139A30BF75217F6A33487F25810DFE62113948A1196A69DBA9`.
   - `apksigner verify --verbose`: OK, firma v2 valida, 1 firmante.
 - CI/despliegue:
-  - Agregado `.github/workflows/security-validation.yml` con Node 20, audits, build frontend, Go 1.26.2, tests Go y `govulncheck`.
-  - `deploy.sh` ahora exige `INTERNAL_SERVICE_TOKEN`, valida Go 1.26.2+, audita dependencias, compila servicios Go y reinicia PM2 en produccion.
-  - `ecosystem.config.cjs` carga `.env` raiz si existe y pasa `GO_ENV`, `INTERNAL_SERVICE_TOKEN`, `GO_SERVICE_BIND_ADDR`, `CODES_SERVICE_URL` y `STORE_SERVICE_URL`.
-- Token interno:
-  - Generado y rotado `INTERNAL_SERVICE_TOKEN` localmente en archivos `.env` ignorados por Git.
-  - El valor no se imprime ni se versiona.
+  - Agregado `.github/workflows/security-validation.yml` con Node 20, audits, backend check/test, frontend lint/test/build.
+  - `deploy.sh` audita dependencias, compila frontend y reinicia el backend Node en PM2.
+  - `ecosystem.config.cjs` queda limitado a procesos Node/Frontend; los servicios Go fueron retirados.
 - Binarios versionados:
-  - `go-backend/codes-service/codes.exe` y `go-backend/store-service/store.exe` fueron removidos del indice Git con `git rm --cached`.
-  - `.gitignore` ahora ignora esos binarios.
+  - La APK y binarios Go versionados fueron retirados del indice Git.
+  - `.gitignore` ahora ignora `*.apk` y `*.exe~`.
 - Headers:
   - `curl -I -L https://strbx.com.co`: el frontend responde 200, pero no envia headers de seguridad.
   - `curl -I -L https://www.strbx.com.co`: mismo resultado.
@@ -542,15 +502,10 @@ Validacion realizada el 2026-04-25 para cerrar los pendientes fuera de codigo qu
 - `npm audit --audit-level=high` raiz/backend/frontend: OK, 0 vulnerabilidades altas o criticas; frontend conserva un aviso bajo de tooling (`esbuild`).
 - `node --check ecosystem.config.cjs`: OK.
 - `bash -n deploy.sh` con Git Bash: OK.
-- `go1.26.2 test ./...` en los tres modulos Go: OK.
-- `go1.26.2 run golang.org/x/vuln/cmd/govulncheck@latest ./...`:
-  - `api-gateway`: no vulnerabilities found.
-  - `codes-service`: 0 vulnerabilidades alcanzables.
-  - `store-service`: 0 vulnerabilidades alcanzables.
+- Go: no aplica en el estado actual porque `go-backend/` fue retirado.
 
 ### Pendiente externo no ejecutable desde este entorno
 
 - Aplicar la plantilla Nginx en el VPS real y recargar Nginx.
-- Exportar el mismo `INTERNAL_SERVICE_TOKEN` generado localmente en el entorno real del VPS/PM2.
 - Resolver el certificado TLS interceptado/incorrecto que afecta IMAP antes de usarlo en produccion.
 - Hacer el despliegue efectivo en el VPS si no existe automatizacion que consuma el push de GitHub.

@@ -2,51 +2,15 @@
 set -euo pipefail
 
 # Ejecutar este script en el VPS para desplegar desde GitHub.
-# Requiere que INTERNAL_SERVICE_TOKEN exista en el entorno del proceso/PM2.
 
-PROJECT_DIR="${PROJECT_DIR:-/var/www/pagv2strbx}"
+PROJECT_DIR="${PROJECT_DIR:-/var/www/pageV3}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
-GO_BIN="${GO_BIN:-go}"
+PM2_APP="${PM2_APP:-pagev3-api}"
 NGINX_SITE_PATH="${NGINX_SITE_PATH:-}"
-
-require_env() {
-  local name="$1"
-  if [ -z "${!name:-}" ]; then
-    echo "ERROR: falta variable obligatoria: $name" >&2
-    exit 1
-  fi
-}
-
-require_go_1262() {
-  local version
-  version="$("$GO_BIN" env GOVERSION 2>/dev/null || true)"
-  if [ -z "$version" ]; then
-    version="$("$GO_BIN" version | awk '{print $3}')"
-  fi
-
-  case "$version" in
-    go1.26.2|go1.26.[3-9]*|go1.2[7-9]*|go[2-9].*) ;;
-    *)
-      echo "ERROR: se requiere Go 1.26.2 o superior; encontrado: $version" >&2
-      echo "Configura GO_BIN=/ruta/a/go1.26.2 si tienes varias versiones instaladas." >&2
-      exit 1
-      ;;
-  esac
-}
-
-build_go_service() {
-  local dir="$1"
-  local output="$2"
-  echo "Compilando $dir -> $output"
-  (cd "$PROJECT_DIR/$dir" && "$GO_BIN" build -trimpath -o "$output" .)
-}
 
 echo "========================================="
 echo "  Desplegando Streaming Box (pageV3)"
 echo "========================================="
-
-require_env INTERNAL_SERVICE_TOKEN
-require_go_1262
 
 cd "$PROJECT_DIR"
 
@@ -68,21 +32,21 @@ npm audit --audit-level=high
 echo "5. Construyendo frontend de produccion..."
 (cd frontend && npm run build)
 
-echo "6. Compilando servicios Go con $("$GO_BIN" env GOVERSION)..."
-build_go_service "go-backend/api-gateway" "api-gateway"
-build_go_service "go-backend/codes-service" "codes"
-build_go_service "go-backend/store-service" "store"
-
-echo "7. Reiniciando PM2..."
-GO_ENV=production pm2 restart ecosystem.config.cjs --env production --update-env
+echo "6. Reiniciando backend PM2..."
+if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
+  pm2 restart "$PM2_APP" --update-env
+else
+  (cd backend && pm2 start src/index.js --name "$PM2_APP" --update-env)
+  pm2 save
+fi
 
 if [ -n "$NGINX_SITE_PATH" ]; then
-  echo "8. Actualizando plantilla Nginx en $NGINX_SITE_PATH..."
+  echo "7. Actualizando plantilla Nginx en $NGINX_SITE_PATH..."
   cp deploy/nginx/streaming-box.conf "$NGINX_SITE_PATH"
   nginx -t
   systemctl reload nginx
 else
-  echo "8. Nginx no modificado. Define NGINX_SITE_PATH para instalar deploy/nginx/streaming-box.conf."
+  echo "7. Nginx no modificado. Define NGINX_SITE_PATH para instalar deploy/nginx/streaming-box.conf."
 fi
 
 echo "========================================="

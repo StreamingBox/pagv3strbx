@@ -4,6 +4,7 @@ import (
 	"pagv2strbx-codes/services"
 	"pagv2strbx-codes/utils"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,6 +13,16 @@ import (
 type CodeRequest struct {
 	OrderNumber  string `json:"orderNumber"`
 	PlatformSlug string `json:"platformSlug"`
+}
+
+func requesterFromHeaders(c *fiber.Ctx) (int, string) {
+	rawID := strings.TrimSpace(c.Get("X-User-Id"))
+	if rawID == "" {
+		rawID = strings.TrimSpace(c.Get("X-User-ID"))
+	}
+	userID, _ := strconv.Atoi(rawID)
+	role := strings.ToLower(strings.TrimSpace(c.Get("X-User-Role")))
+	return userID, role
 }
 
 func RequestCodeHandler(c *fiber.Ctx) error {
@@ -64,8 +75,23 @@ func RequestCodeHandler(c *fiber.Ctx) error {
 
 	fingerprint := utils.CredFingerprint(sub.AccountPassword, sub.AccountPin)
 
-	// Authorization simulation (in full Go app, use JWT context). We skip user validation for this microservice logic for brevity/speed.
-	// Normally we would get user from auth headers.
+	requesterUserID, requesterRole := requesterFromHeaders(c)
+	if requesterRole != "admin" {
+		if requesterUserID <= 0 {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"ok":      false,
+				"status":  "auth_required",
+				"message": "Usuario no validado.",
+			})
+		}
+		if sub.UserId != requesterUserID {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"ok":      false,
+				"status":  "unauthorized",
+				"message": "No autorizado para este pedido.",
+			})
+		}
+	}
 
 	// 4) Validate platform
 	rawFromSub := sub.PlatformSlug

@@ -74,6 +74,13 @@ function validatePublicUrl(name) {
     }
 }
 
+function getEnvBool(name) {
+    const raw = String(process.env[name] || "");
+    const withoutComment = raw.split("#")[0].trim();
+    const unquoted = withoutComment.replace(/^['"]|['"]$/g, "").trim().toLowerCase();
+    return unquoted === "true" || unquoted === "1" || unquoted === "yes" || unquoted === "on";
+}
+
 function validateProductionConfig() {
     if (process.env.NODE_ENV !== "production") return;
 
@@ -82,6 +89,11 @@ function validateProductionConfig() {
     validatePublicUrl("FRONTEND_URL");
     validatePublicUrl("PUBLIC_BASE_URL");
 
+    for (const name of ["IMAP_TLS_INSECURE", "NETFLIX_TLS_INSECURE"]) {
+        if (getEnvBool(name)) {
+            throw new Error(`[config] ${name} no puede estar activo en produccion.`);
+        }
+    }
 }
 
 try {
@@ -134,11 +146,14 @@ app.set("trust proxy", 1);
 const allowedOrigins = new Set([
     "https://strbx.com.co",
     "https://www.strbx.com.co",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
 ]);
+
+if (process.env.NODE_ENV !== "production") {
+    allowedOrigins.add("http://localhost:5173");
+    allowedOrigins.add("http://127.0.0.1:5173");
+    allowedOrigins.add("http://localhost:5174");
+    allowedOrigins.add("http://127.0.0.1:5174");
+}
 // Pruebas por IP / Elastic IP en EC2 (el navegador envía Origin: https://TU_IP)
 // En backend/.env: CORS_EXTRA_ORIGINS=https://18.x.x.x,http://18.x.x.x
 if (process.env.CORS_EXTRA_ORIGINS) {
@@ -148,11 +163,12 @@ if (process.env.CORS_EXTRA_ORIGINS) {
     }
 }
 const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const allowLocalDevOrigin = process.env.NODE_ENV !== "production";
 
 const corsOptions = {
     origin: (origin, cb) => {
         if (!origin) return cb(null, true); // curl/postman
-        if (allowedOrigins.has(origin) || localDevOrigin.test(origin)) return cb(null, true);
+        if (allowedOrigins.has(origin) || (allowLocalDevOrigin && localDevOrigin.test(origin))) return cb(null, true);
         return cb(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,

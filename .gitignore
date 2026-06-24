@@ -4,6 +4,7 @@ npm-debug.log
 yarn-error.log
 
 # Go
+*.exe~
 go-backend/api-gateway/api-gateway.exe
 go-backend/store-service/store-service.exe
 go-backend/store-service/store.exe
@@ -12,6 +13,7 @@ go-backend/codes-service/codes.exe
 go-backend/api-gateway/pagv2strbx-gateway.exe
 
 # React / Frontend
+*.apk
 frontend/dist/
 frontend/build/
 frontend/android/keystore.properties

@@ -3,10 +3,10 @@ const { simpleParser } = require("mailparser");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const https = require("https");
-const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
+const { getImapConfig, safeToDate, getEnvBool, allowInsecureTls, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
 function getNetflixAxiosOptions() {
-    const insecureTls = getEnvBool("NETFLIX_TLS_INSECURE");
+    const insecureTls = allowInsecureTls("NETFLIX_TLS_INSECURE");
 
     return {
         headers: {

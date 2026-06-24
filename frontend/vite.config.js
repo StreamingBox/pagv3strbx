@@ -41,6 +41,11 @@ export default defineConfig({
     __APP_BUILD_ID__: JSON.stringify(appBuildId),
     __APK_RELEASE_ID__: JSON.stringify(apkReleaseId),
   },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.js',
+    globals: true,
+  },
   plugins: [
     react(),
     compression({

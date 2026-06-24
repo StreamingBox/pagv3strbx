@@ -17,6 +17,7 @@
 const axios = require("axios");
 const { EventEmitter } = require("events");
 const pool = require("../db");
+const logger = require("../utils/logger");
 const { createAccountOne } = require("./accounts.service");
 const {
     buildTopupProofUrl,
@@ -1056,7 +1057,7 @@ function setupCommands() {
         console.error("[TelegramBot] Error:", err?.message || err);
     });
 
-    console.log("[TelegramBot] Comandos registrados. Chat IDs autorizados:", [...AUTHORIZED]);
+    logger.info("telegram_commands_registered", { authorizedChatCount: AUTHORIZED.size });
 }
 
 /* ─── Notificación de venta ───────────────────────────────────── */
@@ -1242,7 +1243,7 @@ function initBot() {
     try {
         bot = new TelegramBotClient(TOKEN, { polling: BOT_POLLING_ENABLED });
         setupCommands();
-        console.log(`[TelegramBot] ✅ Bot iniciado${BOT_POLLING_ENABLED ? " en modo polling" : " sin polling"}.`);
+        logger.info("telegram_bot_started", { polling: BOT_POLLING_ENABLED });
     } catch (e) {
         console.error("[TelegramBot] Error al iniciar:", e?.message);
     }

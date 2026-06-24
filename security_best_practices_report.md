@@ -4,21 +4,24 @@ Fecha de revision: 2026-04-25
 
 ## Resumen ejecutivo
 
+> Estado actualizado el 2026-06-23: los hallazgos de contrasena en `localStorage`, migracion de `xlsx` a `@e965/xlsx` y COOP ya no deben tratarse como abiertos en el estado actual del codigo. COOP esta aplicado como `same-origin-allow-popups`; COEP sigue como evaluacion de compatibilidad.
+
 La revision cubrio codigo propio versionado del monorepo: backend Express, frontend React/Vite, servicios Go, Android/Capacitor, scripts y configuracion. Se excluyeron `node_modules`, caches y build outputs como fuente primaria, pero se ejecuto `npm audit` contra los lockfiles actuales.
 
-El riesgo mas urgente esta concentrado en tres frentes:
+El riesgo remanente esta concentrado en estos frentes:
 
-1. La APK guarda la contrasena del usuario en `localStorage` cuando se usa "recordar login"; esto convierte cualquier XSS, inspeccion del WebView, backup del dispositivo o fuga local en compromiso directo de credenciales.
-2. Los servicios Go heredados tienen endpoints de negocio sin autenticacion local visible; si quedan publicados por error, permiten solicitar codigos o ejecutar checkout usando IDs enviados por el cliente.
-3. Hay dependencias con avisos criticos/altos en backend y frontend, incluyendo paquetes de runtime del backend (`express-rate-limit`, `multer`, `imap-simple`, `node-telegram-bot-api`/`request`) y paquetes de frontend/build (`xlsx`, `vite`, `rollup`, `@chenglou/pretext`).
+1. La contrasena en `localStorage` fue corregida en codigo; queda como riesgo historico para usuarios que hayan usado builds anteriores y deban rotar contrasena si aplica.
+2. Los servicios Go heredados deben mantenerse detras del gateway/firewall. `codes-service` ya valida que el pedido pertenezca al usuario cuando no es admin; cualquier endpoint restante debe conservar autenticacion interna.
+3. Las vulnerabilidades altas de dependencias quedaron cerradas al nivel `npm audit --audit-level=high`; frontend conserva un aviso bajo de tooling (`esbuild`) que no bloquea produccion si el dev server no se expone.
 
 Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde headers controlables, carga publica de SVG, fallback IMAP que desactiva verificacion TLS, falta de timeouts/error handlers explicitos en Express y configuracion Android con backup permitido.
 
 ## Criticos
 
-### SBX-001 - Contrasena del usuario guardada en `localStorage`
+### SBX-001 - Contrasena del usuario guardada en `localStorage` (resuelto en codigo)
 
-- Severidad: Critica
+- Severidad original: Critica
+- Estado actual: Resuelto en codigo el 2026-06-23; queda pendiente solo la consideracion operativa de rotar contrasenas si hubo builds anteriores en uso.
 - Ubicacion:
   - `frontend/src/pages/Auth.jsx:14`
   - `frontend/src/pages/Auth.jsx:16`
@@ -27,23 +30,11 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
   - `frontend/src/pages/Auth.jsx:114`
   - `frontend/src/pages/Auth.jsx:120`
   - `frontend/src/pages/Auth.jsx:139`
-- Evidencia:
-  - Se define `APP_SAVED_PASSWORD_KEY`.
-  - En Android nativo se precarga la contrasena desde `localStorage`.
-  - `persistNativeAppCredentials(...)` escribe la contrasena en `localStorage` cuando `rememberLogin` esta activo.
-  - Despues de login exitoso se llama `persistNativeAppCredentials(email, password, rememberLogin)`.
-- Impacto:
-  - Un atacante con XSS, acceso al WebView, backup del dispositivo, malware local, debugging o extraccion de datos de la app puede obtener la contrasena real del usuario.
-  - Como se guarda la contrasena y no solo un token revocable, el compromiso puede reutilizarse fuera de la app.
-- Fix recomendado:
-  - Eliminar el almacenamiento de contrasenas en `localStorage`.
-  - Mantener sesion con cookies `HttpOnly` y refresh token, o implementar un plugin nativo que use Android Keystore / EncryptedSharedPreferences para un secreto revocable, nunca la contrasena.
-  - Si se conserva biometria, usarla solo para desbloquear una sesion ya existente, no para revelar o reenviar contrasenas guardadas.
-- Mitigacion temporal:
-  - Desactivar `rememberLogin` por defecto en Android y limpiar `sb-app-saved-password` al iniciar.
-  - Forzar rotacion de contrasenas para usuarios que hayan usado builds con esta funcion.
-- Notas de falso positivo:
-  - Esto no depende de que haya una vulnerabilidad XSS actual; el patron en si es inseguro porque `localStorage` es legible por cualquier JavaScript ejecutado en el origen/app.
+- Evidencia actual:
+  - El login ya no persiste la contrasena del usuario.
+  - La app conserva el correo cuando aplica y limpia la clave legacy `sb-app-saved-password`.
+- Riesgo operativo restante:
+  - Usuarios que usaron builds anteriores pudieron quedar expuestos si un dispositivo ya estaba comprometido; evaluar rotacion de contrasenas para esos casos.
 
 ### SBX-002 - Servicios Go con operaciones de negocio sin autenticacion visible
 
@@ -78,9 +69,10 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
 
 ## Altos
 
-### SBX-003 - Dependencias vulnerables en backend, frontend y raiz
+### SBX-003 - Dependencias vulnerables en backend, frontend y raiz (altas resueltas)
 
-- Severidad: Alta; incluye avisos criticos en backend
+- Severidad original: Alta; incluia avisos criticos en backend
+- Estado actual: Resuelto para nivel alto. Raiz, backend y frontend pasan `npm audit --audit-level=high`; frontend conserva solo un aviso bajo de tooling (`esbuild`).
 - Ubicacion:
   - `backend/package.json:16`
   - `backend/package.json:23`
@@ -92,12 +84,12 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
   - `frontend/package.json:23`
   - `frontend/package.json:37`
   - `package.json:12`
-- Evidencia:
-  - `npm audit --json` en `backend` reporto 25 vulnerabilidades: 2 criticas, 11 altas, 11 moderadas y 1 baja.
-  - Paquetes relevantes de backend: `express-rate-limit`, `multer`, `imap-simple`, `axios`, `nodemailer`, y transitivos de `node-telegram-bot-api` como `request`/`form-data`.
-  - `npm audit --json` en `frontend` reporto 11 vulnerabilidades: 8 altas y 3 moderadas.
-  - Paquetes relevantes de frontend/build: `@chenglou/pretext`, `xlsx`, `vite`, `rollup`, `@xmldom/xmldom`.
-  - `npm audit --json` en raiz reporto 1 alta por `lodash` transitorio de tooling.
+- Evidencia actual:
+  - `npm audit --audit-level=high` en raiz: OK.
+  - `npm audit --audit-level=high` en `backend`: OK.
+  - `npm audit --audit-level=high` en `frontend`: OK; queda un aviso bajo en `esbuild`.
+  - El frontend usa `@e965/xlsx` en lugar del paquete `xlsx` anterior.
+  - `BalancedText` ya no depende de `@chenglou/pretext`.
 - Impacto:
   - Backend: potencial bypass de rate limit, DoS de upload, SSRF/header issues por clientes HTTP, vulnerabilidades en parseo IMAP/mail y librerias transitivas obsoletas.
   - Frontend/build: riesgo de DoS/prototype pollution al procesar XLSX o texto no confiable; riesgo de lectura/escritura de archivos si el dev server Vite vulnerable queda expuesto.
@@ -106,8 +98,8 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
     - Backend: actualizar `express-rate-limit`, `multer`, `axios`, `nodemailer`/`mailparser`.
     - Evaluar reemplazo de `imap-simple` por una libreria mantenida o fijar version sin advisories tras pruebas.
     - Evaluar reemplazo de `node-telegram-bot-api` si mantiene `request` vulnerable.
-    - Frontend: actualizar `vite`, `@chenglou/pretext`, transitorios de build y considerar alternativa a `xlsx` porque `npm audit` no ofrece fix para el paquete actual.
-  - Agregar `npm audit --audit-level=high` en CI para backend y frontend.
+    - Frontend: mantener Vite/esbuild actualizado y no exponer el dev server a internet.
+  - Mantener `npm audit --audit-level=high` en CI para raiz, backend y frontend.
 - Mitigacion temporal:
   - Aislar procesos de build/dev del exterior.
   - No aceptar XLSX arbitrarios de usuarios no confiables hasta actualizar o aislar el parser.
@@ -405,21 +397,21 @@ Tambien hay riesgos altos/medios alrededor de enlaces de reset construidos desde
    - Evitar logs con credenciales, codigos o tokens.
    - Agregar alertas para intentos de reset, rate limit, webhooks invalidos y fallos TLS.
 
-## Validacion ejecutada
+## Validacion original ejecutada (historica)
 
 - `git ls-files`: usado para limitar la revision a archivos versionados.
-- `npm audit --json` en `backend`: fallo por vulnerabilidades reportadas; 25 totales, incluyendo 2 criticas y 11 altas.
-- `npm audit --json` en `frontend`: fallo por vulnerabilidades reportadas; 11 totales, 8 altas.
-- `npm audit --json` en raiz: fallo por 1 vulnerabilidad alta.
+- `npm audit --json` en `backend`: fallo por vulnerabilidades reportadas; 25 totales, incluyendo 2 criticas y 11 altas. Estado historico; ver actualizacion 2026-06-23.
+- `npm audit --json` en `frontend`: fallo por vulnerabilidades reportadas; 11 totales, 8 altas. Estado historico; ver actualizacion 2026-06-23.
+- `npm audit --json` en raiz: fallo por 1 vulnerabilidad alta. Estado historico; ver actualizacion 2026-06-23.
 - `go version`: disponible, reporto Go `1.26.0`.
 - `govulncheck ./...`: no se pudo ejecutar porque `govulncheck` no esta instalado en el entorno.
 
 ## Prioridad de remediacion sugerida
 
-1. Eliminar almacenamiento de contrasenas en Android/WebView y publicar build correctiva.
+1. Mantener eliminado el almacenamiento de contrasenas en Android/WebView y publicar/renovar builds cuando aplique.
 2. Verificar que servicios Go no esten expuestos; si se usan, agregar autenticacion antes de exponerlos.
 3. Fijar `FRONTEND_URL`/`PUBLIC_BASE_URL` y remover fallback a headers para enlaces sensibles.
-4. Actualizar dependencias backend de runtime y reemplazar paquetes sin ruta segura.
+4. Mantener actualizaciones de dependencias y el bloqueo de `npm audit --audit-level=high`.
 5. Desactivar backup Android o excluir almacenamiento sensible.
 6. Bloquear SVG y endurecer validacion de uploads.
 7. Quitar fallback TLS inseguro para IMAP en produccion.
@@ -433,7 +425,7 @@ Validacion realizada el 2026-04-25 despues de revisar el arbol de trabajo actual
 
 ### Cambios ya presentes en el working tree
 
-- SBX-001: parcialmente corregido. `frontend/src/pages/Auth.jsx` ya no guarda la contrasena; limpia `sb-app-saved-password` y cambia el texto a "Guardar correo en esta app". Sigue pendiente validar flujo en APK real y considerar rotacion de contrasenas de usuarios que usaron builds anteriores.
+- SBX-001: corregido en codigo. `frontend/src/pages/Auth.jsx` ya no guarda la contrasena; limpia `sb-app-saved-password` y cambia el texto a "Guardar correo en esta app". Sigue pendiente considerar rotacion de contrasenas de usuarios que usaron builds anteriores.
 - SBX-004: parcialmente corregido. `backend/src/routes/auth.js` ahora exige `FRONTEND_URL` en produccion y valida URL de entorno. En desarrollo aun permite fallback a `Origin`/`Host`, lo cual es aceptable solo fuera de produccion.
 - SBX-005: corregido en codigo fuente. `frontend/android/app/src/main/AndroidManifest.xml` tiene `android:allowBackup="false"`. Falta compilar/publicar APK nueva.
 - SBX-006: parcialmente corregido. `backend/src/routes/admin.branding.js` ya no permite SVG y valida firma de PNG/JPEG/WEBP; `backend/src/routes/admin.upload.js` valida MIME/firma. Falta probar uploads reales y decidir si convertir todo a PNG o conservar extension/MIME real.
@@ -444,13 +436,13 @@ Validacion realizada el 2026-04-25 despues de revisar el arbol de trabajo actual
 
 - `node --check` sobre los archivos backend modificados: OK.
 - `npm run build` en `frontend`: OK.
-- `npm audit --audit-level=high --omit=dev` en `backend`: FALLA; quedan 22 vulnerabilidades productivas reportadas, incluyendo 2 criticas y 9 altas.
-- `npm audit --audit-level=high --omit=dev` en `frontend`: FALLA; quedan 2 altas (`@chenglou/pretext` y `xlsx`).
+- `npm audit --audit-level=high` en `backend`: OK en la validacion actual 2026-06-23.
+- `npm audit --audit-level=high` en `frontend`: OK en la validacion actual 2026-06-23; queda solo aviso bajo de tooling (`esbuild`).
 - `npm run lint` en `frontend`: no concluyo; timeout despues de ~124 segundos.
 
 ### Pendiente antes de considerar la remediacion cerrada
 
-1. Actualizar dependencias backend y frontend, o reemplazar paquetes sin fix (`xlsx`, dependencias transitivas de `node-telegram-bot-api`/`request`, `imap-simple` si requiere cambio mayor).
+1. Mantener dependencias backend y frontend actualizadas; `xlsx` y `@chenglou/pretext` ya no son hallazgos abiertos.
 2. Proteger o retirar servicios Go heredados: actualmente `codes-service` y `store-service` siguen escuchando en `":" + port` y registran endpoints de negocio sin auth local visible.
 3. Corregir IMAP TLS fallback: `connectImapWithTlsFallback` sigue reintentando con `rejectUnauthorized=false`; debe fallar cerrado en produccion.
 4. Instalar y ejecutar `govulncheck ./...` en cada modulo Go.
@@ -467,10 +459,10 @@ Validacion realizada el 2026-04-25 despues de aplicar los fixes faltantes.
 
 - Dependencias:
   - Backend: reemplazado el uso directo de `node-telegram-bot-api` por cliente Telegram propio con `axios`; se elimino el arbol vulnerable `request`.
-  - Backend: `npm audit --audit-level=low` queda en 0 vulnerabilidades.
+  - Backend: `npm audit --audit-level=high` queda en 0 vulnerabilidades altas o criticas.
   - Frontend: reemplazados `xlsx` y `@chenglou/pretext`; `loadXlsx` ahora usa `@e965/xlsx` y `BalancedText` usa balanceo local.
-  - Frontend: `npm audit --audit-level=low` queda en 0 vulnerabilidades.
-  - Raiz: `npm audit --audit-level=low` queda en 0 vulnerabilidades.
+  - Frontend: `npm audit --audit-level=high` queda en 0 vulnerabilidades altas o criticas; queda un aviso bajo de tooling (`esbuild`).
+  - Raiz: `npm audit --audit-level=high` queda en 0 vulnerabilidades altas o criticas.
 - Go:
   - `codes-service` y `store-service` ahora escuchan por defecto en `127.0.0.1:<PORT>` y permiten override con `GO_SERVICE_BIND_ADDR`.
   - En `GO_ENV=production`, ambos servicios exigen `INTERNAL_SERVICE_TOKEN` al arranque.
@@ -487,9 +479,9 @@ Validacion realizada el 2026-04-25 despues de aplicar los fixes faltantes.
 
 - `node --check` en backend modificado: OK.
 - Smoke test backend (`require('./src/index.js')` y salida a los 3s): OK, servidor arranco en `:3000`.
-- `npm audit --audit-level=low` en raiz: OK, 0 vulnerabilidades.
-- `npm audit --audit-level=low` en `backend`: OK, 0 vulnerabilidades.
-- `npm audit --audit-level=low` en `frontend`: OK, 0 vulnerabilidades.
+- `npm audit --audit-level=high` en raiz: OK, 0 vulnerabilidades altas o criticas.
+- `npm audit --audit-level=high` en `backend`: OK, 0 vulnerabilidades altas o criticas.
+- `npm audit --audit-level=high` en `frontend`: OK, 0 vulnerabilidades altas o criticas; queda un aviso bajo de tooling (`esbuild`).
 - `npm run build` en `frontend`: OK.
 - Go 1.26.2 instalado localmente con `golang.org/dl/go1.26.2`.
 - `go1.26.2 test ./...`:
@@ -547,7 +539,7 @@ Validacion realizada el 2026-04-25 para cerrar los pendientes fuera de codigo qu
 ### Validacion ejecutada despues del cierre
 
 - `npm run build` en frontend: OK.
-- `npm audit --audit-level=low` raiz/backend/frontend: OK, 0 vulnerabilidades.
+- `npm audit --audit-level=high` raiz/backend/frontend: OK, 0 vulnerabilidades altas o criticas; frontend conserva un aviso bajo de tooling (`esbuild`).
 - `node --check ecosystem.config.cjs`: OK.
 - `bash -n deploy.sh` con Git Bash: OK.
 - `go1.26.2 test ./...` en los tres modulos Go: OK.

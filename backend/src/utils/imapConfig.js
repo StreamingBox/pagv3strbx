@@ -12,11 +12,19 @@ function getEnvBool(name) {
     return unquoted === "true" || unquoted === "1" || unquoted === "yes" || unquoted === "on";
 }
 
+function isProduction() {
+    return process.env.NODE_ENV === "production";
+}
+
+function allowInsecureTls(name) {
+    return !isProduction() && getEnvBool(name);
+}
+
 function getImapConfig() {
     const user = process.env.GMAIL_EMAIL;
     const password = process.env.GMAIL_IMAP_PASS;
     if (!user || !password) return null;
-    const imapTlsInsecure = getEnvBool("IMAP_TLS_INSECURE");
+    const imapTlsInsecure = allowInsecureTls("IMAP_TLS_INSECURE");
 
     return {
         imap: {
@@ -28,8 +36,7 @@ function getImapConfig() {
             connTimeout: 10000,
             authTimeout: 10000,
             socketTimeout: 15000,
-            // Por defecto TLS estricto. En servidores con proxy/certificado intermedio,
-            // IMAP_TLS_INSECURE=true permite mantener Gmail operativo de forma explicita.
+            // Por defecto TLS estricto. El modo inseguro solo se permite fuera de produccion.
             tlsOptions: {
                 rejectUnauthorized: !imapTlsInsecure,
             },
@@ -57,7 +64,7 @@ async function connectImapWithTlsFallback(config, contextLabel = "imap") {
         if (!isTlsCertificateError(error)) {
             throw error;
         }
-        if (!getEnvBool("IMAP_TLS_INSECURE")) {
+        if (!allowInsecureTls("IMAP_TLS_INSECURE")) {
             throw error;
         }
 
@@ -82,4 +89,4 @@ function safeToDate(v) {
     return isNaN(d.getTime()) ? null : d;
 }
 
-module.exports = { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError };
+module.exports = { getImapConfig, safeToDate, getEnvBool, allowInsecureTls, connectImapWithTlsFallback, isTlsCertificateError };

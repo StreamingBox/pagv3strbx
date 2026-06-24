@@ -3,7 +3,7 @@
 ## Seguridad
 
 ### Fortalezas
-- Helmet con CSP, HSTS, `frame-ancestors 'none'`, `crossOriginResourcePolicy: "cross-origin"`
+- Helmet con CSP, HSTS, `frame-ancestors 'none'`, `crossOriginResourcePolicy: "cross-origin"` y `crossOriginOpenerPolicy: "same-origin-allow-popups"`
 - JWT con refresh token rotativo, hash SHA-256 en BD, `crypto.randomUUID()` como `jwtid`, revocación
 - bcrypt con cost factor 12
 - Rate limiting por endpoint: login (8/min), códigos (400/hr), links compartidos (8/min), global (450/hr)
@@ -19,11 +19,22 @@
 
 ### Hallazgos
 
-#### `crossOriginOpenerPolicy` y `crossOriginEmbedderPolicy` ausentes
+### Estado actualizado de hallazgos corregidos
+
+Actualizado el 2026-06-23.
+
+- **Contrasena en localStorage**: resuelto en codigo. El login ya no persiste la contrasena del usuario; solo conserva el correo cuando aplica y limpia la clave legacy `sb-app-saved-password`.
+- **COOP**: resuelto parcialmente. Helmet ya configura `crossOriginOpenerPolicy: "same-origin-allow-popups"`; COEP se mantiene pendiente de evaluacion por compatibilidad con recursos externos.
+- **XLSX vulnerable**: resuelto. El frontend usa `@e965/xlsx` en lugar del paquete `xlsx` anterior.
+- **Auditoria npm alta**: raiz y backend quedan sin vulnerabilidades; frontend pasa `npm audit --audit-level=high` y conserva solo un aviso bajo de tooling (`esbuild`).
+
+---
+
+#### `crossOriginEmbedderPolicy` pendiente de evaluación
 - **Archivo**: `backend/src/index.js`
-- **Criticidad**: 🔴 Crítico
-- COOP/COEP son la defensa primaria contra ataques de canal lateral (Spectre, XS-Leaks). Helmet está configurado pero sin estas directivas.
-- **Acción**: Agregar `crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }` y evaluar `crossOriginEmbedderPolicy`.
+- **Criticidad**: 🟡 Medio
+- COOP ya está configurado con `same-origin-allow-popups`. COEP sigue pendiente porque puede bloquear recursos externos si se activa sin revisar compatibilidad.
+- **Acción**: Evaluar `crossOriginEmbedderPolicy` en staging y documentar excepciones necesarias antes de activarlo en producción.
 
 ---
 
@@ -366,9 +377,9 @@
 
 | Criticidad | Cantidad | Áreas |
 |---|---|---|
-| 🔴 Crítico | 5 | `.env` expuesto, COOP/COEP ausente, migraciones en cada arranque, God Component Auth.jsx, private key Drive en variable plana |
+| 🔴 Crítico | 4 | `.env` expuesto, migraciones en cada arranque, God Component Auth.jsx, private key Drive en variable plana |
 | 🟠 Alto | 12 | Duplicación AdminAdvertising/Advertising, CSS-in-JS masivo, sin breadcrumbs, N+1 a Drive API, accessToken path `/`, sin React Query, logout reimplementado, inconsistencias sidebar, forgot-password sin rate limit, sameSite strict, upload con fetch directo |
-| 🟡 Medio | 15 | CSP unsafe-inline, sin focus states, glass-morphism en móvil, sin paginación advertising, recharts en bundle principal, sin compresión brotli, `useMemo`/`useCallback` inconsistentes, `.env.example` incompleto, multer sin sanitizar, timeout HTTP bajo, errores silenciados en migraciones, sin tipos, constantes mágicas, `conn.release` propenso a fugas, sin tooltips en mobile, estados vacíos inconsistentes, contraste insuficiente |
+| 🟡 Medio | 16 | COEP pendiente de evaluación, CSP unsafe-inline, sin focus states, glass-morphism en móvil, sin paginación advertising, recharts en bundle principal, sin compresión brotli, `useMemo`/`useCallback` inconsistentes, `.env.example` incompleto, multer sin sanitizar, timeout HTTP bajo, errores silenciados en migraciones, sin tipos, constantes mágicas, `conn.release` propenso a fugas, sin tooltips en mobile, estados vacíos inconsistentes, contraste insuficiente |
 | 🟢 Bajo | 4 | Item advertising duplicado en NAV_ITEMS, server status hardcodeado, comentarios inconsistentes, breadcrumbs de página ausentes |
 
 ## Prioridades recomendadas
@@ -380,6 +391,6 @@
 5. **Agregar rate limiting** en forgot-password y reset-password
 6. **Implementar React Query** para estado del servidor en Advertising
 7. **Unificar Sidebar** en un componente base con variantes admin/user
-8. **Agregar COOP/COEP** en helmet
+8. **Evaluar COEP** en staging antes de activarlo en producción
 9. **Crear Breadcrumbs** para navegación admin
 10. **Agregar focus states** en elementos interactivos para accesibilidad

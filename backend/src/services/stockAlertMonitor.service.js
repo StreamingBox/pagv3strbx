@@ -1,4 +1,5 @@
 const pool = require("../db");
+const logger = require("../utils/logger");
 const { notifyOutOfStockPlatforms } = require("./telegramBot");
 const {
     calculateStockAlertTransitions,
@@ -137,7 +138,7 @@ function startPlatformStockAlertMonitor() {
 
     schedulePlatformStockAlertCheck(5000);
     setInterval(() => schedulePlatformStockAlertCheck(0), intervalMs).unref();
-    console.log(`[StockAlert] Monitor iniciado cada ${Math.round(intervalMs / 1000)} segundos.`);
+    logger.info("stock_alert_monitor_started", { intervalSeconds: Math.round(intervalMs / 1000) });
 }
 
 function schedulePlatformStockAlertCheck(delayMs = 1500) {
@@ -145,7 +146,7 @@ function schedulePlatformStockAlertCheck(delayMs = 1500) {
     scheduledCheck = setTimeout(() => {
         scheduledCheck = null;
         checkPlatformStockAlerts().catch(error => {
-            console.error("[StockAlert] Error revisando inventario:", error?.message || error);
+            logger.error("stock_alert_check_failed", { error });
         });
     }, Math.max(0, Number(delayMs) || 0));
     scheduledCheck.unref();

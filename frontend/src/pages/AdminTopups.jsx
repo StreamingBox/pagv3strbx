@@ -4,97 +4,20 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch, apiLogout, apiPatch } from "../api/api";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
+import TopupProofPreviewModal from "../components/adminTopups/TopupProofPreviewModal.jsx";
+import TopupRequestFilters from "../components/adminTopups/TopupRequestFilters.jsx";
+import {
+    ADMIN_FIELD_STYLE,
+    ADMIN_LABEL_STYLE,
+    CURRENCY_OPTIONS,
+    STATUS_META,
+    displayTopupCurrency,
+    emptyMethod,
+    resolveQrImageUrl,
+} from "../components/adminTopups/topupUtils.js";
 import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
-
-const STATUS_OPTIONS = [
-    { value: "", label: "Todas" },
-    { value: "submitted", label: "Enviadas" },
-    { value: "reviewing", label: "Revisando" },
-    { value: "approved", label: "Aprobadas" },
-    { value: "rejected", label: "Rechazadas" },
-];
-
-const STATUS_META = {
-    submitted: { label: "Enviada", color: "#f59e0b" },
-    reviewing: { label: "Revisando", color: "#0ea5e9" },
-    approved: { label: "Aprobada", color: "#10b981" },
-    rejected: { label: "Rechazada", color: "#ef4444" },
-};
-
-const CURRENCY_OPTIONS = [
-    { value: "COP", label: "COP" },
-    { value: "USD", label: "USDT" },
-    { value: "MXN", label: "MXN" },
-];
-let nextMethodRowId = 1;
-
-const ADMIN_FIELD_STYLE = {
-    width: "100%",
-    minWidth: 0,
-    padding: "12px 14px",
-    borderRadius: 14,
-    border: "1px solid var(--input-stroke)",
-    background: "var(--input-bg)",
-    color: "var(--text)",
-    outline: "none",
-    fontSize: 14,
-};
-
-const ADMIN_LABEL_STYLE = {
-    display: "grid",
-    gap: 8,
-    color: "var(--muted)",
-    fontSize: 12,
-    fontWeight: 700,
-};
-
-function resolveQrImageUrl(value) {
-    const input = String(value || "").trim();
-    if (!input) return "";
-
-    try {
-        if (input.startsWith("/")) {
-            return `${window.location.origin}${input}`;
-        }
-        const url = new URL(input);
-        if (url.hostname.includes("drive.google.com")) {
-            const fileMatch = url.pathname.match(/\/file\/d\/([^/]+)/i);
-            const directId = fileMatch?.[1] || url.searchParams.get("id");
-            if (directId) {
-                return `https://drive.google.com/uc?export=view&id=${directId}`;
-            }
-        }
-    } catch {
-        return input;
-    }
-
-    return input;
-}
-
-function displayTopupCurrency(value) {
-    const normalized = String(value || "").trim().toUpperCase();
-    if (normalized === "USD") return "USDT";
-    return normalized || String(value || "").trim();
-}
-
-function emptyMethod() {
-    return {
-        _rowId: `method-row-${nextMethodRowId++}`,
-        key: "",
-        label: "",
-        currency: "USD",
-        holderName: "",
-        accountLabel: "",
-        accountValue: "",
-        accountAlias: "",
-        accountType: "",
-        qrImageUrl: "",
-        minAmount: "0",
-        instructions: "",
-    };
-}
 
 export default function AdminTopups() {
     const navigate = useNavigate();
@@ -325,6 +248,21 @@ export default function AdminTopups() {
         } finally {
             setOpeningProofId(null);
         }
+    }
+
+    function closePreview() {
+        if (previewObjectUrlRef.current) {
+            URL.revokeObjectURL(previewObjectUrlRef.current);
+            previewObjectUrlRef.current = "";
+        }
+        if (previewItem?.revokeUrl) {
+            fetch(previewItem.revokeUrl, {
+                method: "POST",
+                credentials: "include",
+                keepalive: true,
+            }).catch(() => { });
+        }
+        setPreviewItem(null);
     }
 
     return (
@@ -647,101 +585,15 @@ export default function AdminTopups() {
                             Filtra, revisa soportes y aprueba o rechaza las recargas pendientes.
                         </div>
                     </section>
-
-                    <section
-                        style={{
-                            display: "grid",
-                            gridTemplateColumns: "220px minmax(260px, 1fr) 140px",
-                            gap: 12,
-                            alignItems: "end",
-                            marginBottom: 16,
-                            border: "1px solid var(--stroke)",
-                            borderRadius: 18,
-                            background: "linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.015))",
-                            padding: 14,
-                        }}
-                    >
-                        <label className="wallet-label" style={{ minWidth: 0 }}>
-                            <span>Estado</span>
-                            <select className="wallet-input" value={status} onChange={(event) => setStatus(event.target.value)}>
-                                {STATUS_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                            </select>
-                        </label>
-
-                        <label className="wallet-label" style={{ minWidth: 0 }}>
-                            <span>Buscar</span>
-                            <div
-                                className={`dash-search2 ${query.trim() ? "has-text" : ""}`}
-                                style={{
-                                    width: "100%",
-                                    height: 44,
-                                    padding: "0 12px",
-                                    borderRadius: 14,
-                                    borderColor: query.trim() ? "rgba(124, 92, 255, .42)" : "rgba(255,255,255,.12)",
-                                    boxShadow: query.trim() ? "0 0 0 1px rgba(124, 92, 255, .18)" : "none",
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    className="dash-search2__btn"
-                                    onClick={loadItems}
-                                    aria-label="Buscar"
-                                    title="Buscar"
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                        <path
-                                            d="M10.5 18.5C14.9183 18.5 18.5 14.9183 18.5 10.5C18.5 6.08172 14.9183 2.5 10.5 2.5C6.08172 2.5 2.5 6.08172 2.5 10.5C2.5 14.9183 6.08172 18.5 10.5 18.5Z"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                        />
-                                        <path
-                                            d="M16.5 16.5L21.5 21.5"
-                                            stroke="currentColor"
-                                            strokeWidth="2"
-                                            strokeLinecap="round"
-                                        />
-                                    </svg>
-                                </button>
-                                <input
-                                    className="dash-search2__input"
-                                    placeholder="Código, nombre, correo o método"
-                                    value={query}
-                                    onChange={(event) => setQuery(event.target.value)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === "Enter") {
-                                            event.preventDefault();
-                                            loadItems();
-                                        }
-                                    }}
-                                />
-                                {query.trim() ? (
-                                    <button
-                                        type="button"
-                                        className="dash-search2__clear"
-                                        onClick={() => {
-                                            setQuery("");
-                                            setTimeout(() => loadItems(), 0);
-                                        }}
-                                        aria-label="Limpiar búsqueda"
-                                        title="Limpiar"
-                                    >
-                                        ×
-                                    </button>
-                                ) : null}
-                            </div>
-                        </label>
-
-                        <label className="wallet-label" style={{ minWidth: 0 }}>
-                            <span>Mostrar</span>
-                            <select className="wallet-input" value={String(pageSize)} onChange={(event) => setPageSize(Number(event.target.value) || 5)}>
-                                <option value="5">5</option>
-                                <option value="10">10</option>
-                                <option value="20">20</option>
-                            </select>
-                        </label>
-                    </section>
+                    <TopupRequestFilters
+                        status={status}
+                        setStatus={setStatus}
+                        query={query}
+                        setQuery={setQuery}
+                        pageSize={pageSize}
+                        setPageSize={setPageSize}
+                        loadItems={loadItems}
+                    />
 
                     <div style={{ marginBottom: 14, color: "var(--muted)", fontSize: 13 }}>
                         Mostrando {pageSize} por página, ordenadas de la más reciente a la más antigua.
@@ -910,106 +762,7 @@ export default function AdminTopups() {
                 </main>
             </div>
 
-            {previewItem ? (
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    onClick={() => setPreviewItem(null)}
-                    style={{
-                        position: "fixed",
-                        inset: 0,
-                        background: "rgba(2,6,23,.72)",
-                        backdropFilter: "blur(6px)",
-                        display: "grid",
-                        placeItems: "center",
-                        zIndex: 1200,
-                        padding: 24,
-                    }}
-                >
-                    <div
-                        onClick={(event) => event.stopPropagation()}
-                        style={{
-                            width: "min(1100px, 96vw)",
-                            maxHeight: "90vh",
-                            overflow: "auto",
-                            borderRadius: 22,
-                            border: "1px solid var(--stroke)",
-                            background: "linear-gradient(180deg, var(--card), var(--card2))",
-                            boxShadow: "0 24px 80px rgba(0,0,0,.45)",
-                            padding: 18,
-                            display: "grid",
-                            gap: 16,
-                        }}
-                    >
-                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                            <div>
-                                <div style={{ fontSize: 20, fontWeight: 900 }}>Comprobante de {previewItem.requestCode}</div>
-                                <div style={{ color: "var(--muted)", marginTop: 4 }}>
-                                    {previewItem.userName || previewItem.userEmail} · {Number(previewItem.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(previewItem.currency || "COP")}
-                                </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                                <button className="btn-ghost" style={{ width: "auto" }} onClick={() => previewItem?.viewerUrl && window.open(previewItem.viewerUrl, "_blank", "noopener,noreferrer")}>
-                                    Abrir aparte
-                                </button>
-                                <button
-                                    className="btn-ghost"
-                                    style={{ width: "auto" }}
-                                    onClick={() => {
-                                        if (previewObjectUrlRef.current) {
-                                            URL.revokeObjectURL(previewObjectUrlRef.current);
-                                            previewObjectUrlRef.current = "";
-                                        }
-                                        if (previewItem?.revokeUrl) {
-                                            fetch(previewItem.revokeUrl, {
-                                                method: "POST",
-                                                credentials: "include",
-                                                keepalive: true,
-                                            }).catch(() => { });
-                                        }
-                                        setPreviewItem(null);
-                                    }}
-                                >
-                                    Cerrar
-                                </button>
-                            </div>
-                        </div>
-
-                        <div
-                            style={{
-                                borderRadius: 18,
-                                border: "1px solid var(--stroke)",
-                                background: "rgba(15,23,42,.45)",
-                                minHeight: "60vh",
-                                overflow: "hidden",
-                                display: "grid",
-                                placeItems: "center",
-                            }}
-                        >
-                            {previewItem?.inlineUrl ? (
-                                previewItem.inlineType.includes("pdf") ? (
-                                    <object
-                                        data={previewItem.inlineUrl}
-                                        type="application/pdf"
-                                        aria-label={`Comprobante ${previewItem.requestCode}`}
-                                        style={{ width: "100%", height: "70vh", background: "#fff" }}
-                                    >
-                                        <div style={{ padding: 18, color: "var(--muted)" }}>
-                                            No se pudo mostrar el PDF aquí. Usa <b>Abrir aparte</b>.
-                                        </div>
-                                    </object>
-                                ) : (
-                                    <img
-                                        src={previewItem.inlineUrl}
-                                        alt={`Comprobante ${previewItem.requestCode}`}
-                                        style={{ maxWidth: "100%", maxHeight: "70vh", width: "auto", height: "auto", display: "block", background: "#fff" }}
-                                    />
-                                )
-                            ) : null}
-                        </div>
-                    </div>
-                </div>
-            ) : null}
+            <TopupProofPreviewModal previewItem={previewItem} onClose={closePreview} />
         </div>
     );
 }

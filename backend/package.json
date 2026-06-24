@@ -31,10 +31,10 @@
     "helmet": "^8.1.0",
     "imap-simple": "^1.6.3",
     "jsonwebtoken": "^9.0.3",
-    "mailparser": "^3.9.3",
+    "mailparser": "^3.9.11",
     "multer": "^2.1.0",
     "mysql2": "^3.16.3",
-    "nodemailer": "^8.0.2"
+    "nodemailer": "^9.0.1"
   },
   "overrides": {
     "imap": "0.8.17"

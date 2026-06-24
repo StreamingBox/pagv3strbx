@@ -16,6 +16,7 @@ const {
 const { getRenewalEligibility } = require("../src/utils/renewals");
 const { toCodeSlug } = require("../src/utils/platformSlugMap");
 const { extractFallbackCode } = require("../src/utils/codeExtraction");
+const { allowInsecureTls, getImapConfig } = require("../src/utils/imapConfig");
 
 test("currency utilities normalize USD and USDT consistently", () => {
     assert.equal(normalizeCurrency(" usdt "), "USD");
@@ -85,4 +86,34 @@ test("code lookup extracts the current Spanish ChatGPT temporary code email", ()
     ].join("\n");
 
     assert.equal(extractFallbackCode(haystack), "741563");
+});
+
+test("Gmail IMAP config keeps strict TLS with explicit SNI", () => {
+    const oldEnv = {
+        GMAIL_EMAIL: process.env.GMAIL_EMAIL,
+        GMAIL_IMAP_PASS: process.env.GMAIL_IMAP_PASS,
+        IMAP_TLS_INSECURE: process.env.IMAP_TLS_INSECURE,
+        NODE_ENV: process.env.NODE_ENV,
+    };
+
+    try {
+        process.env.GMAIL_EMAIL = "codes@example.com";
+        process.env.GMAIL_IMAP_PASS = "app-password";
+        process.env.IMAP_TLS_INSECURE = "true";
+        process.env.NODE_ENV = "production";
+
+        const config = getImapConfig();
+        assert.equal(config.imap.host, "imap.gmail.com");
+        assert.equal(config.imap.tlsOptions.servername, "imap.gmail.com");
+        assert.equal(config.imap.tlsOptions.rejectUnauthorized, true);
+        assert.equal(allowInsecureTls("IMAP_TLS_INSECURE"), false);
+    } finally {
+        for (const [key, value] of Object.entries(oldEnv)) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    }
 });

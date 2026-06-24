@@ -25,20 +25,22 @@ function getImapConfig() {
     const password = process.env.GMAIL_IMAP_PASS;
     if (!user || !password) return null;
     const imapTlsInsecure = allowInsecureTls("IMAP_TLS_INSECURE");
+    const host = "imap.gmail.com";
 
     return {
         imap: {
             user,
             password,
-            host: "imap.gmail.com",
+            host,
             port: 993,
             tls: true,
             connTimeout: 10000,
             authTimeout: 10000,
             socketTimeout: 15000,
-            // Por defecto TLS estricto. El modo inseguro solo se permite fuera de produccion.
+            // Keep strict TLS and send SNI explicitly; node-imap can otherwise hit Gmail cert errors.
             tlsOptions: {
                 rejectUnauthorized: !imapTlsInsecure,
+                servername: host,
             },
         },
     };

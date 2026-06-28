@@ -45,6 +45,7 @@ const adminUploads = require("./routes/admin.upload");
 const adminAdvertisingRoutes = require("./routes/admin.advertising");
 const advertisingRoutes = require("./routes/advertising");
 const manualTopupsRoutes = require("./routes/manualTopups");
+const notifaceRoutes = require("./routes/notiface");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { runMigrations } = require("./migrations/runner");
@@ -362,6 +363,7 @@ app.use("/api/admin/advertising", adminAdvertisingRoutes);
 app.use("/api", advertisingRoutes);
 
 app.use("/api", manualTopupsRoutes);
+app.use("/api", notifaceRoutes);
 
 app.use((req, res) => {
     return res.status(404).json({ ok: false, message: "Ruta no encontrada." });

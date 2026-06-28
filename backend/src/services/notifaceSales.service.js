@@ -238,11 +238,13 @@ async function sellFromNotiface(input = {}) {
 }
 
 async function catalogForNotiface(query) {
+    const salesUser = await findNotifaceSalesUser();
+    const wantedCurrency = normalizeCurrency(salesUser.wallet_currency || "COP", "COP");
     const terms = platformAliasTerms(query);
     const where = terms.length
         ? `AND (${terms.map(() => "(LOWER(p.slug) LIKE ? OR LOWER(p.name) LIKE ?)").join(" OR ")})`
         : "";
-    const params = [];
+    const params = [wantedCurrency];
     for (const term of terms) {
         params.push(`%${term}%`, `%${term}%`);
     }
@@ -267,6 +269,7 @@ async function catalogForNotiface(query) {
          JOIN durations d ON d.id = pp.duration_id
          WHERE p.is_active = 1
            AND pp.is_active = 1
+           AND UPPER(pp.currency) = ?
            ${where}
          ORDER BY p.name ASC, d.days ASC, pp.price ASC
          LIMIT 25`,

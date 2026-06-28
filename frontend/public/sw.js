@@ -1,4 +1,4 @@
-const VERSION = "strbx-pwa-v12";
+const VERSION = "strbx-pwa-v13";
 const ASSET_CACHE = `${VERSION}-assets`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/app-icon.svg", "/app-icon-maskable.svg", "/favicon.svg"];
@@ -25,7 +25,13 @@ self.addEventListener("fetch", (event) => {
     if (url.origin !== self.location.origin) return;
     if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/s/")) return;
     if (url.pathname.startsWith("/platform-logos/")) {
-        event.respondWith(fetch(request, { cache: "no-store" }));
+        event.respondWith(
+            fetch(request, { cache: "no-store" })
+                .catch(async () =>
+                    (await caches.match(request)) ||
+                    new Response("", { status: 504, statusText: "Offline" })
+                )
+        );
         return;
     }
     if (
@@ -33,7 +39,12 @@ self.addEventListener("fetch", (event) => {
         url.pathname.startsWith("/@vite") ||
         url.pathname.startsWith("/node_modules/.vite/")
     ) {
-        event.respondWith(fetch(request));
+        event.respondWith(
+            fetch(request).catch(async () =>
+                (await caches.match(request)) ||
+                new Response("", { status: 504, statusText: "Offline" })
+            )
+        );
         return;
     }
 
@@ -41,11 +52,16 @@ self.addEventListener("fetch", (event) => {
         event.respondWith(
             fetch(request)
                 .then((response) => {
+                    if (!response || !response.ok) return response;
                     const copy = response.clone();
                     caches.open(RUNTIME_CACHE).then((cache) => cache.put("/", copy));
                     return response;
                 })
-                .catch(async () => (await caches.match("/")) || (await caches.match("/offline.html")) || caches.match(request))
+                .catch(async () =>
+                    (await caches.match("/")) ||
+                    (await caches.match("/offline.html")) ||
+                    new Response("Sin conexion.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } })
+                )
         );
         return;
     }
@@ -53,12 +69,17 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
         caches.match(request).then((cached) => {
             if (cached) return cached;
-            return fetch(request).then((response) => {
-                if (!response || response.status !== 200 || response.type !== "basic") return response;
-                const copy = response.clone();
-                caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
-                return response;
-            });
+            return fetch(request)
+                .then((response) => {
+                    if (!response || response.status !== 200 || response.type !== "basic") return response;
+                    const copy = response.clone();
+                    caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+                    return response;
+                })
+                .catch(async () =>
+                    (await caches.match(request)) ||
+                    new Response("", { status: 504, statusText: "Offline" })
+                );
         })
     );
 });

@@ -21,6 +21,17 @@ function normalizeProductDetails(value) {
     return text ? text.slice(0, 5000) : null;
 }
 
+function isDuplicateEntry(error) {
+    return String(error?.code || "") === "ER_DUP_ENTRY";
+}
+
+function duplicatePlatformMessage(error) {
+    const message = String(error?.message || "");
+    if (message.includes("slug")) return "Ya existe una plataforma con ese slug.";
+    if (message.includes("name")) return "Ya existe una plataforma con ese nombre.";
+    return "Ya existe una plataforma con esos datos.";
+}
+
 // GET /admin/platforms
 // Devuelve plataformas + info de categoría (si existe)
 router.get("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
@@ -134,14 +145,22 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const promoColor = promoEnabled ? (normalizePromoColor(promo_color) || "#22D3EE") : null;
     const showDeviceRule = show_device_rule === undefined ? 1 : (show_device_rule ? 1 : 0);
 
-    const [r] = await pool.query(
-        `INSERT INTO platforms (
-            name, slug, category_id, type, is_active, allowed_currencies, 
-            is_promo, promo_color, show_device_rule, product_details
-         )
-         VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?)`,
-        [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showDeviceRule, normalizeProductDetails(product_details)]
-    );
+    let r;
+    try {
+        [r] = await pool.query(
+            `INSERT INTO platforms (
+                name, slug, category_id, type, is_active, allowed_currencies,
+                is_promo, promo_color, show_device_rule, product_details
+             )
+             VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?)`,
+            [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showDeviceRule, normalizeProductDetails(product_details)]
+        );
+    } catch (error) {
+        if (isDuplicateEntry(error)) {
+            return res.status(409).json({ message: duplicatePlatformMessage(error) });
+        }
+        throw error;
+    }
 
     res.status(201).json({
         id: r.insertId,
@@ -200,40 +219,47 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const hasProductDetails = Object.prototype.hasOwnProperty.call(req.body || {}, "product_details");
     const productDetails = hasProductDetails ? normalizeProductDetails(product_details) : null;
 
-    await pool.query(
-        `UPDATE platforms
-     SET name = COALESCE(?, name),
-         slug = COALESCE(?, slug),
-         is_active = COALESCE(?, is_active),
-         category_id = COALESCE(?, category_id),
-         type = COALESCE(?, type),
-         allowed_currencies = COALESCE(?, allowed_currencies),
-         is_promo = COALESCE(?, is_promo),
-         show_device_rule = COALESCE(?, show_device_rule),
-         product_details = CASE WHEN ? = 1 THEN ? ELSE product_details END,
-         promo_color = CASE
-            WHEN ? = 0 THEN NULL
-            WHEN ? = 1 THEN COALESCE(?, promo_color, '#22D3EE')
-            ELSE promo_color
-         END
-     WHERE id = ?`,
-        [
-            name ?? null,
-            slug ?? null,
-            is_active ?? null,
-            category_id ?? null,
-            type ?? null,
-            allowedCurrenciesCSV ?? null,
-            promoFlag,
-            showDeviceRule,
-            hasProductDetails ? 1 : 0,
-            productDetails,
-            promoFlag,
-            promoFlag,
-            normalizedPromoColor,
-            id,
-        ]
-    );
+    try {
+        await pool.query(
+            `UPDATE platforms
+         SET name = COALESCE(?, name),
+             slug = COALESCE(?, slug),
+             is_active = COALESCE(?, is_active),
+             category_id = COALESCE(?, category_id),
+             type = COALESCE(?, type),
+             allowed_currencies = COALESCE(?, allowed_currencies),
+             is_promo = COALESCE(?, is_promo),
+             show_device_rule = COALESCE(?, show_device_rule),
+             product_details = CASE WHEN ? = 1 THEN ? ELSE product_details END,
+             promo_color = CASE
+                WHEN ? = 0 THEN NULL
+                WHEN ? = 1 THEN COALESCE(?, promo_color, '#22D3EE')
+                ELSE promo_color
+             END
+         WHERE id = ?`,
+            [
+                name ?? null,
+                slug ?? null,
+                is_active ?? null,
+                category_id ?? null,
+                type ?? null,
+                allowedCurrenciesCSV ?? null,
+                promoFlag,
+                showDeviceRule,
+                hasProductDetails ? 1 : 0,
+                productDetails,
+                promoFlag,
+                promoFlag,
+                normalizedPromoColor,
+                id,
+            ]
+        );
+    } catch (error) {
+        if (isDuplicateEntry(error)) {
+            return res.status(409).json({ message: duplicatePlatformMessage(error) });
+        }
+        throw error;
+    }
 
     res.json({ ok: true });
 });

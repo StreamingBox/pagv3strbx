@@ -55,6 +55,62 @@ function getDailyRevenueMap(daily = []) {
     }, {});
 }
 
+function sum(values = []) {
+    return values.reduce((acc, value) => acc + number(value), 0);
+}
+
+function buildPeerBaseline(peerMonths = [], totalDays = 31, today) {
+    const peers = peerMonths
+        .filter((peer) => !isCurrentMonth(number(peer?.year), number(peer?.month), today))
+        .map((peer) => {
+            const map = getDailyRevenueMap(peer?.daily);
+            const values = Object.values(map).map(number).filter((value) => value > 0);
+            const monthDays = daysInMonth(number(peer?.year), number(peer?.month)) || values.length || totalDays;
+            const total = number(peer?.total) || sum(values);
+            const pace = total > 0 && monthDays > 0 ? total / monthDays : average(values);
+            return { map, values, pace };
+        })
+        .filter((peer) => peer.values.length > 0 || peer.pace > 0);
+
+    if (!peers.length) return null;
+
+    const globalPace = average(peers.map((peer) => peer.pace).filter((value) => value > 0))
+        || average(peers.flatMap((peer) => peer.values))
+        || 0;
+
+    const values = Array.from({ length: totalDays }, (_item, index) => {
+        const day = index + 1;
+        const direct = peers
+            .map((peer) => number(peer.map[day]))
+            .filter((value) => value > 0);
+        if (direct.length) return average(direct);
+
+        const nearby = [];
+        for (let radius = 1; radius <= 4; radius += 1) {
+            peers.forEach((peer) => {
+                [day - radius, day + radius].forEach((nearDay) => {
+                    const value = number(peer.map[nearDay]);
+                    if (value > 0) nearby.push({ value, weight: 1 / (radius + 1) });
+                });
+            });
+            if (nearby.length) break;
+        }
+
+        if (nearby.length) {
+            const weightSum = nearby.reduce((acc, item) => acc + item.weight, 0);
+            return nearby.reduce((acc, item) => acc + item.value * item.weight, 0) / weightSum;
+        }
+
+        return globalPace;
+    });
+
+    return {
+        values,
+        total: sum(values),
+        dailyPace: globalPace,
+    };
+}
+
 function isBeforeMonth(year, month, today) {
     return year < today.year || (year === today.year && month < today.month);
 }
@@ -112,15 +168,33 @@ export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new
         .filter((peer) => !isCurrentMonth(number(peer?.year), number(peer?.month), today))
         .map((peer) => getDailyRevenueMap(peer?.daily))
         .filter((map) => Object.keys(map).length > 0);
-    const peerValues = peerDailyMaps.flatMap((map) => Object.values(map).map(number));
-    const peerPace = average(peerValues);
-    const peerScale = peerPace > 0 && currentPace > 0 ? currentPace / peerPace : 1;
+    const peerBaseline = buildPeerBaseline(peerMonths, totalDays, today);
+    const peerPace = peerBaseline?.dailyPace || average(peerDailyMaps.flatMap((map) => Object.values(map).map(number)));
+    const completedForScale = Math.min(completedDays, elapsedDays);
+    const baselineCompletedTotal = peerBaseline
+        ? sum(peerBaseline.values.slice(0, completedForScale))
+        : 0;
+    const actualCompletedTotal = completedForScale > 0
+        ? sum(actualValues.slice(0, completedForScale))
+        : 0;
+    const rawPeerScale = baselineCompletedTotal > 0
+        ? actualCompletedTotal / baselineCompletedTotal
+        : 1;
+    // Very young months need the comparison curve. Real sales gain authority as days close.
+    const observedConfidence = Math.min(Math.max(completedForScale / 8, 0), 0.85);
+    const peerScale = peerBaseline
+        ? clamp(1 + (rawPeerScale - 1) * observedConfidence, 0.45, 1.75)
+        : 1;
+    const maxPeerBaseline = peerBaseline
+        ? Math.max(...peerBaseline.values.map((value) => value * peerScale), 0)
+        : 0;
     const maxActual = Math.max(...actualValues, currentPace, recentAverage, 1);
-    const forecastCap = Math.max(maxActual * 1.65, currentPace * 2.4, 1);
+    const forecastCap = Math.max(maxActual * 1.65, currentPace * 2.4, maxPeerBaseline * 1.45, peerPace * peerScale * 2.2, 1);
     const positiveRecent = recentWindow.filter((value) => value > 0);
     const forecastFloor = Math.max(
         currentPace * 0.22,
         average(positiveRecent) * 0.25,
+        peerBaseline ? peerPace * peerScale * 0.08 : 0,
         1
     );
 
@@ -145,11 +219,17 @@ export function buildMonthProjectionSeries(monthData, peerMonths = [], now = new
         const peerDayValues = peerDailyMaps
             .map((map) => number(map[day]))
             .filter((value) => value > 0);
-        const peerPattern = average(peerDayValues) * peerScale;
+        const peerPattern = peerBaseline
+            ? number(peerBaseline.values[day - 1]) * peerScale
+            : average(peerDayValues);
         const seasonalPattern = peerPattern > 0
-            ? weekdayPattern * 0.55 + peerPattern * 0.45
+            ? weekdayPattern * 0.25 + peerPattern * 0.75
             : weekdayPattern;
-        const baseValue = recentAverage * 0.45 + currentPace * 0.2 + seasonalPattern * 0.35;
+        const localBaseValue = recentAverage * 0.45 + currentPace * 0.2 + seasonalPattern * 0.35;
+        const peerWeight = peerBaseline ? clamp(0.9 - (completedForScale / 10), 0.25, 0.9) : 0;
+        const baseValue = peerPattern > 0
+            ? seasonalPattern * peerWeight + localBaseValue * (1 - peerWeight)
+            : localBaseValue;
         // Recent growth or decline fades gradually instead of extending as a line to zero.
         const trendMultiplier = 1 + (trendRatio - 1) * Math.exp(-(daysAhead - 1) / 6);
         const forecastValue = clamp(baseValue * trendMultiplier, forecastFloor, forecastCap);

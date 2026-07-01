@@ -587,17 +587,22 @@ function UserAnalyticsContent({ admin }) {
     const selectedProjectionLabel = selectedHasProjection
         ? monthsData.length > 1 ? "Proyección + cierre" : "Proyección mensual"
         : "Cierre seleccionado";
-    const selectedTrackedRevenue = monthsData.reduce((sum, m) => sum + Number(m.trackedRevenue || 0), 0);
-    const selectedTrackedSalesCount = monthsData.reduce((sum, m) => sum + Number(m.trackedSalesCount || 0), 0);
-    const selectedCostTotal = monthsData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
-    const selectedNetProfit = monthsData.reduce((sum, m) => sum + Number(m.netProfit || 0), 0);
-    const selectedMissingCostCount = monthsData.reduce((sum, m) => sum + Number(m.missingCostCount || 0), 0);
+    const isComparingUsers = admin && selectedUserIds.length >= 2;
+    const balanceScopeData = isComparingUsers ? monthsData : monthsData.slice(0, 1);
+    const balanceScopeLabel = !isComparingUsers && balanceScopeData.length === 1 ? balanceScopeData[0]?.label : "";
+    const balanceScopePrefix = balanceScopeLabel ? `Balance neto ${balanceScopeLabel}` : "Balance neto";
+    const selectedTrackedRevenue = balanceScopeData.reduce((sum, m) => sum + Number(m.trackedRevenue || 0), 0);
+    const selectedTrackedSalesCount = balanceScopeData.reduce((sum, m) => sum + Number(m.trackedSalesCount || 0), 0);
+    const selectedCostTotal = balanceScopeData.reduce((sum, m) => sum + Number(m.costTotal || 0), 0);
+    const selectedNetProfit = balanceScopeData.reduce((sum, m) => sum + Number(m.netProfit || 0), 0);
+    const selectedMissingCostCount = balanceScopeData.reduce((sum, m) => sum + Number(m.missingCostCount || 0), 0);
     const selectedMarginPct = selectedTrackedRevenue > 0
         ? Number(((selectedNetProfit / selectedTrackedRevenue) * 100).toFixed(2))
         : 0;
-    const trackingStartLabel = formatTrackingStart(monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt);
-
-    const isComparingUsers = admin && selectedUserIds.length >= 2;
+    const trackingStartLabel = formatTrackingStart(
+        balanceScopeData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt ||
+        monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt
+    );
 
     return (
         <motion.div style={{ marginTop: isMobile ? 0 : 16, width: "100%", minWidth: 0 }} initial="hidden" animate="show" variants={containerVariants}>
@@ -881,10 +886,10 @@ function UserAnalyticsContent({ admin }) {
                         }}
                     >
                         {selectedMissingCostCount > 0
-                            ? `Balance neto desde ${trackingStartLabel}: ${selectedMissingCostCount} venta${selectedMissingCostCount === 1 ? "" : "s"} actual${selectedMissingCostCount === 1 ? "" : "es"} no tiene${selectedMissingCostCount === 1 ? "" : "n"} costo registrado. Las ventas anteriores no se incluyen ni necesitan corregirse.`
+                            ? `${balanceScopePrefix} desde ${trackingStartLabel}: ${selectedMissingCostCount} venta${selectedMissingCostCount === 1 ? "" : "s"} actual${selectedMissingCostCount === 1 ? "" : "es"} no tiene${selectedMissingCostCount === 1 ? "" : "n"} costo registrado. Las ventas anteriores no se incluyen ni necesitan corregirse.`
                             : selectedTrackedSalesCount > 0
-                                ? `Balance neto activo desde ${trackingStartLabel}. Incluye ${selectedTrackedSalesCount} venta${selectedTrackedSalesCount === 1 ? "" : "s"}; todo lo anterior queda solamente como historial.`
-                                : `El balance neto comienza el ${trackingStartLabel}. Las ventas anteriores se conservan como historial y no afectan la utilidad ni el margen.`}
+                                ? `${balanceScopePrefix} activo desde ${trackingStartLabel}. Incluye ${selectedTrackedSalesCount} venta${selectedTrackedSalesCount === 1 ? "" : "s"}; todo lo anterior queda solamente como historial.`
+                                : `${balanceScopePrefix} comienza el ${trackingStartLabel}. Las ventas anteriores se conservan como historial y no afectan la utilidad ni el margen.`}
                     </motion.div>
                     <motion.div
                         variants={itemVariants}

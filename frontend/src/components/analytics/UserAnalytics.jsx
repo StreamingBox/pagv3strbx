@@ -6,7 +6,7 @@ import WeeklyChart from "./WeeklyChart";
 import { apiGet } from "../../api/api";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
-import { formatCurrency, getAverageTicket, getMonthProjection } from "../../utils/analyticsForecast.js";
+import { daysInMonth, formatCurrency, getAverageTicket, getBogotaToday, getMonthProjection } from "../../utils/analyticsForecast.js";
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -579,9 +579,14 @@ function UserAnalyticsContent({ admin }) {
     const monthlyProjections = monthsData.map((m, idx) => (
         getMonthProjection(m, new Date(), { peerMonths: monthsData.filter((_month, peerIdx) => peerIdx !== idx) })
     ));
-    const selectedRevenueTotal = monthsData.reduce((sum, m) => sum + Number(m.total || 0), 0);
-    const selectedOrderTotal = monthsData.reduce((sum, m) => sum + Number(m.orders || 0), 0);
-    const selectedAverageTicket = getAverageTicket(selectedRevenueTotal, selectedOrderTotal);
+    const bogotaToday = getBogotaToday(now);
+    const primaryDaysInMonth = daysInMonth(Number(primary?.year), Number(primary?.month));
+    const primaryElapsedDays = primary?.year === bogotaToday.year && primary?.month === bogotaToday.month
+        ? Math.min(Math.max(bogotaToday.day, 1), primaryDaysInMonth || bogotaToday.day)
+        : primaryDaysInMonth || 1;
+    const primaryDailyAverage = primaryElapsedDays > 0
+        ? Number(primary?.total || 0) / primaryElapsedDays
+        : 0;
     const selectedProjectionTotal = monthlyProjections.reduce((sum, projection) => sum + Number(projection?.value || 0), 0);
     const selectedHasProjection = monthlyProjections.some((projection) => projection?.isProjection);
     const selectedProjectionLabel = selectedHasProjection
@@ -858,7 +863,7 @@ function UserAnalyticsContent({ admin }) {
                         minWidth: 0,
                     }}
                 >
-                    <InsightChip emoji="🎟️" label="Ticket promedio" value={formatCurrency(selectedAverageTicket)} color="#10b981" />
+                    <InsightChip emoji="📅" label="Promedio diario" value={formatCurrency(primaryDailyAverage)} color="#10b981" />
                     <InsightChip
                         emoji="📈"
                         label={selectedProjectionLabel}

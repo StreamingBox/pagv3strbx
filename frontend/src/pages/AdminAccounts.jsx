@@ -12,7 +12,10 @@ const MotionDiv = motion.div;
 async function apiFetch(path, opts = {}) {
     const res = await baseApiFetch(path, opts);
     if (!res.ok) {
-        throw new Error(res.data?.message || `HTTP ${res.status}` || "Error en la solicitud");
+        const err = new Error(res.data?.message || `HTTP ${res.status}` || "Error en la solicitud");
+        err.data = res.data;
+        err.status = res.status;
+        throw err;
     }
     return res.data;
 }
@@ -89,6 +92,22 @@ function summarizeExcelRows(rows) {
     }
 
     return summary;
+}
+
+function formatDuplicateAssignedWarnings(items = [], limit = 8) {
+    const list = items.slice(0, limit).map((item) => {
+        const profile = item.profileNumber === null || item.profileNumber === undefined || String(item.profileNumber).trim() === ""
+            ? "sin perfil"
+            : `perfil ${item.profileNumber}`;
+        const order = item.orderCode || (item.orderId ? `orden #${item.orderId}` : item.subscriptionId ? `venta #${item.subscriptionId}` : "sin orden activa");
+        const assignedTo = item.assignedTo ? `, asignada a ${item.assignedTo}` : "";
+        const expires = item.expiresAt ? `, expira ${String(item.expiresAt).slice(0, 10)}` : ", sin fecha de expiracion";
+        return `Fila ${item.rowNumber || "-"}: ${item.platformName || "Plataforma"} ${item.email || ""} (${profile}) no se cargo; ya existe cuenta #${item.accountId}${assignedTo}, ${order}${expires}.`;
+    });
+    if (items.length > limit) {
+        list.push(`... y ${items.length - limit} duplicada(s) mas.`);
+    }
+    return list.join("\n");
 }
 
 function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
@@ -323,11 +342,26 @@ export default function AdminAccounts() {
                 body: JSON.stringify({ rows: excelPreview.rows }),
             });
 
-            setExcelMsg(`Excel cargado. Insertadas: ${out.inserted || 0}.`);
+            const duplicateAssigned = Array.isArray(out.duplicateAssigned) ? out.duplicateAssigned : [];
+            const duplicateCount = Number(out.skipped_duplicate_assigned || duplicateAssigned.length || 0);
+            const warnings = [];
+            if (duplicateCount > 0) {
+                warnings.push(
+                    `No se cargaron ${duplicateCount} pantalla(s) porque ya estaban asignadas y vigentes:\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
+                );
+            }
+            if (Array.isArray(out.warning_missing_platforms) && out.warning_missing_platforms.length) {
+                warnings.push(`Plataformas no encontradas: ${out.warning_missing_platforms.join(", ")}`);
+            }
+            setExcelMsg([`Excel cargado. Insertadas: ${out.inserted || 0}.`, ...warnings].join("\n\n"));
             setExcelPreview(null);
         } catch (err) {
             setExcelError(true);
-            setExcelMsg(err.message || "Error subiendo Excel.");
+            const duplicateAssigned = Array.isArray(err.data?.duplicateAssigned) ? err.data.duplicateAssigned : [];
+            const duplicateDetails = duplicateAssigned.length
+                ? `\n\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
+                : "";
+            setExcelMsg(`${err.message || "Error subiendo Excel."}${duplicateDetails}`);
         } finally {
             setExcelLoading(false);
         }
@@ -467,6 +501,31 @@ export default function AdminAccounts() {
         fontSize: 14, fontWeight: 500, outline: "none", width: "100%", fontFamily: "var(--font)",
         transition: "all 0.2s"
     };
+    const excelTone = excelError
+        ? "error"
+        : /No se cargaron|Plataformas no encontradas/i.test(excelMsg)
+            ? "warning"
+            : "success";
+    const excelToneStyles = {
+        error: {
+            background: "rgba(239,68,68,0.1)",
+            border: "rgba(239,68,68,0.3)",
+            color: "#ef4444",
+            shadow: "rgba(239,68,68,0.1)",
+        },
+        warning: {
+            background: "rgba(245,158,11,0.12)",
+            border: "rgba(245,158,11,0.35)",
+            color: "#f59e0b",
+            shadow: "rgba(245,158,11,0.12)",
+        },
+        success: {
+            background: "rgba(16,185,129,0.1)",
+            border: "rgba(16,185,129,0.3)",
+            color: "#10b981",
+            shadow: "rgba(16,185,129,0.1)",
+        },
+    }[excelTone];
 
     return (
         <div className="page-shell">
@@ -536,9 +595,11 @@ export default function AdminAccounts() {
                             initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                             style={{
                                 padding: "14px 20px", borderRadius: 12, marginBottom: 24, fontSize: 13, fontWeight: 600,
-                                background: excelError ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)",
-                                border: `1px solid ${excelError ? "rgba(239,68,68,0.3)" : "rgba(16,185,129,0.3)"}`,
-                                color: excelError ? "#ef4444" : "#10b981", boxShadow: `0 4px 12px ${excelError ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.1)"}`
+                                background: excelToneStyles.background,
+                                border: `1px solid ${excelToneStyles.border}`,
+                                color: excelToneStyles.color,
+                                boxShadow: `0 4px 12px ${excelToneStyles.shadow}`,
+                                whiteSpace: "pre-line",
                             }}
                         >
                             {excelMsg}

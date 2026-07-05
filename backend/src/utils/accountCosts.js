@@ -92,6 +92,7 @@ function validateCostModelInput(input = {}, costModel = resolveCostModel(input))
 }
 
 module.exports = {
+    normalizeCostMode,
     resolveCostModel,
     validateCostModelInput,
 };

@@ -6,6 +6,7 @@ const {
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
 const {
+    normalizeCostMode,
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
@@ -85,6 +86,99 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     await resolveStockAlertsWithEmail(conn, pid, pname);
     
     return ins.insertId;
+}
+
+function isScreenCostInput(costInput = {}) {
+    return normalizeCostMode(costInput.costMode) === "screen";
+}
+
+function buildDuplicatePayload(row, rowNumber = null) {
+    if (!row) return null;
+    return {
+        rowNumber,
+        accountId: row.id,
+        platformId: row.platform_id,
+        platformName: row.platform_name || "",
+        email: row.email || "",
+        profileNumber: row.profile_number ?? null,
+        status: row.status || "",
+        assignedTo: row.assigned_user_email || row.assigned_user_name || "",
+        assignedUserEmail: row.assigned_user_email || "",
+        assignedUserName: row.assigned_user_name || "",
+        expiresAt: row.expires_at || null,
+        subscriptionId: row.subscription_id || null,
+        orderId: row.order_id || null,
+        orderCode: row.order_code || null,
+    };
+}
+
+function duplicateSummaryLine(item) {
+    const row = item.rowNumber ? `Fila ${item.rowNumber}: ` : "";
+    const profile = item.profileNumber === null || item.profileNumber === undefined || String(item.profileNumber).trim() === ""
+        ? "sin perfil"
+        : `perfil ${item.profileNumber}`;
+    const order = item.orderCode || (item.orderId ? `orden #${item.orderId}` : item.subscriptionId ? `venta #${item.subscriptionId}` : "sin orden activa");
+    const assignedTo = item.assignedTo ? `, asignada a ${item.assignedTo}` : "";
+    const expires = item.expiresAt ? `, expira ${String(item.expiresAt).slice(0, 10)}` : ", sin fecha de expiracion";
+    return `${row}no se cargo ${item.platformName || "la plataforma"} ${item.email} (${profile}) porque ya existe la cuenta #${item.accountId}${assignedTo}, ${order}${expires}.`;
+}
+
+function duplicateSummaryMessage(items = [], limit = 5) {
+    const list = items.slice(0, limit).map(duplicateSummaryLine);
+    if (items.length > limit) {
+        list.push(`... y ${items.length - limit} duplicada(s) mas.`);
+    }
+    return list.join(" ");
+}
+
+async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf }) {
+    const params = [pid, emailValue];
+    const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
+        ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
+        : "CAST(pa.profile_number AS CHAR) = ?";
+    if (profileSql.includes("?")) params.push(String(accountProf));
+
+    const [rows] = await conn.query(
+        `SELECT
+            pa.id,
+            pa.platform_id,
+            COALESCE(p.name, pa.platform_name) AS platform_name,
+            pa.email,
+            pa.profile_number,
+            pa.status,
+            pa.expires_at,
+            u.email AS assigned_user_email,
+            u.name AS assigned_user_name,
+            active_sub.id AS subscription_id,
+            o.id AS order_id,
+            o.order_code
+         FROM platform_accounts pa
+         LEFT JOIN platforms p ON p.id = pa.platform_id
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         LEFT JOIN subscriptions active_sub
+           ON active_sub.platform_account_id = pa.id
+          AND active_sub.status = 'active'
+         LEFT JOIN order_items oi ON oi.subscription_id = active_sub.id
+         LEFT JOIN orders o ON o.id = oi.order_id
+         WHERE pa.platform_id = ?
+           AND LOWER(pa.email) = LOWER(?)
+           AND ${profileSql}
+           AND (
+                LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned'
+                OR pa.assigned_to_user_id IS NOT NULL
+                OR active_sub.id IS NOT NULL
+           )
+           AND (
+                pa.expires_at IS NULL
+                OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                OR DATE(active_sub.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+           )
+         ORDER BY pa.id DESC
+         LIMIT 1`,
+        params
+    );
+
+    return rows?.[0] || null;
 }
 
 /**
@@ -244,6 +338,19 @@ async function createAccountOne(conn, body) {
 
     const { pid, pname } = await resolvePlatform(conn, { platformId, platformName });
 
+    if (isScreenCostInput(costInput)) {
+        const duplicate = await findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf });
+        if (duplicate) {
+            const payload = buildDuplicatePayload(duplicate);
+            const err = new Error(
+                `No se cargo la pantalla porque ya esta asignada y no ha expirado. ${duplicateSummaryLine(payload)}`
+            );
+            err.status = 409;
+            err.payload = { duplicateAssigned: [payload] };
+            throw err;
+        }
+    }
+
     const identityId = await upsertIdentity(conn, {
         pid,
         emailValue,
@@ -331,6 +438,8 @@ async function bulkInsertAccounts(conn, rows) {
 
     let inserted = 0;
     const missingPlatforms = new Set();
+    let missingPlatformRows = 0;
+    const duplicateAssigned = [];
 
     for (const [rowIndex, r] of candidates.entries()) {
         let pid = r.platformId;
@@ -338,6 +447,7 @@ async function bulkInsertAccounts(conn, rows) {
 
         if (!pid) {
             missingPlatforms.add(r.platformName || "(vacío)");
+            missingPlatformRows += 1;
             continue;
         }
 
@@ -357,6 +467,18 @@ async function bulkInsertAccounts(conn, rows) {
         } catch (err) {
             err.message = `Fila ${rowIndex + 2}: ${err.message}`;
             throw err;
+        }
+
+        if (isScreenCostInput(costInput)) {
+            const duplicate = await findActiveAssignedScreenDuplicate(conn, {
+                pid,
+                emailValue: r.email,
+                accountProf,
+            });
+            if (duplicate) {
+                duplicateAssigned.push(buildDuplicatePayload(duplicate, rowIndex + 2));
+                continue;
+            }
         }
 
         const identityId = await upsertIdentity(conn, {
@@ -387,10 +509,17 @@ async function bulkInsertAccounts(conn, rows) {
     return {
         inserted,
         missingPlatforms: [...missingPlatforms].slice(0, 20),
+        missingPlatformRows,
+        skippedDuplicateAssigned: duplicateAssigned.length,
+        duplicateAssigned,
     };
 }
 
 module.exports = {
     createAccountOne,
     bulkInsertAccounts,
+    duplicateSummaryLine,
+    duplicateSummaryMessage,
+    findActiveAssignedScreenDuplicate,
+    isScreenCostInput,
 };

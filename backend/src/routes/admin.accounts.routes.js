@@ -3,7 +3,11 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 
-const { createAccountOne, bulkInsertAccounts } = require("../services/accounts.service");
+const {
+    createAccountOne,
+    bulkInsertAccounts,
+    duplicateSummaryMessage,
+} = require("../services/accounts.service");
 
 const router = express.Router();
 
@@ -46,6 +50,16 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
         const adminId    = req.user?.id    || null;
         const filename   = req.body?.filename || null;
         const totalRows  = (req.body?.rows || []).length;
+        const duplicateCount = out.skippedDuplicateAssigned || 0;
+        const missingPlatformRows = out.missingPlatformRows || 0;
+        const notes = [
+            out.missingPlatforms?.length
+                ? `Plataformas no encontradas: ${out.missingPlatforms.join(", ")}`
+                : "",
+            duplicateCount
+                ? `Duplicadas asignadas vigentes: ${duplicateSummaryMessage(out.duplicateAssigned, 8)}`
+                : "",
+        ].filter(Boolean).join(" | ") || null;
         pool.query(
             `INSERT INTO account_upload_logs
              (type, admin_id, admin_email, platform_id, platform_name, total_rows, inserted, skipped, errors, source_filename, notes)
@@ -54,23 +68,34 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
                 adminId, adminEmail,
                 totalRows,
                 out.inserted || 0,
-                totalRows - (out.inserted || 0) - (out.missingPlatforms?.length || 0),
-                out.missingPlatforms?.length || 0,
+                Math.max(0, totalRows - (out.inserted || 0) - missingPlatformRows),
+                missingPlatformRows,
                 filename,
-                out.missingPlatforms?.length
-                    ? `Plataformas no encontradas: ${out.missingPlatforms.join(", ")}`
-                    : null
+                notes
             ]
         ).catch(() => {});
 
         if (out.inserted === 0) {
+            if (duplicateCount > 0) {
+                return res.status(409).json({
+                    message: `No se inserto ninguna fila porque ${duplicateCount} pantalla(s) ya estan asignadas y vigentes. ${duplicateSummaryMessage(out.duplicateAssigned)}`,
+                    duplicateAssigned: out.duplicateAssigned,
+                    warning_missing_platforms: out.missingPlatforms,
+                });
+            }
             return res.status(400).json({
                 message: "No se insertó ninguna fila. Revisa platformName o envía platformId.",
                 missingPlatforms: out.missingPlatforms,
             });
         }
 
-        return res.json({ ok: true, inserted: out.inserted, warning_missing_platforms: out.missingPlatforms });
+        return res.json({
+            ok: true,
+            inserted: out.inserted,
+            warning_missing_platforms: out.missingPlatforms,
+            skipped_duplicate_assigned: duplicateCount,
+            duplicateAssigned: out.duplicateAssigned,
+        });
     } catch (e) {
         await conn.rollback();
         const status = e.status || 500;

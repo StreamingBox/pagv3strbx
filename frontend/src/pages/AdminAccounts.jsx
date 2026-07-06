@@ -224,11 +224,13 @@ export default function AdminAccounts() {
 
     // Excel upload
     const fileExcelRef = useRef(null);
+    const forceConfirmResolveRef = useRef(null);
     const [excelLoading, setExcelLoading] = useState(false);
     const [excelMsg, setExcelMsg] = useState("");
     const [excelError, setExcelError] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [excelPreview, setExcelPreview] = useState(null);
+    const [forceConfirm, setForceConfirm] = useState(null);
 
     const selectedPlatform = useMemo(
         () => platforms.find((p) => String(p.id) === String(platformId)),
@@ -344,14 +346,29 @@ export default function AdminAccounts() {
         }
     }
 
+    function requestForceDuplicateConfirm({ count, details }) {
+        return new Promise((resolve) => {
+            forceConfirmResolveRef.current = resolve;
+            setForceConfirm({ count, details });
+        });
+    }
+
+    function resolveForceDuplicateConfirm(confirmed) {
+        const resolve = forceConfirmResolveRef.current;
+        forceConfirmResolveRef.current = null;
+        setForceConfirm(null);
+        if (resolve) resolve(confirmed);
+    }
+
     async function confirmForceDuplicateAssignedUpload(originalRows, duplicateAssigned) {
         const duplicateRows = rowsFromDuplicateAssignedWarnings(originalRows, duplicateAssigned);
         if (!duplicateRows.length) return null;
 
         const details = formatDuplicateAssignedWarnings(duplicateAssigned, 6);
-        const confirmed = window.confirm(
-            `Se encontraron ${duplicateRows.length} pantalla(s) que ya estan asignadas y vigentes.\n\n${details}\n\nSi aceptas, se cargaran de todas formas como registros nuevos. ¿Quieres continuar?`
-        );
+        const confirmed = await requestForceDuplicateConfirm({
+            count: duplicateRows.length,
+            details,
+        });
         if (!confirmed) return null;
 
         return apiFetch(`/admin/accounts/bulk`, {
@@ -954,6 +971,89 @@ export default function AdminAccounts() {
                             </button>
                         </div>
                     </MotionDiv>
+
+                    {forceConfirm && (
+                        <div
+                            role="presentation"
+                            onClick={() => resolveForceDuplicateConfirm(false)}
+                            style={{
+                                position: "fixed",
+                                inset: 0,
+                                zIndex: 80,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 18,
+                                background: "rgba(2, 6, 23, 0.72)",
+                                backdropFilter: "blur(8px)",
+                            }}
+                        >
+                            <MotionDiv
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="force-duplicate-title"
+                                initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{
+                                    width: "min(680px, 100%)",
+                                    maxHeight: "min(80vh, 680px)",
+                                    overflow: "hidden",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    background: "linear-gradient(180deg, rgba(30,42,82,0.98), rgba(20,30,58,0.98))",
+                                    border: "1px solid rgba(245,158,11,0.45)",
+                                    borderRadius: 14,
+                                    boxShadow: "0 24px 80px rgba(0,0,0,0.42)",
+                                }}
+                            >
+                                <div style={{ padding: "20px 22px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                                    <div id="force-duplicate-title" style={{ fontSize: 20, fontWeight: 900, color: "var(--text)" }}>
+                                        Confirmar carga forzada
+                                    </div>
+                                    <div style={{ marginTop: 8, color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+                                        Hay {forceConfirm.count} pantalla(s) que ya estan asignadas y vigentes. Si continuas, se crearan registros nuevos de esas mismas pantallas.
+                                    </div>
+                                </div>
+
+                                <div style={{ padding: "16px 22px", overflowY: "auto" }}>
+                                    <div
+                                        style={{
+                                            padding: "14px 16px",
+                                            border: "1px solid rgba(245,158,11,0.35)",
+                                            background: "rgba(245,158,11,0.1)",
+                                            borderRadius: 10,
+                                            color: "#fbbf24",
+                                            fontSize: 12,
+                                            lineHeight: 1.55,
+                                            whiteSpace: "pre-line",
+                                        }}
+                                    >
+                                        {forceConfirm.details}
+                                    </div>
+                                </div>
+
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "16px 22px 20px", borderTop: "1px solid rgba(255,255,255,0.08)", flexWrap: "wrap" }}>
+                                    <button
+                                        type="button"
+                                        className="btn-ghost"
+                                        onClick={() => resolveForceDuplicateConfirm(false)}
+                                        style={{ minWidth: 130, height: 42 }}
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        onClick={() => resolveForceDuplicateConfirm(true)}
+                                        style={{ minWidth: 210, height: 42, fontWeight: 900, background: "linear-gradient(135deg, #f59e0b, #ef4444)" }}
+                                    >
+                                        Cargar de todas formas
+                                    </button>
+                                </div>
+                            </MotionDiv>
+                        </div>
+                    )}
                 </main>
             </div>
         </div>

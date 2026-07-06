@@ -402,7 +402,7 @@ async function resolvePlatformsByName(rows) {
 }
 
 function normalizeBulkRows(rows) {
-    return rows.map((r) => {
+    return rows.map((r, index) => {
         const platformId = (r.platformId ?? r.plataformaId)
             ? Number(r.platformId ?? r.plataformaId)
             : null;
@@ -414,6 +414,7 @@ function normalizeBulkRows(rows) {
         const profileNumber = normalizeOptionalValue(rawProfile); // string o null
 
         return {
+            rowNumber: index + 2,
             platformId,
             platformName,
             email: String(r.email || r.correo || "").trim(),
@@ -430,7 +431,7 @@ function normalizeBulkRows(rows) {
     });
 }
 
-async function bulkInsertAccounts(conn, rows) {
+async function bulkInsertAccounts(conn, rows, options = {}) {
     if (!Array.isArray(rows) || rows.length === 0) {
         const err = new Error("rows vacío.");
         err.status = 400;
@@ -451,6 +452,7 @@ async function bulkInsertAccounts(conn, rows) {
     const missingPlatforms = new Set();
     let missingPlatformRows = 0;
     const duplicateAssigned = [];
+    const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
     for (const [rowIndex, r] of candidates.entries()) {
         let pid = r.platformId;
@@ -480,14 +482,14 @@ async function bulkInsertAccounts(conn, rows) {
             throw err;
         }
 
-        if (isScreenCostInput(costInput)) {
+        if (isScreenCostInput(costInput) && !allowAssignedDuplicateScreens) {
             const duplicate = await findActiveAssignedScreenDuplicate(conn, {
                 pid,
                 emailValue: r.email,
                 accountProf,
             });
             if (duplicate) {
-                duplicateAssigned.push(buildDuplicatePayload(duplicate, rowIndex + 2));
+                duplicateAssigned.push(buildDuplicatePayload(duplicate, r.rowNumber || rowIndex + 2));
                 continue;
             }
         }
@@ -523,6 +525,7 @@ async function bulkInsertAccounts(conn, rows) {
         missingPlatformRows,
         skippedDuplicateAssigned: duplicateAssigned.length,
         duplicateAssigned,
+        forcedAssignedDuplicates: allowAssignedDuplicateScreens,
     };
 }
 

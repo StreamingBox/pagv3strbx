@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
+    bulkInsertAccounts,
     duplicateSummaryLine,
     findActiveAssignedScreenDuplicate,
     isScreenCostInput,
@@ -70,4 +71,37 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
     assert.match(calls[0].sql, /pa\.expires_at IS NULL/);
     assert.match(calls[0].sql, /active_sub\.expires_at/);
     assert.match(calls[0].sql, /CAST\(pa\.profile_number AS CHAR\) = \?/);
+});
+
+test("bulk upload can force assigned screen duplicates when admin confirms", async () => {
+    const queries = [];
+    const conn = {
+        async query(sql, params) {
+            queries.push({ sql, params });
+            if (/SELECT\s+pa\.id/.test(sql)) {
+                throw new Error("duplicate lookup should be skipped when forcing");
+            }
+            if (sql.includes("INSERT INTO account_identities")) {
+                return [{ insertId: 9001 }];
+            }
+            if (sql.includes("INSERT INTO platform_accounts")) {
+                return [{ insertId: 9002 }];
+            }
+            return [[]];
+        },
+    };
+
+    const out = await bulkInsertAccounts(conn, [{
+        platformId: 4,
+        email: "fatndku47@strbx.com.co",
+        password: "secret",
+        profileNumber: "1",
+        costMode: "PANTALLA",
+        costAmount: 1000,
+    }], { allowAssignedDuplicateScreens: true });
+
+    assert.equal(out.inserted, 1);
+    assert.equal(out.skippedDuplicateAssigned, 0);
+    assert.equal(out.forcedAssignedDuplicates, true);
+    assert.ok(queries.some((call) => call.sql.includes("INSERT INTO platform_accounts")));
 });

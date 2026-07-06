@@ -42,7 +42,10 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        const out = await bulkInsertAccounts(conn, req.body?.rows || []);
+        const allowAssignedDuplicateScreens =
+            req.body?.allowAssignedDuplicateScreens === true ||
+            req.body?.forceDuplicateAssigned === true;
+        const out = await bulkInsertAccounts(conn, req.body?.rows || [], { allowAssignedDuplicateScreens });
         await conn.commit();
 
         // Registrar log
@@ -58,6 +61,9 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
                 : "",
             duplicateCount
                 ? `Duplicadas asignadas vigentes: ${duplicateSummaryMessage(out.duplicateAssigned, 8)}`
+                : "",
+            allowAssignedDuplicateScreens
+                ? "Carga forzada autorizada por el administrador para pantallas asignadas vigentes."
                 : "",
         ].filter(Boolean).join(" | ") || null;
         pool.query(
@@ -95,6 +101,7 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
             warning_missing_platforms: out.missingPlatforms,
             skipped_duplicate_assigned: duplicateCount,
             duplicateAssigned: out.duplicateAssigned,
+            forced_assigned_duplicates: allowAssignedDuplicateScreens,
         });
     } catch (e) {
         await conn.rollback();

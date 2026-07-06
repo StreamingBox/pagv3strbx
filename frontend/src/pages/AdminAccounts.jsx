@@ -110,6 +110,20 @@ function formatDuplicateAssignedWarnings(items = [], limit = 8) {
     return list.join("\n");
 }
 
+function rowsFromDuplicateAssignedWarnings(rows = [], duplicateAssigned = []) {
+    const selected = [];
+    const seen = new Set();
+    for (const item of duplicateAssigned) {
+        const rowIndex = Number(item.rowNumber) - 2;
+        if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= rows.length || seen.has(rowIndex)) {
+            continue;
+        }
+        seen.add(rowIndex);
+        selected.push(rows[rowIndex]);
+    }
+    return selected;
+}
+
 function CustomPlatformSelect({ value, onChange, platforms, selStyle }) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
@@ -330,6 +344,25 @@ export default function AdminAccounts() {
         }
     }
 
+    async function confirmForceDuplicateAssignedUpload(originalRows, duplicateAssigned) {
+        const duplicateRows = rowsFromDuplicateAssignedWarnings(originalRows, duplicateAssigned);
+        if (!duplicateRows.length) return null;
+
+        const details = formatDuplicateAssignedWarnings(duplicateAssigned, 6);
+        const confirmed = window.confirm(
+            `Se encontraron ${duplicateRows.length} pantalla(s) que ya estan asignadas y vigentes.\n\n${details}\n\nSi aceptas, se cargaran de todas formas como registros nuevos. ¿Quieres continuar?`
+        );
+        if (!confirmed) return null;
+
+        return apiFetch(`/admin/accounts/bulk`, {
+            method: "POST",
+            body: JSON.stringify({
+                rows: duplicateRows,
+                allowAssignedDuplicateScreens: true,
+            }),
+        });
+    }
+
     async function confirmExcelUpload() {
         if (!excelPreview?.rows?.length) return;
 
@@ -345,23 +378,51 @@ export default function AdminAccounts() {
             const duplicateAssigned = Array.isArray(out.duplicateAssigned) ? out.duplicateAssigned : [];
             const duplicateCount = Number(out.skipped_duplicate_assigned || duplicateAssigned.length || 0);
             const warnings = [];
+            let forcedOut = null;
             if (duplicateCount > 0) {
-                warnings.push(
-                    `No se cargaron ${duplicateCount} pantalla(s) porque ya estaban asignadas y vigentes:\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
-                );
+                forcedOut = await confirmForceDuplicateAssignedUpload(excelPreview.rows, duplicateAssigned);
+                if (!forcedOut) {
+                    warnings.push(
+                        `No se cargaron ${duplicateCount} pantalla(s) porque ya estaban asignadas y vigentes:\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
+                    );
+                }
             }
             if (Array.isArray(out.warning_missing_platforms) && out.warning_missing_platforms.length) {
                 warnings.push(`Plataformas no encontradas: ${out.warning_missing_platforms.join(", ")}`);
             }
-            setExcelMsg([`Excel cargado. Insertadas: ${out.inserted || 0}.`, ...warnings].join("\n\n"));
+            const forcedInserted = Number(forcedOut?.inserted || 0);
+            const baseInserted = Number(out.inserted || 0);
+            const successLines = forcedOut
+                ? [
+                    `Excel cargado. Insertadas: ${baseInserted + forcedInserted}.`,
+                    `Normales: ${baseInserted}. Forzadas por confirmacion: ${forcedInserted}.`,
+                ]
+                : [`Excel cargado. Insertadas: ${baseInserted}.`];
+            setExcelMsg([...successLines, ...warnings].join("\n\n"));
             setExcelPreview(null);
         } catch (err) {
-            setExcelError(true);
             const duplicateAssigned = Array.isArray(err.data?.duplicateAssigned) ? err.data.duplicateAssigned : [];
-            const duplicateDetails = duplicateAssigned.length
-                ? `\n\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
-                : "";
-            setExcelMsg(`${err.message || "Error subiendo Excel."}${duplicateDetails}`);
+            if (duplicateAssigned.length) {
+                let forcedOut = null;
+                try {
+                    forcedOut = await confirmForceDuplicateAssignedUpload(excelPreview.rows, duplicateAssigned);
+                } catch (forceErr) {
+                    setExcelError(true);
+                    setExcelMsg(forceErr.message || "No se pudo hacer la carga forzada.");
+                    return;
+                }
+                if (forcedOut) {
+                    setExcelError(false);
+                    setExcelMsg(`Carga confirmada. Insertadas forzadas: ${forcedOut.inserted || 0}.`);
+                    setExcelPreview(null);
+                    return;
+                }
+                setExcelError(false);
+                setExcelMsg(`${err.message || "No se cargaron esas pantallas."}\n\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`);
+                return;
+            }
+            setExcelError(true);
+            setExcelMsg(err.message || "Error subiendo Excel.");
         } finally {
             setExcelLoading(false);
         }

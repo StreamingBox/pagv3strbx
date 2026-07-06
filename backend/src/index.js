@@ -6,6 +6,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
+const { isCountableLoginAttemptResponse } = require("./utils/loginRateLimit");
 const cookieParser = require("cookie-parser");
 const sanitize = require("./middleware/sanitize");
 const logger = require("./utils/logger");
@@ -225,6 +226,9 @@ const loginRateLimit = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiados intentos de inicio de sesión. Intenta de nuevo en un minuto." },
+    // Do not lock users out when the database or another dependency returns 5xx.
+    skipFailedRequests: true,
+    requestWasSuccessful: isCountableLoginAttemptResponse,
     skip: (req) => {
         if (req.method !== "POST") return true;
         const p = req.path || "";

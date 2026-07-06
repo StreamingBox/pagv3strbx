@@ -105,7 +105,10 @@ function buildDuplicatePayload(row, rowNumber = null) {
         assignedTo: row.assigned_user_email || row.assigned_user_name || "",
         assignedUserEmail: row.assigned_user_email || "",
         assignedUserName: row.assigned_user_name || "",
-        expiresAt: row.expires_at || null,
+        expiresAt: row.effective_expires_date || row.subscription_expires_at || row.expires_at || null,
+        accountExpiresAt: row.expires_at || null,
+        subscriptionExpiresAt: row.subscription_expires_at || null,
+        effectiveExpiresDate: row.effective_expires_date || null,
         subscriptionId: row.subscription_id || null,
         orderId: row.order_id || null,
         orderCode: row.order_code || null,
@@ -147,6 +150,14 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
             pa.profile_number,
             pa.status,
             pa.expires_at,
+            active_sub.expires_at AS subscription_expires_at,
+            DATE_FORMAT(
+                CASE
+                    WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at)
+                    ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR))
+                END,
+                '%Y-%m-%d'
+            ) AS effective_expires_date,
             u.email AS assigned_user_email,
             u.name AS assigned_user_name,
             active_sub.id AS subscription_id,

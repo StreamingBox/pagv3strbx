@@ -328,9 +328,9 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const offset = (page - 1) * limit;
 
         const { q, platform, email, accountEmail } = req.query;
-        const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
+        const effectiveExpiresSql = "COALESCE(s.expires_at, acc.expires_at)";
         const effectiveExpiresDateSql =
-            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+            "CASE WHEN s.expires_at IS NOT NULL THEN DATE(s.expires_at) ELSE DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) END";
         const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
         const notResoldLaterSql = `
             NOT EXISTS (
@@ -489,7 +489,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
              ORDER BY
-               (SELECT MIN(CASE WHEN ex_acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(ex_acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(ex.expires_at) END)
+                (SELECT MIN(CASE WHEN ex.expires_at IS NOT NULL THEN DATE(ex.expires_at) ELSE DATE(DATE_SUB(ex_acc.expires_at, INTERVAL 5 HOUR)) END)
                 FROM subscriptions ex
                 LEFT JOIN platform_accounts ex_acc ON ex_acc.id = ex.platform_account_id
                 WHERE ex.platform_account_id = s.platform_account_id
@@ -591,7 +591,7 @@ router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), asyn
 router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const effectiveExpiresDateSql =
-            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+            "CASE WHEN s.expires_at IS NOT NULL THEN DATE(s.expires_at) ELSE DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) END";
         const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
         const [rows] = await pool.query(
             `SELECT COUNT(*) as count

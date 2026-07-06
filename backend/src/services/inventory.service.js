@@ -11,6 +11,8 @@ const {
 const { validateCostModelInput } = require("../utils/accountCosts");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "disabled"]);
+const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
+    "CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) END";
 
 const LATEST_REPLACEMENT_JOIN = `
 LEFT JOIN (
@@ -78,8 +80,7 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber,
 
     const from = parseDateOnly(expiresFrom);
     const to = parseDateOnly(expiresTo);
-    const effectiveExpiresDateSql =
-        "CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) END";
+    const effectiveExpiresDateSql = ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL;
 
     if (from) {
         where.push(`${effectiveExpiresDateSql} >= ?`);
@@ -155,6 +156,7 @@ async function getInventory(query = {}) {
       latest_replacement.order_id AS replacement_order_id,
       latest_replacement.order_code AS replacement_order_code,
       active_sub.expires_at AS subscription_expires_at,
+      DATE_FORMAT(${ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL}, '%Y-%m-%d') AS display_expires_date,
       pa.created_at,
       pa.updated_at
     FROM platform_accounts pa
@@ -179,7 +181,7 @@ async function getInventory(query = {}) {
         replaced_from_account_email: r.replaced_from_account_email || null,
         replacement_order_id: r.replacement_order_id || null,
         replacement_order_code: r.replacement_order_code || null,
-        display_expires_at: r.expires_at || r.subscription_expires_at,
+        display_expires_at: r.display_expires_date || r.subscription_expires_at || r.expires_at,
         sold_like: ["assigned", "sold"].includes(String(r.status || "")),
     }));
 
@@ -224,7 +226,8 @@ async function exportInventoryCsv(query = {}) {
       u.email AS assigned_user_email,
       COALESCE(active_sub.id, latest_replacement.subscription_id) AS sale_id,
       pa.expires_at,
-      active_sub.expires_at AS subscription_expires_at
+      active_sub.expires_at AS subscription_expires_at,
+      DATE_FORMAT(${ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL}, '%Y-%m-%d') AS display_expires_date
     FROM platform_accounts pa
     LEFT JOIN platforms p ON p.id = pa.platform_id
     LEFT JOIN users u ON u.id = pa.assigned_to_user_id
@@ -233,7 +236,7 @@ async function exportInventoryCsv(query = {}) {
      AND active_sub.status = 'active'
     ${LATEST_REPLACEMENT_JOIN}
     ${whereSql}
-    ORDER BY pa.expires_at DESC, pa.id DESC`,
+    ORDER BY ${ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL} DESC, pa.id DESC`,
         params
     );
 
@@ -267,7 +270,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.status),
             escapeCsv(r.sale_id || ""),
             escapeCsv(r.assigned_user_email || ""),
-            escapeCsv((r.expires_at || r.subscription_expires_at) ? formatDateOnlyBogota(r.expires_at || r.subscription_expires_at) : ""),
+            escapeCsv(r.display_expires_date || ((r.subscription_expires_at || r.expires_at) ? formatDateOnlyBogota(r.subscription_expires_at || r.expires_at) : "")),
         ].join(",")
     );
 

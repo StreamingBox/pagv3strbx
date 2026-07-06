@@ -46,6 +46,9 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
                 platform_name: "Prime Video",
                 email: "fatndku47@strbx.com.co",
                 profile_number: "1",
+                effective_expires_date: "2026-07-06",
+                subscription_expires_at: "2026-07-06",
+                expires_at: "2026-07-05 23:06:00",
             }]];
         },
     };
@@ -57,7 +60,10 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
     });
 
     assert.equal(row.id, 5389);
+    assert.equal(row.effective_expires_date, "2026-07-06");
     assert.deepEqual(calls[0].params, [4, "fatndku47@strbx.com.co", "1"]);
+    assert.match(calls[0].sql, /AS effective_expires_date/);
+    assert.match(calls[0].sql, /active_sub\.expires_at AS subscription_expires_at/);
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) = 'assigned'/);
     assert.match(calls[0].sql, /pa\.assigned_to_user_id IS NOT NULL/);
     assert.match(calls[0].sql, /active_sub\.id IS NOT NULL/);

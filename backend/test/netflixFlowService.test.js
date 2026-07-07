@@ -32,6 +32,34 @@ test("Netflix approval parser recognizes confirmed approval text", () => {
     assert.equal(__test.pageNeedsApproval(html), false);
 });
 
+test("Netflix approval parser recognizes the current all-set approval page", () => {
+    const html = "<h1>¡Todo listo!</h1><p>Ya puedes disfrutar de Netflix en tu JVC - Smart TV.</p>";
+
+    assert.equal(__test.pageLooksApproved(html), true);
+    assert.equal(__test.pageNeedsApproval(html), false);
+});
+
+test("Netflix approval parser does not treat the ilum React shell as approved", () => {
+    const html = `
+        <div id="appMountPoint"><div></div></div>
+        <script>
+            window.netflix = window.netflix || {};
+            netflix.reactContext = {"template":"./ui/stagingMagicLink/app","models":{"serverDefs":{"data":{"originalUrl":"/ilum?code=abc123"}}}};
+        </script>
+    `;
+
+    assert.equal(__test.pageLooksApproved(html), false);
+    assert.equal(__test.pageNeedsApproval(html), false);
+    assert.equal(__test.pageLooksInvalidApproval(html, "https://www.netflix.com/ilum?code=abc123"), false);
+});
+
+test("Netflix approval parser treats NotFound redirects as invalid approval links", () => {
+    const html = "<h1>Lost your way?</h1><p>Sorry, we can't find that page.</p><p>Error Code NSES-404</p>";
+
+    assert.equal(__test.pageLooksInvalidApproval(html, "https://www.netflix.com/NotFound?prev=..."), true);
+    assert.equal(__test.pageLooksApproved(html), false);
+});
+
 test("Netflix approval parser follows approval links and ignores reject links", () => {
     const html = `
         <a href="/account/reject">Rechazar</a>

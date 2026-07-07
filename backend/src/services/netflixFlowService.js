@@ -8,8 +8,10 @@ const { getImapConfig, safeToDate, getEnvBool, allowInsecureTls, connectImapWith
 function getNetflixAxiosOptions(overrides = {}) {
     const insecureTls = allowInsecureTls("NETFLIX_TLS_INSECURE");
     const baseHeaders = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
+        "Upgrade-Insecure-Requests": "1",
     };
 
     return {
@@ -20,6 +22,24 @@ function getNetflixAxiosOptions(overrides = {}) {
         }),
         maxRedirects: overrides.maxRedirects ?? 10,
         timeout: overrides.timeout ?? 15000,
+    };
+}
+
+function getNetflixApprovalNavigationHeaders() {
+    return {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "es-CO",
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "cross-site",
+        "Sec-Fetch-User": "?1",
+        "sec-ch-ua": "\"Google Chrome\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": "\"Windows\"",
     };
 }
 
@@ -69,6 +89,8 @@ function pageLooksApproved(content) {
         "aprobaste este dispositivo",
         "ya puedes continuar",
         "ya puedes ver netflix",
+        "todo listo",
+        "ya puedes disfrutar de netflix",
         "vuelve a tu dispositivo",
         "request approved",
         "sign-in request approved",
@@ -78,6 +100,18 @@ function pageLooksApproved(content) {
         "you're all set",
         "you are all set",
         "return to your device",
+    ].some((needle) => normalized.includes(needle));
+}
+
+function pageLooksInvalidApproval(content, finalUrl = "") {
+    const normalized = normalizeText(`${content || ""}\n${finalUrl || ""}`);
+    return [
+        "lost your way",
+        "sorry, we can't find that page",
+        "error code nses-404",
+        "notfound",
+        "pagina no encontrada",
+        "no podemos encontrar esa pagina",
     ].some((needle) => normalized.includes(needle));
 }
 
@@ -480,8 +514,8 @@ function findApprovalActionLink(html, baseUrl) {
     return "";
 }
 
-async function fetchNetflixPage({ url, method = "GET", params = null, cookieHeader = "", referer = "" }) {
-    const headers = {};
+async function fetchNetflixPage({ url, method = "GET", params = null, cookieHeader = "", referer = "", navigationHeaders = null }) {
+    const headers = { ...(navigationHeaders || {}) };
     if (cookieHeader) headers.Cookie = cookieHeader;
     if (referer) headers.Referer = referer;
 
@@ -503,7 +537,10 @@ async function fetchNetflixPage({ url, method = "GET", params = null, cookieHead
         url: requestUrl,
         method: normalizedMethod,
         data,
-        ...getNetflixAxiosOptions({ headers }),
+        ...getNetflixAxiosOptions({
+            headers,
+            validateStatus: (status) => status >= 200 && status < 500,
+        }),
     });
 
     const finalUrl = getFinalResponseUrl(response, requestUrl);
@@ -582,7 +619,6 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
         let cookieHeader = "";
         let referer = "";
         let currentPage = null;
-        let clickedApproval = false;
 
         for (let step = depth; step < 6; step += 1) {
             if (!currentPage) {
@@ -590,10 +626,14 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
                     return { ok: false, status: "not_found", message: "Netflix devolvio un enlace repetido y no se pudo confirmar la aprobacion." };
                 }
                 visited.add(`GET:${safeLink}`);
-                currentPage = await fetchNetflixPage({ url: safeLink, cookieHeader, referer });
-                if (isNetflixDirectApprovalUrl(safeLink)) {
-                    clickedApproval = true;
-                }
+                currentPage = await fetchNetflixPage({
+                    url: safeLink,
+                    cookieHeader,
+                    referer,
+                    navigationHeaders: isNetflixDirectApprovalUrl(safeLink)
+                        ? getNetflixApprovalNavigationHeaders()
+                        : null,
+                });
             }
 
             cookieHeader = currentPage.cookieHeader || cookieHeader;
@@ -605,6 +645,14 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
 
             if (pageLooksExpired(combinedContent)) {
                 return { ok: false, status: "expired", message: "El enlace de aprobacion de Netflix ya vencio." };
+            }
+
+            if (pageLooksInvalidApproval(combinedContent, currentPage.finalUrl)) {
+                return {
+                    ok: false,
+                    status: "expired",
+                    message: "El enlace de aprobacion de Netflix ya no es valido. Solicita uno nuevo.",
+                };
             }
 
             if (pageLooksApproved(combinedContent)) {
@@ -626,7 +674,6 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
                     return { ok: false, status: "not_found", message: "Netflix repitio el formulario de aprobacion y no confirmo el acceso." };
                 }
                 visited.add(requestKey);
-                clickedApproval = true;
                 currentPage = await fetchNetflixPage({
                     url: formSubmission.url,
                     method: formSubmission.method,
@@ -639,14 +686,9 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
 
             const nestedLink = findApprovalActionLink(currentPage.html, currentPage.finalUrl || safeLink);
             if (nestedLink && !visited.has(`GET:${nestedLink}`)) {
-                clickedApproval = true;
                 safeLink = nestedLink;
                 currentPage = null;
                 continue;
-            }
-
-            if (clickedApproval && !pageNeedsApproval(combinedContent)) {
-                return { ok: true, type: "approval", deviceName: deviceName || "Dispositivo Desconocido" };
             }
 
             if (pageNeedsApproval(combinedContent)) {
@@ -926,5 +968,6 @@ module.exports = {
         extractApprovalDeviceName,
         pageLooksApproved,
         pageNeedsApproval,
+        pageLooksInvalidApproval,
     },
 };

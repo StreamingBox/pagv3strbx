@@ -743,7 +743,10 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             const subject = (headers.subject && headers.subject[0]) ? String(headers.subject[0]).toLowerCase() : "";
 
-            const isTarget = subjectMatchesAction(subject, action);
+            let isTarget = subjectMatchesAction(subject, action);
+            if (!isTarget && action === "approve") {
+                isTarget = true;
+            }
 
             if (!isTarget) continue;
             sawTargetMatch = true;
@@ -851,7 +854,12 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                 if (result.ok || result.status === "expired") {
                     return { ...result, emailDate: msgDate };
                 }
+                lastFlowFailure = result;
             }
+        }
+
+        if (lastFlowFailure) {
+            return lastFlowFailure;
         }
 
         if (sawExpiredMatch) {

@@ -330,6 +330,11 @@ function buildAbsoluteUrl(rawUrl, baseUrl) {
     }
 }
 
+function isNetflixDirectApprovalUrl(url) {
+    const normalized = String(url || "").toLowerCase();
+    return normalized.includes("netflix.com/ilum") || normalized.includes("/ilum?code");
+}
+
 function mergeCookieHeader(currentCookieHeader, setCookieHeader) {
     const cookies = new Map();
     String(currentCookieHeader || "")
@@ -586,6 +591,9 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
                 }
                 visited.add(`GET:${safeLink}`);
                 currentPage = await fetchNetflixPage({ url: safeLink, cookieHeader, referer });
+                if (isNetflixDirectApprovalUrl(safeLink)) {
+                    clickedApproval = true;
+                }
             }
 
             cookieHeader = currentPage.cookieHeader || cookieHeader;
@@ -912,6 +920,7 @@ module.exports = {
     __test: {
         buildApprovalFormSubmission,
         buildAbsoluteUrl,
+        isNetflixDirectApprovalUrl,
         findNetflixTextActionLink,
         findApprovalActionLink,
         extractApprovalDeviceName,

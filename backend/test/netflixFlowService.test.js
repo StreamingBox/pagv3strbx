@@ -62,6 +62,7 @@ test("Netflix approval parser accepts the current ilum approval link format", ()
         __test.findNetflixTextActionLink(text, ["aprobar", "approve"]),
         "https://www.netflix.com/ilum?code=6sHzU5Kj"
     );
+    assert.equal(__test.isNetflixDirectApprovalUrl("https://www.netflix.com/ilum?code=6sHzU5Kj"), true);
 });
 
 test("Netflix approval parser extracts the device name before the date line", () => {

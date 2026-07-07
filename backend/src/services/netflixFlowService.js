@@ -5,19 +5,21 @@ const cheerio = require("cheerio");
 const https = require("https");
 const { getImapConfig, safeToDate, getEnvBool, allowInsecureTls, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
 
-function getNetflixAxiosOptions() {
+function getNetflixAxiosOptions(overrides = {}) {
     const insecureTls = allowInsecureTls("NETFLIX_TLS_INSECURE");
+    const baseHeaders = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
+    };
 
     return {
-        headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
-        },
+        ...overrides,
+        headers: { ...baseHeaders, ...((overrides && overrides.headers) || {}) },
         httpsAgent: new https.Agent({
             rejectUnauthorized: !insecureTls,
         }),
-        maxRedirects: 10,
-        timeout: 15000,
+        maxRedirects: overrides.maxRedirects ?? 10,
+        timeout: overrides.timeout ?? 15000,
     };
 }
 
@@ -55,6 +57,105 @@ function pageLooksExpired(content) {
         "this link has expired",
         "solicita uno nuevo",
     ].some((needle) => normalized.includes(needle));
+}
+
+function pageLooksApproved(content) {
+    const normalized = normalizeText(content);
+    return [
+        "solicitud aprobada",
+        "inicio de sesion aprobado",
+        "dispositivo aprobado",
+        "aprobaste la solicitud",
+        "aprobaste este dispositivo",
+        "ya puedes continuar",
+        "ya puedes ver netflix",
+        "vuelve a tu dispositivo",
+        "request approved",
+        "sign-in request approved",
+        "signin request approved",
+        "device approved",
+        "you approved",
+        "you're all set",
+        "you are all set",
+        "return to your device",
+    ].some((needle) => normalized.includes(needle));
+}
+
+function pageNeedsApproval(content) {
+    const normalized = normalizeText(content);
+    const hasApproveAction = [
+        "aprobar",
+        "approve",
+        "autorizar",
+        "allow",
+    ].some((needle) => normalized.includes(needle));
+    const hasRequestContext = [
+        "solicitud de inicio de sesion",
+        "nueva solicitud",
+        "inicio de sesion",
+        "sign-in request",
+        "signin request",
+        "new sign in",
+        "new sign-in",
+    ].some((needle) => normalized.includes(needle));
+    return hasApproveAction && hasRequestContext && !pageLooksApproved(content);
+}
+
+function pageRequiresLogin(content) {
+    const normalized = normalizeText(content);
+    return [
+        "inicia sesion para continuar",
+        "iniciar sesion para continuar",
+        "sign in to continue",
+        "sign-in to continue",
+        "ingresa tu contrasena",
+        "enter your password",
+    ].some((needle) => normalized.includes(needle));
+}
+
+function looksLikeDeviceDateLine(value) {
+    const normalized = normalizeText(value);
+    return /\b\d{1,2}\s+de\s+[a-z]+\b/.test(normalized)
+        || /\b(?:a\.?\s*m\.?|p\.?\s*m\.?|am|pm)\b/.test(normalized)
+        || /\b(?:cot|utc|gmt)\b/.test(normalized);
+}
+
+function isGenericDeviceLine(value) {
+    const normalized = normalizeText(value);
+    if (!normalized || normalized.length < 3 || normalized.length > 80) return true;
+    return [
+        "netflix",
+        "aprobar",
+        "approve",
+        "rechazar",
+        "reject",
+        "hola",
+        "si reconoces",
+        "te escribimos",
+        "solicitud",
+        "inicio de sesion",
+    ].some((needle) => normalized.includes(needle));
+}
+
+function extractApprovalDeviceName(text, html = "") {
+    const sourceText = String(text || cheerio.load(html || "<body></body>")("body").text() || "");
+    const directMatch = sourceText.match(/(?:desde|dispositivo|device)\s*:\s*([^\n\r]+)/i);
+    if (directMatch?.[1] && !isGenericDeviceLine(directMatch[1])) {
+        return directMatch[1].trim();
+    }
+
+    const lines = sourceText
+        .split(/\r?\n/)
+        .map((line) => line.replace(/\s+/g, " ").trim())
+        .filter(Boolean);
+
+    for (let index = 1; index < lines.length; index += 1) {
+        if (!looksLikeDeviceDateLine(lines[index])) continue;
+        const candidate = lines[index - 1];
+        if (!isGenericDeviceLine(candidate)) return candidate;
+    }
+
+    return "Tu Dispositivo";
 }
 
 function extractNetflixTemporaryCode(content) {
@@ -203,10 +304,197 @@ function findNetflixButtonLink(html, textNeedles = [], hrefNeedles = []) {
     return "";
 }
 
+function buildAbsoluteUrl(rawUrl, baseUrl) {
+    const url = String(rawUrl || "").trim();
+    if (!url) return "";
+    try {
+        return new URL(url, baseUrl || "https://www.netflix.com").toString();
+    } catch (_) {
+        return "";
+    }
+}
+
+function mergeCookieHeader(currentCookieHeader, setCookieHeader) {
+    const cookies = new Map();
+    String(currentCookieHeader || "")
+        .split(";")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .forEach((part) => {
+            const eqIndex = part.indexOf("=");
+            if (eqIndex > 0) cookies.set(part.slice(0, eqIndex), part.slice(eqIndex + 1));
+        });
+
+    const setCookies = Array.isArray(setCookieHeader)
+        ? setCookieHeader
+        : (setCookieHeader ? [setCookieHeader] : []);
+
+    for (const raw of setCookies) {
+        const firstPart = String(raw || "").split(";")[0].trim();
+        const eqIndex = firstPart.indexOf("=");
+        if (eqIndex > 0) cookies.set(firstPart.slice(0, eqIndex), firstPart.slice(eqIndex + 1));
+    }
+
+    return Array.from(cookies.entries()).map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+function getFinalResponseUrl(response, fallbackUrl) {
+    return response?.request?.res?.responseUrl
+        || response?.request?.responseURL
+        || response?.config?.url
+        || fallbackUrl
+        || "";
+}
+
+function getControlText($, el) {
+    return [
+        $(el).text(),
+        $(el).attr("value"),
+        $(el).attr("aria-label"),
+        $(el).attr("title"),
+        $(el).attr("data-uia"),
+        $(el).attr("name"),
+        $(el).attr("id"),
+    ].map((value) => String(value || "")).join(" ");
+}
+
+function isRejectControl($, el) {
+    const value = normalizeText(`${getControlText($, el)} ${$(el).attr("href") || ""} ${$(el).attr("formaction") || ""}`);
+    return ["rechazar", "reject", "deny", "cancelar", "cancel"].some((needle) => value.includes(needle));
+}
+
+function isApprovalControl($, el) {
+    if (!el || isRejectControl($, el)) return false;
+    const value = normalizeText(`${getControlText($, el)} ${$(el).attr("href") || ""} ${$(el).attr("formaction") || ""}`);
+    return [
+        "aprobar",
+        "approve",
+        "autorizar",
+        "allow",
+        "continuar",
+        "continue",
+        "signinapproval",
+        "sign-in",
+        "account/approve",
+    ].some((needle) => value.includes(needle));
+}
+
+function appendFormControlValue(params, $, el) {
+    const $el = $(el);
+    if ($el.attr("disabled")) return;
+
+    const tag = String(el.tagName || el.name || "").toLowerCase();
+    const type = String($el.attr("type") || "").toLowerCase();
+    const name = $el.attr("name");
+
+    if (!name) return;
+    if (["button", "submit", "reset", "file", "image"].includes(type)) return;
+    if ((type === "checkbox" || type === "radio") && !$el.attr("checked")) return;
+
+    if (tag === "select") {
+        const selected = $el.find("option[selected]").first();
+        const option = selected.length ? selected : $el.find("option").first();
+        params.append(name, option.attr("value") || option.text() || "");
+        return;
+    }
+
+    params.append(name, $el.attr("value") || $el.text() || "");
+}
+
+function buildApprovalFormSubmission(html, baseUrl) {
+    const $ = cheerio.load(String(html || ""));
+    const forms = $("form").toArray();
+
+    for (const form of forms) {
+        const $form = $(form);
+        const formHaystack = normalizeText(`${$form.text()} ${$form.attr("action") || ""} ${$form.attr("id") || ""} ${$form.attr("name") || ""}`);
+        const submit = $form.find("button, input[type='submit'], input[type='button'], input[type='image']").toArray()
+            .find((el) => isApprovalControl($, el));
+        const formLooksRelevant = [
+            "aprobar",
+            "approve",
+            "autorizar",
+            "allow",
+            "signinapproval",
+            "account/approve",
+            "approval",
+        ].some((needle) => formHaystack.includes(needle));
+
+        if (!submit && !formLooksRelevant) continue;
+
+        const method = String($(submit).attr("formmethod") || $form.attr("method") || "GET").toUpperCase() === "POST"
+            ? "POST"
+            : "GET";
+        const action = $(submit).attr("formaction") || $form.attr("action") || baseUrl;
+        const url = buildAbsoluteUrl(action, baseUrl);
+        if (!url) continue;
+
+        const params = new URLSearchParams();
+        $form.find("input, textarea, select").each((_, el) => appendFormControlValue(params, $, el));
+
+        const submitName = $(submit).attr("name");
+        if (submitName) {
+            params.set(submitName, $(submit).attr("value") || $(submit).text() || "true");
+        }
+
+        return { method, url, params };
+    }
+
+    return null;
+}
+
+function findApprovalActionLink(html, baseUrl) {
+    const $ = cheerio.load(String(html || ""));
+    const links = $("a").toArray();
+
+    for (const el of links) {
+        if (!isApprovalControl($, el)) continue;
+        const href = $(el).attr("href");
+        const url = buildAbsoluteUrl(href, baseUrl);
+        if (url) return url;
+    }
+
+    return "";
+}
+
+async function fetchNetflixPage({ url, method = "GET", params = null, cookieHeader = "", referer = "" }) {
+    const headers = {};
+    if (cookieHeader) headers.Cookie = cookieHeader;
+    if (referer) headers.Referer = referer;
+
+    let requestUrl = url;
+    let data;
+    const normalizedMethod = String(method || "GET").toUpperCase();
+    if (params instanceof URLSearchParams && normalizedMethod === "GET" && String(params).length > 0) {
+        const nextUrl = new URL(url);
+        for (const [key, value] of params.entries()) {
+            nextUrl.searchParams.set(key, value);
+        }
+        requestUrl = nextUrl.toString();
+    } else if (params instanceof URLSearchParams && normalizedMethod === "POST") {
+        data = params.toString();
+        headers["Content-Type"] = "application/x-www-form-urlencoded";
+    }
+
+    const response = await axios({
+        url: requestUrl,
+        method: normalizedMethod,
+        data,
+        ...getNetflixAxiosOptions({ headers }),
+    });
+
+    const finalUrl = getFinalResponseUrl(response, requestUrl);
+    return {
+        html: String(response?.data || ""),
+        finalUrl,
+        cookieHeader: mergeCookieHeader(cookieHeader, response?.headers?.["set-cookie"]),
+    };
+}
+
 /**
  * Entra al link de "Aprobar" dispositivo
  */
-async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set()) {
+async function scrapeApproveLinkLegacy(link, deviceName, depth = 0, visited = new Set()) {
     try {
         const safeLink = String(link || "").trim();
         if (!safeLink) {
@@ -261,6 +549,109 @@ async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set(
 /**
  * Busca específicamente los flujos nuevos de Netflix en Gmail
  */
+async function scrapeApproveLink(link, deviceName, depth = 0, visited = new Set()) {
+    try {
+        let safeLink = buildAbsoluteUrl(link);
+        if (!safeLink) {
+            return { ok: false, status: "not_found", message: "Netflix no envio un enlace valido de aprobacion." };
+        }
+
+        let cookieHeader = "";
+        let referer = "";
+        let currentPage = null;
+        let clickedApproval = false;
+
+        for (let step = depth; step < 6; step += 1) {
+            if (!currentPage) {
+                if (visited.has(`GET:${safeLink}`)) {
+                    return { ok: false, status: "not_found", message: "Netflix devolvio un enlace repetido y no se pudo confirmar la aprobacion." };
+                }
+                visited.add(`GET:${safeLink}`);
+                currentPage = await fetchNetflixPage({ url: safeLink, cookieHeader, referer });
+            }
+
+            cookieHeader = currentPage.cookieHeader || cookieHeader;
+            referer = currentPage.finalUrl || safeLink;
+
+            const $ = cheerio.load(currentPage.html);
+            const textContent = $("body").text() || "";
+            const combinedContent = `${currentPage.html}\n${textContent}`;
+
+            if (pageLooksExpired(combinedContent)) {
+                return { ok: false, status: "expired", message: "El enlace de aprobacion de Netflix ya vencio." };
+            }
+
+            if (pageLooksApproved(combinedContent)) {
+                return { ok: true, type: "approval", deviceName: deviceName || "Dispositivo Desconocido" };
+            }
+
+            if (pageRequiresLogin(combinedContent)) {
+                return {
+                    ok: false,
+                    status: "login_required",
+                    message: "Netflix pidio iniciar sesion antes de aprobar. Abre el correo manualmente o solicita otro intento.",
+                };
+            }
+
+            const formSubmission = buildApprovalFormSubmission(currentPage.html, currentPage.finalUrl || safeLink);
+            if (formSubmission) {
+                const requestKey = `${formSubmission.method}:${formSubmission.url}:${String(formSubmission.params || "")}`;
+                if (visited.has(requestKey)) {
+                    return { ok: false, status: "not_found", message: "Netflix repitio el formulario de aprobacion y no confirmo el acceso." };
+                }
+                visited.add(requestKey);
+                clickedApproval = true;
+                currentPage = await fetchNetflixPage({
+                    url: formSubmission.url,
+                    method: formSubmission.method,
+                    params: formSubmission.params,
+                    cookieHeader,
+                    referer,
+                });
+                continue;
+            }
+
+            const nestedLink = findApprovalActionLink(currentPage.html, currentPage.finalUrl || safeLink);
+            if (nestedLink && !visited.has(`GET:${nestedLink}`)) {
+                clickedApproval = true;
+                safeLink = nestedLink;
+                currentPage = null;
+                continue;
+            }
+
+            if (clickedApproval && !pageNeedsApproval(combinedContent)) {
+                return { ok: true, type: "approval", deviceName: deviceName || "Dispositivo Desconocido" };
+            }
+
+            if (pageNeedsApproval(combinedContent)) {
+                return {
+                    ok: false,
+                    status: "approval_pending",
+                    message: "Netflix abrio la solicitud, pero no permitio presionar automaticamente el boton de aprobar.",
+                };
+            }
+
+            return {
+                ok: false,
+                status: "not_confirmed",
+                message: "Netflix no confirmo la aprobacion del dispositivo.",
+            };
+        }
+
+        return { ok: false, status: "not_confirmed", message: "Netflix no confirmo la aprobacion del dispositivo." };
+    } catch (err) {
+        console.error("Error scraping approval link:", err.message);
+        if (isTlsCertificateError(err)) {
+            return {
+                ok: false,
+                status: "tls_error",
+                message: "Error TLS al abrir el enlace de aprobacion de Netflix. Revisa certificados o activa NETFLIX_TLS_INSECURE=true temporalmente.",
+            };
+        }
+        return { ok: false, status: "network_error", message: "Error al confirmar aprobacion de Netflix." };
+    }
+}
+
 async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }) {
     const config = getImapConfig();
     if (!config) return { ok: false, status: "config_error", message: "Faltan variables GMAIL." };
@@ -435,11 +826,7 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
                 if (!buttonLink) continue;
 
-                let deviceName = "Tu Dispositivo";
-                const matchDevice = text.match(/desde:\s*([^\n]+)/i);
-                if (matchDevice && matchDevice[1]) {
-                    deviceName = matchDevice[1].trim();
-                }
+                const deviceName = extractApprovalDeviceName(text, html);
 
                 stage = "open_netflix_approve_link";
                 const result = await scrapeApproveLink(buttonLink, deviceName);
@@ -494,4 +881,14 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
     }
 }
 
-module.exports = { fetchNetflixFlow };
+module.exports = {
+    fetchNetflixFlow,
+    __test: {
+        buildApprovalFormSubmission,
+        buildAbsoluteUrl,
+        findApprovalActionLink,
+        extractApprovalDeviceName,
+        pageLooksApproved,
+        pageNeedsApproval,
+    },
+};

@@ -141,7 +141,7 @@ async function enforceNetflixActionRules({ orderNumber, requestedSlug, fingerpri
     const approvalCount = await countDeliveredByFingerprint({
         ...base,
         requireEmptyCode: true,
-        messageLike: "OK:approve%",
+        messageLike: "OK:approve-confirmed%",
     });
 
     if (normalizedAction === "code" && approvalCount >= 1) {

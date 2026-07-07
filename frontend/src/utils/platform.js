@@ -56,6 +56,7 @@ export function getPlatformLogoCandidates(slug, name, ts) {
     if (raw.includes("netflix")) base.push("netflix", "netflix-internacional", "netflix-completa");
     if (raw.includes("prime") || raw.includes("amazon")) base.push("prime-video", "prime-video-completa");
     if (raw.includes("disney")) base.push("disney-premium", "disney-premium-completa", "disney-estandar", "disney");
+    if (raw.includes("directv") && raw.includes("win")) base.unshift("directv-go-con-win-solo-activacion-tv");
     if (raw.includes("directv") || raw.includes("directv go")) base.push("directv-go");
     if (raw.includes("crunchy")) base.push("crunchyroll", "crunchyroll-completa");
     if (raw.includes("max")) base.push("max");

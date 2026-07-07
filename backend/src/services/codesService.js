@@ -354,7 +354,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             fetchingResult = await withTimeout(
                 fetchNetflixFlow({
                     toEmail: soldAccountEmail,
-                    maxAgeMinutes: 15,
+                    maxAgeMinutes: normalizedAction === "approve" ? 20 : 15,
                     action: normalizedAction,
                 }),
                 20000,

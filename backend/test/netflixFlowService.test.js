@@ -44,6 +44,26 @@ test("Netflix approval parser follows approval links and ignores reject links", 
     );
 });
 
+test("Netflix approval parser accepts the current ilum approval link format", () => {
+    const html = `
+        <a href="https://www.netflix.com/denysignin">Rechazar</a>
+        <a href="https://www.netflix.com/ilum?code=6sHzU5Kj">Aprobar</a>
+    `;
+    const text = [
+        "Aprobar [https://www.netflix.com/ilum?code=6sHzU5Kj]",
+        "Rechazar [https://www.netflix.com/denysignin]",
+    ].join("\n");
+
+    assert.equal(
+        __test.findApprovalActionLink(html, "https://www.netflix.com/security/request"),
+        "https://www.netflix.com/ilum?code=6sHzU5Kj"
+    );
+    assert.equal(
+        __test.findNetflixTextActionLink(text, ["aprobar", "approve"]),
+        "https://www.netflix.com/ilum?code=6sHzU5Kj"
+    );
+});
+
 test("Netflix approval parser extracts the device name before the date line", () => {
     const text = [
         "Hola, Profile One:",

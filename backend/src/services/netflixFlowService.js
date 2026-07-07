@@ -304,6 +304,22 @@ function findNetflixButtonLink(html, textNeedles = [], hrefNeedles = []) {
     return "";
 }
 
+function findNetflixTextActionLink(text, actionNeedles = []) {
+    const needles = actionNeedles.map((needle) => normalizeText(needle)).filter(Boolean);
+    const lines = String(text || "").split(/\r?\n/);
+
+    for (const line of lines) {
+        const normalizedLine = normalizeText(line);
+        if (!needles.some((needle) => normalizedLine.includes(needle))) continue;
+        if (normalizedLine.includes("rechazar") || normalizedLine.includes("reject")) continue;
+
+        const match = line.match(/https?:\/\/[^\]\s)]+/i);
+        if (match?.[0]) return match[0].trim();
+    }
+
+    return "";
+}
+
 function buildAbsoluteUrl(rawUrl, baseUrl) {
     const url = String(rawUrl || "").trim();
     if (!url) return "";
@@ -376,6 +392,8 @@ function isApprovalControl($, el) {
         "signinapproval",
         "sign-in",
         "account/approve",
+        "ilum?code",
+        "/ilum",
     ].some((needle) => value.includes(needle));
 }
 
@@ -821,8 +839,8 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                 const buttonLink = findNetflixButtonLink(
                     html,
                     ["aprobar", "approve"],
-                    ["netflix.com/account/approve", "account/approve"]
-                );
+                    ["netflix.com/account/approve", "account/approve", "netflix.com/ilum", "/ilum", "ilum?code"]
+                ) || findNetflixTextActionLink(text, ["aprobar", "approve"]);
 
                 if (!buttonLink) continue;
 
@@ -886,6 +904,7 @@ module.exports = {
     __test: {
         buildApprovalFormSubmission,
         buildAbsoluteUrl,
+        findNetflixTextActionLink,
         findApprovalActionLink,
         extractApprovalDeviceName,
         pageLooksApproved,

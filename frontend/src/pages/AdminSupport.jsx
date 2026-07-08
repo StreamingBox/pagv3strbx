@@ -187,11 +187,11 @@ export default function AdminSupport() {
             setError(response.data?.message || "No se pudo cerrar el caso.");
             return;
         }
-        const mailSent = response.data?.mail?.delivery === "email";
+        const mailDelivery = response.data?.mail?.delivery;
         setSuccess(
-            mailSent
+            mailDelivery === "email"
                 ? "Caso resuelto y correo enviado al usuario."
-                : "Caso resuelto. Revisa la configuración del correo de soporte."
+                : "Caso resuelto. El correo al usuario se enviara en segundo plano."
         );
         await loadTickets();
     }

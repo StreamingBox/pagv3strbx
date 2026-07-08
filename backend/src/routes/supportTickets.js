@@ -704,11 +704,13 @@ router.post(
             await conn.commit();
 
             const ticket = await getTicketById(conn, ticketId);
-            const mailResult = await sendSupportTicketResolvedEmail({
+            sendSupportTicketResolvedEmail({
                 ticket,
                 customerName: ticket.userName,
+            }).catch((mailError) => {
+                console.error("[support] Resolve mail queue error:", mailError?.message || mailError);
             });
-            return res.json({ ok: true, ticket, mail: mailResult });
+            return res.json({ ok: true, ticket, mail: { ok: true, delivery: "queued" } });
         } catch (error) {
             await conn.rollback().catch(() => {});
             console.error("[support] Resolve ticket error:", error);

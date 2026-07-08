@@ -20,10 +20,20 @@ async function getSubscriptionWithAccount(orderId) {
         s.expires_at,
         u.email AS userEmail,
         p.slug AS platformSlug,
+        p.name AS platformName,
         s.platform_account_id AS platformAccountId,
         pa.email AS accountEmail,
         pa.password AS accountPassword,
-        pa.pin AS accountPin
+        pa.pin AS accountPin,
+        pa.profile_number AS accountProfile,
+        (
+            SELECT o.order_code
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.subscription_id = s.id
+            ORDER BY o.created_at DESC, o.id DESC
+            LIMIT 1
+        ) AS orderCode
      FROM subscriptions s
      JOIN users u ON u.id = s.user_id
      JOIN platforms p ON p.id = s.platform_id
@@ -57,6 +67,7 @@ async function countDeliveredByFingerprint({
     requireEmptyCode = false,
     messageLike = null,
     messageNotLike = null,
+    honorAdminResets = true,
 }) {
     const where = [
         "order_id = ?",
@@ -81,6 +92,17 @@ async function countDeliveredByFingerprint({
         where.push("(message IS NULL OR message NOT LIKE ?)");
         params.push(String(messageNotLike));
     }
+    if (honorAdminResets) {
+        where.push(`id > COALESCE((
+            SELECT MAX(reset_rows.id)
+            FROM code_deliveries reset_rows
+            WHERE reset_rows.order_id = ?
+              AND LOWER(reset_rows.platform_slug) = ?
+              AND reset_rows.credential_fingerprint = ?
+              AND reset_rows.status = 'reset'
+        ), 0)`);
+        params.push(Number(orderId), String(platformSlugLower || "").toLowerCase(), String(credentialFingerprint || ""));
+    }
 
     const [[row]] = await pool.query(
         `SELECT COUNT(*) AS total
@@ -92,9 +114,30 @@ async function countDeliveredByFingerprint({
     return Number(row?.total || 0);
 }
 
+async function getLastCodeReset({ orderId, platformSlugLower, credentialFingerprint }) {
+    const [rows] = await pool.query(
+        `SELECT
+            cd.id,
+            cd.created_at,
+            cd.message,
+            u.email AS requested_by
+         FROM code_deliveries cd
+         LEFT JOIN users u ON u.id = cd.requested_by_user_id
+         WHERE cd.order_id = ?
+           AND LOWER(cd.platform_slug) = ?
+           AND cd.credential_fingerprint = ?
+           AND cd.status = 'reset'
+         ORDER BY cd.id DESC
+         LIMIT 1`,
+        [Number(orderId), String(platformSlugLower || "").toLowerCase(), String(credentialFingerprint || "")]
+    );
+    return rows?.[0] || null;
+}
+
 module.exports = {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
     getLastDelivered,
     countDeliveredByFingerprint,
+    getLastCodeReset,
 };

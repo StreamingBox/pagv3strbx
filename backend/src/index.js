@@ -14,6 +14,7 @@ const logger = require("./utils/logger");
 // ✅ Rutas
 const codesRoutes = require("./routes/codes");
 const codeLogsRoutes = require("./routes/codeLogs");
+const adminCodeResetsRoutes = require("./routes/admin.codeResets");
 const adminSupport = require("./routes/admin.support");
 const adminReplacements = require("./routes/admin.replacements");
 const adminCategories = require("./routes/admin.categories");
@@ -315,6 +316,7 @@ app.get("/api/codes/_ping", (req, res) => res.json({ ok: true, mounted: true }))
 
 // Code Logs (solo admin, ruta interna en su router)
 app.use("/api", codeLogsRoutes);
+app.use("/api", adminCodeResetsRoutes);
 
 // Soporte admin
 app.use("/api", adminSupport);

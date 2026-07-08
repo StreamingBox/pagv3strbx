@@ -29,6 +29,7 @@ const AdminSalesTop = lazy(() => import("./pages/AdminSalesTop.jsx"));
 const AdminCategories = lazy(() => import("./pages/AdminCategories.jsx"));
 const AdminCodeLogs = lazy(() => import("./pages/AdminCodeLogs.jsx"));
 const AdminCodeRequests = lazy(() => import("./pages/AdminCodeRequests.jsx"));
+const AdminCodeReset = lazy(() => import("./pages/AdminCodeReset.jsx"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport.jsx"));
 const AdminReplacements = lazy(() => import("./pages/AdminReplacements.jsx"));
 const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
@@ -311,6 +312,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminCodeLogs />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/code-reset"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminCodeReset />
                         </ProtectedRoute>
                     }
                 />

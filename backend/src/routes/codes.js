@@ -46,6 +46,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
 
         // log “base” común
         const baseLog = {
+            platform_slug: String(result.body?.platform || platformSlug || "").trim().toLowerCase(),
             order_email: soldAccountEmail || buyerEmail || "",
             platform_account_id: sub.platformAccountId || null,
             credential_fingerprint: fingerprint,

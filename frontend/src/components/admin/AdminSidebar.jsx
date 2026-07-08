@@ -31,6 +31,7 @@ const NAV_GROUPS = [
             { path: "/admin/links", label: "Links", icon: "🔗" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
             { path: "/admin/code-requests", label: "Pedidos de Codigos", icon: "🎟️" },
+            { path: "/admin/code-reset", label: "Reinicio de Codigo", icon: "R" },
             { path: "/admin/code-logs", label: "Logs de Codigos", icon: "🎫" },
             { path: "/admin/stock-notify", label: "Alertas de Stock", icon: "🔔" },
             { path: "/admin/upload-logs", label: "Logs de Carga", icon: "📋" },

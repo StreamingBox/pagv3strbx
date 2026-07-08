@@ -55,6 +55,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
                 { icon: "🔗", tone: "teal", title: "Links", hint: "Enlaces de credenciales.", path: "/admin/links" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
+                { icon: "R", tone: "amber", title: "Reinicio de Codigo", hint: "Reinicia intentos por pedido.", path: "/admin/code-reset" },
                 { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de pines generados.", path: "/admin/code-logs" },
             ],
         },

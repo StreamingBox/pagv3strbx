@@ -66,6 +66,7 @@ export function getPlatformLogoCandidates(slug, name, ts) {
     if (raw.includes("gemini")) base.push("link-gemini-con-5-tb-de-almacenamiento", "gemini");
     if (raw.includes("office") || raw.includes("microsoft")) base.push("microsoft-office-365");
     if (raw.includes("paramount")) base.push("paramount-plus-activacion-por-codigo-tv", "paramount-completa");
+    if (raw.includes("apple")) base.push("apple-tv");
     if (raw.includes("spotify")) base.push("spotify-3-meses");
     if (raw.includes("youtube")) base.push("youtube-music");
     if (raw.includes("chat") || raw.includes("gpt")) base.push("chat-gpt-cuenta-personal-solo-un-dispositivo", "chatgpt", "chat-gpt");

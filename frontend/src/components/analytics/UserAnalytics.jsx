@@ -56,6 +56,161 @@ function formatSupportHours(value) {
     return `${Number(hours.toFixed(1)).toLocaleString("es-CO")} h`;
 }
 
+function buildSupportDailySeries(month) {
+    const stats = month?.supportStats || {};
+    const monthDays = daysInMonth(Number(month?.year), Number(month?.month)) || 31;
+    const byDay = new Map((stats.daily || []).map((point) => [
+        Number(point.day),
+        {
+            created: Number(point.created || 0),
+            resolved: Number(point.resolved || 0),
+        },
+    ]));
+
+    return Array.from({ length: monthDays }, (_item, index) => {
+        const day = index + 1;
+        const point = byDay.get(day) || {};
+        return {
+            day,
+            created: Number(point.created || 0),
+            resolved: Number(point.resolved || 0),
+        };
+    });
+}
+
+function SupportTrendChart({ month, color, isMobile }) {
+    const series = buildSupportDailySeries(month);
+    const maxValue = Math.max(4, ...series.map((point) => Math.max(point.created, point.resolved)));
+    const hasData = series.some((point) => point.created > 0 || point.resolved > 0);
+    const width = 760;
+    const height = 210;
+    const pad = { top: 20, right: 18, bottom: 34, left: 38 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = height - pad.top - pad.bottom;
+    const xFor = (index) => pad.left + (series.length <= 1 ? chartW / 2 : (chartW / (series.length - 1)) * index);
+    const yFor = (value) => pad.top + chartH - (Number(value || 0) / maxValue) * chartH;
+    const pathFor = (key) => series.map((point, index) => `${index === 0 ? "M" : "L"} ${xFor(index).toFixed(1)} ${yFor(point[key]).toFixed(1)}`).join(" ");
+    const activePoints = series.filter((point) => point.created > 0 || point.resolved > 0);
+    const tickValues = [maxValue, Math.ceil(maxValue / 2), 0];
+
+    return (
+        <div style={{
+            padding: isMobile ? 12 : 16,
+            border: "1px solid rgba(34,211,238,.18)",
+            borderRadius: 14,
+            background: "rgba(7,14,34,.48)",
+            minWidth: 0,
+            overflow: "hidden",
+        }}>
+            <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 10,
+                flexWrap: "wrap",
+            }}>
+                <div>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13 }}>Tendencia diaria</strong>
+                    <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 700 }}>
+                        Casos creados vs. casos resueltos
+                    </span>
+                </div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <i style={{ width: 8, height: 8, borderRadius: 999, background: color, display: "inline-block" }} />
+                        Recibidos
+                    </span>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <i style={{ width: 8, height: 8, borderRadius: 999, background: "#10b981", display: "inline-block" }} />
+                        Resueltos
+                    </span>
+                </div>
+            </div>
+
+            {hasData ? (
+                <div style={{ width: "100%", minWidth: 0 }}>
+                    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Tendencia de soportes ${month?.label || ""}`} style={{ display: "block", width: "100%", height: isMobile ? 170 : 210 }}>
+                        <defs>
+                            <linearGradient id={`supportFill-${month?.year}-${month?.month}`} x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+                                <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+                            </linearGradient>
+                        </defs>
+
+                        {tickValues.map((tick) => {
+                            const y = yFor(tick);
+                            return (
+                                <g key={`tick-${tick}`}>
+                                    <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="rgba(148,163,184,.12)" strokeDasharray="5 7" />
+                                    <text x={8} y={y + 4} fill="rgba(226,232,240,.55)" fontSize="11" fontWeight="700">{tick}</text>
+                                </g>
+                            );
+                        })}
+
+                        <path
+                            d={`${pathFor("created")} L ${xFor(series.length - 1).toFixed(1)} ${yFor(0).toFixed(1)} L ${xFor(0).toFixed(1)} ${yFor(0).toFixed(1)} Z`}
+                            fill={`url(#supportFill-${month?.year}-${month?.month})`}
+                        />
+                        <path d={pathFor("created")} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d={pathFor("resolved")} fill="none" stroke="#10b981" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="8 7" />
+
+                        {activePoints.map((point) => {
+                            const index = point.day - 1;
+                            return (
+                                <g key={`support-point-${point.day}`}>
+                                    {point.created > 0 && (
+                                        <circle cx={xFor(index)} cy={yFor(point.created)} r="6" fill={color} stroke="#0b1024" strokeWidth="3" />
+                                    )}
+                                    {point.resolved > 0 && (
+                                        <circle cx={xFor(index)} cy={yFor(point.resolved)} r="5" fill="#10b981" stroke="#0b1024" strokeWidth="3" />
+                                    )}
+                                    <text x={xFor(index)} y={height - 10} fill="rgba(226,232,240,.62)" fontSize="10" fontWeight="800" textAnchor="middle">
+                                        {point.day}
+                                    </text>
+                                </g>
+                            );
+                        })}
+
+                        {[1, Math.ceil(series.length / 2), series.length].map((day) => (
+                            <text key={`day-label-${day}`} x={xFor(day - 1)} y={height - 10} fill="rgba(226,232,240,.38)" fontSize="10" fontWeight="800" textAnchor="middle">
+                                {activePoints.some((point) => point.day === day) ? "" : day}
+                            </text>
+                        ))}
+                    </svg>
+                    <div style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 10,
+                        color: "var(--muted)",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        flexWrap: "wrap",
+                    }}>
+                        <span>Escala maxima: {maxValue} casos por dia</span>
+                        <span>{activePoints.length} dia(s) con movimiento</span>
+                    </div>
+                </div>
+            ) : (
+                <div style={{
+                    height: isMobile ? 150 : 190,
+                    display: "grid",
+                    placeItems: "center",
+                    borderRadius: 12,
+                    background: "rgba(8,14,32,.42)",
+                    color: "var(--muted)",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    textAlign: "center",
+                    padding: 18,
+                }}>
+                    Sin novedades registradas en este mes.
+                </div>
+            )}
+        </div>
+    );
+}
+
 function SupportPulse({ month, color, isMobile }) {
     const stats = month?.supportStats;
     if (!stats) return null;
@@ -202,10 +357,11 @@ function SupportAnalyticsView({ months, isMobile }) {
                         variants={itemVariants}
                         style={{
                             padding: isMobile ? "16px 12px" : 20,
-                            border: "1px solid rgba(34,211,238,.24)",
+                            border: "1px solid rgba(34,211,238,.20)",
                             borderRadius: 16,
-                            background: "linear-gradient(135deg, rgba(34,211,238,.08), rgba(139,92,246,.05))",
+                            background: "linear-gradient(135deg, rgba(14,24,55,.94), rgba(12,20,48,.88))",
                             minWidth: 0,
+                            boxShadow: "0 18px 40px rgba(0,0,0,.16)",
                         }}
                     >
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap" }}>
@@ -234,7 +390,8 @@ function SupportAnalyticsView({ months, isMobile }) {
                             gap: 14,
                             minWidth: 0,
                         }}>
-                            <div style={{ padding: 14, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.28)", minWidth: 0 }}>
+                            <SupportTrendChart month={month} color={color} isMobile={isMobile} />
+                            <div style={{ display: "none", padding: 14, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.28)", minWidth: 0 }}>
                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
                                     <strong style={{ color: "var(--text)", fontSize: 13 }}>Flujo diario de novedades</strong>
                                     <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>

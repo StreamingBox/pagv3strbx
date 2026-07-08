@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { RefreshCcw } from "lucide-react";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { apiGet, apiPost } from "../api/api";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -174,9 +175,8 @@ export default function AdminCodeReset() {
                                 alignItems: "center",
                                 justifyContent: "center",
                                 color: "#0da6f2",
-                                fontWeight: 950,
                             }}>
-                                R
+                                <RefreshCcw size={25} strokeWidth={2.5} aria-hidden />
                             </div>
                             <div>
                                 <h1 className="title" style={{ margin: 0 }}>Reinicio de Codigo</h1>

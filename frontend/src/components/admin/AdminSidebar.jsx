@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { RefreshCcw } from "lucide-react";
 import ThemeToggle from "../ThemeToggle.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import useTheme from "../../hooks/useTheme";
@@ -31,7 +32,7 @@ const NAV_GROUPS = [
             { path: "/admin/links", label: "Links", icon: "🔗" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
             { path: "/admin/code-requests", label: "Pedidos de Codigos", icon: "🎟️" },
-            { path: "/admin/code-reset", label: "Reinicio de Codigo", icon: "R" },
+            { path: "/admin/code-reset", label: "Reinicio de Codigo", icon: <RefreshCcw size={18} strokeWidth={2.4} aria-hidden /> },
             { path: "/admin/code-logs", label: "Logs de Codigos", icon: "🎫" },
             { path: "/admin/stock-notify", label: "Alertas de Stock", icon: "🔔" },
             { path: "/admin/upload-logs", label: "Logs de Carga", icon: "📋" },

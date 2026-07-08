@@ -9,6 +9,7 @@ import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import BalancedText from "../text/BalancedText.jsx";
 import { displayCurrency } from "../../utils/currency.js";
 import { isSidebarMobile, useResponsiveSidebar } from "../sidebar/AppSidebar.jsx";
+import "../../styles/dashboard-stitch.css";
 
 import { getApiBase } from "../../config/apiBase.js";
 import { isLiteSite } from "../../config/siteVariant.js";
@@ -21,7 +22,6 @@ const APK_RELEASE_ID = typeof __APK_RELEASE_ID__ !== "undefined" ? __APK_RELEASE
 const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 
 const NAV_ITEMS = [
-    { key: "support", label: "Soporte", icon: <Headphones size={19} strokeWidth={2.3} aria-hidden />, path: "/support" },
     { key: "home", label: "Inicio", icon: "🏠", path: "/dashboard" },
     { key: "wallet", label: "Recargas", icon: "💳", path: "/topups" },
     { key: "orders", label: "Historial de Compras", icon: "🧾", path: "/orders" },
@@ -30,6 +30,7 @@ const NAV_ITEMS = [
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
     { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
+    { key: "support", label: "Soporte", icon: <Headphones size={19} strokeWidth={2.3} aria-hidden />, path: "/support" },
 ];
 
 export default function Sidebar({
@@ -318,7 +319,7 @@ export default function Sidebar({
                                 return (
                                     <MotionButton
                                         key={item.key}
-                                        className={`sb-nav-item${isActive ? " sb-nav-item--active" : ""}`}
+                                        className={`sb-nav-item${isActive ? " sb-nav-item--active" : ""}${item.key === "support" ? " sb-nav-item--support" : ""}`}
                                         onClick={() => nav(handler, item.path)}
                                         whileHover={{ x: 4 }}
                                         whileTap={{ scale: 0.97 }}
@@ -332,6 +333,10 @@ export default function Sidebar({
                                             maxLines={2}
                                             minWidthRatio={0.74}
                                         />
+
+                                        {item.key === "support" && !collapsed && (
+                                            <span className="sb-nav-new-badge">Nuevo</span>
+                                        )}
 
                                         {item.key === "expirations" && expirationsCount > 0 && !collapsed && (
                                             <span

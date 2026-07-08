@@ -161,7 +161,7 @@ export default function Support() {
                         </div>
 
                         <form className="support-form" onSubmit={submitTicket}>
-                            <label className="support-field">
+                            <label className="support-field support-field--id">
                                 <span>ID de la cuenta</span>
                                 <input
                                     value={subscriptionId}
@@ -173,7 +173,7 @@ export default function Support() {
                                 <small>Es el ID que aparece en el enlace o detalle de credenciales.</small>
                             </label>
 
-                            <label className="support-field support-field--wide">
+                            <label className="support-field support-field--observation">
                                 <span>¿Qué problema presenta?</span>
                                 <textarea
                                     value={observation}
@@ -185,7 +185,7 @@ export default function Support() {
                                 <small>{observation.length}/2000</small>
                             </label>
 
-                            <label className="support-upload support-field--wide">
+                            <label className="support-upload support-field--evidence">
                                 <input
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
@@ -207,7 +207,7 @@ export default function Support() {
                             {error ? <div className="support-message support-message--error">{error}</div> : null}
                             {success ? <div className="support-message support-message--success">{success}</div> : null}
 
-                            <div className="support-form__actions support-field--wide">
+                            <div className="support-form__actions">
                                 <button type="submit" className="support-primary-button" disabled={sending}>
                                     <Send size={18} aria-hidden />
                                     {sending ? "Enviando..." : "Enviar solicitud"}

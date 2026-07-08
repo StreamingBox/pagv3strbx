@@ -53,7 +53,7 @@ function formatSupportHours(value) {
     const hours = Number(value || 0);
     if (!hours) return "Sin cierre";
     if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
-    return `${hours.toLocaleString("es-CO")} h`;
+    return `${Number(hours.toFixed(1)).toLocaleString("es-CO")} h`;
 }
 
 function SupportPulse({ month, color, isMobile }) {
@@ -153,6 +153,146 @@ function SupportPulse({ month, color, isMobile }) {
                     </div>
                 </div>
             </div>
+        </motion.div>
+    );
+}
+
+function SupportAnalyticsView({ months, isMobile }) {
+    const visibleMonths = Array.isArray(months) ? months : [];
+    const totals = visibleMonths.reduce((acc, month) => {
+        const stats = month.supportStats || {};
+        acc.created += Number(stats.created || 0);
+        acc.open += Number(stats.open || 0);
+        acc.inProgress += Number(stats.inProgress || 0);
+        acc.pending += Number(stats.pending || 0);
+        acc.resolved += Number(stats.resolved || 0);
+        acc.orders += Number(month.orders || 0);
+        if (Number(stats.avgResolutionHours || 0) > 0) acc.avgHours.push(Number(stats.avgResolutionHours || 0));
+        return acc;
+    }, { created: 0, open: 0, inProgress: 0, pending: 0, resolved: 0, orders: 0, avgHours: [] });
+    const supportRate = totals.orders > 0 ? Number(((totals.created / totals.orders) * 100).toFixed(2)) : 0;
+    const resolvedRate = totals.created > 0 ? Number(((totals.resolved / totals.created) * 100).toFixed(1)) : 0;
+    const avgHours = totals.avgHours.length
+        ? totals.avgHours.reduce((sum, value) => sum + value, 0) / totals.avgHours.length
+        : 0;
+
+    return (
+        <motion.div initial="hidden" animate="show" variants={containerVariants} style={{ display: "grid", gap: 16, minWidth: 0 }}>
+            <motion.div variants={itemVariants} style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+                minWidth: 0,
+            }}>
+                <InsightChip emoji="🎧" label="Casos recibidos" value={totals.created} color="#22d3ee" />
+                <InsightChip emoji="🟠" label="Pendientes" value={totals.pending} color="#f59e0b" />
+                <InsightChip emoji="✅" label="Resueltos" value={`${totals.resolved} (${resolvedRate} %)`} color="#10b981" />
+                <InsightChip emoji="📉" label="Impacto sobre ventas" value={`${supportRate} %`} color="#8b5cf6" />
+                <InsightChip emoji="⏱️" label="Prom. cierre" value={formatSupportHours(avgHours)} color="#06b6d4" />
+            </motion.div>
+
+            {visibleMonths.map((month, idx) => {
+                const color = MONTH_COLORS[idx % MONTH_COLORS.length];
+                const stats = month.supportStats || {};
+                const daily = stats.daily || [];
+                const maxDaily = Math.max(1, ...daily.map((point) => Math.max(Number(point.created || 0), Number(point.resolved || 0))));
+                return (
+                    <motion.section
+                        key={`support-view-${month.label}`}
+                        variants={itemVariants}
+                        style={{
+                            padding: isMobile ? "16px 12px" : 20,
+                            border: "1px solid rgba(34,211,238,.24)",
+                            borderRadius: 16,
+                            background: "linear-gradient(135deg, rgba(34,211,238,.08), rgba(139,92,246,.05))",
+                            minWidth: 0,
+                        }}
+                    >
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap" }}>
+                            <div>
+                                <div style={{ color: "#22d3ee", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: 1 }}>
+                                    Soportes recibidos
+                                </div>
+                                <h2 style={{ margin: "5px 0 0", color: "var(--text)", fontSize: isMobile ? 18 : 22, letterSpacing: 0 }}>
+                                    {month.label}
+                                </h2>
+                            </div>
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                <span style={{ color, fontSize: 24, fontWeight: 950 }}>{stats.created || 0} casos</span>
+                                <span style={{ padding: "7px 10px", borderRadius: 999, color: "#10b981", background: "rgba(16,185,129,.10)", fontSize: 12, fontWeight: 900 }}>
+                                    {stats.resolved || 0} resueltos
+                                </span>
+                                <span style={{ padding: "7px 10px", borderRadius: 999, color: "#f59e0b", background: "rgba(245,158,11,.10)", fontSize: 12, fontWeight: 900 }}>
+                                    {stats.pending || 0} pendientes
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{
+                            display: "grid",
+                            gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.4fr) minmax(280px, .8fr)",
+                            gap: 14,
+                            minWidth: 0,
+                        }}>
+                            <div style={{ padding: 14, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.28)", minWidth: 0 }}>
+                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                                    <strong style={{ color: "var(--text)", fontSize: 13 }}>Flujo diario de novedades</strong>
+                                    <span style={{ color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>
+                                        Azul: creados · Verde: resueltos
+                                    </span>
+                                </div>
+                                {daily.length ? (
+                                    <div style={{ display: "flex", alignItems: "end", gap: isMobile ? 3 : 5, height: 150, minWidth: 0 }}>
+                                        {daily.map((point) => {
+                                            const created = Number(point.created || 0);
+                                            const resolved = Number(point.resolved || 0);
+                                            return (
+                                                <div key={point.day} style={{ flex: "1 1 0", minWidth: isMobile ? 5 : 8, display: "grid", gap: 3, alignItems: "end" }} title={`Dia ${point.day}: ${created} creados, ${resolved} resueltos`}>
+                                                    <div style={{ height: `${Math.max(6, (created / maxDaily) * 120)}px`, borderRadius: "7px 7px 2px 2px", background: `linear-gradient(180deg, ${color}, rgba(34,211,238,.26))` }} />
+                                                    <div style={{ height: `${resolved ? Math.max(6, (resolved / maxDaily) * 120) : 3}px`, borderRadius: "7px 7px 2px 2px", background: resolved ? "linear-gradient(180deg,#10b981,rgba(16,185,129,.24))" : "rgba(255,255,255,.10)" }} />
+                                                    {!isMobile || point.day % 5 === 0 ? (
+                                                        <span style={{ color: "var(--muted)", fontSize: 9, textAlign: "center" }}>{point.day}</span>
+                                                    ) : null}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div style={{ height: 150, display: "grid", placeItems: "center", color: "var(--muted)", fontSize: 13 }}>
+                                        Sin novedades registradas en este mes.
+                                    </div>
+                                )}
+                            </div>
+
+                            <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+                                <div style={{ padding: 14, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.28)" }}>
+                                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13, marginBottom: 10 }}>Plataformas que mas reportan</strong>
+                                    <div style={{ display: "grid", gap: 8 }}>
+                                        {(stats.platforms || []).length ? stats.platforms.slice(0, 5).map((item, itemIdx) => (
+                                            <div key={item.name} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
+                                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                                                <span style={{ color: TOP_COLORS[itemIdx % TOP_COLORS.length], fontSize: 12, fontWeight: 950 }}>{item.value}</span>
+                                            </div>
+                                        )) : <span style={{ color: "var(--muted)", fontSize: 12 }}>Sin plataformas reportadas.</span>}
+                                    </div>
+                                </div>
+
+                                <div style={{ padding: 14, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.28)" }}>
+                                    <strong style={{ display: "block", color: "var(--text)", fontSize: 13, marginBottom: 10 }}>Cierres por subtipificacion</strong>
+                                    <div style={{ display: "grid", gap: 8 }}>
+                                        {(stats.subtypes || []).length ? stats.subtypes.slice(0, 5).map((item, itemIdx) => (
+                                            <div key={item.key || item.name} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center" }}>
+                                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</span>
+                                                <span style={{ color: TOP_COLORS[itemIdx % TOP_COLORS.length], fontSize: 12, fontWeight: 950 }}>{item.value}</span>
+                                            </div>
+                                        )) : <span style={{ color: "var(--muted)", fontSize: 12 }}>Sin cierres subtipificados todavia.</span>}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </motion.section>
+                );
+            })}
         </motion.div>
     );
 }
@@ -530,7 +670,7 @@ function UserAnalyticsContent({ admin }) {
     const now = new Date();
     const currentYear = now.getFullYear();
 
-    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly"
+    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support"
     const [year, setYear] = useState(currentYear);
     const [chartType, setChartType] = useState("area");
 
@@ -748,6 +888,8 @@ function UserAnalyticsContent({ admin }) {
                                     ? "Comparando usuarios en el mes seleccionado"
                                     : viewMode === "weekly"
                                         ? "Desglose semanal del mes seleccionado"
+                                        : viewMode === "support"
+                                            ? "Novedades de soporte, cierres, pendientes e impacto por periodo"
                                         : "Selecciona hasta 6 meses para comparar"}
                         </p>
                     </div>
@@ -823,7 +965,7 @@ function UserAnalyticsContent({ admin }) {
                             icon="📈"
                         />
 
-                        {/* Tab toggle Mensual / Semanal */}
+                        {/* Tab toggle Mensual / Semanal / Soportes */}
                         <div style={{
                             display: "inline-flex", background: "var(--bg0)",
                             border: "1px solid var(--stroke)", borderRadius: 12,
@@ -831,7 +973,11 @@ function UserAnalyticsContent({ admin }) {
                             width: isMobile ? "100%" : undefined,
                             minWidth: 0,
                         }}>
-                            {[{ key: "monthly", icon: "📅", label: "Mensual" }, { key: "weekly", icon: "📊", label: "Semanal" }].map(tab => (
+                            {[
+                                { key: "monthly", icon: "📅", label: "Mensual" },
+                                { key: "weekly", icon: "📊", label: "Semanal" },
+                                ...(admin ? [{ key: "support", icon: "🎧", label: "Soportes" }] : []),
+                            ].map(tab => (
                                 <button
                                     key={tab.key}
                                     onClick={() => setViewMode(tab.key)}
@@ -878,7 +1024,11 @@ function UserAnalyticsContent({ admin }) {
                                 textTransform: "uppercase", letterSpacing: "0.8px", marginRight: 4, flexShrink: 0,
                                 width: isMobile ? "100%" : undefined,
                             }}>
-                                {viewMode === "weekly" ? "Mes a desglosar:" : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
+                                {viewMode === "weekly"
+                                    ? "Mes a desglosar:"
+                                    : viewMode === "support"
+                                        ? "Meses de soporte:"
+                                        : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
                             </span>
                             {filteredMonths.map((m) => {
                                 const key = monthKey(m.year, m.month);
@@ -932,6 +1082,23 @@ function UserAnalyticsContent({ admin }) {
                         chartType={chartType}
                     />
                 </motion.div>
+            )}
+
+            {admin && viewMode === "support" && !loadingMonths && !loadingData && (
+                supportMonths.length > 0 ? (
+                    <SupportAnalyticsView months={supportMonths} isMobile={isMobile} />
+                ) : (
+                    <motion.div variants={itemVariants} style={{
+                        padding: 40,
+                        border: "1px solid var(--stroke)",
+                        borderRadius: 18,
+                        background: "var(--card)",
+                        color: "var(--muted)",
+                        textAlign: "center",
+                    }}>
+                        No hay datos de soporte para los meses seleccionados.
+                    </motion.div>
+                )
             )}
 
             {/* KPI Cards — solo mensual */}
@@ -1027,19 +1194,6 @@ function UserAnalyticsContent({ admin }) {
             {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-                    {admin && supportMonths.length > 0 && (
-                        <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
-                            {supportMonths.slice(0, isMobile ? 1 : 2).map((month, idx) => (
-                                <SupportPulse
-                                    key={`support-${month.label}`}
-                                    month={month}
-                                    color={MONTH_COLORS[idx % MONTH_COLORS.length]}
-                                    isMobile={isMobile}
-                                />
-                            ))}
-                        </div>
-                    )}
 
                     {/* Sales trend chart */}
                     <motion.div variants={itemVariants} style={{

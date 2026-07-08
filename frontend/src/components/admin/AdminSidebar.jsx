@@ -29,6 +29,7 @@ const NAV_GROUPS = [
         links: [
             { path: "/admin/accounts", label: "Inventario de Cuentas", icon: "🔐" },
             { path: "/admin/inventory", label: "Inventario General", icon: "📦" },
+            { path: "/admin/master-accounts", label: "Cuentas Maestras", icon: "M" },
             { path: "/admin/links", label: "Links", icon: "🔗" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
             { path: "/admin/code-requests", label: "Pedidos de Codigos", icon: "🎟️" },

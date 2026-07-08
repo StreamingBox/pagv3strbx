@@ -1222,6 +1222,26 @@ async function notifySupportTicketCreated(ticket) {
     return sent.length;
 }
 
+async function notifySupportTicketAutoNoStock(ticket, masterAccount) {
+    if (!bot || AUTHORIZED.size === 0 || !ticket) return 0;
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
+    const message = [
+        "Soporte sin stock para autoreemplazo",
+        "",
+        `Caso: ${ticket.ticketCode || "-"}`,
+        `ID de cuenta: #${ticket.subscriptionId || "-"}`,
+        `Plataforma: ${ticket.platformName || masterAccount?.platform_name || "-"}`,
+        `Cuenta maestra caida: ${masterAccount?.account_email || "-"}`,
+        `Cliente: ${ticket.userName || ticket.userEmail || "-"}`,
+        "",
+        "La cuenta esta marcada como inactiva en Cuentas Maestras, pero no hay stock disponible para reemplazarla automaticamente.",
+        "",
+        `Gestionar: ${baseUrl}/admin/support`,
+    ].join("\n");
+    const sent = await notifyAuthorizedChats(message);
+    return sent.length;
+}
+
 async function notifyMonthlyPurchaseEnforcement({ periodStart, requiredTotal, users }) {
     if (!bot || AUTHORIZED.size === 0 || !Array.isArray(users) || users.length === 0) return 0;
     const periodLabel = new Intl.DateTimeFormat("es-CO", {
@@ -1279,5 +1299,6 @@ module.exports = {
     notifyUserRegistered,
     notifyOutOfStockPlatforms,
     notifySupportTicketCreated,
+    notifySupportTicketAutoNoStock,
     notifyMonthlyPurchaseEnforcement,
 };

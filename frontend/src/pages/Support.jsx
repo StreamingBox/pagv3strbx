@@ -46,6 +46,7 @@ export default function Support() {
     const [loading, setLoading] = useState(true);
     const [loadingMore, setLoadingMore] = useState(false);
     const [sending, setSending] = useState(false);
+    const [reopeningId, setReopeningId] = useState(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
@@ -131,6 +132,25 @@ export default function Support() {
 
     async function loadMoreTickets() {
         await loadTickets({ offset: tickets.length, append: true });
+    }
+
+    async function reopenTicket(ticket) {
+        setError("");
+        setSuccess("");
+        setReopeningId(ticket.id);
+        const response = await apiFetch(`/support/tickets/${ticket.id}/reopen`, {
+            method: "PATCH",
+            body: JSON.stringify({
+                message: "El cliente reporta que la novedad continua despues de la respuesta.",
+            }),
+        });
+        setReopeningId(null);
+        if (!response.ok) {
+            setError(response.data?.message || "No pudimos reabrir el caso.");
+            return;
+        }
+        setSuccess(`Caso ${ticket.ticketCode} reabierto correctamente.`);
+        await loadTickets();
     }
 
     return (
@@ -273,6 +293,18 @@ export default function Support() {
                                                 <strong>{RESULT[ticket.resolutionType] || "Caso resuelto"}</strong>
                                                 <p>{ticket.resolutionMessage}</p>
                                                 <span>{formatDate(ticket.resolvedAt)}</span>
+                                                {ticket.canReopen ? (
+                                                    <button
+                                                        type="button"
+                                                        className="support-secondary-button support-reopen-button"
+                                                        onClick={() => reopenTicket(ticket)}
+                                                        disabled={reopeningId === ticket.id}
+                                                    >
+                                                        {reopeningId === ticket.id ? "Reabriendo..." : "Reabrir caso"}
+                                                    </button>
+                                                ) : (
+                                                    <small className="support-final-note">Cierre definitivo. La ventana de 24 horas ya termino.</small>
+                                                )}
                                             </div>
                                         ) : null}
                                     </article>

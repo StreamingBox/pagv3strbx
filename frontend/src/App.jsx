@@ -32,6 +32,7 @@ const AdminCodeRequests = lazy(() => import("./pages/AdminCodeRequests.jsx"));
 const AdminCodeReset = lazy(() => import("./pages/AdminCodeReset.jsx"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport.jsx"));
 const AdminAccountSupport = lazy(() => import("./pages/AdminAccountSupport.jsx"));
+const AdminMasterAccounts = lazy(() => import("./pages/AdminMasterAccounts.jsx"));
 const AdminReplacements = lazy(() => import("./pages/AdminReplacements.jsx"));
 const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
 const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
@@ -359,6 +360,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminAccountSupport />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/master-accounts"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminMasterAccounts />
                         </ProtectedRoute>
                     }
                 />

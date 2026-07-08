@@ -14,10 +14,15 @@ const {
     sendSupportTicketCreatedEmails,
     sendSupportTicketResolvedEmail,
 } = require("../services/mailService");
-const { notifySupportTicketCreated } = require("../services/telegramBot");
+const {
+    notifySupportTicketCreated,
+    notifySupportTicketAutoNoStock,
+} = require("../services/telegramBot");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
+const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
 
 const router = express.Router();
+const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const RESOLUTION_SUBTYPE_LABELS = {
     password_updated: "Clave actualizada",
@@ -43,6 +48,13 @@ function normalizeResolutionSubtype(value) {
 
 function resolutionSubtypeLabel(value) {
     return RESOLUTION_SUBTYPE_LABELS[value] || value || "";
+}
+
+function getReopenUntil(value) {
+    if (!value) return null;
+    const closedAt = new Date(value);
+    if (Number.isNaN(closedAt.getTime())) return null;
+    return new Date(closedAt.getTime() + REOPEN_WINDOW_MS).toISOString();
 }
 
 const upload = multer({
@@ -77,6 +89,10 @@ function createTicketCode() {
 
 function mapTicket(row) {
     if (!row) return null;
+    const reopenUntil = getReopenUntil(row.resolved_at);
+    const canReopen = row.status === "resolved" && reopenUntil
+        ? new Date(reopenUntil).getTime() > Date.now()
+        : false;
     return {
         id: Number(row.id),
         ticketCode: row.ticket_code,
@@ -106,6 +122,8 @@ function mapTicket(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         resolvedAt: row.resolved_at || null,
+        reopenUntil,
+        canReopen,
     };
 }
 
@@ -153,6 +171,59 @@ async function deliverCreatedNotifications(ticket) {
     });
 }
 
+async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
+    const masterAccount = await findInactiveMasterForSubscription(conn, subscriptionId);
+    if (!masterAccount) return { matched: false };
+
+    try {
+        const replacement = await replaceSubscriptionAccount({
+            conn,
+            subscriptionId,
+            replacementAccountId: null,
+            adminUserId: null,
+        });
+        const resolutionMessage = [
+            "Detectamos que la cuenta reportada estaba marcada como inactiva en soporte.",
+            "El sistema hizo el reemplazo automatico con una cuenta disponible.",
+            "Ya puedes consultar nuevamente tus credenciales en el enlace de tu compra.",
+        ].join(" ");
+
+        await conn.query(
+            `UPDATE support_tickets
+                SET status = 'resolved',
+                    resolution_type = 'replaced',
+                    resolution_subtype = 'account_replaced',
+                    resolution_message = ?,
+                    old_account_id = ?,
+                    new_account_id = ?,
+                    resolved_by_user_id = NULL,
+                    resolved_at = NOW()
+              WHERE id = ?`,
+            [
+                resolutionMessage,
+                replacement?.oldAccountId || null,
+                replacement?.newAccountId || null,
+                ticketId,
+            ]
+        );
+        await conn.query(
+            `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
+             VALUES (?, NULL, 'auto_replaced', ?)`,
+            [ticketId, resolutionMessage]
+        );
+        return { matched: true, resolved: true, masterAccount, replacement };
+    } catch (error) {
+        if (error?.code !== "NO_STOCK") throw error;
+        const message = "Cuenta maestra inactiva detectada, pero no hay stock disponible para reemplazo automatico.";
+        await conn.query(
+            `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
+             VALUES (?, NULL, 'auto_no_stock', ?)`,
+            [ticketId, message]
+        );
+        return { matched: true, resolved: false, noStock: true, masterAccount };
+    }
+}
+
 router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) => {
     const userId = Number(req.user.id);
     const subscriptionId = Number(req.body?.subscriptionId);
@@ -172,6 +243,7 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
 
     const conn = await pool.getConnection();
     let storedFile = "";
+    let transactionStarted = false;
     try {
         const [subscriptions] = await conn.query(
             `SELECT s.id, s.user_id, s.platform_id, s.status,
@@ -217,6 +289,8 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
             });
         }
 
+        await conn.beginTransaction();
+        transactionStarted = true;
         storedFile = await saveSupportAttachment(req.file);
         const ticketCode = createTicketCode();
         const [result] = await conn.query(
@@ -244,15 +318,95 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
             [result.insertId, userId, observation]
         );
 
+        let autoResult = { matched: false };
+        autoResult = await attemptAutoMasterResolution(conn, {
+            ticketId: result.insertId,
+            subscriptionId,
+        });
+
         const ticket = await getTicketById(conn, result.insertId);
-        res.status(201).json({ ok: true, ticket });
-        void deliverCreatedNotifications(ticket);
+        await conn.commit();
+        transactionStarted = false;
+
+        res.status(201).json({
+            ok: true,
+            ticket,
+            autoResolved: !!autoResult.resolved,
+            autoNoStock: !!autoResult.noStock,
+        });
+
+        if (autoResult.resolved) {
+            void sendSupportTicketResolvedEmail({
+                ticket,
+                customerName: ticket.userName,
+            }).catch((error) => console.error("[support] Auto resolve mail error:", error));
+        } else {
+            void deliverCreatedNotifications(ticket);
+            if (autoResult.noStock) {
+                void notifySupportTicketAutoNoStock(ticket, autoResult.masterAccount)
+                    .catch((error) => console.error("[support] Auto no-stock telegram error:", error));
+            }
+        }
     } catch (error) {
+        if (transactionStarted) await conn.rollback().catch(() => {});
         if (storedFile) await removeSupportAttachment(storedFile).catch(() => {});
         console.error("[support] Create ticket error:", error);
         if (!res.headersSent) {
             return res.status(500).json({ message: "No se pudo crear la solicitud de soporte." });
         }
+    } finally {
+        conn.release();
+    }
+});
+
+router.patch("/support/tickets/:id/reopen", requireAuth, async (req, res) => {
+    const ticketId = Number(req.params.id);
+    const message = String(req.body?.message || "El usuario reabrio el caso dentro de la ventana de 24 horas.").trim().slice(0, 1000);
+    if (!Number.isFinite(ticketId) || ticketId <= 0) {
+        return res.status(400).json({ message: "Caso invalido." });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const ticket = await getTicketById(conn, ticketId, {
+            userId: Number(req.user.id),
+            forUpdate: true,
+        });
+        if (!ticket) {
+            await conn.rollback();
+            return res.status(404).json({ message: "Caso no encontrado." });
+        }
+        if (ticket.status !== "resolved") {
+            await conn.rollback();
+            return res.status(409).json({ message: "Solo puedes reabrir casos resueltos." });
+        }
+        if (!ticket.canReopen) {
+            await conn.rollback();
+            return res.status(409).json({ message: "La ventana de 24 horas para reabrir este caso ya termino." });
+        }
+
+        await conn.query(
+            "UPDATE support_tickets SET status = 'open' WHERE id = ?",
+            [ticketId]
+        );
+        await conn.query(
+            `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
+             VALUES (?, ?, 'reopened', ?)`,
+            [ticketId, req.user.id, message]
+        );
+        await conn.commit();
+
+        const reopened = await getTicketById(conn, ticketId, { userId: Number(req.user.id) });
+        res.json({ ok: true, ticket: reopened });
+        void notifySupportTicketCreated({
+            ...reopened,
+            observation: `Caso reabierto: ${message}`,
+        });
+    } catch (error) {
+        await conn.rollback().catch(() => {});
+        console.error("[support] Reopen ticket error:", error);
+        return res.status(500).json({ message: "No se pudo reabrir el caso." });
     } finally {
         conn.release();
     }

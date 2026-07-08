@@ -16,6 +16,7 @@ const codesRoutes = require("./routes/codes");
 const codeLogsRoutes = require("./routes/codeLogs");
 const adminCodeResetsRoutes = require("./routes/admin.codeResets");
 const adminSupport = require("./routes/admin.support");
+const supportTickets = require("./routes/supportTickets");
 const adminReplacements = require("./routes/admin.replacements");
 const adminCategories = require("./routes/admin.categories");
 
@@ -320,6 +321,7 @@ app.use("/api", adminCodeResetsRoutes);
 
 // Soporte admin
 app.use("/api", adminSupport);
+app.use("/api", supportTickets);
 app.use("/api", adminReplacements);
 
 // Categorías

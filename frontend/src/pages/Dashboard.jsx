@@ -320,6 +320,7 @@ export default function Dashboard() {
                     onGoAdmin={() => navigate("/admin")}
                     onGoExpirations={() => navigate("/expirations")}
                     onGoAdvertising={() => navigate("/advertising")}
+                    onGoSupport={() => navigate("/support")}
                     onGoHome={() => navigate("/dashboard")}
                     onLogout={logout}
                 />

@@ -10,6 +10,7 @@ let transporterPromise = null;
 let salesTransporterPromise = null;
 let topupTransporterPromise = null;
 let stockTransporterPromise = null;
+let supportTransporterPromise = null;
 
 function redactResetUrlForLog(resetUrl) {
     const s = String(resetUrl || "");
@@ -114,10 +115,24 @@ function getStockMailConfig() {
     };
 }
 
+function getSupportMailConfig() {
+    const config = buildMailConfig("SUPPORT_") || getMailConfig();
+    if (!config) return null;
+    return {
+        ...config,
+        from: String(
+            process.env.SUPPORT_MAIL_FROM ||
+            config.from ||
+            "Streaming Box Soporte <soporte@strbx.com.co>"
+        ).trim(),
+    };
+}
+
 async function getTransporter(kind = "default") {
     const isSales = kind === "sales";
     const isTopup = kind === "topup";
     const isStock = kind === "stock";
+    const isSupport = kind === "support";
     if (isSales) {
         if (!salesTransporterPromise) {
             const config = getSalesMailConfig();
@@ -143,6 +158,15 @@ async function getTransporter(kind = "default") {
             stockTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
         }
         return stockTransporterPromise;
+    }
+
+    if (isSupport) {
+        if (!supportTransporterPromise) {
+            const config = getSupportMailConfig();
+            if (!config) return null;
+            supportTransporterPromise = Promise.resolve(nodemailer.createTransport(config.transport));
+        }
+        return supportTransporterPromise;
     }
 
     if (!transporterPromise) {
@@ -711,6 +735,171 @@ async function sendStockAvailableEmail({ to, name, platformName, durationName })
     }
 }
 
+function buildSupportEmailFrame({ title, subtitle, greetingName, body, details, footer }) {
+    const appName = process.env.APP_NAME || "Streaming Box";
+    const detailRows = details
+        .filter((item) => item?.value !== null && item?.value !== undefined && String(item.value).trim())
+        .map((item) => `
+            <div style="margin:0 0 9px;font-size:15px;color:#334155">
+                <strong style="color:#0f172a">${escapeHtml(item.label)}:</strong>
+                ${escapeHtml(item.value)}
+            </div>
+        `)
+        .join("");
+
+    return `
+        <div style="margin:0;padding:28px;background:#eaf0ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+            <div style="max-width:720px;margin:0 auto;background:#ffffff;border:1px solid #dbe4f5;border-radius:18px;overflow:hidden">
+                <div style="background:#111827;padding:28px 30px;color:#ffffff">
+                    <div style="font-size:18px;font-weight:700;opacity:.92;margin:0 0 8px">${escapeHtml(appName)}</div>
+                    <div style="font-size:28px;font-weight:900;line-height:1.1;margin:0 0 6px">${escapeHtml(title)}</div>
+                    <div style="font-size:15px;color:#cbd5e1">${escapeHtml(subtitle)}</div>
+                </div>
+                <div style="padding:30px">
+                    <div style="font-size:16px;font-weight:700;margin:0 0 12px">Hola ${escapeHtml(greetingName || "cliente")},</div>
+                    <div style="font-size:15px;line-height:1.65;color:#475569;margin:0 0 20px">${escapeHtml(body)}</div>
+                    <div style="border:1px solid #d8e1f0;border-radius:14px;background:#f8fbff;padding:17px 18px;margin:0 0 20px">
+                        ${detailRows}
+                    </div>
+                    <div style="font-size:13px;line-height:1.6;color:#64748b">${escapeHtml(footer)}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function buildSupportCreatedEmail({ ticket, customerName, forAdmin = false }) {
+    const appName = process.env.APP_NAME || "Streaming Box";
+    const subject = forAdmin
+        ? `${appName} | Nueva solicitud ${ticket.ticketCode}`
+        : `${appName} | Recibimos tu solicitud ${ticket.ticketCode}`;
+    const body = forAdmin
+        ? "Se registro una nueva novedad de soporte. Revisa la evidencia y atiende el caso desde el panel administrador."
+        : "Recibimos tu reporte y el equipo de soporte lo revisara. Te enviaremos otro correo cuando el caso quede resuelto.";
+    const details = [
+        { label: "Caso", value: ticket.ticketCode },
+        { label: "ID de cuenta", value: `#${ticket.subscriptionId}` },
+        { label: "Plataforma", value: ticket.platformName },
+        { label: "Cliente", value: forAdmin ? `${customerName} (${ticket.userEmail})` : null },
+        { label: "Novedad", value: ticket.observation },
+    ];
+    const text = [
+        `Hola ${forAdmin ? "equipo de soporte" : customerName || "cliente"},`,
+        "",
+        body,
+        "",
+        ...details.filter((item) => item.value).map((item) => `${item.label}: ${item.value}`),
+    ].join("\n");
+    const html = buildSupportEmailFrame({
+        title: forAdmin ? "Nueva solicitud de soporte" : "Solicitud recibida",
+        subtitle: forAdmin ? "Hay una novedad pendiente por revisar." : "Tu caso ya esta en nuestra bandeja.",
+        greetingName: forAdmin ? "equipo de soporte" : customerName,
+        body,
+        details,
+        footer: forAdmin
+            ? "La evidencia solo puede abrirse desde una sesion administrativa."
+            : "Conserva el numero del caso para consultar su estado.",
+    });
+    return { subject, text, html };
+}
+
+async function sendSupportTicketCreatedEmails({ ticket, customerName }) {
+    const config = getSupportMailConfig();
+    if (!config) {
+        console.warn(`[mail] No hay SMTP configurado para soporte. Caso ${ticket.ticketCode} no enviado.`);
+        return { ok: true, delivery: "log" };
+    }
+
+    const transporter = await getTransporter("support");
+    const inbox = String(
+        process.env.SUPPORT_INBOX ||
+        process.env.SUPPORT_SMTP_USER ||
+        "soporte@strbx.com.co"
+    ).trim();
+    const customer = buildSupportCreatedEmail({ ticket, customerName });
+    const admin = buildSupportCreatedEmail({ ticket, customerName, forAdmin: true });
+
+    const results = await Promise.allSettled([
+        transporter.sendMail({
+            from: config.from,
+            to: ticket.userEmail,
+            replyTo: inbox,
+            ...customer,
+        }),
+        transporter.sendMail({
+            from: config.from,
+            to: inbox,
+            replyTo: ticket.userEmail,
+            ...admin,
+        }),
+    ]);
+    const failed = results.filter((item) => item.status === "rejected");
+    if (failed.length) {
+        failed.forEach((item) => console.error("[mail] Error enviando correo de soporte:", item.reason?.message || item.reason));
+        return { ok: false, delivery: "partial" };
+    }
+    return { ok: true, delivery: "email" };
+}
+
+async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
+    const config = getSupportMailConfig();
+    if (!config) {
+        console.warn(`[mail] No hay SMTP configurado para soporte. Cierre ${ticket.ticketCode} no enviado.`);
+        return { ok: true, delivery: "log" };
+    }
+
+    const transporter = await getTransporter("support");
+    const inbox = String(
+        process.env.SUPPORT_INBOX ||
+        process.env.SUPPORT_SMTP_USER ||
+        "soporte@strbx.com.co"
+    ).trim();
+    const resolutionLabels = {
+        repaired: "Cuenta reparada",
+        replaced: "Cuenta reemplazada",
+        other: "Caso resuelto",
+    };
+    const resultLabel = resolutionLabels[ticket.resolutionType] || "Caso resuelto";
+    const details = [
+        { label: "Caso", value: ticket.ticketCode },
+        { label: "ID de cuenta", value: `#${ticket.subscriptionId}` },
+        { label: "Plataforma", value: ticket.platformName },
+        { label: "Resultado", value: resultLabel },
+        { label: "Respuesta de soporte", value: ticket.resolutionMessage },
+    ];
+    const subject = `${process.env.APP_NAME || "Streaming Box"} | ${resultLabel} ${ticket.ticketCode}`;
+    const text = [
+        `Hola ${customerName || "cliente"},`,
+        "",
+        "Tu solicitud de soporte fue atendida.",
+        "",
+        ...details.map((item) => `${item.label}: ${item.value}`),
+    ].join("\n");
+    const html = buildSupportEmailFrame({
+        title: resultLabel,
+        subtitle: "Tu solicitud de soporte fue atendida.",
+        greetingName: customerName,
+        body: "Revisamos la novedad reportada. A continuacion encuentras el resultado de la gestion realizada.",
+        details,
+        footer: `Si la novedad continua, responde este correo o crea un nuevo caso. Correo de soporte: ${inbox}`,
+    });
+
+    try {
+        await transporter.sendMail({
+            from: config.from,
+            to: ticket.userEmail,
+            replyTo: inbox,
+            subject,
+            text,
+            html,
+        });
+        return { ok: true, delivery: "email" };
+    } catch (error) {
+        console.error("[mail] Error enviando cierre de soporte:", error?.message || error);
+        return { ok: false, delivery: "error", message: error?.message };
+    }
+}
+
 module.exports = {
     sendPasswordResetEmail,
     sendOrderDeliveryEmail,
@@ -719,4 +908,6 @@ module.exports = {
     sendTopupApprovedEmail,
     sendTopupRejectedEmail,
     sendStockAvailableEmail,
+    sendSupportTicketCreatedEmails,
+    sendSupportTicketResolvedEmail,
 };

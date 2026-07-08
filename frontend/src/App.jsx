@@ -31,6 +31,7 @@ const AdminCodeLogs = lazy(() => import("./pages/AdminCodeLogs.jsx"));
 const AdminCodeRequests = lazy(() => import("./pages/AdminCodeRequests.jsx"));
 const AdminCodeReset = lazy(() => import("./pages/AdminCodeReset.jsx"));
 const AdminSupport = lazy(() => import("./pages/AdminSupport.jsx"));
+const AdminAccountSupport = lazy(() => import("./pages/AdminAccountSupport.jsx"));
 const AdminReplacements = lazy(() => import("./pages/AdminReplacements.jsx"));
 const AdminRenewals = lazy(() => import("./pages/AdminRenewals.jsx"));
 const AdminExpirations = lazy(() => import("./pages/AdminExpirations.jsx"));
@@ -46,6 +47,7 @@ const Topups = lazy(() => import("./pages/Topups.jsx"));
 const Wallet = lazy(() => import("./pages/Wallet.jsx"));
 const UserAnalyticsPage = lazy(() => import("./pages/UserAnalyticsPage.jsx"));
 const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
+const Support = lazy(() => import("./pages/Support.jsx"));
 
 /* ==========================================
    Redirección automática por rol
@@ -317,6 +319,15 @@ export default function App() {
                 />
 
                 <Route
+                    path="/support"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <Support />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
                     path="/admin/code-reset"
                     element={
                         <ProtectedRoute roles={["admin"]}>
@@ -339,6 +350,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminSupport />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/account-support"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminAccountSupport />
                         </ProtectedRoute>
                     }
                 />

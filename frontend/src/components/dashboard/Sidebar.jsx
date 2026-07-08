@@ -1,6 +1,8 @@
 /* global __APK_RELEASE_ID__ */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Headphones } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
@@ -19,6 +21,7 @@ const APK_RELEASE_ID = typeof __APK_RELEASE_ID__ !== "undefined" ? __APK_RELEASE
 const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 
 const NAV_ITEMS = [
+    { key: "support", label: "Soporte", icon: <Headphones size={19} strokeWidth={2.3} aria-hidden />, path: "/support" },
     { key: "home", label: "Inicio", icon: "🏠", path: "/dashboard" },
     { key: "wallet", label: "Recargas", icon: "💳", path: "/topups" },
     { key: "orders", label: "Historial de Compras", icon: "🧾", path: "/orders" },
@@ -42,9 +45,11 @@ export default function Sidebar({
     onGoCodes,
     onGoExpirations,
     onGoAdvertising,
+    onGoSupport,
     onGoHome,
     onLogout,
 }) {
+    const navigate = useNavigate();
     const { collapsed, setCollapsed } = useResponsiveSidebar({ collapseOnMobile: true });
     const [expirationsCount, setExpirationsCount] = useState(0);
     const [apkDownloadedRelease, setApkDownloadedRelease] = useState(() => {
@@ -105,9 +110,13 @@ export default function Sidebar({
         return () => clearInterval(timer);
     }, [activePath]);
 
-    function nav(fn) {
+    function nav(fn, fallbackPath = "") {
         if (isSidebarMobile()) setCollapsed(true);
-        if (typeof fn === "function") fn();
+        if (typeof fn === "function") {
+            fn();
+        } else if (fallbackPath) {
+            navigate(fallbackPath);
+        }
     }
 
     const actionMap = {
@@ -119,7 +128,7 @@ export default function Sidebar({
         advertising: onGoAdvertising,
         expirations: onGoExpirations,
         codes: onGoCodes,
-        support: null,
+        support: onGoSupport,
     };
 
     return (
@@ -310,7 +319,7 @@ export default function Sidebar({
                                     <MotionButton
                                         key={item.key}
                                         className={`sb-nav-item${isActive ? " sb-nav-item--active" : ""}`}
-                                        onClick={() => handler && nav(handler)}
+                                        onClick={() => nav(handler, item.path)}
                                         whileHover={{ x: 4 }}
                                         whileTap={{ scale: 0.97 }}
                                         transition={{ type: "spring", stiffness: 400, damping: 25 }}

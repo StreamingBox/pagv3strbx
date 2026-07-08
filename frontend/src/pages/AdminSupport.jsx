@@ -1,444 +1,410 @@
-import { useMemo, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+    CheckCircle2,
+    ExternalLink,
+    Headphones,
+    RefreshCcw,
+    Repeat2,
+    Search,
+    Wrench,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext.jsx";
-import { apiFetch, apiLogout } from "../api/api.js";
+
+import { apiFetch, apiLogout, buildApiUrl } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
-import "../styles/special-effects.css";
-import { getApiBase } from "../config/apiBase.js";
-import { formatBogotaDate } from "../utils/datetime.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import "../styles/dashboard.css";
+import "../styles/support.css";
 
-function useIsMobile() {
-    const [isMobile, setIsMobile] = useState(window.innerWidth <= 800);
-    useEffect(() => {
-        const h = () => setIsMobile(window.innerWidth <= 800);
-        window.addEventListener("resize", h);
-        return () => window.removeEventListener("resize", h);
-    }, []);
-    return isMobile;
-}
+const FILTERS = [
+    { value: "pending", label: "Pendientes" },
+    { value: "open", label: "Nuevos" },
+    { value: "in_progress", label: "En revision" },
+    { value: "resolved", label: "Resueltos" },
+    { value: "all", label: "Todos" },
+];
 
-const PUBLIC_BASE =
-    import.meta.env.VITE_PUBLIC_BASE_URL ||
-    (() => {
-        const b = getApiBase();
-        if (!b || b === "/api") return "https://strbx.com.co";
-        return String(b).replace(/\/api\/?$/, "") || "https://strbx.com.co";
-    })();
-
-/* ─── Estilos inline ─── */
-const S = {
-    shell: {
-        display: "flex", minHeight: "100vh",
-        background: "var(--bg, #0a0f1e)",
-        fontFamily: "var(--font, 'Inter', system-ui, sans-serif)",
-        color: "var(--text, #eaf1ff)",
-        position: "relative",
-    },
-    orb1: {
-        position: "fixed", top: -200, left: -200, width: 600, height: 600,
-        borderRadius: "50%", background: "radial-gradient(circle, rgba(13,166,242,0.08) 0%, transparent 70%)",
-        pointerEvents: "none", zIndex: 0,
-    },
-    orb2: {
-        position: "fixed", bottom: -200, right: -100, width: 700, height: 700,
-        borderRadius: "50%", background: "radial-gradient(circle, rgba(139,92,246,0.06) 0%, transparent 70%)",
-        pointerEvents: "none", zIndex: 0,
-    },
-    main: {
-        flex: 1, padding: "36px 40px", position: "relative", zIndex: 1,
-        overflowY: "auto", maxWidth: "100%",
-    },
-    headerRow: {
-        display: "flex", alignItems: "center", gap: 16, marginBottom: 24,
-        paddingBottom: 24, borderBottom: "1px solid rgba(255,255,255,0.06)",
-    },
-    iconBadge: {
-        width: 52, height: 52, borderRadius: 16, flexShrink: 0,
-        background: "rgba(13,166,242,0.1)", border: "1px solid rgba(13,166,242,0.3)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 26, boxShadow: "0 4px 16px rgba(13,166,242,0.2)",
-    },
-    title: { margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: "-0.5px" },
-    subtitle: { margin: "4px 0 0", fontSize: 13, color: "rgba(234,241,255,0.5)" },
-    card: {
-        background: "rgba(255,255,255,0.04)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 16, padding: "22px 24px",
-        marginBottom: 16, backdropFilter: "blur(20px)",
-        boxShadow: "0 4px 40px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.05)",
-    },
-    cardTitle: {
-        fontSize: 13, fontWeight: 700, color: "rgba(234,241,255,0.5)",
-        textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 14,
-        display: "flex", alignItems: "center", gap: 7,
-    },
-    searchRow: {
-        display: "grid", gridTemplateColumns: "1fr auto auto", gap: 10, alignItems: "center",
-    },
-    input: {
-        background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 12, padding: "11px 16px", color: "#eaf1ff", fontSize: 14,
-        outline: "none", transition: "border-color 0.2s, box-shadow 0.2s",
-        fontFamily: "inherit", width: "100%", boxSizing: "border-box",
-    },
-    btnBlue: {
-        display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-        background: "rgba(13,166,242,0.15)", border: "1px solid rgba(13,166,242,0.35)",
-        color: "#0da6f2", borderRadius: 12, padding: "11px 20px",
-        fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "all 0.2s",
-    },
-    btnGreen: {
-        display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-        background: "rgba(16,185,129,0.15)", border: "1px solid rgba(16,185,129,0.35)",
-        color: "#10b981", borderRadius: 12, padding: "11px 20px",
-        fontWeight: 700, fontSize: 14, cursor: "pointer", transition: "all 0.2s",
-    },
-    btnGhost: {
-        display: "inline-flex", alignItems: "center", gap: 6, whiteSpace: "nowrap",
-        background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
-        color: "rgba(234,241,255,0.7)", borderRadius: 10, padding: "8px 14px",
-        fontWeight: 600, fontSize: 13, cursor: "pointer", transition: "all 0.15s",
-        textDecoration: "none",
-    },
-    errorBox: {
-        background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.25)",
-        color: "#ef4444", borderRadius: 10, padding: "12px 16px", fontSize: 13, marginTop: 12,
-    },
-    emptyIcon: {
-        width: 50, height: 50, borderRadius: 16, flexShrink: 0,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
-        fontSize: 24,
-    },
-    summaryRow: {
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-        gap: 12, flexWrap: "wrap",
-    },
-    chip: {
-        display: "inline-flex", alignItems: "center", gap: 5,
-        background: "rgba(13,166,242,0.1)", border: "1px solid rgba(13,166,242,0.2)",
-        color: "#0da6f2", borderRadius: 20, padding: "4px 12px",
-        fontSize: 12, fontWeight: 700,
-    },
-    twoCol: {
-        display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 16, marginTop: 0,
-    },
-    fieldGrid: {
-        display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14,
-    },
-    fieldTile: {
-        padding: "12px 14px", borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.07)",
-        background: "rgba(255,255,255,0.03)",
-    },
-    fieldLabel: { fontSize: 11, color: "rgba(234,241,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" },
-    fieldValue: {
-        marginTop: 5, fontWeight: 700, color: "#eaf1ff", wordBreak: "break-all",
-        fontFamily: 'ui-monospace, "Courier New", monospace', fontSize: 13,
-    },
-    warnBox: {
-        marginTop: 14, padding: "10px 14px", borderRadius: 10,
-        background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
-        color: "#f59e0b", fontSize: 12,
-    },
-    textarea: {
-        width: "100%", marginTop: 12, minHeight: 380, resize: "vertical",
-        background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 12, padding: "14px 16px", color: "#eaf1ff", fontSize: 13,
-        fontFamily: 'ui-monospace, "Courier New", monospace', lineHeight: 1.5,
-        outline: "none", boxSizing: "border-box",
-    },
+const STATUS = {
+    open: "Pendiente",
+    in_progress: "En revision",
+    resolved: "Resuelto",
 };
 
-/* ─── Field tile ─── */
-function Field({ label, value, mono = false }) {
-    return (
-        <div style={S.fieldTile}>
-            <div style={S.fieldLabel}>{label}</div>
-            <div style={{ ...S.fieldValue, fontFamily: mono ? S.fieldValue.fontFamily : "inherit" }}>
-                {value ?? "—"}
-            </div>
-        </div>
-    );
+function formatDate(value) {
+    if (!value) return "-";
+    return new Intl.DateTimeFormat("es-CO", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Bogota",
+    }).format(new Date(value));
 }
 
-function shortDate(d) { return formatBogotaDate(d); }
-
-/* ─── Componente principal ─── */
 export default function AdminSupport() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
-    const isMobile = useIsMobile();
-
-    const [subscriptionId, setSubscriptionId] = useState("");
-    const [loading, setLoading] = useState(false);
-    const [info, setInfo] = useState(null);
+    const [tickets, setTickets] = useState([]);
+    const [selectedId, setSelectedId] = useState(null);
+    const [filter, setFilter] = useState("pending");
+    const [search, setSearch] = useState("");
+    const [loading, setLoading] = useState(true);
+    const [actionLoading, setActionLoading] = useState(false);
     const [error, setError] = useState("");
-    const [copied, setCopied] = useState("");
-    const [selectedReplacementId, setSelectedReplacementId] = useState("");
+    const [success, setSuccess] = useState("");
+    const [resolutionType, setResolutionType] = useState("repaired");
+    const [resolutionMessage, setResolutionMessage] = useState("");
+    const [supportInfo, setSupportInfo] = useState(null);
+    const [replacementAccountId, setReplacementAccountId] = useState("");
 
-    const canReplace = useMemo(() => !!info?.subscriptionId && !loading, [info, loading]);
-    const fullLink = info?.token ? `${PUBLIC_BASE}/s/${info.token}` : "";
-    const replacementCandidates = info?.replacementCandidates || [];
+    const selected = useMemo(
+        () => tickets.find((ticket) => ticket.id === selectedId) || tickets[0] || null,
+        [selectedId, tickets]
+    );
+
+    const loadTickets = useCallback(async () => {
+        setLoading(true);
+        setError("");
+        const params = new URLSearchParams({ status: filter });
+        if (search.trim()) params.set("q", search.trim());
+        const response = await apiFetch(`/admin/support-tickets?${params.toString()}`);
+        if (response.ok) {
+            const list = response.data?.tickets || [];
+            setTickets(list);
+            setSelectedId((current) => (
+                list.some((ticket) => ticket.id === current) ? current : list[0]?.id || null
+            ));
+        } else {
+            setError(response.data?.message || "No se pudieron cargar las solicitudes.");
+        }
+        setLoading(false);
+    }, [filter, search]);
 
     useEffect(() => {
-        setSelectedReplacementId(info?.suggestedReplacementId ? String(info.suggestedReplacementId) : "");
-    }, [info?.subscriptionId, info?.suggestedReplacementId]);
+        void loadTickets();
+    }, [loadTickets]);
+
+    useEffect(() => {
+        setResolutionMessage("");
+        setResolutionType("repaired");
+        setReplacementAccountId("");
+        setSupportInfo(null);
+        if (!selected?.subscriptionId || selected.status === "resolved") return;
+
+        let cancelled = false;
+        void apiFetch(`/admin/support/subscription/${selected.subscriptionId}`).then((response) => {
+            if (cancelled || !response.ok) return;
+            setSupportInfo(response.data);
+            setReplacementAccountId(
+                response.data?.suggestedReplacementId
+                    ? String(response.data.suggestedReplacementId)
+                    : ""
+            );
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [selected?.id, selected?.status, selected?.subscriptionId]);
 
     async function logout() {
-        try { await apiLogout(); } catch { }
+        await apiLogout().catch(() => {});
         setUser(null);
         navigate("/", { replace: true });
     }
 
-    async function onSearch(e) {
-        e?.preventDefault?.();
-        setError(""); setInfo("");
-        const id = Number(subscriptionId);
-        if (!Number.isFinite(id) || id <= 0) {
-            setError("Ingresa un ID de subscription válido (ej: 148).");
+    async function startTicket() {
+        if (!selected) return;
+        setActionLoading(true);
+        setError("");
+        const response = await apiFetch(`/admin/support-tickets/${selected.id}/start`, {
+            method: "PATCH",
+        });
+        setActionLoading(false);
+        if (!response.ok) {
+            setError(response.data?.message || "No se pudo tomar el caso.");
             return;
         }
-        setLoading(true);
-        try {
-            const { ok, data, status } = await apiFetch(`/admin/support/subscription/${id}`, { method: "GET" });
-            if (!ok) { setError(data?.message || `Error (${status})`); return; }
-            setInfo(data);
-        } finally { setLoading(false); }
+        setSuccess("Caso marcado en revisión.");
+        await loadTickets();
     }
 
-    async function onReplace() {
-        if (!info?.subscriptionId) return;
-        setError(""); setLoading(true);
-        try {
-            const { ok, data, status } = await apiFetch("/admin/support/replace-account", {
-                method: "POST",
-                body: JSON.stringify({
-                    subscriptionId: info.subscriptionId,
-                    replacementAccountId: selectedReplacementId || null,
-                }),
-            });
-            if (!ok) { setError(data?.message || `Error (${status})`); return; }
-            setInfo(data.info);
-        } finally { setLoading(false); }
-    }
+    async function resolveTicket() {
+        if (!selected) return;
+        if (resolutionMessage.trim().length < 10) {
+            setError("Escribe una respuesta clara para el usuario antes de cerrar el caso.");
+            return;
+        }
+        if (resolutionType === "replaced" && !supportInfo?.replacementCandidates?.length) {
+            setError("No hay stock disponible para reemplazar esta cuenta.");
+            return;
+        }
 
-    async function copy(text, label = "") {
-        try {
-            await navigator.clipboard.writeText(text || "");
-            setCopied(label);
-            setTimeout(() => setCopied(""), 2000);
-        } catch { }
+        setActionLoading(true);
+        setError("");
+        setSuccess("");
+        const response = await apiFetch(`/admin/support-tickets/${selected.id}/resolve`, {
+            method: "POST",
+            body: JSON.stringify({
+                resolutionType,
+                resolutionMessage: resolutionMessage.trim(),
+                replacementAccountId: resolutionType === "replaced"
+                    ? (replacementAccountId || null)
+                    : null,
+            }),
+            timeoutMs: 60000,
+        });
+        setActionLoading(false);
+
+        if (!response.ok) {
+            setError(response.data?.message || "No se pudo cerrar el caso.");
+            return;
+        }
+        const mailSent = response.data?.mail?.delivery === "email";
+        setSuccess(
+            mailSent
+                ? "Caso resuelto y correo enviado al usuario."
+                : "Caso resuelto. Revisa la configuración del correo de soporte."
+        );
+        await loadTickets();
     }
 
     return (
         <div className="page-shell">
-            <div className="page-shell-bg" aria-hidden>
-            <div className="bg-orb orb-1" />
-            <div className="bg-orb orb-2" />
-            <div className="bg-grid" />
-            </div>
-
+            <div className="page-shell-bg" aria-hidden><div className="bg-grid" /></div>
             <div className="page-inner">
                 <AdminSidebar
                     user={user}
-                    logoSrc="/api/branding/logo"
-                    logoOk={true}
-                    setLogoOk={() => { }}
                     uploadingLogo={false}
                     onOpenLogoPicker={() => navigate("/admin")}
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "30px 36px", position: "relative", zIndex: 1 }}>
-                {/* Header */}
-                <div style={S.headerRow}>
-                    <div style={S.iconBadge}>🎧</div>
-                    <div>
-                        <h1 style={S.title}>Soporte Técnico</h1>
-                        <p style={S.subtitle}>Reemplaza cuentas caídas por disponibles, manteniendo el mismo pedido.</p>
-                    </div>
-                </div>
+                <main className="main support-page admin-support-page">
+                    <header className="support-page__header">
+                        <span className="support-page__icon"><Headphones aria-hidden /></span>
+                        <div>
+                            <h1>Solicitudes de soporte</h1>
+                            <p>Revisa la evidencia, atiende la cuenta y comunica el resultado.</p>
+                        </div>
+                        <button
+                            type="button"
+                            className="support-secondary-button"
+                            onClick={() => navigate("/admin/account-support")}
+                        >
+                            <Wrench size={17} aria-hidden />
+                            Herramienta directa
+                        </button>
+                    </header>
 
-                {/* Buscador */}
-                <div style={S.card}>
-                    <div style={S.cardTitle}>🔍 Buscar Subscription</div>
-                    <form onSubmit={onSearch}>
-                        <div style={{
-                            ...S.searchRow,
-                            gridTemplateColumns: isMobile ? "1fr" : "1fr auto auto",
-                            gap: 12
-                        }}>
-                            <input
-                                style={S.input}
-                                placeholder="ID de subscription (ej: 148)"
-                                value={subscriptionId}
-                                onChange={e => setSubscriptionId(e.target.value)}
-                                inputMode="numeric"
-                                onFocus={e => { e.target.style.borderColor = "rgba(13,166,242,0.5)"; e.target.style.boxShadow = "0 0 0 3px rgba(13,166,242,0.1)"; }}
-                                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.1)"; e.target.style.boxShadow = "none"; }}
-                            />
-                            <div style={{ display: "flex", gap: 10, width: "100%" }}>
-                                <button
-                                    type="submit"
-                                    style={{ ...S.btnBlue, opacity: loading ? 0.6 : 1, flex: 1, justifyContent: "center" }}
-                                    disabled={loading}
-                                    onMouseEnter={e => { if (!loading) { e.currentTarget.style.background = "rgba(13,166,242,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(13,166,242,0.3)"; } }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(13,166,242,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
-                                >
-                                    {loading ? "⏳..." : "🔍 Buscar"}
-                                </button>
+                    <section className="admin-support-toolbar">
+                        <div className="admin-support-filters" role="tablist" aria-label="Estado de solicitudes">
+                            {FILTERS.map((item) => (
                                 <button
                                     type="button"
-                                    style={{ ...S.btnGreen, opacity: canReplace ? 1 : 0.4, cursor: canReplace ? "pointer" : "not-allowed", flex: 1, justifyContent: "center" }}
-                                    onClick={onReplace}
-                                    disabled={!canReplace}
-                                    onMouseEnter={e => { if (canReplace) { e.currentTarget.style.background = "rgba(16,185,129,0.25)"; e.currentTarget.style.boxShadow = "0 0 14px rgba(16,185,129,0.3)"; } }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(16,185,129,0.15)"; e.currentTarget.style.boxShadow = "none"; }}
+                                    key={item.value}
+                                    className={filter === item.value ? "is-active" : ""}
+                                    onClick={() => setFilter(item.value)}
                                 >
-                                    🔄 Reemplazar
+                                    {item.label}
                                 </button>
-                            </div>
-                            <div style={{ ...S.fieldTile, marginTop: 16 }}>
-                                <div style={S.fieldLabel}>Cuenta para reemplazo</div>
-                                <select
-                                    value={selectedReplacementId}
-                                    onChange={e => setSelectedReplacementId(e.target.value)}
-                                    style={{ ...S.input, marginTop: 8, height: 42, paddingRight: 42 }}
+                            ))}
+                        </div>
+                        <form
+                            className="admin-support-search"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                void loadTickets();
+                            }}
+                        >
+                            <Search size={17} aria-hidden />
+                            <input
+                                value={search}
+                                onChange={(event) => setSearch(event.target.value)}
+                                placeholder="Caso, ID, correo o plataforma"
+                            />
+                            <button type="submit" aria-label="Buscar">Buscar</button>
+                        </form>
+                        <button
+                            type="button"
+                            className="support-icon-button"
+                            onClick={() => void loadTickets()}
+                            aria-label="Actualizar solicitudes"
+                            title="Actualizar"
+                        >
+                            <RefreshCcw size={18} aria-hidden />
+                        </button>
+                    </section>
+
+                    {error ? <div className="support-message support-message--error">{error}</div> : null}
+                    {success ? <div className="support-message support-message--success">{success}</div> : null}
+
+                    <div className="admin-support-layout">
+                        <section className="admin-support-list" aria-label="Lista de solicitudes">
+                            {loading ? <div className="support-empty">Cargando...</div> : null}
+                            {!loading && !tickets.length ? (
+                                <div className="support-empty">No hay solicitudes para este filtro.</div>
+                            ) : null}
+                            {tickets.map((ticket) => (
+                                <button
+                                    type="button"
+                                    key={ticket.id}
+                                    className={`admin-support-list-item${selected?.id === ticket.id ? " is-selected" : ""}`}
+                                    onClick={() => {
+                                        setSelectedId(ticket.id);
+                                        setError("");
+                                        setSuccess("");
+                                    }}
                                 >
-                                    <option value="">Siguiente disponible</option>
-                                    {replacementCandidates.map((candidate) => (
-                                        <option key={candidate.id} value={candidate.id}>
-                                            #{candidate.id} · {candidate.platformName || "Plataforma"} · {candidate.email} · Perfil {candidate.profile_number ?? "—"}
-                                        </option>
-                                    ))}
-                                </select>
-                                <div style={{ marginTop: 8, fontSize: 12, color: "rgba(234,241,255,0.5)" }}>
-                                    {replacementCandidates.length
-                                        ? "Puedes usar la siguiente disponible o seleccionar una cuenta específica para el reemplazo."
-                                        : "No hay cuentas disponibles para reemplazo en este momento."}
-                                </div>
-                            </div>
-                        </div>
-                    </form>
+                                    <span className={`admin-support-dot admin-support-dot--${ticket.status}`} />
+                                    <span className="admin-support-list-item__body">
+                                        <strong>{ticket.platformName} · #{ticket.subscriptionId}</strong>
+                                        <span>{ticket.ticketCode} · {ticket.userEmail}</span>
+                                        <small>{formatDate(ticket.createdAt)}</small>
+                                    </span>
+                                    <span className="admin-support-list-item__status">{STATUS[ticket.status]}</span>
+                                </button>
+                            ))}
+                        </section>
 
-                    {error && <div style={S.errorBox}>⚠️ {error}</div>}
-                    {copied && (
-                        <div style={{ ...S.errorBox, background: "rgba(16,185,129,0.1)", borderColor: "rgba(16,185,129,0.25)", color: "#10b981", marginTop: 10 }}>
-                            ✅ {copied} copiado al portapapeles
-                        </div>
-                    )}
-                </div>
-
-                {/* Estado vacío */}
-                {!info ? (
-                    <div style={S.card}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                            <div style={S.emptyIcon}>🛠️</div>
-                            <div>
-                                <div style={{ fontWeight: 700, fontSize: 15 }}>
-                                    Busca una subscription para ver sus credenciales
-                                </div>
-                                <div style={{ color: "rgba(234,241,255,0.4)", marginTop: 6, fontSize: 13 }}>
-                                    Ingresa el ID y presiona <b style={{ color: "#0da6f2" }}>Buscar</b>. Luego puedes usar <b style={{ color: "#10b981" }}>Reemplazar cuenta</b> si hay stock disponible.
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {/* Resumen */}
-                        <div style={S.card}>
-                            <div style={S.summaryRow}>
-                                <div>
-                                    <div style={{ fontSize: 12, color: "rgba(234,241,255,0.4)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                                        Resumen
-                                    </div>
-                                    <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>
-                                        {info.platformName} &nbsp;
-                                        <span style={{ color: "#0da6f2" }}>#{info.subscriptionId}</span>
-                                    </div>
-                                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                                        <span style={S.chip}>📅 {shortDate(info.expiresAt)}</span>
-                                        <span style={{ ...S.chip, background: "rgba(139,92,246,0.1)", borderColor: "rgba(139,92,246,0.2)", color: "#8b5cf6" }}>
-                                            📦 {info.orderCode || info.orderId || "—"}
+                        <section className="admin-support-detail" aria-label="Detalle de la solicitud">
+                            {!selected ? (
+                                <div className="support-empty">Selecciona una solicitud para revisarla.</div>
+                            ) : (
+                                <>
+                                    <div className="admin-support-detail__heading">
+                                        <div>
+                                            <span>{selected.ticketCode}</span>
+                                            <h2>{selected.platformName} · ID #{selected.subscriptionId}</h2>
+                                            <p>{selected.userName || "Cliente"} · {selected.userEmail}</p>
+                                        </div>
+                                        <span className={`support-status support-status--${selected.status}`}>
+                                            {STATUS[selected.status]}
                                         </span>
                                     </div>
-                                </div>
-                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                                    {[
-                                        { label: "📋 Copiar mensaje", action: () => copy(info.message || "", "Mensaje") },
-                                        { label: "🔗 Copiar link", action: () => copy(fullLink, "Link") },
-                                    ].map(btn => (
-                                        <button key={btn.label} style={S.btnGhost} onClick={btn.action}
-                                            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                                            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                                        >
-                                            {btn.label}
-                                        </button>
-                                    ))}
-                                    {info?.token && (
-                                        <a style={S.btnGhost} href={`/s/${info.token}`} target="_blank" rel="noreferrer"
-                                            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                                            onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                                        >
-                                            🔓 Abrir /s/ ↗
-                                        </a>
+
+                                    <div className="admin-support-facts">
+                                        <div><span>Orden</span><strong>{selected.orderCode || "-"}</strong></div>
+                                        <div><span>Cuenta actual</span><strong>{selected.accountEmail || "-"}</strong></div>
+                                        <div><span>Perfil</span><strong>{selected.profileNumber ?? "-"}</strong></div>
+                                        <div><span>Fecha</span><strong>{formatDate(selected.createdAt)}</strong></div>
+                                    </div>
+
+                                    <div className="admin-support-observation">
+                                        <span>Observación del usuario</span>
+                                        <p>{selected.observation}</p>
+                                    </div>
+
+                                    <a
+                                        className="admin-support-evidence"
+                                        href={buildApiUrl(selected.attachmentUrl)}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                    >
+                                        <img src={buildApiUrl(selected.attachmentUrl)} alt={`Evidencia ${selected.ticketCode}`} />
+                                        <span><ExternalLink size={16} aria-hidden /> Abrir imagen completa</span>
+                                    </a>
+
+                                    {selected.status === "resolved" ? (
+                                        <div className="support-resolution admin-support-resolution">
+                                            <strong>
+                                                {selected.resolutionType === "replaced"
+                                                    ? "Cuenta reemplazada"
+                                                    : selected.resolutionType === "repaired"
+                                                        ? "Cuenta reparada"
+                                                        : "Caso resuelto"}
+                                            </strong>
+                                            <p>{selected.resolutionMessage}</p>
+                                            <span>Resuelto {formatDate(selected.resolvedAt)}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="admin-support-actions">
+                                            {selected.status === "open" ? (
+                                                <button
+                                                    type="button"
+                                                    className="support-secondary-button"
+                                                    onClick={startTicket}
+                                                    disabled={actionLoading}
+                                                >
+                                                    <Wrench size={17} aria-hidden />
+                                                    Marcar en revisión
+                                                </button>
+                                            ) : null}
+
+                                            <div className="admin-support-action-options">
+                                                <button
+                                                    type="button"
+                                                    className={resolutionType === "repaired" ? "is-active" : ""}
+                                                    onClick={() => setResolutionType("repaired")}
+                                                >
+                                                    <CheckCircle2 size={17} aria-hidden />
+                                                    Cuenta reparada
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={resolutionType === "replaced" ? "is-active" : ""}
+                                                    onClick={() => setResolutionType("replaced")}
+                                                >
+                                                    <Repeat2 size={17} aria-hidden />
+                                                    Reemplazar cuenta
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className={resolutionType === "other" ? "is-active" : ""}
+                                                    onClick={() => setResolutionType("other")}
+                                                >
+                                                    Otro cierre
+                                                </button>
+                                            </div>
+
+                                            {resolutionType === "replaced" ? (
+                                                <label className="support-field">
+                                                    <span>Cuenta que se entregará</span>
+                                                    <select
+                                                        value={replacementAccountId}
+                                                        onChange={(event) => setReplacementAccountId(event.target.value)}
+                                                    >
+                                                        <option value="">Siguiente disponible</option>
+                                                        {(supportInfo?.replacementCandidates || []).map((candidate) => (
+                                                            <option value={candidate.id} key={candidate.id}>
+                                                                #{candidate.id} · {candidate.platformName} · {candidate.email} · Perfil {candidate.profile_number ?? "-"}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <small>
+                                                        {(supportInfo?.replacementCandidates || []).length
+                                                            ? `${supportInfo.replacementCandidates.length} cuenta(s) disponible(s).`
+                                                            : "No hay stock disponible para reemplazo."}
+                                                    </small>
+                                                </label>
+                                            ) : null}
+
+                                            <label className="support-field">
+                                                <span>Respuesta que recibirá el usuario</span>
+                                                <textarea
+                                                    value={resolutionMessage}
+                                                    onChange={(event) => setResolutionMessage(event.target.value)}
+                                                    maxLength={3000}
+                                                    placeholder={
+                                                        resolutionType === "replaced"
+                                                            ? "Reemplazamos la cuenta y ya puedes consultar las nuevas credenciales..."
+                                                            : "Revisamos la cuenta y corregimos..."
+                                                    }
+                                                />
+                                                <small>{resolutionMessage.length}/3000</small>
+                                            </label>
+
+                                            <button
+                                                type="button"
+                                                className="support-primary-button"
+                                                onClick={resolveTicket}
+                                                disabled={actionLoading}
+                                            >
+                                                {actionLoading ? "Procesando..." : "Guardar resultado y enviar correo"}
+                                            </button>
+                                        </div>
                                     )}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Grid: credenciales + mensaje */}
-                        <div style={{
-                            ...S.twoCol,
-                            gridTemplateColumns: isMobile ? "1fr" : "1.1fr 0.9fr"
-                        }}>
-                            {/* Credenciales */}
-                            <div style={S.card}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>🔐 Credenciales</div>
-                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.account?.email || "", "Correo")}
-                                        onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                                        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                                    >
-                                        Copiar correo
-                                    </button>
-                                </div>
-                                <div style={S.fieldGrid}>
-                                    <Field label="Correo" value={info.account?.email || "—"} mono />
-                                    <Field label="Contraseña" value={info.account?.password || "—"} mono />
-                                    <Field label="Perfil" value={String(info.account?.profile_number ?? "").trim() ? info.account?.profile_number : "—"} />
-                                    <Field label="Pin" value={String(info.account?.pin ?? "").trim() ? info.account?.pin : "—"} />
-                                    <Field label="Expira" value={shortDate(info.expiresAt)} />
-                                    <Field label="Link" value={fullLink || "—"} mono />
-                                </div>
-                                <div style={S.warnBox}>
-                                    ⚠️ Si no hay stock, el sistema dirá: <b>"Sin stock"</b>.
-                                </div>
-                            </div>
-
-                            {/* Mensaje */}
-                            <div style={S.card}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>💬 Mensaje</div>
-                                    <button style={{ ...S.btnGhost, padding: "5px 10px", fontSize: 11 }} onClick={() => copy(info.message || "", "Mensaje")}
-                                        onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                                        onMouseLeave={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-                                    >
-                                        Copiar
-                                    </button>
-                                </div>
-                                <textarea
-                                    style={{ ...S.textarea, minHeight: isMobile ? 300 : 380 }}
-                                    value={info.message || ""}
-                                    readOnly
-                                    rows={isMobile ? 12 : 22}
-                                />
-                            </div>
-                        </div>
-                    </>
-                )}
+                                </>
+                            )}
+                        </section>
+                    </div>
                 </main>
             </div>
         </div>

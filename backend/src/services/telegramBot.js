@@ -1202,6 +1202,26 @@ async function notifyOutOfStockPlatforms(platforms) {
     return sent.length;
 }
 
+async function notifySupportTicketCreated(ticket) {
+    if (!bot || AUTHORIZED.size === 0 || !ticket) return 0;
+    const baseUrl = String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
+    const message = [
+        "Nueva solicitud de soporte",
+        "",
+        `Caso: ${ticket.ticketCode || "-"}`,
+        `ID de cuenta: #${ticket.subscriptionId || "-"}`,
+        `Plataforma: ${ticket.platformName || "-"}`,
+        `Cliente: ${ticket.userName || ticket.userEmail || "-"}`,
+        `Correo: ${ticket.userEmail || "-"}`,
+        "",
+        `Novedad: ${ticket.observation || "-"}`,
+        "",
+        `Revisar: ${baseUrl}/admin/support`,
+    ].join("\n");
+    const sent = await notifyAuthorizedChats(message);
+    return sent.length;
+}
+
 async function notifyMonthlyPurchaseEnforcement({ periodStart, requiredTotal, users }) {
     if (!bot || AUTHORIZED.size === 0 || !Array.isArray(users) || users.length === 0) return 0;
     const periodLabel = new Intl.DateTimeFormat("es-CO", {
@@ -1258,5 +1278,6 @@ module.exports = {
     notifyManualTopupAlert,
     notifyUserRegistered,
     notifyOutOfStockPlatforms,
+    notifySupportTicketCreated,
     notifyMonthlyPurchaseEnforcement,
 };

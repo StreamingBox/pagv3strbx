@@ -74,6 +74,7 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
     const [stockCount, setStockCount] = useState(0);
     const [expirationsCount, setExpirationsCount] = useState(0);
     const [topupsCount, setTopupsCount] = useState(0);
+    const [supportCount, setSupportCount] = useState(0);
     const { theme } = useTheme();
     const isDark = theme === "dark";
     const navigate = useNavigate();
@@ -135,6 +136,23 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
         }
         fetchTopups();
         const timer = setInterval(fetchTopups, 180000);
+        return () => clearInterval(timer);
+    }, [location.pathname]);
+
+    useEffect(() => {
+        async function fetchSupportCount() {
+            try {
+                const response = await fetch("/api/admin/support-tickets/count", { credentials: "include" });
+                if (response.ok) {
+                    const data = await response.json();
+                    setSupportCount(Number(data.count) || 0);
+                }
+            } catch {
+                // The navigation remains usable if the counter cannot be loaded.
+            }
+        }
+        void fetchSupportCount();
+        const timer = setInterval(fetchSupportCount, 60000);
         return () => clearInterval(timer);
     }, [location.pathname]);
 
@@ -328,6 +346,25 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                     }}
                                                 >
                                                     {topupsCount}
+                                                </span>
+                                            ) : null}
+
+                                            {link.path === "/admin/support" && supportCount > 0 ? (
+                                                <span
+                                                    style={{
+                                                        background: "#f59e0b",
+                                                        color: "#111827",
+                                                        borderRadius: 99,
+                                                        fontSize: 10,
+                                                        fontWeight: 800,
+                                                        padding: "2px 7px",
+                                                        minWidth: 20,
+                                                        textAlign: "center",
+                                                        lineHeight: "16px",
+                                                        flexShrink: 0,
+                                                    }}
+                                                >
+                                                    {supportCount}
                                                 </span>
                                             ) : null}
                                         </div>

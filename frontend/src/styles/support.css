@@ -95,6 +95,12 @@
     font-size: 19px;
 }
 
+.support-history__hint {
+    margin: 5px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+}
+
 .support-section-heading > svg {
     color: #22d3ee;
 }
@@ -358,6 +364,19 @@
     color: #34d399;
 }
 
+.support-resolution__subtype {
+    display: inline-flex;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 5px 9px;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    border-radius: 999px;
+    color: #67e8f9;
+    background: rgba(34, 211, 238, 0.09);
+    font-size: 11px;
+    font-weight: 900;
+}
+
 .support-resolution p {
     margin: 7px 0;
     color: var(--text);
@@ -389,6 +408,11 @@
 .support-secondary-button {
     margin-left: auto;
     padding: 0 14px;
+}
+
+.support-load-more {
+    width: 100%;
+    margin: 14px 0 0;
 }
 
 .support-icon-button {

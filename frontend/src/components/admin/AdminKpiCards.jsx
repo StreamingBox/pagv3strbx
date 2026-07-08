@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { RefreshCcw } from "lucide-react";
 import IconBadge from "./IconBadge.jsx";
+import { apiFetch } from "../../api/api.js";
 import "../../styles/special-effects.css";
 
 const TONE_COLORS = {
@@ -37,6 +39,27 @@ const itemVariants = {
 };
 
 export default function AdminKpiCards({ onNavigate }) {
+    const [supportSummary, setSupportSummary] = useState({ counts: {}, latest: [] });
+
+    useEffect(() => {
+        let cancelled = false;
+        async function loadSupportSummary() {
+            const response = await apiFetch("/admin/support-tickets/summary?limit=5");
+            if (!cancelled && response.ok) {
+                setSupportSummary({
+                    counts: response.data?.counts || {},
+                    latest: response.data?.latest || [],
+                });
+            }
+        }
+        void loadSupportSummary();
+        const timer = setInterval(loadSupportSummary, 60000);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, []);
+
     const groups = [
         {
             groupName: "Ventas & Finanzas",
@@ -108,6 +131,8 @@ export default function AdminKpiCards({ onNavigate }) {
                     <div className="admin-cards-grid" style={{ marginTop: 0 }}>
                         {group.items.map((s) => {
                             const { border } = TONE_COLORS[s.tone] || TONE_COLORS.blue;
+                            const isSupportCard = s.path === "/admin/support";
+                            const supportPending = Number(supportSummary.counts?.pending || 0);
                             return (
                                 <motion.div
                                     key={s.path}
@@ -135,8 +160,32 @@ export default function AdminKpiCards({ onNavigate }) {
                                             background: "var(--card)",
                                             backdropFilter: "blur(18px)",
                                             borderRadius: "inherit",
+                                            position: "relative",
                                         }}
                                     >
+                                        {isSupportCard && supportPending > 0 ? (
+                                            <span
+                                                style={{
+                                                    position: "absolute",
+                                                    top: 12,
+                                                    right: 12,
+                                                    minWidth: 26,
+                                                    height: 26,
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    justifyContent: "center",
+                                                    padding: "0 8px",
+                                                    borderRadius: 99,
+                                                    background: "#f59e0b",
+                                                    color: "#111827",
+                                                    fontSize: 12,
+                                                    fontWeight: 900,
+                                                    boxShadow: "0 0 16px rgba(245,158,11,.35)",
+                                                }}
+                                            >
+                                                {supportPending}
+                                            </span>
+                                        ) : null}
                                         <IconBadge icon={s.icon} tone={s.tone} />
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <div
@@ -166,6 +215,68 @@ export default function AdminKpiCards({ onNavigate }) {
                             );
                         })}
                     </div>
+
+                    {group.items.some((item) => item.path === "/admin/support") && supportSummary.latest?.length ? (
+                        <div
+                            style={{
+                                marginTop: 12,
+                                padding: 14,
+                                border: "1px solid rgba(20,184,166,.24)",
+                                borderRadius: 12,
+                                background: "linear-gradient(135deg, rgba(20,184,166,.10), rgba(14,165,233,.06))",
+                            }}
+                        >
+                            <div
+                                style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "space-between",
+                                    gap: 10,
+                                    marginBottom: 10,
+                                }}
+                            >
+                                <strong style={{ color: "var(--text)", fontSize: 13 }}>Top 5 novedades recientes</strong>
+                                <span style={{ color: "#5eead4", fontSize: 11, fontWeight: 900 }}>
+                                    {supportSummary.counts?.pending || 0} pendientes
+                                </span>
+                            </div>
+                            <div style={{ display: "grid", gap: 7 }}>
+                                {supportSummary.latest.slice(0, 5).map((ticket) => (
+                                    <button
+                                        type="button"
+                                        key={ticket.id}
+                                        onClick={() => onNavigate("/admin/support")}
+                                        style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "minmax(0, 1fr) auto",
+                                            gap: 10,
+                                            alignItems: "center",
+                                            width: "100%",
+                                            padding: "9px 10px",
+                                            border: "1px solid var(--stroke2)",
+                                            borderRadius: 8,
+                                            background: "rgba(6,12,30,.30)",
+                                            color: "var(--text)",
+                                            textAlign: "left",
+                                            cursor: "pointer",
+                                        }}
+                                    >
+                                        <span style={{ minWidth: 0 }}>
+                                            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, fontWeight: 800 }}>
+                                                #{ticket.subscriptionId} · {ticket.platformName}
+                                            </span>
+                                            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: 11 }}>
+                                                {ticket.ticketCode} · {ticket.userEmail}
+                                            </span>
+                                        </span>
+                                        <span style={{ color: ticket.status === "open" ? "#f59e0b" : "#22d3ee", fontSize: 10, fontWeight: 900 }}>
+                                            {ticket.status === "open" ? "Nuevo" : "En revision"}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
                 </div>
             ))}
         </motion.div>

@@ -11,6 +11,26 @@ const NET_PROFIT_TRACKING_START_AT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.tes
     ? configuredNetProfitStartAt
     : DEFAULT_NET_PROFIT_TRACKING_START_AT;
 
+const SUPPORT_SUBTYPE_LABELS = {
+    password_updated: "Clave actualizada",
+    login_approved: "Inicio aprobado",
+    payment_issue_fixed: "Pago o bloqueo corregido",
+    usage_guidance_sent: "Instrucciones enviadas",
+    account_unlocked: "Cuenta desbloqueada",
+    account_replaced: "Cuenta reemplazada",
+    profile_reassigned: "Perfil reasignado",
+    stock_replacement: "Reemplazo con stock",
+    user_error: "Error de uso del cliente",
+    warranty_denied: "Garantia no aplica",
+    duplicate_request: "Solicitud duplicada",
+    no_response_needed: "Sin accion adicional",
+    other_solution: "Otro cierre",
+};
+
+function supportSubtypeLabel(key) {
+    return SUPPORT_SUBTYPE_LABELS[key] || key || "Sin subtipificar";
+}
+
 function normalizedPlatformSql(alias = "p") {
     return `LOWER(CONCAT_WS(' ', ${alias}.name, ${alias}.slug))`;
 }
@@ -509,6 +529,106 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 monthData.marginPct = marginPct;
                 monthData.missingCostCount = missingCostCount;
                 monthData.balanceComplete = missingCostCount === 0;
+
+                let supportFilter = "";
+                const supportParams = [year, month];
+                const supportSubtypeParams = [year, month];
+                const supportDailyParams = [year, month];
+                const supportPlatformParams = [year, month];
+                if (!isGlobalAdmin) {
+                    const placeholders = targetUserIds.map(() => "?").join(",");
+                    supportFilter = ` AND st.user_id IN (${placeholders})`;
+                    supportParams.push(...targetUserIds);
+                    supportSubtypeParams.push(...targetUserIds);
+                    supportDailyParams.push(...targetUserIds);
+                    supportPlatformParams.push(...targetUserIds);
+                }
+
+                const supportSummaryQ = `
+                    SELECT
+                        COUNT(*) AS created_count,
+                        SUM(CASE WHEN st.status = 'open' THEN 1 ELSE 0 END) AS open_count,
+                        SUM(CASE WHEN st.status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
+                        SUM(CASE WHEN st.status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count,
+                        AVG(CASE
+                            WHEN st.status = 'resolved' AND st.resolved_at IS NOT NULL
+                            THEN TIMESTAMPDIFF(MINUTE, st.created_at, st.resolved_at)
+                            ELSE NULL
+                        END) AS avg_resolution_minutes
+                    FROM support_tickets st
+                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      ${supportFilter}
+                `;
+                const supportSubtypeQ = `
+                    SELECT
+                        COALESCE(NULLIF(st.resolution_subtype, ''), NULLIF(st.resolution_type, ''), 'sin_subtipificar') AS subtype_key,
+                        COUNT(*) AS count
+                    FROM support_tickets st
+                    WHERE st.status = 'resolved'
+                      AND YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      ${supportFilter}
+                    GROUP BY subtype_key
+                    ORDER BY count DESC, subtype_key ASC
+                    LIMIT 8
+                `;
+                const supportDailyQ = `
+                    SELECT
+                        DAY(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) AS day,
+                        COUNT(*) AS created,
+                        SUM(CASE WHEN st.status = 'resolved' THEN 1 ELSE 0 END) AS resolved
+                    FROM support_tickets st
+                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      ${supportFilter}
+                    GROUP BY DAY(DATE_SUB(st.created_at, INTERVAL 5 HOUR))
+                    ORDER BY day ASC
+                `;
+                const supportPlatformsQ = `
+                    SELECT p.name AS name, COUNT(*) AS value
+                    FROM support_tickets st
+                    JOIN platforms p ON p.id = st.platform_id
+                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      ${supportFilter}
+                    GROUP BY p.id, p.name
+                    ORDER BY value DESC, p.name ASC
+                    LIMIT 5
+                `;
+                const [[[supportSummary]], [supportSubtypes], [supportDaily], [supportPlatforms]] = await Promise.all([
+                    pool.query(supportSummaryQ, supportParams),
+                    pool.query(supportSubtypeQ, supportSubtypeParams),
+                    pool.query(supportDailyQ, supportDailyParams),
+                    pool.query(supportPlatformsQ, supportPlatformParams),
+                ]);
+                const supportCreated = Number(supportSummary?.created_count || 0);
+                const supportResolved = Number(supportSummary?.resolved_count || 0);
+                const supportPending = Number(supportSummary?.open_count || 0) + Number(supportSummary?.in_progress_count || 0);
+                const avgResolutionMinutes = Number(supportSummary?.avg_resolution_minutes || 0);
+                monthData.supportStats = {
+                    created: supportCreated,
+                    open: Number(supportSummary?.open_count || 0),
+                    inProgress: Number(supportSummary?.in_progress_count || 0),
+                    resolved: supportResolved,
+                    pending: supportPending,
+                    avgResolutionHours: avgResolutionMinutes > 0 ? Number((avgResolutionMinutes / 60).toFixed(1)) : 0,
+                    supportRatePct: orders > 0 ? Number(((supportCreated / orders) * 100).toFixed(2)) : 0,
+                    daily: supportDaily.map((row) => ({
+                        day: Number(row.day),
+                        created: Number(row.created || 0),
+                        resolved: Number(row.resolved || 0),
+                    })),
+                    subtypes: supportSubtypes.map((row) => ({
+                        key: row.subtype_key,
+                        name: supportSubtypeLabel(row.subtype_key),
+                        value: Number(row.count || 0),
+                    })),
+                    platforms: supportPlatforms.map((row) => ({
+                        name: row.name || "Sin plataforma",
+                        value: Number(row.value || 0),
+                    })),
+                };
             }
 
             return monthData;

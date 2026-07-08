@@ -21,6 +21,8 @@ const RESULT = {
     other: "Caso resuelto",
 };
 
+const PAGE_SIZE = 5;
+
 function formatDate(value) {
     if (!value) return "-";
     return new Intl.DateTimeFormat("es-CO", {
@@ -39,19 +41,32 @@ export default function Support() {
     const [evidence, setEvidence] = useState(null);
     const [preview, setPreview] = useState("");
     const [tickets, setTickets] = useState([]);
+    const [ticketsTotal, setTicketsTotal] = useState(0);
+    const [openTicketsCount, setOpenTicketsCount] = useState(0);
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
 
-    const loadTickets = useCallback(async () => {
-        setLoading(true);
-        const response = await apiFetch("/support/tickets");
+    const loadTickets = useCallback(async ({ offset = 0, append = false } = {}) => {
+        if (append) setLoadingMore(true);
+        else setLoading(true);
+        if (!append) setError("");
+        const params = new URLSearchParams({
+            limit: String(PAGE_SIZE),
+            offset: String(offset),
+        });
+        const response = await apiFetch(`/support/tickets?${params.toString()}`);
         if (response.ok) {
-            setTickets(response.data?.tickets || []);
+            const list = response.data?.tickets || [];
+            setTickets((current) => append ? [...current, ...list] : list);
+            setTicketsTotal(Number(response.data?.total || list.length));
+            setOpenTicketsCount(Number(response.data?.openCount || 0));
         } else {
             setError(response.data?.message || "No pudimos cargar tus solicitudes.");
         }
+        setLoadingMore(false);
         setLoading(false);
     }, []);
 
@@ -69,10 +84,7 @@ export default function Support() {
         return () => URL.revokeObjectURL(url);
     }, [evidence]);
 
-    const openCount = useMemo(
-        () => tickets.filter((ticket) => ticket.status !== "resolved").length,
-        [tickets]
-    );
+    const openCount = useMemo(() => openTicketsCount, [openTicketsCount]);
 
     async function submitTicket(event) {
         event.preventDefault();
@@ -115,6 +127,10 @@ export default function Support() {
         setObservation("");
         setEvidence(null);
         await loadTickets();
+    }
+
+    async function loadMoreTickets() {
+        await loadTickets({ offset: tickets.length, append: true });
     }
 
     return (
@@ -221,6 +237,7 @@ export default function Support() {
                             <div>
                                 <span>Seguimiento</span>
                                 <h2 id="support-history-title">Mis solicitudes</h2>
+                                <p className="support-history__hint">Ultimas novedades, de la mas reciente a la mas antigua.</p>
                             </div>
                         </div>
 
@@ -262,6 +279,16 @@ export default function Support() {
                                 );
                             })}
                         </div>
+                        {!loading && tickets.length < ticketsTotal ? (
+                            <button
+                                type="button"
+                                className="support-secondary-button support-load-more"
+                                onClick={loadMoreTickets}
+                                disabled={loadingMore}
+                            >
+                                {loadingMore ? "Cargando..." : `Cargar mas (${ticketsTotal - tickets.length})`}
+                            </button>
+                        ) : null}
                     </section>
                 </main>
             </div>

@@ -865,6 +865,7 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
         { label: "ID de cuenta", value: `#${ticket.subscriptionId}` },
         { label: "Plataforma", value: ticket.platformName },
         { label: "Resultado", value: resultLabel },
+        ...(ticket.resolutionSubtypeLabel ? [{ label: "Detalle del cierre", value: ticket.resolutionSubtypeLabel }] : []),
         { label: "Respuesta de soporte", value: ticket.resolutionMessage },
     ];
     const subject = `${process.env.APP_NAME || "Streaming Box"} | ${resultLabel} ${ticket.ticketCode}`;

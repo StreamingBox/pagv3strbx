@@ -30,6 +30,33 @@ const STATUS = {
     resolved: "Resuelto",
 };
 
+const RESOLUTION_SUBTYPES = {
+    repaired: [
+        { value: "password_updated", label: "Clave actualizada" },
+        { value: "login_approved", label: "Inicio aprobado" },
+        { value: "payment_issue_fixed", label: "Pago o bloqueo corregido" },
+        { value: "usage_guidance_sent", label: "Instrucciones enviadas" },
+        { value: "account_unlocked", label: "Cuenta desbloqueada" },
+    ],
+    replaced: [
+        { value: "account_replaced", label: "Cuenta reemplazada" },
+        { value: "profile_reassigned", label: "Perfil reasignado" },
+        { value: "stock_replacement", label: "Reemplazo con stock" },
+    ],
+    other: [
+        { value: "user_error", label: "Error de uso del cliente" },
+        { value: "warranty_denied", label: "Garantia no aplica" },
+        { value: "duplicate_request", label: "Solicitud duplicada" },
+        { value: "no_response_needed", label: "Sin accion adicional" },
+        { value: "other_solution", label: "Otro cierre" },
+    ],
+};
+
+function getSubtypeLabel(value) {
+    const all = Object.values(RESOLUTION_SUBTYPES).flat();
+    return all.find((item) => item.value === value)?.label || value || "";
+}
+
 function formatDate(value) {
     if (!value) return "-";
     return new Intl.DateTimeFormat("es-CO", {
@@ -51,6 +78,7 @@ export default function AdminSupport() {
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const [resolutionType, setResolutionType] = useState("repaired");
+    const [resolutionSubtype, setResolutionSubtype] = useState(RESOLUTION_SUBTYPES.repaired[0].value);
     const [resolutionMessage, setResolutionMessage] = useState("");
     const [supportInfo, setSupportInfo] = useState(null);
     const [replacementAccountId, setReplacementAccountId] = useState("");
@@ -85,6 +113,7 @@ export default function AdminSupport() {
     useEffect(() => {
         setResolutionMessage("");
         setResolutionType("repaired");
+        setResolutionSubtype(RESOLUTION_SUBTYPES.repaired[0].value);
         setReplacementAccountId("");
         setSupportInfo(null);
         if (!selected?.subscriptionId || selected.status === "resolved") return;
@@ -144,6 +173,7 @@ export default function AdminSupport() {
             method: "POST",
             body: JSON.stringify({
                 resolutionType,
+                resolutionSubtype,
                 resolutionMessage: resolutionMessage.trim(),
                 replacementAccountId: resolutionType === "replaced"
                     ? (replacementAccountId || null)
@@ -164,6 +194,11 @@ export default function AdminSupport() {
                 : "Caso resuelto. Revisa la configuración del correo de soporte."
         );
         await loadTickets();
+    }
+
+    function selectResolutionType(type) {
+        setResolutionType(type);
+        setResolutionSubtype(RESOLUTION_SUBTYPES[type]?.[0]?.value || "");
     }
 
     return (
@@ -311,6 +346,11 @@ export default function AdminSupport() {
                                                         ? "Cuenta reparada"
                                                         : "Caso resuelto"}
                                             </strong>
+                                            {selected.resolutionSubtype ? (
+                                                <span className="support-resolution__subtype">
+                                                    {selected.resolutionSubtypeLabel || getSubtypeLabel(selected.resolutionSubtype)}
+                                                </span>
+                                            ) : null}
                                             <p>{selected.resolutionMessage}</p>
                                             <span>Resuelto {formatDate(selected.resolvedAt)}</span>
                                         </div>
@@ -332,7 +372,7 @@ export default function AdminSupport() {
                                                 <button
                                                     type="button"
                                                     className={resolutionType === "repaired" ? "is-active" : ""}
-                                                    onClick={() => setResolutionType("repaired")}
+                                                    onClick={() => selectResolutionType("repaired")}
                                                 >
                                                     <CheckCircle2 size={17} aria-hidden />
                                                     Cuenta reparada
@@ -340,7 +380,7 @@ export default function AdminSupport() {
                                                 <button
                                                     type="button"
                                                     className={resolutionType === "replaced" ? "is-active" : ""}
-                                                    onClick={() => setResolutionType("replaced")}
+                                                    onClick={() => selectResolutionType("replaced")}
                                                 >
                                                     <Repeat2 size={17} aria-hidden />
                                                     Reemplazar cuenta
@@ -348,11 +388,24 @@ export default function AdminSupport() {
                                                 <button
                                                     type="button"
                                                     className={resolutionType === "other" ? "is-active" : ""}
-                                                    onClick={() => setResolutionType("other")}
+                                                    onClick={() => selectResolutionType("other")}
                                                 >
                                                     Otro cierre
                                                 </button>
                                             </div>
+
+                                            <label className="support-field">
+                                                <span>Subtipificacion del cierre</span>
+                                                <select
+                                                    value={resolutionSubtype}
+                                                    onChange={(event) => setResolutionSubtype(event.target.value)}
+                                                >
+                                                    {(RESOLUTION_SUBTYPES[resolutionType] || []).map((item) => (
+                                                        <option key={item.value} value={item.value}>{item.label}</option>
+                                                    ))}
+                                                </select>
+                                                <small>Esto queda guardado para medir que tipo de soporte se repite.</small>
+                                            </label>
 
                                             {resolutionType === "replaced" ? (
                                                 <label className="support-field">

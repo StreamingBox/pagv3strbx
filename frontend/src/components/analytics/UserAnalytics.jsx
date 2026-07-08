@@ -49,6 +49,114 @@ const itemVariants = {
 
 const TOP_COLORS = ["#0da6f2", "#8b5cf6", "#10b981", "#f43f5e", "#f59e0b"];
 
+function formatSupportHours(value) {
+    const hours = Number(value || 0);
+    if (!hours) return "Sin cierre";
+    if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min`;
+    return `${hours.toLocaleString("es-CO")} h`;
+}
+
+function SupportPulse({ month, color, isMobile }) {
+    const stats = month?.supportStats;
+    if (!stats) return null;
+    const maxDaily = Math.max(1, ...((stats.daily || []).map((day) => Number(day.created || 0))));
+    return (
+        <motion.div
+            variants={itemVariants}
+            style={{
+                padding: isMobile ? "16px 12px" : "18px 20px",
+                borderRadius: 16,
+                border: "1px solid rgba(20,184,166,.26)",
+                background: "linear-gradient(135deg, rgba(20,184,166,.10), rgba(13,166,242,.06))",
+                minWidth: 0,
+            }}
+        >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+                <div style={{ minWidth: 0 }}>
+                    <div style={{ color: "#5eead4", fontSize: 10, fontWeight: 900, textTransform: "uppercase", letterSpacing: 1 }}>
+                        Novedades de soporte
+                    </div>
+                    <div style={{ marginTop: 4, color: "var(--text)", fontSize: 15, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {month.label}
+                    </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                    <div style={{ color, fontSize: 24, fontWeight: 950, lineHeight: 1 }}>
+                        {Number(stats.created || 0)}
+                    </div>
+                    <div style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800 }}>casos</div>
+                </div>
+            </div>
+
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : "repeat(5, minmax(0, 1fr))",
+                gap: 8,
+                marginBottom: 14,
+            }}>
+                <InsightChip emoji="🟠" label="Pendientes" value={stats.pending || 0} color="#f59e0b" />
+                <InsightChip emoji="✅" label="Resueltos" value={stats.resolved || 0} color="#10b981" />
+                <InsightChip emoji="📌" label="Abiertos" value={stats.open || 0} color="#f43f5e" />
+                <InsightChip emoji="🧭" label="En revision" value={stats.inProgress || 0} color="#22d3ee" />
+                <InsightChip emoji="📉" label="Impacto" value={`${Number(stats.supportRatePct || 0).toLocaleString("es-CO")} %`} color="#8b5cf6" />
+            </div>
+
+            <div style={{
+                display: "grid",
+                gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1.1fr) minmax(0, .9fr)",
+                gap: 14,
+                alignItems: "stretch",
+            }}>
+                <div style={{ minWidth: 0, padding: 12, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.24)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                        <strong style={{ color: "var(--text)", fontSize: 12 }}>Entrada diaria</strong>
+                        <span style={{ color: "#5eead4", fontSize: 11, fontWeight: 900 }}>
+                            Prom. cierre {formatSupportHours(stats.avgResolutionHours)}
+                        </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "end", gap: 4, height: 78, overflow: "hidden" }}>
+                        {(stats.daily || []).length ? (stats.daily || []).map((point) => (
+                            <div
+                                key={point.day}
+                                title={`Dia ${point.day}: ${point.created} caso(s)`}
+                                style={{
+                                    flex: "1 1 0",
+                                    minWidth: 5,
+                                    height: `${Math.max(8, (Number(point.created || 0) / maxDaily) * 76)}px`,
+                                    borderRadius: "6px 6px 2px 2px",
+                                    background: `linear-gradient(180deg, ${color}, rgba(20,184,166,.28))`,
+                                }}
+                            />
+                        )) : (
+                            <div style={{ width: "100%", color: "var(--muted)", fontSize: 12, textAlign: "center", alignSelf: "center" }}>
+                                Sin novedades registradas.
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div style={{ minWidth: 0, padding: 12, border: "1px solid var(--stroke2)", borderRadius: 12, background: "rgba(6,12,30,.24)" }}>
+                    <strong style={{ display: "block", color: "var(--text)", fontSize: 12, marginBottom: 10 }}>Cierres por subtipificacion</strong>
+                    <div style={{ display: "grid", gap: 7 }}>
+                        {(stats.subtypes || []).length ? stats.subtypes.slice(0, 5).map((item, idx) => (
+                            <div key={item.key || item.name} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8, alignItems: "center" }}>
+                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {item.name}
+                                </span>
+                                <span style={{ color: TOP_COLORS[idx % TOP_COLORS.length], fontSize: 12, fontWeight: 900 }}>
+                                    {item.value}
+                                </span>
+                            </div>
+                        )) : (
+                            <span style={{ color: "var(--muted)", fontSize: 12 }}>Sin cierres subtipificados todavia.</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
 function monthKey(year, month) {
     return `${year}-${String(month).padStart(2, "0")}`;
 }
@@ -608,6 +716,7 @@ function UserAnalyticsContent({ admin }) {
         balanceScopeData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt ||
         monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt
     );
+    const supportMonths = admin ? monthsData.filter((month) => month.supportStats) : [];
 
     return (
         <motion.div style={{ marginTop: isMobile ? 0 : 16, width: "100%", minWidth: 0 }} initial="hidden" animate="show" variants={containerVariants}>
@@ -918,6 +1027,19 @@ function UserAnalyticsContent({ admin }) {
             {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+                    {admin && supportMonths.length > 0 && (
+                        <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
+                            {supportMonths.slice(0, isMobile ? 1 : 2).map((month, idx) => (
+                                <SupportPulse
+                                    key={`support-${month.label}`}
+                                    month={month}
+                                    color={MONTH_COLORS[idx % MONTH_COLORS.length]}
+                                    isMobile={isMobile}
+                                />
+                            ))}
+                        </div>
+                    )}
 
                     {/* Sales trend chart */}
                     <motion.div variants={itemVariants} style={{

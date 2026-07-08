@@ -19,6 +19,32 @@ const { replaceSubscriptionAccount } = require("../services/accountReplacement.s
 
 const router = express.Router();
 
+const RESOLUTION_SUBTYPE_LABELS = {
+    password_updated: "Clave actualizada",
+    login_approved: "Inicio aprobado",
+    payment_issue_fixed: "Pago o bloqueo corregido",
+    usage_guidance_sent: "Instrucciones enviadas",
+    account_unlocked: "Cuenta desbloqueada",
+    account_replaced: "Cuenta reemplazada",
+    profile_reassigned: "Perfil reasignado",
+    stock_replacement: "Reemplazo con stock",
+    user_error: "Error de uso del cliente",
+    warranty_denied: "Garantia no aplica",
+    duplicate_request: "Solicitud duplicada",
+    no_response_needed: "Sin accion adicional",
+    other_solution: "Otro cierre",
+};
+
+function normalizeResolutionSubtype(value) {
+    const clean = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_/-]/g, "_").slice(0, 64);
+    if (!clean) return null;
+    return clean;
+}
+
+function resolutionSubtypeLabel(value) {
+    return RESOLUTION_SUBTYPE_LABELS[value] || value || "";
+}
+
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 6 * 1024 * 1024 },
@@ -69,6 +95,8 @@ function mapTicket(row) {
         attachmentSize: Number(row.attachment_size || 0),
         attachmentUrl: `/support/tickets/${row.id}/attachment`,
         resolutionType: row.resolution_type || null,
+        resolutionSubtype: row.resolution_subtype || null,
+        resolutionSubtypeLabel: resolutionSubtypeLabel(row.resolution_subtype),
         resolutionMessage: row.resolution_message || "",
         oldAccountId: row.old_account_id ? Number(row.old_account_id) : null,
         newAccountId: row.new_account_id ? Number(row.new_account_id) : null,
@@ -231,15 +259,33 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
 });
 
 router.get("/support/tickets", requireAuth, async (req, res) => {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 25);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
     try {
-        const [rows] = await pool.query(
+        const [[summary], [rows]] = await Promise.all([
+            pool.query(
+                `SELECT COUNT(*) AS total,
+                        SUM(CASE WHEN status IN ('open', 'in_progress') THEN 1 ELSE 0 END) AS open_count
+                   FROM support_tickets
+                  WHERE user_id = ?`,
+                [Number(req.user.id)]
+            ),
+            pool.query(
             `${TICKET_SELECT}
               WHERE st.user_id = ?
               ORDER BY st.created_at DESC
-              LIMIT 100`,
-            [Number(req.user.id)]
-        );
-        return res.json({ tickets: rows.map(mapTicket) });
+              LIMIT ? OFFSET ?`,
+                [Number(req.user.id), limit, offset]
+            ),
+        ]);
+        const meta = summary?.[0] || {};
+        return res.json({
+            tickets: rows.map(mapTicket),
+            total: Number(meta.total || 0),
+            openCount: Number(meta.open_count || 0),
+            limit,
+            offset,
+        });
     } catch (error) {
         console.error("[support] User ticket list error:", error);
         return res.status(500).json({ message: "No se pudieron cargar tus solicitudes." });
@@ -330,6 +376,49 @@ router.get(
     }
 );
 
+router.get(
+    "/admin/support-tickets/summary",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+        const limit = Math.min(Math.max(Number(req.query.limit) || 5, 1), 10);
+        try {
+            const [[countRows], [latestRows]] = await Promise.all([
+                pool.query(
+                    `SELECT
+                        SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) AS open_count,
+                        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
+                        SUM(CASE WHEN status IN ('open', 'in_progress') THEN 1 ELSE 0 END) AS pending_count,
+                        SUM(CASE WHEN status = 'resolved' THEN 1 ELSE 0 END) AS resolved_count,
+                        COUNT(*) AS total_count
+                       FROM support_tickets`
+                ),
+                pool.query(
+                    `${TICKET_SELECT}
+                      WHERE st.status IN ('open', 'in_progress')
+                      ORDER BY st.created_at DESC
+                      LIMIT ?`,
+                    [limit]
+                ),
+            ]);
+            const counts = countRows?.[0] || {};
+            return res.json({
+                counts: {
+                    open: Number(counts.open_count || 0),
+                    inProgress: Number(counts.in_progress_count || 0),
+                    pending: Number(counts.pending_count || 0),
+                    resolved: Number(counts.resolved_count || 0),
+                    total: Number(counts.total_count || 0),
+                },
+                latest: latestRows.map(mapTicket),
+            });
+        } catch (error) {
+            console.error("[support] Admin ticket summary error:", error);
+            return res.status(500).json({ message: "No se pudo cargar el resumen de soporte." });
+        }
+    }
+);
+
 router.patch(
     "/admin/support-tickets/:id/start",
     requireAuth,
@@ -379,6 +468,7 @@ router.post(
     async (req, res) => {
         const ticketId = Number(req.params.id);
         const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
+        const resolutionSubtype = normalizeResolutionSubtype(req.body?.resolutionSubtype);
         const resolutionMessage = String(req.body?.resolutionMessage || "").trim();
         const replacementAccountIdRaw = req.body?.replacementAccountId;
         const replacementAccountId = replacementAccountIdRaw
@@ -430,6 +520,7 @@ router.post(
                 `UPDATE support_tickets
                     SET status = 'resolved',
                         resolution_type = ?,
+                        resolution_subtype = ?,
                         resolution_message = ?,
                         old_account_id = ?,
                         new_account_id = ?,
@@ -438,6 +529,7 @@ router.post(
                   WHERE id = ?`,
                 [
                     resolutionType,
+                    resolutionSubtype,
                     resolutionMessage,
                     replacement?.oldAccountId || null,
                     replacement?.newAccountId || null,

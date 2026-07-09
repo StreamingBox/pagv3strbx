@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { RefreshCcw } from "lucide-react";
+import { DatabaseZap, RefreshCcw } from "lucide-react";
 import IconBadge from "./IconBadge.jsx";
 import { apiFetch } from "../../api/api.js";
 import "../../styles/special-effects.css";
@@ -77,7 +77,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
-                { icon: "M", tone: "amber", title: "Cuentas Maestras", hint: "Cuentas caidas y reemplazo automatico.", path: "/admin/master-accounts" },
+                { icon: <DatabaseZap size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Cuentas Maestras", hint: "Cuentas caidas y reemplazo automatico.", path: "/admin/master-accounts" },
                 { icon: "🔗", tone: "teal", title: "Links", hint: "Enlaces de credenciales.", path: "/admin/links" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
                 { icon: <RefreshCcw size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Reinicio de Codigo", hint: "Reinicia intentos por pedido.", path: "/admin/code-reset" },

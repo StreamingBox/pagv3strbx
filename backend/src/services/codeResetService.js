@@ -3,7 +3,7 @@ const { credFingerprint } = require("../utils/credFingerprint");
 const { isStoredDateOnlyExpired } = require("../utils/date");
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const {
-    countDeliveredByFingerprint,
+    getDeliveryCountersByFingerprint,
     getLastCodeReset,
     getSubscriptionWithAccount,
 } = require("./codeQueries");
@@ -52,29 +52,8 @@ async function getCodeResetSnapshot(orderNumber) {
 
     const platformSlug = validation.slug;
     const fingerprint = credFingerprint(sub.accountPassword, sub.accountPin);
-    const [totalAfterReset, loginCodes, temporaryCodes, approvals, lastReset] = await Promise.all([
-        countDeliveredByFingerprint({ orderId, platformSlugLower: platformSlug, credentialFingerprint: fingerprint }),
-        countDeliveredByFingerprint({
-            orderId,
-            platformSlugLower: platformSlug,
-            credentialFingerprint: fingerprint,
-            requireCodeValue: true,
-            messageNotLike: "OK:temporary%",
-        }),
-        countDeliveredByFingerprint({
-            orderId,
-            platformSlugLower: platformSlug,
-            credentialFingerprint: fingerprint,
-            requireCodeValue: true,
-            messageLike: "OK:temporary%",
-        }),
-        countDeliveredByFingerprint({
-            orderId,
-            platformSlugLower: platformSlug,
-            credentialFingerprint: fingerprint,
-            requireEmptyCode: true,
-            messageLike: "OK:approve-confirmed%",
-        }),
+    const [counters, lastReset] = await Promise.all([
+        getDeliveryCountersByFingerprint({ orderId, platformSlugLower: platformSlug, credentialFingerprint: fingerprint }),
         getLastCodeReset({ orderId, platformSlugLower: platformSlug, credentialFingerprint: fingerprint }),
     ]);
 
@@ -93,10 +72,10 @@ async function getCodeResetSnapshot(orderNumber) {
             accountProfile: sub.accountProfile || null,
         },
         counts: {
-            totalAfterReset,
-            loginCodes,
-            temporaryCodes,
-            approvals,
+            totalAfterReset: counters.totalAfterReset,
+            loginCodes: counters.loginCodes,
+            temporaryCodes: counters.temporaryCodes,
+            approvals: counters.approvals,
         },
         lastReset,
     };

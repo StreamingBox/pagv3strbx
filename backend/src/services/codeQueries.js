@@ -50,11 +50,11 @@ async function getLastDelivered(orderId, platformSlugLower) {
         `SELECT id, credential_fingerprint, created_at
      FROM code_deliveries
      WHERE order_id = ?
-       AND LOWER(platform_slug) = ?
+       AND platform_slug = ?
        AND status = 'delivered'
      ORDER BY created_at DESC
      LIMIT 1`,
-        [Number(orderId), platformSlugLower]
+        [Number(orderId), String(platformSlugLower || "").toLowerCase()]
     );
     return rows?.[0] || null;
 }
@@ -71,7 +71,7 @@ async function countDeliveredByFingerprint({
 }) {
     const where = [
         "order_id = ?",
-        "LOWER(platform_slug) = ?",
+        "platform_slug = ?",
         "status = 'delivered'",
         "credential_fingerprint = ?",
     ];
@@ -97,7 +97,7 @@ async function countDeliveredByFingerprint({
             SELECT MAX(reset_rows.id)
             FROM code_deliveries reset_rows
             WHERE reset_rows.order_id = ?
-              AND LOWER(reset_rows.platform_slug) = ?
+              AND reset_rows.platform_slug = ?
               AND reset_rows.credential_fingerprint = ?
               AND reset_rows.status = 'reset'
         ), 0)`);
@@ -114,6 +114,52 @@ async function countDeliveredByFingerprint({
     return Number(row?.total || 0);
 }
 
+async function getDeliveryCountersByFingerprint({ orderId, platformSlugLower, credentialFingerprint }) {
+    const id = Number(orderId);
+    const slug = String(platformSlugLower || "").toLowerCase();
+    const fingerprint = String(credentialFingerprint || "");
+
+    const [[row]] = await pool.query(
+        `SELECT
+            COUNT(*) AS totalAfterReset,
+            SUM(CASE
+                WHEN delivered_code IS NOT NULL
+                 AND delivered_code <> ''
+                 AND (message IS NULL OR message NOT LIKE 'OK:temporary%')
+                THEN 1 ELSE 0 END) AS loginCodes,
+            SUM(CASE
+                WHEN delivered_code IS NOT NULL
+                 AND delivered_code <> ''
+                 AND message LIKE 'OK:temporary%'
+                THEN 1 ELSE 0 END) AS temporaryCodes,
+            SUM(CASE
+                WHEN (delivered_code IS NULL OR delivered_code = '')
+                 AND message LIKE 'OK:approve-confirmed%'
+                THEN 1 ELSE 0 END) AS approvals
+         FROM code_deliveries
+         WHERE order_id = ?
+           AND platform_slug = ?
+           AND status = 'delivered'
+           AND credential_fingerprint = ?
+           AND id > COALESCE((
+                SELECT MAX(reset_rows.id)
+                FROM code_deliveries reset_rows
+                WHERE reset_rows.order_id = ?
+                  AND reset_rows.platform_slug = ?
+                  AND reset_rows.credential_fingerprint = ?
+                  AND reset_rows.status = 'reset'
+           ), 0)`,
+        [id, slug, fingerprint, id, slug, fingerprint]
+    );
+
+    return {
+        totalAfterReset: Number(row?.totalAfterReset || 0),
+        loginCodes: Number(row?.loginCodes || 0),
+        temporaryCodes: Number(row?.temporaryCodes || 0),
+        approvals: Number(row?.approvals || 0),
+    };
+}
+
 async function getLastCodeReset({ orderId, platformSlugLower, credentialFingerprint }) {
     const [rows] = await pool.query(
         `SELECT
@@ -124,7 +170,7 @@ async function getLastCodeReset({ orderId, platformSlugLower, credentialFingerpr
          FROM code_deliveries cd
          LEFT JOIN users u ON u.id = cd.requested_by_user_id
          WHERE cd.order_id = ?
-           AND LOWER(cd.platform_slug) = ?
+           AND cd.platform_slug = ?
            AND cd.credential_fingerprint = ?
            AND cd.status = 'reset'
          ORDER BY cd.id DESC
@@ -139,5 +185,6 @@ module.exports = {
     getSubscriptionWithAccount,
     getLastDelivered,
     countDeliveredByFingerprint,
+    getDeliveryCountersByFingerprint,
     getLastCodeReset,
 };

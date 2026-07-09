@@ -40,6 +40,16 @@ const RESOLUTION_SUBTYPE_LABELS = {
     other_solution: "Otro cierre",
 };
 
+const SUPPORT_EVENT_LABELS = {
+    created: "Caso creado",
+    in_progress: "En revision",
+    resolved: "Caso resuelto",
+    replaced: "Cuenta reemplazada",
+    reopened: "Caso reabierto",
+    auto_replaced: "Reemplazo automatico",
+    auto_no_stock: "Sin stock automatico",
+};
+
 function normalizeResolutionSubtype(value) {
     const clean = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_/-]/g, "_").slice(0, 64);
     if (!clean) return null;
@@ -48,6 +58,42 @@ function normalizeResolutionSubtype(value) {
 
 function resolutionSubtypeLabel(value) {
     return RESOLUTION_SUBTYPE_LABELS[value] || value || "";
+}
+
+function minutesBetween(start, end) {
+    if (!start || !end) return null;
+    const startMs = new Date(start).getTime();
+    const endMs = new Date(end).getTime();
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) return null;
+    return Math.round((endMs - startMs) / 60000);
+}
+
+function mapEvent(row) {
+    return {
+        id: Number(row.id),
+        type: row.event_type,
+        label: SUPPORT_EVENT_LABELS[row.event_type] || row.event_type,
+        message: row.message || "",
+        actorUserId: row.actor_user_id ? Number(row.actor_user_id) : null,
+        actorName: row.actor_name || "",
+        actorEmail: row.actor_email || "",
+        createdAt: row.created_at,
+    };
+}
+
+function mapTemplate(row) {
+    return {
+        id: Number(row.id),
+        title: row.title,
+        resolutionType: row.resolution_type,
+        resolutionSubtype: row.resolution_subtype || "",
+        resolutionSubtypeLabel: resolutionSubtypeLabel(row.resolution_subtype),
+        body: row.body || "",
+        isActive: Number(row.is_active) === 1,
+        sortOrder: Number(row.sort_order || 0),
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+    };
 }
 
 function getReopenUntil(value) {
@@ -116,9 +162,13 @@ function mapTicket(row) {
         resolutionMessage: row.resolution_message || "",
         oldAccountId: row.old_account_id ? Number(row.old_account_id) : null,
         newAccountId: row.new_account_id ? Number(row.new_account_id) : null,
+        accountId: row.account_id ? Number(row.account_id) : null,
         accountEmail: row.account_email || "",
+        accountStatus: row.account_status || "",
         profileNumber: row.profile_number ?? null,
         expiresAt: row.effective_expires_at || null,
+        resolvedByName: row.resolved_by_name || "",
+        resolvedByEmail: row.resolved_by_email || "",
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         resolvedAt: row.resolved_at || null,
@@ -131,15 +181,20 @@ const TICKET_SELECT = `
     SELECT st.*,
            u.name AS user_name,
            u.email AS user_email,
-           p.name AS platform_name,
-           pa.email AS account_email,
-           pa.profile_number,
-           COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at
-      FROM support_tickets st
-      JOIN users u ON u.id = st.user_id
-      JOIN platforms p ON p.id = st.platform_id
-      JOIN subscriptions s ON s.id = st.subscription_id
-      LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+            p.name AS platform_name,
+            resolver.name AS resolved_by_name,
+            resolver.email AS resolved_by_email,
+            pa.id AS account_id,
+            pa.email AS account_email,
+            pa.status AS account_status,
+            pa.profile_number,
+            COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at
+       FROM support_tickets st
+       JOIN users u ON u.id = st.user_id
+       JOIN platforms p ON p.id = st.platform_id
+       JOIN subscriptions s ON s.id = st.subscription_id
+       LEFT JOIN users resolver ON resolver.id = st.resolved_by_user_id
+       LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
 `;
 
 async function getTicketById(conn, ticketId, { userId = null, forUpdate = false } = {}) {
@@ -169,6 +224,209 @@ async function deliverCreatedNotifications(ticket) {
             console.error("[support] Notification error:", result.reason?.message || result.reason);
         }
     });
+}
+
+function buildInClause(values) {
+    const unique = [...new Set(values.map(Number).filter((value) => Number.isFinite(value) && value > 0))];
+    return {
+        values: unique,
+        placeholders: unique.map(() => "?").join(", "),
+    };
+}
+
+async function getSupportEvents(ticketId) {
+    const [rows] = await pool.query(
+        `SELECT ste.id,
+                ste.ticket_id,
+                ste.actor_user_id,
+                ste.event_type,
+                ste.message,
+                ste.created_at,
+                u.name AS actor_name,
+                u.email AS actor_email
+           FROM support_ticket_events ste
+           LEFT JOIN users u ON u.id = ste.actor_user_id
+          WHERE ste.ticket_id = ?
+          ORDER BY ste.created_at ASC, ste.id ASC`,
+        [ticketId]
+    );
+    return rows.map(mapEvent);
+}
+
+async function getAccountTrace(ticket) {
+    const accountIds = buildInClause([ticket.accountId, ticket.oldAccountId, ticket.newAccountId]);
+    const accountCondition = accountIds.values.length ? ` OR s.platform_account_id IN (${accountIds.placeholders})` : "";
+    const replacementCondition = accountIds.values.length
+        ? ` OR arl.old_account_id IN (${accountIds.placeholders}) OR arl.new_account_id IN (${accountIds.placeholders})`
+        : "";
+    const renewalCondition = accountIds.values.length
+        ? ` OR srl.previous_account_id IN (${accountIds.placeholders}) OR srl.new_account_id IN (${accountIds.placeholders})`
+        : "";
+    const deliveryCondition = accountIds.values.length ? ` OR cd.platform_account_id IN (${accountIds.placeholders})` : "";
+    const relatedTicketCondition = accountIds.values.length
+        ? ` OR st.old_account_id IN (${accountIds.placeholders}) OR st.new_account_id IN (${accountIds.placeholders})`
+        : "";
+
+    const [salesRows, replacementRows, renewalRows, deliveryRows, relatedRows] = await Promise.all([
+        pool.query(
+            `SELECT s.id AS subscription_id,
+                    s.status,
+                    s.expires_at,
+                    s.created_at,
+                    s.updated_at,
+                    o.order_code,
+                    u.email AS buyer_email,
+                    p.name AS platform_name,
+                    pa.id AS account_id,
+                    pa.email AS account_email,
+                    pa.profile_number
+               FROM subscriptions s
+               JOIN users u ON u.id = s.user_id
+               JOIN platforms p ON p.id = s.platform_id
+               LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+               LEFT JOIN order_items oi ON oi.subscription_id = s.id
+               LEFT JOIN orders o ON o.id = oi.order_id
+              WHERE s.id = ?${accountCondition}
+              ORDER BY s.created_at DESC, s.id DESC
+              LIMIT 30`,
+            [ticket.subscriptionId, ...accountIds.values]
+        ),
+        pool.query(
+            `SELECT arl.id,
+                    arl.subscription_id,
+                    arl.order_code,
+                    arl.old_account_id,
+                    arl.old_account_email,
+                    arl.new_account_id,
+                    arl.new_account_email,
+                    arl.previous_expires_at,
+                    arl.created_at,
+                    admin.email AS admin_email
+               FROM account_replacement_logs arl
+               LEFT JOIN users admin ON admin.id = arl.admin_user_id
+              WHERE arl.subscription_id = ?${replacementCondition}
+              ORDER BY arl.created_at DESC, arl.id DESC
+              LIMIT 30`,
+            [ticket.subscriptionId, ...accountIds.values, ...accountIds.values]
+        ),
+        pool.query(
+            `SELECT srl.id,
+                    srl.subscription_id,
+                    srl.previous_order_code,
+                    srl.renewal_order_code,
+                    srl.previous_account_id,
+                    srl.new_account_id,
+                    srl.previous_expires_at,
+                    srl.new_expires_at,
+                    srl.amount_charged,
+                    srl.currency,
+                    srl.actor_role,
+                    srl.created_at,
+                    actor.email AS actor_email
+               FROM subscription_renewal_logs srl
+               LEFT JOIN users actor ON actor.id = srl.actor_user_id
+              WHERE srl.subscription_id = ?${renewalCondition}
+              ORDER BY srl.created_at DESC, srl.id DESC
+              LIMIT 30`,
+            [ticket.subscriptionId, ...accountIds.values, ...accountIds.values]
+        ),
+        pool.query(
+            `SELECT cd.id,
+                    cd.order_id,
+                    cd.platform_slug,
+                    cd.platform_account_id,
+                    cd.status,
+                    cd.message,
+                    cd.created_at,
+                    requester.email AS requester_email
+               FROM code_deliveries cd
+               LEFT JOIN users requester ON requester.id = cd.requested_by_user_id
+              WHERE cd.order_id = ?${deliveryCondition}
+              ORDER BY cd.created_at DESC, cd.id DESC
+              LIMIT 30`,
+            [ticket.subscriptionId, ...accountIds.values]
+        ),
+        pool.query(
+            `${TICKET_SELECT}
+              WHERE st.id <> ?
+                AND (st.subscription_id = ?${relatedTicketCondition})
+              ORDER BY st.created_at DESC, st.id DESC
+              LIMIT 20`,
+            [ticket.id, ticket.subscriptionId, ...accountIds.values, ...accountIds.values]
+        ),
+    ]);
+
+    return {
+        sales: salesRows[0].map((row) => ({
+            subscriptionId: Number(row.subscription_id),
+            status: row.status,
+            orderCode: row.order_code || "",
+            buyerEmail: row.buyer_email || "",
+            platformName: row.platform_name || "",
+            accountId: row.account_id ? Number(row.account_id) : null,
+            accountEmail: row.account_email || "",
+            profileNumber: row.profile_number ?? null,
+            expiresAt: row.expires_at || null,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+        })),
+        replacements: replacementRows[0].map((row) => ({
+            id: Number(row.id),
+            subscriptionId: Number(row.subscription_id),
+            orderCode: row.order_code || "",
+            oldAccountId: row.old_account_id ? Number(row.old_account_id) : null,
+            oldAccountEmail: row.old_account_email || "",
+            newAccountId: row.new_account_id ? Number(row.new_account_id) : null,
+            newAccountEmail: row.new_account_email || "",
+            previousExpiresAt: row.previous_expires_at || null,
+            adminEmail: row.admin_email || "",
+            createdAt: row.created_at,
+        })),
+        renewals: renewalRows[0].map((row) => ({
+            id: Number(row.id),
+            subscriptionId: Number(row.subscription_id),
+            previousOrderCode: row.previous_order_code || "",
+            renewalOrderCode: row.renewal_order_code || "",
+            previousAccountId: row.previous_account_id ? Number(row.previous_account_id) : null,
+            newAccountId: row.new_account_id ? Number(row.new_account_id) : null,
+            previousExpiresAt: row.previous_expires_at || null,
+            newExpiresAt: row.new_expires_at || null,
+            amountCharged: Number(row.amount_charged || 0),
+            currency: row.currency || "",
+            actorRole: row.actor_role || "",
+            actorEmail: row.actor_email || "",
+            createdAt: row.created_at,
+        })),
+        codeDeliveries: deliveryRows[0].map((row) => ({
+            id: Number(row.id),
+            orderId: Number(row.order_id),
+            platformSlug: row.platform_slug || "",
+            platformAccountId: row.platform_account_id ? Number(row.platform_account_id) : null,
+            status: row.status || "",
+            message: row.message || "",
+            requesterEmail: row.requester_email || "",
+            createdAt: row.created_at,
+        })),
+        relatedTickets: relatedRows[0].map(mapTicket),
+    };
+}
+
+function getSupportMetrics(ticket, events) {
+    const firstInProgress = events.find((event) => event.type === "in_progress") || null;
+    const firstClose = events.find((event) => ["resolved", "replaced", "auto_replaced"].includes(event.type)) || null;
+    const startAt = firstInProgress?.createdAt || null;
+    const closeAt = ticket.resolvedAt || firstClose?.createdAt || null;
+    const now = new Date().toISOString();
+
+    return {
+        createdAt: ticket.createdAt,
+        firstResponseAt: startAt,
+        resolvedAt: closeAt,
+        waitMinutes: minutesBetween(ticket.createdAt, startAt),
+        managementMinutes: minutesBetween(startAt || ticket.createdAt, closeAt || now),
+        totalMinutes: minutesBetween(ticket.createdAt, closeAt || now),
+        isRunning: ticket.status !== "resolved",
+    };
 }
 
 async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
@@ -569,6 +827,94 @@ router.get(
         } catch (error) {
             console.error("[support] Admin ticket summary error:", error);
             return res.status(500).json({ message: "No se pudo cargar el resumen de soporte." });
+        }
+    }
+);
+
+router.get(
+    "/admin/support-tickets/:id/detail",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+        const ticketId = Number(req.params.id);
+        if (!Number.isFinite(ticketId) || ticketId <= 0) {
+            return res.status(400).json({ message: "Caso invalido." });
+        }
+        try {
+            const ticket = await getTicketById(pool, ticketId);
+            if (!ticket) return res.status(404).json({ message: "Caso no encontrado." });
+            const [events, accountTrace] = await Promise.all([
+                getSupportEvents(ticketId),
+                getAccountTrace(ticket),
+            ]);
+            return res.json({
+                ticket,
+                events,
+                metrics: getSupportMetrics(ticket, events),
+                accountTrace,
+            });
+        } catch (error) {
+            console.error("[support] Admin ticket detail error:", error);
+            return res.status(500).json({ message: "No se pudo cargar la trazabilidad del caso." });
+        }
+    }
+);
+
+router.get(
+    "/admin/support-templates",
+    requireAuth,
+    requireRole("admin"),
+    async (_req, res) => {
+        try {
+            const [rows] = await pool.query(
+                `SELECT *
+                   FROM support_response_templates
+                  WHERE is_active = 1
+                  ORDER BY resolution_type ASC, sort_order ASC, title ASC`
+            );
+            return res.json({ templates: rows.map(mapTemplate) });
+        } catch (error) {
+            console.error("[support] Template list error:", error);
+            return res.status(500).json({ message: "No se pudieron cargar las plantillas." });
+        }
+    }
+);
+
+router.post(
+    "/admin/support-templates",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+        const title = String(req.body?.title || "").trim();
+        const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
+        const resolutionSubtype = normalizeResolutionSubtype(req.body?.resolutionSubtype);
+        const body = String(req.body?.body || "").trim();
+
+        if (title.length < 3 || title.length > 120) {
+            return res.status(400).json({ message: "El nombre de la plantilla debe tener entre 3 y 120 caracteres." });
+        }
+        if (!["repaired", "replaced", "other"].includes(resolutionType)) {
+            return res.status(400).json({ message: "Selecciona el tipo de cierre de la plantilla." });
+        }
+        if (body.length < 10 || body.length > 3000) {
+            return res.status(400).json({ message: "La plantilla debe tener entre 10 y 3000 caracteres." });
+        }
+
+        try {
+            const [result] = await pool.query(
+                `INSERT INTO support_response_templates
+                    (title, resolution_type, resolution_subtype, body, created_by_user_id)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [title, resolutionType, resolutionSubtype, body, req.user.id]
+            );
+            const [rows] = await pool.query(
+                "SELECT * FROM support_response_templates WHERE id = ? LIMIT 1",
+                [result.insertId]
+            );
+            return res.status(201).json({ ok: true, template: mapTemplate(rows[0]) });
+        } catch (error) {
+            console.error("[support] Template create error:", error);
+            return res.status(500).json({ message: "No se pudo guardar la plantilla." });
         }
     }
 );

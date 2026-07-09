@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     CheckCircle2,
+    Clock3,
     ExternalLink,
+    FileText,
     Headphones,
+    History,
     RefreshCcw,
     Repeat2,
+    Save,
     Search,
     Wrench,
 } from "lucide-react";
@@ -66,6 +70,39 @@ function formatDate(value) {
     }).format(new Date(value));
 }
 
+function formatDuration(minutes) {
+    if (minutes === null || minutes === undefined || Number.isNaN(Number(minutes))) return "-";
+    const total = Math.max(0, Number(minutes));
+    if (total < 1) return "Menos de 1 min";
+    const days = Math.floor(total / 1440);
+    const hours = Math.floor((total % 1440) / 60);
+    const mins = Math.round(total % 60);
+    if (days > 0) return `${days}d ${hours}h`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
+}
+
+function shortText(value, fallback = "-") {
+    const text = String(value || "").trim();
+    return text || fallback;
+}
+
+function TraceBlock({ title, items, empty, render }) {
+    const list = Array.isArray(items) ? items : [];
+    return (
+        <section className="admin-support-trace-block">
+            <h3>{title}</h3>
+            {list.length ? (
+                <div className="admin-support-trace-list">
+                    {list.map((item, index) => render(item, index))}
+                </div>
+            ) : (
+                <p className="admin-support-trace-empty">{empty}</p>
+            )}
+        </section>
+    );
+}
+
 export default function AdminSupport() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
@@ -82,6 +119,11 @@ export default function AdminSupport() {
     const [resolutionMessage, setResolutionMessage] = useState("");
     const [supportInfo, setSupportInfo] = useState(null);
     const [replacementAccountId, setReplacementAccountId] = useState("");
+    const [ticketDetail, setTicketDetail] = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [templates, setTemplates] = useState([]);
+    const [templateTitle, setTemplateTitle] = useState("");
+    const [templateSaving, setTemplateSaving] = useState(false);
 
     const selected = useMemo(
         () => tickets.find((ticket) => ticket.id === selectedId) || tickets[0] || null,
@@ -109,6 +151,34 @@ export default function AdminSupport() {
     useEffect(() => {
         void loadTickets();
     }, [loadTickets]);
+
+    const loadTemplates = useCallback(async () => {
+        const response = await apiFetch("/admin/support-templates");
+        if (response.ok) {
+            setTemplates(response.data?.templates || []);
+        }
+    }, []);
+
+    useEffect(() => {
+        void loadTemplates();
+    }, [loadTemplates]);
+
+    useEffect(() => {
+        setTicketDetail(null);
+        if (!selected?.id) return;
+        let cancelled = false;
+        setDetailLoading(true);
+        void apiFetch(`/admin/support-tickets/${selected.id}/detail`).then((response) => {
+            if (cancelled) return;
+            if (response.ok) {
+                setTicketDetail(response.data || null);
+            }
+            setDetailLoading(false);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [selected?.id, selected?.updatedAt, selected?.status]);
 
     useEffect(() => {
         setResolutionMessage("");
@@ -196,10 +266,53 @@ export default function AdminSupport() {
         await loadTickets();
     }
 
+    async function saveTemplate() {
+        const title = templateTitle.trim();
+        const body = resolutionMessage.trim();
+        if (title.length < 3) {
+            setError("Escribe un nombre corto para guardar la plantilla.");
+            return;
+        }
+        if (body.length < 10) {
+            setError("La plantilla necesita una respuesta clara antes de guardarse.");
+            return;
+        }
+        setTemplateSaving(true);
+        setError("");
+        const response = await apiFetch("/admin/support-templates", {
+            method: "POST",
+            body: JSON.stringify({
+                title,
+                resolutionType,
+                resolutionSubtype,
+                body,
+            }),
+        });
+        setTemplateSaving(false);
+        if (!response.ok) {
+            setError(response.data?.message || "No se pudo guardar la plantilla.");
+            return;
+        }
+        setTemplateTitle("");
+        setSuccess("Plantilla guardada para proximos soportes.");
+        await loadTemplates();
+    }
+
+    function applyTemplate(templateId) {
+        const template = templates.find((item) => item.id === Number(templateId));
+        if (!template) return;
+        setResolutionType(template.resolutionType);
+        setResolutionSubtype(template.resolutionSubtype || RESOLUTION_SUBTYPES[template.resolutionType]?.[0]?.value || "");
+        setResolutionMessage(template.body || "");
+    }
+
     function selectResolutionType(type) {
         setResolutionType(type);
         setResolutionSubtype(RESOLUTION_SUBTYPES[type]?.[0]?.value || "");
     }
+
+    const selectedDetail = ticketDetail?.ticket?.id === selected?.id ? ticketDetail : null;
+    const matchingTemplates = templates.filter((item) => item.resolutionType === resolutionType);
 
     return (
         <div className="page-shell">
@@ -315,14 +428,32 @@ export default function AdminSupport() {
                                         </span>
                                     </div>
 
-                                    <div className="admin-support-facts">
-                                        <div><span>Orden</span><strong>{selected.orderCode || "-"}</strong></div>
-                                        <div><span>Cuenta actual</span><strong>{selected.accountEmail || "-"}</strong></div>
-                                        <div><span>Perfil</span><strong>{selected.profileNumber ?? "-"}</strong></div>
-                                        <div><span>Fecha</span><strong>{formatDate(selected.createdAt)}</strong></div>
-                                    </div>
+                                     <div className="admin-support-facts">
+                                         <div><span>Orden</span><strong>{selected.orderCode || "-"}</strong></div>
+                                         <div><span>Cuenta actual</span><strong>{selected.accountEmail || "-"}</strong></div>
+                                         <div><span>Perfil</span><strong>{selected.profileNumber ?? "-"}</strong></div>
+                                         <div><span>Fecha</span><strong>{formatDate(selected.createdAt)}</strong></div>
+                                     </div>
 
-                                    <div className="admin-support-observation">
+                                     <div className="admin-support-metrics">
+                                         <div>
+                                             <Clock3 size={17} aria-hidden />
+                                             <span>Espera para tomar</span>
+                                             <strong>{formatDuration(selectedDetail?.metrics?.waitMinutes)}</strong>
+                                         </div>
+                                         <div>
+                                             <Wrench size={17} aria-hidden />
+                                             <span>Tiempo de gestion</span>
+                                             <strong>{formatDuration(selectedDetail?.metrics?.managementMinutes)}</strong>
+                                         </div>
+                                         <div>
+                                             <History size={17} aria-hidden />
+                                             <span>Tiempo total</span>
+                                             <strong>{formatDuration(selectedDetail?.metrics?.totalMinutes)}</strong>
+                                         </div>
+                                     </div>
+
+                                     <div className="admin-support-observation">
                                         <span>Observación del usuario</span>
                                         <p>{selected.observation}</p>
                                     </div>
@@ -394,6 +525,45 @@ export default function AdminSupport() {
                                                 </button>
                                             </div>
 
+                                            <div className="admin-support-template-box">
+                                                <label className="support-field">
+                                                    <span>Plantilla de respuesta</span>
+                                                    <select
+                                                        value=""
+                                                        onChange={(event) => applyTemplate(event.target.value)}
+                                                    >
+                                                        <option value="">Seleccionar plantilla...</option>
+                                                        {matchingTemplates.map((template) => (
+                                                            <option value={template.id} key={template.id}>
+                                                                {template.title}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <small>
+                                                        {matchingTemplates.length
+                                                            ? `${matchingTemplates.length} plantilla(s) para este cierre.`
+                                                            : "Aun no hay plantillas para este tipo de cierre."}
+                                                    </small>
+                                                </label>
+                                                <div className="admin-support-template-save">
+                                                    <input
+                                                        value={templateTitle}
+                                                        onChange={(event) => setTemplateTitle(event.target.value)}
+                                                        placeholder="Nombre para guardar plantilla"
+                                                        maxLength={120}
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        className="support-secondary-button"
+                                                        onClick={saveTemplate}
+                                                        disabled={templateSaving}
+                                                    >
+                                                        <Save size={16} aria-hidden />
+                                                        {templateSaving ? "Guardando..." : "Guardar plantilla"}
+                                                    </button>
+                                                </div>
+                                            </div>
+
                                             <label className="support-field">
                                                 <span>Subtipificacion del cierre</span>
                                                 <select
@@ -454,6 +624,89 @@ export default function AdminSupport() {
                                             </button>
                                         </div>
                                     )}
+
+                                    <section className="admin-support-trace">
+                                        <div className="admin-support-trace__heading">
+                                            <span><FileText size={17} aria-hidden /> Trazabilidad completa</span>
+                                            {detailLoading ? <small>Cargando...</small> : null}
+                                        </div>
+                                        {!detailLoading && selectedDetail ? (
+                                            <div className="admin-support-trace-grid">
+                                                <TraceBlock
+                                                    title="Actividad del caso"
+                                                    items={selectedDetail.events}
+                                                    empty="Sin eventos registrados."
+                                                    render={(event) => (
+                                                        <article className="admin-support-trace-item" key={event.id}>
+                                                            <strong>{event.label}</strong>
+                                                            <span>{formatDate(event.createdAt)} · {shortText(event.actorEmail || event.actorName, "Sistema")}</span>
+                                                            {event.message ? <p>{event.message}</p> : null}
+                                                        </article>
+                                                    )}
+                                                />
+                                                <TraceBlock
+                                                    title="Ventas y cuenta"
+                                                    items={selectedDetail.accountTrace?.sales}
+                                                    empty="Sin ventas asociadas para esta cuenta."
+                                                    render={(item, index) => (
+                                                        <article className="admin-support-trace-item" key={`${item.subscriptionId}-${index}`}>
+                                                            <strong>#{item.subscriptionId} · {shortText(item.platformName)}</strong>
+                                                            <span>{shortText(item.orderCode)} · {shortText(item.buyerEmail)}</span>
+                                                            <p>{shortText(item.accountEmail)} · Perfil {item.profileNumber ?? "-"} · Expira {item.expiresAt || "-"}</p>
+                                                        </article>
+                                                    )}
+                                                />
+                                                <TraceBlock
+                                                    title="Reemplazos"
+                                                    items={selectedDetail.accountTrace?.replacements}
+                                                    empty="Sin reemplazos asociados."
+                                                    render={(item) => (
+                                                        <article className="admin-support-trace-item" key={item.id}>
+                                                            <strong>{shortText(item.oldAccountEmail)} → {shortText(item.newAccountEmail)}</strong>
+                                                            <span>{formatDate(item.createdAt)} · {shortText(item.adminEmail, "Sistema")}</span>
+                                                            <p>{shortText(item.orderCode)} · antes vencia {item.previousExpiresAt || "-"}</p>
+                                                        </article>
+                                                    )}
+                                                />
+                                                <TraceBlock
+                                                    title="Renovaciones"
+                                                    items={selectedDetail.accountTrace?.renewals}
+                                                    empty="Sin renovaciones asociadas."
+                                                    render={(item) => (
+                                                        <article className="admin-support-trace-item" key={item.id}>
+                                                            <strong>{shortText(item.renewalOrderCode)} · {item.currency} {item.amountCharged}</strong>
+                                                            <span>{formatDate(item.createdAt)} · {shortText(item.actorEmail || item.actorRole)}</span>
+                                                            <p>Vigencia: {item.previousExpiresAt || "-"} → {item.newExpiresAt || "-"}</p>
+                                                        </article>
+                                                    )}
+                                                />
+                                                <TraceBlock
+                                                    title="Codigos y accesos"
+                                                    items={selectedDetail.accountTrace?.codeDeliveries}
+                                                    empty="Sin solicitudes de codigo asociadas."
+                                                    render={(item) => (
+                                                        <article className="admin-support-trace-item" key={item.id}>
+                                                            <strong>{shortText(item.status)} · {shortText(item.platformSlug)}</strong>
+                                                            <span>{formatDate(item.createdAt)} · {shortText(item.requesterEmail, "Usuario")}</span>
+                                                            {item.message ? <p>{item.message}</p> : null}
+                                                        </article>
+                                                    )}
+                                                />
+                                                <TraceBlock
+                                                    title="Otros soportes relacionados"
+                                                    items={selectedDetail.accountTrace?.relatedTickets}
+                                                    empty="No hay otros soportes relacionados."
+                                                    render={(item) => (
+                                                        <article className="admin-support-trace-item" key={item.id}>
+                                                            <strong>{item.ticketCode} · {STATUS[item.status] || item.status}</strong>
+                                                            <span>{formatDate(item.createdAt)} · ID #{item.subscriptionId}</span>
+                                                            <p>{item.observation}</p>
+                                                        </article>
+                                                    )}
+                                                />
+                                            </div>
+                                        ) : null}
+                                    </section>
                                 </>
                             )}
                         </section>

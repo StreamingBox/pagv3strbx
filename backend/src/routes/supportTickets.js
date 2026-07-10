@@ -13,6 +13,11 @@ const {
 const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
 const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
+const { insertCredentialLinkWithRetry } = require("../utils/tokens");
+const {
+    appendReplacementCredentialsMessage,
+    buildReplacementCredentialsMessage,
+} = require("../utils/supportReplacementMessage");
 
 const router = express.Router();
 const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -236,6 +241,41 @@ async function queueResolvedNotification(conn, ticket) {
     });
 }
 
+async function getActiveCredentialToken(conn, { subscriptionId, createdByUserId = null }) {
+    const [rows] = await conn.query(
+        `SELECT token
+           FROM credential_links
+          WHERE subscription_id = ?
+            AND revoked_at IS NULL
+          ORDER BY id DESC
+          LIMIT 1`,
+        [subscriptionId]
+    );
+    if (rows?.[0]?.token) return rows[0].token;
+    return insertCredentialLinkWithRetry(conn, { subscriptionId, createdByUserId });
+}
+
+async function buildReplacementResolutionMessage(conn, {
+    ticket,
+    replacement,
+    resolutionMessage,
+    createdByUserId = null,
+}) {
+    const token = await getActiveCredentialToken(conn, {
+        subscriptionId: ticket.subscriptionId,
+        createdByUserId,
+    });
+    const credentials = buildReplacementCredentialsMessage({
+        subscriptionId: ticket.subscriptionId,
+        platformName: ticket.platformName,
+        account: replacement?.newAccount,
+        expiresAt: ticket.expiresAt,
+        token,
+        baseUrl: process.env.PUBLIC_BASE_URL || "http://localhost:3000",
+    });
+    return appendReplacementCredentialsMessage(resolutionMessage, credentials);
+}
+
 function buildInClause(values) {
     const unique = [...new Set(values.map(Number).filter((value) => Number.isFinite(value) && value > 0))];
     return {
@@ -450,11 +490,17 @@ async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
             replacementAccountId: null,
             adminUserId: null,
         });
-        const resolutionMessage = [
+        const baseResolutionMessage = [
             "Detectamos que la cuenta reportada estaba marcada como inactiva en soporte.",
             "El sistema hizo el reemplazo automatico con una cuenta disponible.",
-            "Ya puedes consultar nuevamente tus credenciales en el enlace de tu compra.",
         ].join(" ");
+        const ticketForMessage = await getTicketById(conn, ticketId);
+        const resolutionMessage = await buildReplacementResolutionMessage(conn, {
+            ticket: ticketForMessage,
+            replacement,
+            resolutionMessage: baseResolutionMessage,
+            createdByUserId: ticketForMessage.userId,
+        });
 
         await conn.query(
             `UPDATE support_tickets
@@ -975,7 +1021,7 @@ router.post(
         const ticketId = Number(req.params.id);
         const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
         const resolutionSubtype = normalizeResolutionSubtype(req.body?.resolutionSubtype);
-        const resolutionMessage = String(req.body?.resolutionMessage || "").trim();
+        let resolutionMessage = String(req.body?.resolutionMessage || "").trim();
         const replacementAccountIdRaw = req.body?.replacementAccountId;
         const replacementAccountId = replacementAccountIdRaw
             ? Number(replacementAccountIdRaw)
@@ -986,6 +1032,9 @@ router.post(
         }
         if (!["repaired", "replaced", "other"].includes(resolutionType)) {
             return res.status(400).json({ message: "Selecciona el resultado de la gestion." });
+        }
+        if (resolutionType === "replaced" && !resolutionMessage) {
+            resolutionMessage = "Reemplazamos tu cuenta. A continuacion encontraras las nuevas credenciales y el enlace de acceso actualizado.";
         }
         if (resolutionMessage.length < 10 || resolutionMessage.length > 3000) {
             return res.status(400).json({
@@ -1019,6 +1068,12 @@ router.post(
                     subscriptionId: current.subscriptionId,
                     replacementAccountId,
                     adminUserId: req.user.id,
+                });
+                resolutionMessage = await buildReplacementResolutionMessage(conn, {
+                    ticket: current,
+                    replacement,
+                    resolutionMessage,
+                    createdByUserId: req.user.id,
                 });
             }
 

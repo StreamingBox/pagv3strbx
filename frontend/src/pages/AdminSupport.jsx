@@ -325,6 +325,9 @@ export default function AdminSupport() {
     function selectResolutionType(type) {
         setResolutionType(type);
         setResolutionSubtype(RESOLUTION_SUBTYPES[type]?.[0]?.value || "");
+        if (type === "replaced" && !resolutionMessage.trim()) {
+            setResolutionMessage("Reemplazamos tu cuenta. A continuación encontrarás las nuevas credenciales y el enlace de acceso actualizado.");
+        }
     }
 
     const selectedDetail = ticketDetail?.ticket?.id === selected?.id ? ticketDetail : null;
@@ -627,7 +630,12 @@ export default function AdminSupport() {
                                                             : "Revisamos la cuenta y corregimos..."
                                                     }
                                                 />
-                                                <small>{resolutionMessage.length}/3000</small>
+                                                <small>
+                                                    {resolutionType === "replaced"
+                                                        ? "Al cerrar el caso se agregan automáticamente las credenciales y el enlace de la nueva cuenta. "
+                                                        : ""}
+                                                    {resolutionMessage.length}/3000
+                                                </small>
                                             </label>
 
                                             <button

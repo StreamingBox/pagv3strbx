@@ -25,8 +25,8 @@ fi
 find backend -maxdepth 1 -type f -name '.env*.bak*' -exec chmod 600 {} \; 2>/dev/null || true
 
 if [ "${SKIP_DB_BACKUP:-false}" != "true" ]; then
-  echo ">>> database backup"
-  node backend/scripts/backup-database.js "$BACKUP_DIR/database.sql.gz"
+  echo ">>> production backup"
+  bash scripts/backup-production.sh "$BACKUP_DIR"
 fi
 
 rollback() {

@@ -15,12 +15,17 @@ node "$PROJECT_DIR/backend/scripts/backup-database.js" "$BACKUP_DIR/database.sql
 
 # Credentials and configuration never belong in this archive. Keep only data
 # that cannot be rebuilt from Git: proofs, support evidence and uploaded logos.
-tar -C "$PROJECT_DIR" \
-  --ignore-failed-read \
-  -czf "$BACKUP_DIR/user-assets.tgz" \
-  backend/storage \
-  frontend/public/platform-logos \
-  frontend/public/downloads
+asset_paths=()
+for asset_path in backend/storage frontend/public/platform-logos frontend/public/downloads; do
+  if [ -e "$PROJECT_DIR/$asset_path" ]; then
+    asset_paths+=("$asset_path")
+  fi
+done
+if [ "${#asset_paths[@]}" -eq 0 ]; then
+  tar -czf "$BACKUP_DIR/user-assets.tgz" --files-from /dev/null
+else
+  tar -C "$PROJECT_DIR" -czf "$BACKUP_DIR/user-assets.tgz" "${asset_paths[@]}"
+fi
 
 chmod 600 "$BACKUP_DIR/database.sql.gz" "$BACKUP_DIR/user-assets.tgz"
 

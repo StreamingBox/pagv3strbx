@@ -4,9 +4,7 @@ const pool = require("../db");
 const { cleanupExpiredCredentialLinks } = require("../utils/tokens");
 const {
   daysRemainingStoredDateOnly,
-  formatDateOnlyBogota,
   formatStoredDateOnly,
-  isExpiryDateExpired,
   isStoredDateOnlyExpired,
 } = require("../utils/date");
 const router = express.Router();
@@ -141,7 +139,9 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       return res.status(404).send("Link inválido.");
     }
 
-    const displayExpiresAt = r.account_expires_at || r.expires_at;
+    // A subscription is the customer contract. Account expiry is operational stock data
+    // and must never shorten or extend the date shown in the customer's link.
+    const displayExpiresAt = r.expires_at;
     if (r.revoked_at) {
       if (wantsJson(req)) {
         return res.status(403).json({ ok: false, error: "Este link fue desactivado." });
@@ -149,9 +149,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       return res.status(403).send("Este link fue desactivado.");
     }
 
-    const expired = r.account_expires_at
-      ? isExpiryDateExpired(r.account_expires_at)
-      : isStoredDateOnlyExpired(r.expires_at);
+    const expired = isStoredDateOnlyExpired(r.expires_at);
     const statusOk = r.status === "active";
     if (expired || !statusOk) {
       pool.query("DELETE FROM credential_links WHERE token = ?", [token]).catch(() => {});
@@ -161,12 +159,8 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       return res.status(403).send("Este link ya expiró.");
     }
 
-    const exp = r.account_expires_at
-      ? formatDateOnlyBogota(r.account_expires_at)
-      : formatStoredDateOnly(r.expires_at);
-    const remaining = r.account_expires_at
-      ? daysRemainingStoredDateOnly(formatDateOnlyBogota(r.account_expires_at))
-      : daysRemainingStoredDateOnly(r.expires_at);
+    const exp = formatStoredDateOnly(r.expires_at);
+    const remaining = daysRemainingStoredDateOnly(r.expires_at);
     const isEmailMode = r.platform_type === "correo";
     const rawWhatsappUrl = buildAccountHelpWhatsappUrl({
       platformName: r.platform_name,

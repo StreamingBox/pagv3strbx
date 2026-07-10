@@ -27,6 +27,37 @@ const SUPPORT_SUBTYPE_LABELS = {
     other_solution: "Otro cierre",
 };
 
+const ANALYTICS_CURRENCIES = new Set(["COP", "MXN", "USD"]);
+
+async function resolveAnalyticsCurrency(req, { isAdmin = false } = {}) {
+    const requested = String(req.query.currency || "").trim().toUpperCase();
+    if (requested) {
+        if (!ANALYTICS_CURRENCIES.has(requested)) {
+            const error = new Error("Parametro currency invalido");
+            error.status = 400;
+            throw error;
+        }
+        return requested;
+    }
+    if (isAdmin) return "COP";
+    const [[user]] = await pool.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [req.user.id]);
+    const userCurrency = String(user?.currency || "COP").trim().toUpperCase();
+    return ANALYTICS_CURRENCIES.has(userCurrency) ? userCurrency : "COP";
+}
+
+function analyticsComparableCostSql({ orderAlias = "o", itemAlias = "oi", accountAlias = "pa", platformAlias = "p", currency = "COP" } = {}) {
+    const recordedCost = `COALESCE(NULLIF(${itemAlias}.cost_amount, 0), NULLIF(${accountAlias}.unit_cost, 0))`;
+    const costCurrency = `CASE
+        WHEN NULLIF(${itemAlias}.cost_amount, 0) IS NOT NULL THEN COALESCE(${itemAlias}.cost_currency, 'COP')
+        ELSE COALESCE(${accountAlias}.unit_cost_currency, 'COP')
+    END`;
+    return `(
+        ${knownNoCostPlatformSql(platformAlias)}
+        OR ${gemini5TbPlatformSql(platformAlias, orderAlias)}
+        OR (${recordedCost} IS NOT NULL AND UPPER(${costCurrency}) = '${currency}')
+    )`;
+}
+
 function supportSubtypeLabel(key) {
     return SUPPORT_SUBTYPE_LABELS[key] || key || "Sin subtipificar";
 }
@@ -69,6 +100,7 @@ function analyticsMissingCostSql({ orderAlias = "o", itemAlias = "oi", accountAl
 router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { userId, year, month } = req.query;
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin: true });
 
         // Current month reference — use Colombia time (UTC-5)
         const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
@@ -87,8 +119,8 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 
         const userFilter = userId ? "AND u.id = ?" : "";
         // Parámetros en orden: year, month, [userId]
-        const curParams = userId ? [targetYear, targetMonth, userId] : [targetYear, targetMonth];
-        const prevParams = userId ? [prevYear, prevMonth, userId] : [prevYear, prevMonth];
+        const curParams = userId ? [targetYear, targetMonth, targetCurrency, userId] : [targetYear, targetMonth, targetCurrency];
+        const prevParams = userId ? [prevYear, prevMonth, targetCurrency, userId] : [prevYear, prevMonth, targetCurrency];
 
         // Current month daily totals — grouped in Colombia time (UTC-5)
         const curQuery = `
@@ -100,6 +132,7 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
             JOIN users u ON o.user_id = u.id
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(o.currency) = ?
             ${userFilter}
             GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
@@ -114,6 +147,7 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
             JOIN users u ON o.user_id = u.id
             WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(o.currency) = ?
             ${userFilter}
             GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
@@ -132,12 +166,13 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
         const prevOrders = prevRows.reduce((s, r) => s + Number(r.orders || 0), 0);
 
         return res.json({
+            currency: targetCurrency,
             current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders },
             previous: { year: prevYear, month: prevMonth, daily: prevRows, total: prevTotal, orders: prevOrders },
         });
     } catch (err) {
         console.error("Error GET /admin/analytics/sales:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
+        res.status(err?.status || 500).json({ error: err?.status ? err.message : "Error interno del servidor" });
     }
 });
 
@@ -148,7 +183,7 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), async (req, res) => {
     try {
         const { year, month } = req.query;
-        const targetCurrency = String(req.query.currency || "COP").trim().toUpperCase();
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin: true });
 
         const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
@@ -292,6 +327,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const { year, month } = req.query;
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin: req.user.role === "admin" });
 
         // Use Colombia time (UTC-5) as reference
         const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
@@ -313,6 +349,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             WHERE user_id = ?
               AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(currency) = ?
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
@@ -323,6 +360,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             WHERE user_id = ?
               AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(currency) = ?
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
         `;
@@ -336,15 +374,16 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             WHERE o.user_id = ?
               AND YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
               AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(o.currency) = ?
             GROUP BY p.id, p.name
             ORDER BY value DESC
         `;
 
         // ✅ Paralelo: las 3 queries al mismo tiempo
         const [[curRows], [prevRows], [curDistRows]] = await Promise.all([
-            pool.query(curQuery, [userId, targetYear, targetMonth]),
-            pool.query(prevQuery, [userId, prevYear, prevMonth]),
-            pool.query(curDistQuery, [userId, targetYear, targetMonth]),
+            pool.query(curQuery, [userId, targetYear, targetMonth, targetCurrency]),
+            pool.query(prevQuery, [userId, prevYear, prevMonth, targetCurrency]),
+            pool.query(curDistQuery, [userId, targetYear, targetMonth, targetCurrency]),
         ]);
 
         const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
@@ -353,12 +392,13 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         const prevOrders = prevRows.reduce((s, r) => s + Number(r.orders || 0), 0);
 
         return res.json({
+            currency: targetCurrency,
             current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders, distribution: curDistRows },
             previous: { year: prevYear, month: prevMonth, daily: prevRows, total: prevTotal, orders: prevOrders },
         });
     } catch (err) {
         console.error("Error GET /analytics/sales:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
+        res.status(err?.status || 500).json({ error: err?.status ? err.message : "Error interno del servidor" });
     }
 });
 
@@ -373,16 +413,17 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
     try {
         const actingUser = req.user;
         const isAdmin = actingUser.role === "admin";
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin });
         const { year } = req.query;
         const parsedYear = year ? parseInt(year, 10) : null;
 
         let userFilter = "AND user_id = ?";
-        const params = [actingUser.id];
+        const params = [targetCurrency, actingUser.id];
 
         if (isAdmin) {
             if (req.query.global === "true") {
                 userFilter = "";
-                params.length = 0;
+                params.length = 1;
             } else if (req.query.userIds) {
                 const ids = req.query.userIds
                     .split(",")
@@ -391,7 +432,7 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
 
                 if (ids.length > 0) {
                     userFilter = `AND user_id IN (${ids.map(() => "?").join(",")})`;
-                    params.length = 0;
+                    params.length = 1;
                     params.push(...ids);
                 }
             }
@@ -407,12 +448,12 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
                    MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) as month,
                    SUM(total) as total, COUNT(id) as orders
             FROM orders
-            WHERE 1=1 ${userFilter} ${yearFilter}
+            WHERE UPPER(currency) = ? ${userFilter} ${yearFilter}
             GROUP BY YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)), MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY year DESC, month DESC
         `, params);
 
-        return res.json({ months: rows });
+        return res.json({ currency: targetCurrency, months: rows });
     } catch (err) {
         console.error("Error GET /analytics/available-months:", err);
         res.status(500).json({ error: "Error interno del servidor" });
@@ -427,6 +468,10 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
     try {
         const actingUser = req.user;
         const isAdmin = actingUser.role === 'admin';
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin });
+        // Older clients keep their existing support data. The current client
+        // explicitly opts out unless the Support tab is open.
+        const includeSupport = String(req.query.includeSupport || "true").toLowerCase() !== "false";
 
         let targetUserIds = [actingUser.id];
         let isGlobalAdmin = false;
@@ -452,6 +497,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
                 FROM orders
                 WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+                  AND UPPER(currency) = ?
             `;
             let distQ = `
                 SELECT p.name as name, SUM(oi.price) as value
@@ -459,10 +505,11 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 JOIN orders o ON o.id = oi.order_id
                 JOIN platforms p ON p.id = oi.platform_id
                 WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                  AND UPPER(o.currency) = ?
             `;
 
-            let dailyParams = [year, month];
-            let distParams = [year, month];
+            let dailyParams = [year, month, targetCurrency];
+            let distParams = [year, month, targetCurrency];
 
             // If it is NOT a global admin, we filter by targetUserIds
             if (!isGlobalAdmin) {
@@ -476,23 +523,25 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             dailyQ += ` GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) ORDER BY day ASC`;
             distQ += ` GROUP BY p.id, p.name ORDER BY value DESC`;
 
-            const [daily] = await pool.query(dailyQ, dailyParams);
+            const [[daily], [dist]] = await Promise.all([
+                pool.query(dailyQ, dailyParams),
+                pool.query(distQ, distParams),
+            ]);
             const total = daily.reduce((s, r) => s + Number(r.revenue || 0), 0);
             const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
-
-            const [dist] = await pool.query(distQ, distParams);
-            const monthData = { year, month, daily, total, orders, distribution: dist };
+            const monthData = { year, month, currency: targetCurrency, daily, total, orders, distribution: dist };
 
             if (isAdmin) {
+                const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
                 let profitQ = `
                     SELECT
-                        COUNT(oi.id) AS tracked_sales_count,
-                        SUM(oi.price) AS tracked_revenue,
-                        SUM(${analyticsCostSql()}) AS cost_total,
-                        SUM(oi.price - ${analyticsCostSql()}) AS net_profit,
+                        SUM(CASE WHEN ${comparableCostSql} THEN 1 ELSE 0 END) AS tracked_sales_count,
+                        SUM(CASE WHEN ${comparableCostSql} THEN oi.price ELSE 0 END) AS tracked_revenue,
+                        SUM(CASE WHEN ${comparableCostSql} THEN ${analyticsCostSql()} ELSE 0 END) AS cost_total,
+                        SUM(CASE WHEN ${comparableCostSql} THEN oi.price - ${analyticsCostSql()} ELSE 0 END) AS net_profit,
                         SUM(
                             CASE
-                                WHEN ${analyticsMissingCostSql()} THEN 1
+                                WHEN NOT ${comparableCostSql} THEN 1
                                 ELSE 0
                             END
                         ) AS missing_cost_count
@@ -503,9 +552,10 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
                     WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
                       AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                      AND UPPER(o.currency) = ?
                       AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
                 `;
-                const profitParams = [year, month, NET_PROFIT_TRACKING_START_AT];
+                const profitParams = [year, month, targetCurrency, NET_PROFIT_TRACKING_START_AT];
 
                 if (!isGlobalAdmin) {
                     const placeholders = targetUserIds.map(() => "?").join(",");
@@ -530,6 +580,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 monthData.missingCostCount = missingCostCount;
                 monthData.balanceComplete = missingCostCount === 0;
 
+                if (!includeSupport) return monthData;
                 let supportFilter = "";
                 const supportParams = [year, month];
                 const supportSubtypeParams = [year, month];
@@ -634,7 +685,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             return monthData;
         }));
 
-        return res.json({ months: results });
+        return res.json({ currency: targetCurrency, months: results });
     } catch (err) {
         console.error("Error GET /analytics/sales/multi:", err);
         res.status(500).json({ error: "Error interno del servidor" });
@@ -650,6 +701,7 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
     try {
         const actingUser = req.user;
         const isAdmin = actingUser.role === "admin";
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin });
 
         const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
         const targetYear = parseInt(req.query.year, 10) || now.getUTCFullYear();
@@ -662,7 +714,7 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
 
         // Build user filter
         let userFilter = "";
-        let params = [targetYear, targetMonth];
+        let params = [targetYear, targetMonth, targetCurrency];
 
         if (isAdmin && req.query.userIds) {
             const ids = req.query.userIds.split(",")
@@ -689,6 +741,7 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
             FROM orders
             WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR))  = ?
               AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND UPPER(currency) = ?
               ${userFilter}
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
@@ -725,7 +778,7 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
         const totalRevenue = weeks.reduce((s, w) => s + w.revenue, 0);
         const totalOrders = weeks.reduce((s, w) => s + w.orders, 0);
 
-        return res.json({ year: targetYear, month: targetMonth, weeks, bestWeek, total: totalRevenue, orders: totalOrders });
+        return res.json({ year: targetYear, month: targetMonth, currency: targetCurrency, weeks, bestWeek, total: totalRevenue, orders: totalOrders });
     } catch (err) {
         console.error("Error GET /analytics/sales/weekly:", err);
         res.status(500).json({ error: "Error interno del servidor" });

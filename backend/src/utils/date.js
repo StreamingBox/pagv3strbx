@@ -44,6 +44,19 @@ function addDaysExact(value, days) {
     return new Date(base.getTime() + (safeDays * MS_PER_DAY));
 }
 
+/**
+ * Returns a calendar date in Bogota after the requested duration. Subscriptions
+ * are contractual calendar dates; account timestamps are only a technical copy
+ * used to know when an inventory slot can return to stock.
+ */
+function addDaysBogotaDateOnly(days, now = new Date()) {
+    const start = currentBogotaDateOnly(now);
+    const safeDays = Math.max(0, Math.trunc(Number(days || 0)));
+    const [year, month, day] = start.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day + safeDays));
+    return date.toISOString().slice(0, 10);
+}
+
 function formatDateOnlyBogota(value) {
     if (typeof value === "string") {
         const s = value.trim();
@@ -119,6 +132,7 @@ function isDateTimeExpired(value, now = new Date()) {
 }
 
 module.exports = {
+    addDaysBogotaDateOnly,
     addDaysExact,
     bogotaDateOnlyToUtcEndOfDay,
     currentBogotaDateOnly,

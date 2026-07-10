@@ -1,5 +1,6 @@
 const pool = require("../db");
 const { getRenewalEligibility } = require("../utils/renewals");
+const BOGOTA_TODAY_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
 
 async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, limit = 5 }) {
     const where = [`o.user_id = ?`];
@@ -123,8 +124,10 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
                 subscription_status: r.subscription_status,
                 is_attended: r.is_attended,
                 starts_at: r.starts_at,
-                expires_at: r.account_expires_at || r.subscription_expires_at,
-                expires_at_is_date_only: !r.account_expires_at,
+                // The subscription calendar date is contractual. Account expiry is
+                // only inventory metadata and must not change a buyer's renewal window.
+                expires_at: r.subscription_expires_at,
+                expires_at_is_date_only: true,
                 duration_name: r.duration_name,
                 renewal_count: Number(r.renewal_count || 0),
                 renewal_price: Number(r.renewal_price ?? r.subscription_price ?? 0),
@@ -192,9 +195,8 @@ async function getRenewalsHistory({
     page = 1,
     limit = 10,
 }) {
-    const effectiveExpiresSql = "COALESCE(pa.expires_at, s.expires_at)";
-    const effectiveExpiresDateSql =
-        "CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
+    const effectiveExpiresSql = "s.expires_at";
+    const effectiveExpiresDateSql = "DATE(s.expires_at)";
     const where = [
         `s.user_id = ?`,
         `COALESCE(pp.is_renewable, 0) = 1`,
@@ -225,7 +227,7 @@ async function getRenewalsHistory({
         where.push(`LOWER(COALESCE(s.status, '')) != 'cancelled'`);
         where.push(`COALESCE(s.is_attended, 0) = 0`);
         where.push(`${effectiveExpiresSql} IS NOT NULL`);
-        where.push(`${effectiveExpiresDateSql} >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`);
+        where.push(`${effectiveExpiresDateSql} >= ${BOGOTA_TODAY_SQL}`);
         where.push(`NOT (
           (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
             OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -238,7 +240,7 @@ async function getRenewalsHistory({
           LOWER(COALESCE(s.status, '')) = 'cancelled' OR
           COALESCE(s.is_attended, 0) = 1 OR
           ${effectiveExpiresSql} IS NULL OR
-          ${effectiveExpiresDateSql} < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) OR
+          ${effectiveExpiresDateSql} < ${BOGOTA_TODAY_SQL} OR
           (
             (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
               OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -311,7 +313,7 @@ async function getRenewalsHistory({
          WHERE ${whereSql}
          ORDER BY
            CASE
-             WHEN ${effectiveExpiresDateSql} = DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)) THEN 0
+             WHEN ${effectiveExpiresDateSql} = ${BOGOTA_TODAY_SQL} THEN 0
              ELSE 1
            END ASC,
            ${effectiveExpiresSql} ASC,
@@ -322,8 +324,8 @@ async function getRenewalsHistory({
 
     const items = rows.map((row) => {
         const renewal = getRenewalEligibility({
-            expiresAt: row.effective_expires_at || row.subscription_expires_at,
-            expiresAtIsDateOnly: !row.account_expires_at,
+            expiresAt: row.subscription_expires_at,
+            expiresAtIsDateOnly: true,
             isRenewable: true,
             status: row.subscription_status,
             isAttended: row.is_attended,
@@ -346,7 +348,7 @@ async function getRenewalsHistory({
             duration_name: row.duration_name,
             subscription_status: row.subscription_status,
             subscription_starts_at: row.subscription_starts_at,
-            subscription_expires_at: row.effective_expires_at || row.subscription_expires_at,
+            subscription_expires_at: row.subscription_expires_at,
             original_subscription_expires_at: row.subscription_expires_at,
             account_expires_at: row.account_expires_at,
             renewal: {

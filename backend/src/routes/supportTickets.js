@@ -10,14 +10,7 @@ const {
     resolveSupportAttachment,
     removeSupportAttachment,
 } = require("../utils/supportAttachmentStorage");
-const {
-    sendSupportTicketCreatedEmails,
-    sendSupportTicketResolvedEmail,
-} = require("../services/mailService");
-const {
-    notifySupportTicketCreated,
-    notifySupportTicketAutoNoStock,
-} = require("../services/telegramBot");
+const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
 const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
 
@@ -188,7 +181,7 @@ const TICKET_SELECT = `
             pa.email AS account_email,
             pa.status AS account_status,
             pa.profile_number,
-            COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at
+            s.expires_at AS effective_expires_at
        FROM support_tickets st
        JOIN users u ON u.id = st.user_id
        JOIN platforms p ON p.id = st.platform_id
@@ -211,18 +204,35 @@ async function getTicketById(conn, ticketId, { userId = null, forUpdate = false 
     return mapTicket(rows[0]);
 }
 
-async function deliverCreatedNotifications(ticket) {
-    const results = await Promise.allSettled([
-        sendSupportTicketCreatedEmails({
-            ticket,
-            customerName: ticket.userName,
-        }),
-        notifySupportTicketCreated(ticket),
-    ]);
-    results.forEach((result) => {
-        if (result.status === "rejected") {
-            console.error("[support] Notification error:", result.reason?.message || result.reason);
-        }
+async function queueCreatedNotifications(conn, ticket, { masterAccount = null, noStock = false, eventKey = "created" } = {}) {
+    await enqueueNotification(conn, {
+        channel: "email",
+        eventType: "support_created",
+        dedupeKey: `support-${eventKey}-email:${ticket.id}`,
+        payload: { ticket, customerName: ticket.userName },
+    });
+    await enqueueNotification(conn, {
+        channel: "telegram",
+        eventType: "support_created",
+        dedupeKey: `support-${eventKey}-telegram:${ticket.id}`,
+        payload: { ticket },
+    });
+    if (noStock) {
+        await enqueueNotification(conn, {
+            channel: "telegram",
+            eventType: "support_no_stock",
+            dedupeKey: `support-no-stock:${ticket.id}`,
+            payload: { ticket, masterAccount },
+        });
+    }
+}
+
+async function queueResolvedNotification(conn, ticket) {
+    await enqueueNotification(conn, {
+        channel: "email",
+        eventType: "support_resolved",
+        dedupeKey: `support-resolved:${ticket.id}`,
+        payload: { ticket, customerName: ticket.userName },
     });
 }
 
@@ -508,7 +518,7 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
                     o.id AS order_id, o.order_code,
                     p.name AS platform_name,
                     u.name AS user_name, u.email AS user_email,
-                    COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at
+                    s.expires_at AS effective_expires_at
                FROM subscriptions s
                JOIN users u ON u.id = s.user_id
                JOIN platforms p ON p.id = s.platform_id
@@ -583,6 +593,14 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
         });
 
         const ticket = await getTicketById(conn, result.insertId);
+        if (autoResult.resolved) {
+            await queueResolvedNotification(conn, ticket);
+        } else {
+            await queueCreatedNotifications(conn, ticket, {
+                masterAccount: autoResult.masterAccount || null,
+                noStock: !!autoResult.noStock,
+            });
+        }
         await conn.commit();
         transactionStarted = false;
 
@@ -593,18 +611,6 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
             autoNoStock: !!autoResult.noStock,
         });
 
-        if (autoResult.resolved) {
-            void sendSupportTicketResolvedEmail({
-                ticket,
-                customerName: ticket.userName,
-            }).catch((error) => console.error("[support] Auto resolve mail error:", error));
-        } else {
-            void deliverCreatedNotifications(ticket);
-            if (autoResult.noStock) {
-                void notifySupportTicketAutoNoStock(ticket, autoResult.masterAccount)
-                    .catch((error) => console.error("[support] Auto no-stock telegram error:", error));
-            }
-        }
     } catch (error) {
         if (transactionStarted) await conn.rollback().catch(() => {});
         if (storedFile) await removeSupportAttachment(storedFile).catch(() => {});
@@ -653,14 +659,14 @@ router.patch("/support/tickets/:id/reopen", requireAuth, async (req, res) => {
              VALUES (?, ?, 'reopened', ?)`,
             [ticketId, req.user.id, message]
         );
-        await conn.commit();
-
         const reopened = await getTicketById(conn, ticketId, { userId: Number(req.user.id) });
-        res.json({ ok: true, ticket: reopened });
-        void notifySupportTicketCreated({
+        await queueCreatedNotifications(conn, {
             ...reopened,
             observation: `Caso reabierto: ${message}`,
-        });
+        }, { eventKey: "reopened" });
+        await conn.commit();
+
+        res.json({ ok: true, ticket: reopened });
     } catch (error) {
         await conn.rollback().catch(() => {});
         console.error("[support] Reopen ticket error:", error);
@@ -1047,15 +1053,10 @@ router.post(
                     resolutionMessage,
                 ]
             );
+            const ticket = await getTicketById(conn, ticketId);
+            await queueResolvedNotification(conn, ticket);
             await conn.commit();
 
-            const ticket = await getTicketById(conn, ticketId);
-            sendSupportTicketResolvedEmail({
-                ticket,
-                customerName: ticket.userName,
-            }).catch((mailError) => {
-                console.error("[support] Resolve mail queue error:", mailError?.message || mailError);
-            });
             return res.json({ ok: true, ticket, mail: { ok: true, delivery: "queued" } });
         } catch (error) {
             await conn.rollback().catch(() => {});

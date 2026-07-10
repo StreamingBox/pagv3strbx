@@ -63,15 +63,18 @@ export default function AdminMasterAccounts() {
     const loadItems = useCallback(async () => {
         setLoading(true);
         setError("");
-        const params = new URLSearchParams({ status });
-        if (q.trim()) params.set("q", q.trim());
-        const response = await apiFetch(`/admin/master-accounts?${params.toString()}`, { method: "GET" });
-        if (response.ok) {
-            setItems(response.data?.items || []);
-        } else {
-            setError(response.data?.message || "No se pudieron cargar las cuentas maestras.");
+        try {
+            const params = new URLSearchParams({ status });
+            if (q.trim()) params.set("q", q.trim());
+            const response = await apiFetch(`/admin/master-accounts?${params.toString()}`, { method: "GET" });
+            if (response.ok) {
+                setItems(response.data?.items || []);
+            } else {
+                setError(response.data?.message || "No se pudieron cargar las cuentas maestras.");
+            }
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, [q, status]);
 
     useEffect(() => {
@@ -87,13 +90,17 @@ export default function AdminMasterAccounts() {
         setError("");
         setSuccess("");
         setSaving(true);
-        const response = await apiPost("/admin/master-accounts", {
-            platformId: form.platformId,
-            accountEmail: form.accountEmail,
-            status: form.status,
-            notes: form.notes,
-        });
-        setSaving(false);
+        let response;
+        try {
+            response = await apiPost("/admin/master-accounts", {
+                platformId: form.platformId,
+                accountEmail: form.accountEmail,
+                status: form.status,
+                notes: form.notes,
+            });
+        } finally {
+            setSaving(false);
+        }
         if (!response.ok) {
             setError(response.data?.message || "No se pudo guardar la cuenta maestra.");
             return;

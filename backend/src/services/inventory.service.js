@@ -3,14 +3,19 @@
 
 const pool = require("../db");
 const { escapeCsv } = require("../utils/csv");
-const { formatDateOnlyBogota, parseDateOnly, toSqlDateStart } = require("../utils/date");
+const {
+    bogotaDateOnlyToUtcEndOfDay,
+    formatDateOnlyBogota,
+    parseDateOnly,
+    toSqlDateTime,
+} = require("../utils/date");
 const {
     normalizeOptionalValue,
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
 const { validateCostModelInput } = require("../utils/accountCosts");
 
-const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "disabled"]);
+const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
     "CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) END";
 
@@ -440,22 +445,49 @@ async function patchInventory(id, body = {}) {
         throw err;
     }
 
-    if (reset_assign) {
-        await pool.query(
-            `UPDATE platform_accounts
-       SET assigned_to_user_id = NULL,
-           assigned_at = NULL,
-           expires_at = NULL,
-           status = 'available'
-       WHERE id = ?`,
-            [accountId]
-        );
-        return { ok: true, reset: true };
-    }
-
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
+
+        if (reset_assign) {
+            const [[accountToReset]] = await conn.query(
+                "SELECT id FROM platform_accounts WHERE id = ? FOR UPDATE",
+                [accountId]
+            );
+            if (!accountToReset) {
+                const error = new Error("Cuenta no encontrada.");
+                error.status = 404;
+                throw error;
+            }
+            const [[activeSubscription]] = await conn.query(
+                `SELECT id, user_id, expires_at
+                   FROM subscriptions
+                  WHERE platform_account_id = ?
+                    AND status = 'active'
+                    AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                  ORDER BY expires_at DESC, id DESC
+                  LIMIT 1
+                  FOR UPDATE`,
+                [accountId]
+            );
+            if (activeSubscription) {
+                const error = new Error(`No se puede liberar esta cuenta: sigue asignada a la suscripción #${activeSubscription.id} hasta ${String(activeSubscription.expires_at).slice(0, 10)}.`);
+                error.status = 409;
+                error.code = "ACTIVE_SUBSCRIPTION";
+                throw error;
+            }
+            await conn.query(
+                `UPDATE platform_accounts
+                    SET assigned_to_user_id = NULL,
+                        assigned_at = NULL,
+                        expires_at = NULL,
+                        status = 'available'
+                  WHERE id = ?`,
+                [accountId]
+            );
+            await conn.commit();
+            return { ok: true, reset: true };
+        }
 
         const [[current]] = await conn.query(
             `SELECT id, identity_id, platform_id, email, password, pin, profile_number
@@ -490,6 +522,24 @@ async function patchInventory(id, body = {}) {
             }
             sets.push("status = ?");
             params.push(cleanStatus);
+
+            if (cleanStatus === "available") {
+                const [[activeSubscription]] = await conn.query(
+                    `SELECT id FROM subscriptions
+                      WHERE platform_account_id = ?
+                        AND status = 'active'
+                        AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                      LIMIT 1
+                      FOR UPDATE`,
+                    [accountId]
+                );
+                if (activeSubscription) {
+                    const error = new Error(`No se puede marcar disponible: la suscripción #${activeSubscription.id} sigue activa.`);
+                    error.status = 409;
+                    error.code = "ACTIVE_SUBSCRIPTION";
+                    throw error;
+                }
+            }
         }
 
         if (has("email")) {
@@ -547,7 +597,7 @@ async function patchInventory(id, body = {}) {
                 throw err;
             }
             sets.push("expires_at = ?");
-            params.push(expOnly ? toSqlDateStart(expOnly) : null);
+            params.push(expOnly ? toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expOnly)) : null);
         }
 
         const hasCostFields = [

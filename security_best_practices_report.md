@@ -1,5 +1,9 @@
 # Reporte de auditoria de seguridad - pageV3
 
+> Actualizacion 2026-07-10: el backend incorpora modo SQL estricto por sesion en produccion, idempotencia de checkout, reserva atomica de codigos, cola transaccional de notificaciones, readiness real contra base de datos y migracion de comprobantes publicos a almacenamiento privado. La migracion `024_integrity_idempotency_outbox` deja en revision los estados ambiguos y registra conflictos de asignacion activos para tratamiento administrativo.
+
+> Pendiente externo: la migracion de secretos a AWS SSM/Secrets Manager necesita IAM y provisionamiento en la cuenta AWS; no se simula con valores en el repositorio.
+
 Fecha de revision: 2026-04-25
 
 ## Resumen ejecutivo

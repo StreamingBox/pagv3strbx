@@ -2,24 +2,16 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
-const { formatDateOnlyBogota, formatStoredDateOnly, isExpiryDateExpired } = require("../utils/date");
+const { formatDateOnlyBogota, formatStoredDateOnly } = require("../utils/date");
 
 const router = express.Router();
+const BOGOTA_TODAY_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
 
 const ACTIVE_LINK_WHERE = `
     cl.revoked_at IS NULL
     AND s.id IS NOT NULL
     AND s.status = 'active'
-    AND (
-        (
-            a.expires_at IS NOT NULL
-            AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-        )
-        OR (
-            a.expires_at IS NULL
-            AND DATE(s.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-        )
-    )
+    AND DATE(s.expires_at) >= ${BOGOTA_TODAY_SQL}
 `;
 
 const EXPIRED_LINK_WHERE = `
@@ -27,14 +19,7 @@ const EXPIRED_LINK_WHERE = `
     AND (
         s.id IS NULL
         OR s.status <> 'active'
-        (
-            a.expires_at IS NOT NULL
-            AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-        )
-        OR (
-            a.expires_at IS NULL
-            AND DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-        )
+        OR DATE(s.expires_at) < ${BOGOTA_TODAY_SQL}
     )
 `;
 
@@ -74,9 +59,6 @@ function linkStatus(row) {
     if (row.revoked_at) return "revoked";
     if (!row.subscription_id) return "expired";
     if (row.subscription_status !== "active") return "expired";
-    if (row.account_expires_at) {
-        return isExpiryDateExpired(row.account_expires_at) ? "expired" : "active";
-    }
     const expiresAt = formatStoredDateOnly(row.subscription_expires_at);
     if (expiresAt === "-") return "expired";
     return expiresAt >= formatDateOnlyBogota(new Date()) ? "active" : "expired";

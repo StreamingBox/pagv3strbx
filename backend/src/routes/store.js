@@ -5,7 +5,7 @@ const pool = require("../db");
 const { checkoutService } = require("../services/checkoutService");
 const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
 const { renewSubscription } = require("../services/renewal.service");
-const { notifyRenewalSale } = require("../services/telegramBot");
+const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 
 const router = express.Router();
@@ -28,9 +28,10 @@ router.post("/checkout", requireAuth, async (req, res) => {
             recordProfit,
             profitAmount,
             salesChannel,
+            idempotencyKey: req.get("Idempotency-Key"),
         });
 
-        return res.status(201).json(data);
+        return res.status(data?.replayed ? 200 : 201).json(data);
     } catch (err) {
         const status = err?.status || 500;
         const payload = err?.payload || null;
@@ -100,14 +101,13 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
     try {
         const userId = req.user.id;
         const page = Math.max(1, Number(req.query.page) || 1);
-        const limit = Math.max(1, Number(req.query.limit) || 20);
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
         const offset = (page - 1) * limit;
 
         const { q, platform } = req.query;
-        const effectiveExpiresSql = "COALESCE(acc.expires_at, s.expires_at)";
-        const effectiveExpiresDateSql =
-            "CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END";
-        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
+        const effectiveExpiresSql = "s.expires_at";
+        const effectiveExpiresDateSql = "DATE(s.expires_at)";
+        const todayBogotaSql = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
         const notResoldLaterSql = `
             NOT EXISTS (
                 SELECT 1
@@ -230,8 +230,8 @@ router.get("/orders/expiring-count", requireAuth, async (req, res) => {
              WHERE s.user_id = ?
                AND s.status != 'cancelled'
                AND IFNULL(s.is_attended, 0) = 0
-               AND (CASE WHEN acc.expires_at IS NOT NULL THEN DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END)
-                   <= DATE_ADD(DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)), INTERVAL 3 DAY)
+                AND DATE(s.expires_at)
+                   <= DATE_ADD(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00')), INTERVAL 3 DAY)
                AND NOT EXISTS (
                    SELECT 1
                    FROM order_items oi_later
@@ -296,24 +296,29 @@ router.post("/orders/:id/renew", requireAuth, async (req, res) => {
             allowAccountChange: false,
         });
 
-        await conn.commit();
-
-        const [userRows] = await pool.query(
+        const [userRows] = await conn.query(
             "SELECT name, email FROM users WHERE id = ? LIMIT 1",
             [result.userId]
         );
         const buyer = userRows?.[0] || null;
-        notifyRenewalSale({
-            seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
-            platform: result.platformName,
-            total: result.amountCharged,
-            currency: result.currency,
-            newBalance: result.newBalance,
-            orderCode: result.renewalOrderCode,
-            subscriptionId: result.subscriptionId,
-            renewalOrderId: result.renewalOrderId,
-            previousOrderCode: result.previousOrderCode,
-        }).catch((e) => console.error("[TelegramBot] notifyRenewalSale error:", e?.message || e));
+        await enqueueNotification(conn, {
+            channel: "telegram",
+            eventType: "renewal_sale",
+            dedupeKey: `telegram-renewal:${result.renewalOrderId}`,
+            payload: {
+                seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
+                platform: result.platformName,
+                total: result.amountCharged,
+                currency: result.currency,
+                newBalance: result.newBalance,
+                orderCode: result.renewalOrderCode,
+                subscriptionId: result.subscriptionId,
+                renewalOrderId: result.renewalOrderId,
+                previousOrderCode: result.previousOrderCode,
+            },
+        });
+
+        await conn.commit();
 
         return res.json({
             ok: true,

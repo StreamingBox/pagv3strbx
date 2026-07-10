@@ -366,11 +366,12 @@ router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) 
             requestCode,
             amount,
             currency: userCurrency,
-        }).then(() => {
-            pool.query(
+        }).then((delivery) => {
+            if (!delivery?.ok) return;
+            return pool.query(
                 "UPDATE manual_topup_requests SET submitted_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
                 [ins.insertId]
-            ).catch(() => { });
+            );
         }).catch((mailErr) => {
             console.error("[mail] sendTopupSubmittedEmail:", mailErr?.message || mailErr);
         });

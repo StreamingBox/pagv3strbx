@@ -238,13 +238,21 @@ router.patch("/admin/users/:id", requireAuth, requireRole("admin"), async (req, 
                 return res.status(400).json({ message: "currency inválida. Usa COP, MXN o USDT." });
             }
 
-            const [wrows] = await conn.query(
-                "SELECT balance FROM wallets WHERE user_id = ? LIMIT 1",
+            const [[wallet]] = await conn.query(
+                `SELECT w.id, w.balance, w.profit_total, w.total_invested,
+                        (SELECT COUNT(*) FROM wallet_transactions wt WHERE wt.wallet_id = w.id) AS transaction_count
+                   FROM wallets w
+                  WHERE w.user_id = ?
+                  LIMIT 1
+                  FOR UPDATE`,
                 [id]
             );
-            const balance = Number(wrows?.[0]?.balance ?? 0);
+            const hasMoneyHistory = Number(wallet?.balance || 0) !== 0
+                || Number(wallet?.profit_total || 0) !== 0
+                || Number(wallet?.total_invested || 0) !== 0
+                || Number(wallet?.transaction_count || 0) > 0;
 
-            if (balance !== 0) {
+            if (hasMoneyHistory) {
                 await conn.rollback();
                 return res.status(409).json({
                     message: "No se puede cambiar la moneda si el usuario tiene saldo. Déjalo en 0 antes de cambiar.",

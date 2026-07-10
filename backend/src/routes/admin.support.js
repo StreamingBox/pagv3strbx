@@ -3,7 +3,12 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
-const { formatDateOnlyBogota, isExpiryDateExpired } = require("../utils/date");
+const {
+    formatDateOnlyBogota,
+    bogotaDateOnlyToUtcEndOfDay,
+    isStoredDateOnlyExpired,
+    toSqlDateTime,
+} = require("../utils/date");
 const {
     findAvailableAccountForPlatform,
     getCandidatePlatformsForPlatform,
@@ -166,7 +171,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
             pin: r.pin,
             profile_number: r.profile_number,
         },
-        expiresAt: r.account_expires_at || r.expires_at,
+        expiresAt: r.expires_at,
         token,
         baseUrl,
     });
@@ -179,7 +184,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         platformName: r.platform_name,
         deliveredPlatformId: r.delivered_platform_id,
         status: r.status,
-        expiresAt: r.account_expires_at || r.expires_at,
+        expiresAt: r.expires_at,
         accountId: r.platform_account_id,
         account: {
             email: r.email,
@@ -265,9 +270,7 @@ router.post(
                 return res.status(409).json({ message: "La subscription no estÃ¡ activa." });
             }
 
-            const expired = sub.account_expires_at
-                ? isExpiryDateExpired(sub.account_expires_at)
-                : isExpiryDateExpired(sub.expires_at, { storedDateOnly: true });
+            const expired = isStoredDateOnlyExpired(sub.expires_at);
             if (expired) {
                 await conn.rollback();
                 return res.status(409).json({ message: "La subscription ya estÃ¡ vencida." });
@@ -302,7 +305,7 @@ router.post(
                 `UPDATE platform_accounts
             SET status='assigned', assigned_to_user_id=?, assigned_at=NOW(), expires_at=?
           WHERE id = ?`,
-                [sub.user_id, sub.account_expires_at || sub.expires_at, newAcc.id]
+                [sub.user_id, toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(sub.expires_at)), newAcc.id]
             );
 
             // Swap en subscription (MISMA orden, MISMA expiraciÃ³n)
@@ -349,7 +352,7 @@ router.post(
                     sub.old_account_email || null,
                     newAcc.id,
                     newAcc.email || null,
-                    sub.account_expires_at || sub.expires_at || null,
+                    sub.expires_at || null,
                 ]
             );
 

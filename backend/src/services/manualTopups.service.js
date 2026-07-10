@@ -76,12 +76,14 @@ async function ensureWalletForUser(conn, userId, currency) {
     if (rows.length) {
         const currentCurrency = normalizeCurrency(rows[0].currency || targetCurrency, targetCurrency);
         if (!sameCurrency(currentCurrency, targetCurrency)) {
-            await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [targetCurrency, rows[0].id]);
+            const error = new Error(`La wallet está en ${currentCurrency} y la recarga en ${targetCurrency}. Corrige primero la moneda del usuario.`);
+            error.status = 409;
+            throw error;
         }
         return {
             id: rows[0].id,
             balance: Number(rows[0].balance || 0),
-            currency: targetCurrency,
+            currency: currentCurrency,
         };
     }
 
@@ -288,21 +290,24 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
         };
 
         if (normalizedStatus === "reviewing") {
-            sendTopupReviewingEmail(mailPayload).then(() => {
+            sendTopupReviewingEmail(mailPayload).then((delivery) => {
+                if (!delivery?.ok) return;
                 pool.query(
                     "UPDATE manual_topup_requests SET reviewing_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
                     [id]
                 ).catch(() => { });
             }).catch((mailErr) => console.error("[mail] sendTopupReviewingEmail:", mailErr?.message || mailErr));
         } else if (normalizedStatus === "approved") {
-            sendTopupApprovedEmail(mailPayload).then(() => {
+            sendTopupApprovedEmail(mailPayload).then((delivery) => {
+                if (!delivery?.ok) return;
                 pool.query(
                     "UPDATE manual_topup_requests SET approved_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
                     [id]
                 ).catch(() => { });
             }).catch((mailErr) => console.error("[mail] sendTopupApprovedEmail:", mailErr?.message || mailErr));
         } else if (normalizedStatus === "rejected") {
-            sendTopupRejectedEmail(mailPayload).then(() => {
+            sendTopupRejectedEmail(mailPayload).then((delivery) => {
+                if (!delivery?.ok) return;
                 pool.query(
                     "UPDATE manual_topup_requests SET rejected_email_sent_at = UTC_TIMESTAMP() WHERE id = ?",
                     [id]

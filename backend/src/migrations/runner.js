@@ -80,12 +80,15 @@ async function getAppliedMigrationIds(pool) {
 async function runMigrations(pool, options = {}) {
     const logger = options.logger || console;
     const migrationsDir = options.migrationsDir || __dirname;
-
-    await ensureMigrationsTable(pool);
-    const lockName = await acquireMigrationLock(pool, logger);
+    const conn = await pool.getConnection();
+    let lockName = null;
 
     try {
-        const applied = await getAppliedMigrationIds(pool);
+        // MySQL advisory locks are tied to a connection, so migrations must
+        // keep one dedicated connection from acquisition through release.
+        await ensureMigrationsTable(conn);
+        lockName = await acquireMigrationLock(conn, logger);
+        const applied = await getAppliedMigrationIds(conn);
         const migrations = loadMigrations(migrationsDir);
 
         for (const migration of migrations) {
@@ -97,19 +100,20 @@ async function runMigrations(pool, options = {}) {
             logger.info(`[migrate] Ejecutando ${migration.id} (${migration.name})`);
             await migration.up({
                 pool,
-                query: (sql, params = [], queryOptions = {}) => runQuery(pool, sql, params, {
+                query: (sql, params = [], queryOptions = {}) => runQuery(conn, sql, params, {
                     ...queryOptions,
                     logger,
                 }),
             });
-            await pool.query(
+            await conn.query(
                 "INSERT INTO schema_migrations (id, name) VALUES (?, ?)",
                 [migration.id, migration.name]
             );
             logger.info(`[migrate] Aplicada ${migration.id}`);
         }
     } finally {
-        await releaseMigrationLock(pool, lockName, logger);
+        await releaseMigrationLock(conn, lockName, logger);
+        conn.release();
     }
 }
 

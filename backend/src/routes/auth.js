@@ -365,7 +365,8 @@ router.post("/refresh", async (req, res) => {
                 `SELECT id, user_id, revoked_at, expires_at
                    FROM refresh_tokens
                   WHERE token_hash = ?
-                  LIMIT 1`,
+                  LIMIT 1
+                  FOR UPDATE`,
                 [refreshHash]
             );
 
@@ -451,7 +452,7 @@ router.post("/logout", async (req, res) => {
             sameSite: "strict",
         };
 
-        res.clearCookie("accessToken", { ...common, path: "/" });
+        res.clearCookie("accessToken", { ...common, path: "/api" });
         res.clearCookie("refreshToken", { ...common, path: REFRESH_COOKIE_PATH });
 
         return res.json({ ok: true });

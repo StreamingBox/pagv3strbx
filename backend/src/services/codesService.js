@@ -7,7 +7,9 @@ const {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
     countDeliveredByFingerprint,
+    getLastCodeReset,
 } = require("./codeQueries");
+const { reserveCodeRequest } = require("./codeRequestReservation.service");
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const { isStoredDateOnlyExpired } = require("../utils/date");
@@ -346,6 +348,42 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         }
     }
 
+    const lastReset = await getLastCodeReset({
+        orderId: orderNumber,
+        platformSlugLower: requestedSlug,
+        credentialFingerprint: fingerprint,
+    });
+    const reservation = await reserveCodeRequest({
+        orderId: orderNumber,
+        platformSlug: requestedSlug,
+        action: normalizedAction,
+        credentialFingerprint: fingerprint,
+        resetMarker: lastReset?.id || 0,
+        allowCompletedReuse: requestedSlug !== "netflix" && !limitRule.limited,
+    });
+    if (reservation.inProgress) {
+        return {
+            http: 409,
+            body: {
+                ok: false,
+                status: "request_in_progress",
+                message: "Ya hay una solicitud de codigo en proceso. Espera unos segundos antes de intentar nuevamente.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, reservation },
+        };
+    }
+    if (reservation.completed) {
+        return {
+            http: 429,
+            body: {
+                ok: false,
+                status: "blocked",
+                message: "Ya se proceso una solicitud para esta cuenta. El contador se reinicia al cambiar la contrasena, el PIN o mediante el reinicio autorizado.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, reservation },
+        };
+    }
+
     // 7) Extraer código de gmail o netflix flow
     let fetchingResult;
 
@@ -386,7 +424,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 status: "fetch_timeout",
                 message: "La busqueda del codigo tardó demasiado. Intenta nuevamente en unos segundos.",
             },
-            meta: { sub, plat, fingerprint, soldAccountEmail, error: error?.message || String(error) },
+            meta: { sub, plat, fingerprint, soldAccountEmail, reservation, error: error?.message || String(error) },
         };
     }
 
@@ -398,7 +436,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 status: fetchingResult.status || "not_found",
                 message: fetchingResult.message || "No se encontró código",
             },
-            meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult: fetchingResult },
+            meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
         };
     }
 
@@ -419,7 +457,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     return {
         http: 200,
         body: responseBody,
-        meta: { sub, plat, fingerprint, soldAccountEmail, gmailResult: fetchingResult },
+        meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
     };
 }
 

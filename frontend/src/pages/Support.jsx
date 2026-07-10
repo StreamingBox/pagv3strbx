@@ -54,21 +54,24 @@ export default function Support() {
         if (append) setLoadingMore(true);
         else setLoading(true);
         if (!append) setError("");
-        const params = new URLSearchParams({
-            limit: String(PAGE_SIZE),
-            offset: String(offset),
-        });
-        const response = await apiFetch(`/support/tickets?${params.toString()}`);
-        if (response.ok) {
-            const list = response.data?.tickets || [];
-            setTickets((current) => append ? [...current, ...list] : list);
-            setTicketsTotal(Number(response.data?.total || list.length));
-            setOpenTicketsCount(Number(response.data?.openCount || 0));
-        } else {
-            setError(response.data?.message || "No pudimos cargar tus solicitudes.");
+        try {
+            const params = new URLSearchParams({
+                limit: String(PAGE_SIZE),
+                offset: String(offset),
+            });
+            const response = await apiFetch(`/support/tickets?${params.toString()}`);
+            if (response.ok) {
+                const list = response.data?.tickets || [];
+                setTickets((current) => append ? [...current, ...list] : list);
+                setTicketsTotal(Number(response.data?.total || list.length));
+                setOpenTicketsCount(Number(response.data?.openCount || 0));
+            } else {
+                setError(response.data?.message || "No pudimos cargar tus solicitudes.");
+            }
+        } finally {
+            setLoadingMore(false);
+            setLoading(false);
         }
-        setLoadingMore(false);
-        setLoading(false);
     }, []);
 
     useEffect(() => {
@@ -111,12 +114,16 @@ export default function Support() {
         form.append("evidence", evidence);
 
         setSending(true);
-        const response = await apiFetch("/support/tickets", {
-            method: "POST",
-            body: form,
-            timeoutMs: 60000,
-        });
-        setSending(false);
+        let response;
+        try {
+            response = await apiFetch("/support/tickets", {
+                method: "POST",
+                body: form,
+                timeoutMs: 60000,
+            });
+        } finally {
+            setSending(false);
+        }
 
         if (!response.ok) {
             setError(response.data?.message || "No pudimos enviar la solicitud.");
@@ -138,13 +145,17 @@ export default function Support() {
         setError("");
         setSuccess("");
         setReopeningId(ticket.id);
-        const response = await apiFetch(`/support/tickets/${ticket.id}/reopen`, {
-            method: "PATCH",
-            body: JSON.stringify({
-                message: "El cliente reporta que la novedad continua despues de la respuesta.",
-            }),
-        });
-        setReopeningId(null);
+        let response;
+        try {
+            response = await apiFetch(`/support/tickets/${ticket.id}/reopen`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    message: "El cliente reporta que la novedad continua despues de la respuesta.",
+                }),
+            });
+        } finally {
+            setReopeningId(null);
+        }
         if (!response.ok) {
             setError(response.data?.message || "No pudimos reabrir el caso.");
             return;

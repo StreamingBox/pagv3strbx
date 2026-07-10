@@ -1,8 +1,14 @@
 const { makeOrderCode } = require("../utils/orderCode");
-const { addDaysExact, parseDateTime, toSqlDateTime } = require("../utils/date");
+const {
+    addDaysBogotaDateOnly,
+    bogotaDateOnlyToUtcEndOfDay,
+    formatStoredDateOnly,
+    toSqlDateTime,
+} = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { getRenewalEligibility } = require("../utils/renewals");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 async function renewSubscription({
     conn,
@@ -25,6 +31,7 @@ async function renewSubscription({
                 p.product_details,
                 pa.expires_at AS account_expires_at,
                 pa.unit_cost AS account_unit_cost,
+                pa.unit_cost_currency AS account_unit_cost_currency,
                 pp.is_renewable,
                 pp.price AS renewable_price
          FROM subscriptions s
@@ -61,8 +68,9 @@ async function renewSubscription({
         throw err;
     }
 
-    const effectiveExpiresAt = sub.account_expires_at || sub.expires_at;
-    const effectiveExpiresAtIsDateOnly = !sub.account_expires_at;
+    // subscriptions.expires_at is the only contractual expiry source.
+    const effectiveExpiresAt = sub.expires_at;
+    const effectiveExpiresAtIsDateOnly = true;
 
     const eligibility = getRenewalEligibility({
         expiresAt: effectiveExpiresAt,
@@ -112,20 +120,22 @@ async function renewSubscription({
         throw err;
     }
 
-    const previousExpiry = parseDateTime(effectiveExpiresAt);
-    if (!previousExpiry) {
+    const previousExpiry = formatStoredDateOnly(effectiveExpiresAt);
+    if (!previousExpiry || previousExpiry === "-") {
         const err = new Error("La suscripcion no tiene una fecha de vencimiento valida para renovar.");
         err.status = 400;
         throw err;
     }
     const days = Number(sub.days || 0);
-    const newExpiryDate = addDaysExact(previousExpiry, days);
-    const newExpiry = toSqlDateTime(newExpiryDate);
+    const newExpiry = addDaysBogotaDateOnly(days, new Date(`${previousExpiry}T12:00:00Z`));
+    const previousAccountExpiry = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(previousExpiry));
+    const newAccountExpiry = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(newExpiry));
 
     const previousAccountId = Number(sub.platform_account_id || 0) || null;
     let finalAccountId = previousAccountId;
     let accountChanged = false;
     let renewalUnitCost = Number(sub.account_unit_cost || 0);
+    let renewalUnitCostCurrency = normalizeCurrency(sub.account_unit_cost_currency || "COP", "COP");
 
     if (allowAccountChange && newAccountId) {
         finalAccountId = Number(newAccountId);
@@ -137,7 +147,7 @@ async function renewSubscription({
 
         if (finalAccountId !== previousAccountId) {
             const [newAccountRows] = await conn.query(
-                `SELECT id, platform_id, status, unit_cost
+                `SELECT id, platform_id, status, unit_cost, unit_cost_currency
                  FROM platform_accounts
                  WHERE id = ?
                  LIMIT 1
@@ -166,6 +176,7 @@ async function renewSubscription({
 
             accountChanged = true;
             renewalUnitCost = Number(newAccount.unit_cost || 0);
+            renewalUnitCostCurrency = normalizeCurrency(newAccount.unit_cost_currency || "COP", "COP");
         }
     }
 
@@ -200,8 +211,8 @@ async function renewSubscription({
         updateParams
     );
 
-    if (previousAccountId) {
-        if (accountChanged) {
+    if (accountChanged) {
+        if (previousAccountId) {
             await conn.query(
                 `UPDATE platform_accounts
                  SET assigned_to_user_id = NULL,
@@ -212,23 +223,23 @@ async function renewSubscription({
                 [previousAccountId]
             );
 
-            await conn.query(
-                `UPDATE platform_accounts
-                 SET status = 'assigned',
-                     assigned_to_user_id = ?,
-                     assigned_at = NOW(),
-                     expires_at = ?
-                 WHERE id = ?`,
-                [sub.user_id, newExpiry, finalAccountId]
-            );
-        } else {
+        }
+        await conn.query(
+            `UPDATE platform_accounts
+             SET status = 'assigned',
+                 assigned_to_user_id = ?,
+                 assigned_at = NOW(),
+                 expires_at = ?
+             WHERE id = ?`,
+            [sub.user_id, newAccountExpiry, finalAccountId]
+        );
+    } else if (previousAccountId) {
             await conn.query(
                 `UPDATE platform_accounts
                  SET expires_at = ?
                  WHERE id = ?`,
-                [newExpiry, previousAccountId]
+                [newAccountExpiry, previousAccountId]
             );
-        }
     }
 
     const renewalOrderCode = makeOrderCode().replace(/^ORD-/, "RENO-");
@@ -241,8 +252,8 @@ async function renewSubscription({
 
     await conn.query(
         `INSERT INTO order_items
-            (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, product_details_snapshot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, product_details_snapshot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             renewalOrderId,
             subscriptionId,
@@ -250,7 +261,10 @@ async function renewSubscription({
             sub.platform_price_id,
             amount,
             renewalUnitCost,
-            Number((amount - renewalUnitCost).toFixed(2)),
+            renewalUnitCostCurrency,
+            renewalUnitCost <= 0 || sameCurrency(renewalUnitCostCurrency, sub.currency)
+                ? Number((amount - renewalUnitCost).toFixed(2))
+                : null,
             sub.product_details || null,
         ]
     );
@@ -261,7 +275,7 @@ async function renewSubscription({
 
     if (deductWallet) {
         const [wrows] = await conn.query(
-            "SELECT id, balance FROM wallets WHERE user_id = ? FOR UPDATE",
+            "SELECT id, balance, currency FROM wallets WHERE user_id = ? FOR UPDATE",
             [sub.user_id]
         );
         if (!wrows.length) {
@@ -271,6 +285,11 @@ async function renewSubscription({
         }
 
         walletId = Number(wrows[0].id);
+        if (!sameCurrency(wrows[0].currency || "COP", sub.currency || "COP")) {
+            const err = new Error("La moneda de la billetera no coincide con la renovacion.");
+            err.status = 409;
+            throw err;
+        }
         balanceBefore = Number(wrows[0].balance || 0);
         if (balanceBefore < amount) {
             const err = new Error(`Saldo insuficiente. Tiene ${balanceBefore.toLocaleString("es-CO")} y se requieren ${amount.toLocaleString("es-CO")}.`);
@@ -308,8 +327,8 @@ async function renewSubscription({
             sub.platform_price_id,
             previousAccountId,
             finalAccountId,
-            toSqlDateTime(previousExpiry),
-            newExpiry,
+            previousAccountExpiry,
+            newAccountExpiry,
             amount,
             sub.currency,
             deductWallet ? 1 : 0,
@@ -360,7 +379,7 @@ async function renewSubscription({
                 show_device_rule: sub.platform_show_device_rule,
             },
             account: account || {},
-            expiresAt: account?.expires_at || newExpiry,
+            expiresAt: newExpiry,
             token,
             purchasedPlatformId: sub.platform_id,
             purchasedPlatformName: sub.platform_name,
@@ -380,7 +399,7 @@ async function renewSubscription({
         renewalOrderCode,
         previousOrderId,
         previousOrderCode,
-        previousExpiry: toSqlDateTime(previousExpiry),
+        previousExpiry,
         newExpiry,
         previousAccountId,
         newAccountId: finalAccountId,

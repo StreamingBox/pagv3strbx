@@ -118,7 +118,7 @@ function MonthKpiCard({ monthData, color, monthKey, averageTicket, projection })
 }
 
 /* ── Componente principal ── */
-export default function WeeklyChart({ selectedMonthKeys = [], admin = false, selectedUserIds = [], chartType = "bar" }) {
+export default function WeeklyChart({ selectedMonthKeys = [], admin = false, selectedUserIds = [], currency = "COP", chartType = "bar" }) {
     const [monthsData, setMonthsData] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -134,7 +134,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
         try {
             const promises = monthKeys.map(async (mk) => {
                 const [year, month] = mk.split("-").map(Number);
-                let url = `/analytics/sales/weekly?year=${year}&month=${month}`;
+                let url = `/analytics/sales/weekly?year=${year}&month=${month}&currency=${currency}`;
                 if (admin && !selectedUserIdString) {
                     url += `&global=true`;
                 } else if (admin && selectedUserIdString) {
@@ -155,7 +155,7 @@ export default function WeeklyChart({ selectedMonthKeys = [], admin = false, sel
         } finally {
             setLoading(false);
         }
-    }, [admin, selectedMonthKeyString, selectedUserIdString]);
+    }, [admin, selectedMonthKeyString, selectedUserIdString, currency]);
 
     useEffect(() => { load(); }, [load]);
 

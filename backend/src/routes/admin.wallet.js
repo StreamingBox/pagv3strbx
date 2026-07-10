@@ -20,6 +20,10 @@ router.post("/admin/wallet/topup", requireAuth, requireRole("admin"), async (req
             "SELECT currency FROM users WHERE id = ? LIMIT 1",
             [userId]
         );
+        if (!userRow) {
+            await conn.rollback();
+            return res.status(404).json({ message: "Usuario no encontrado." });
+        }
         const targetCurrency = normalizeCurrency(userRow?.currency || "COP", "COP");
 
         const [wrows] = await conn.query(
@@ -41,13 +45,16 @@ router.post("/admin/wallet/topup", requireAuth, requireRole("admin"), async (req
             balance = Number(wrows[0].balance);
             currency = normalizeCurrency(wrows[0].currency || targetCurrency, targetCurrency);
             if (!sameCurrency(currency, targetCurrency)) {
-                await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [targetCurrency, walletId]);
-                currency = targetCurrency;
+                await conn.rollback();
+                return res.status(409).json({
+                    message: `La wallet esta en ${currency} y el usuario en ${targetCurrency}. Corrige la moneda desde Usuarios antes de recargar.`,
+                });
             }
         }
 
         const amt = Number(amount);
         if (!Number.isFinite(amt) || Math.abs(amt) > 10000000) {
+            await conn.rollback();
             return res.status(400).json({ message: "Monto inválido o fuera de rango." });
         }
         const newBalance = balance + amt;
@@ -88,6 +95,7 @@ router.post("/admin/wallet/adjust-profit", requireAuth, requireRole("admin"), as
         );
 
         if (!wrows.length) {
+            await conn.rollback();
             return res.status(404).json({ message: "Wallet no encontrada." });
         }
 
@@ -95,6 +103,7 @@ router.post("/admin/wallet/adjust-profit", requireAuth, requireRole("admin"), as
         const profitTotal = Number(wrows[0].profit_total);
         const amt = Number(amount);
         if (!Number.isFinite(amt) || Math.abs(amt) > 10000000) {
+            await conn.rollback();
             return res.status(400).json({ message: "Monto inválido o fuera de rango." });
         }
         const newProfit = profitTotal + amt;
@@ -135,12 +144,14 @@ router.post("/admin/wallet/adjust-invested", requireAuth, requireRole("admin"), 
         );
 
         if (!wrows.length) {
+            await conn.rollback();
             return res.status(404).json({ message: "Wallet no encontrada." });
         }
 
         const walletId = wrows[0].id;
         const amt = Number(amount);
         if (!Number.isFinite(amt) || Math.abs(amt) > 10000000) {
+            await conn.rollback();
             return res.status(400).json({ message: "Monto inválido o fuera de rango." });
         }
 

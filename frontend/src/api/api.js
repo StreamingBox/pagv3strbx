@@ -2,6 +2,7 @@ import { getApiBase } from "../config/apiBase.js";
 
 const API_BASE = getApiBase();
 const DEFAULT_TIMEOUT_MS = 30000;
+let refreshInFlight = null;
 
 /** Lee JSON de manera segura */
 async function safeJson(res) {
@@ -59,18 +60,37 @@ export function clearLegacySession() {
 
 /** Refresh cookies HttpOnly */
 async function tryRefresh(timeoutMs = DEFAULT_TIMEOUT_MS) {
-    try {
-        const r = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            cache: "no-store",
-            timeoutMs,
-        });
-        return r.ok;
-    } catch {
-        return false;
-    }
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = (async () => {
+        try {
+            const r = await fetchWithTimeout(buildApiUrl("/auth/refresh"), {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                cache: "no-store",
+                timeoutMs,
+            });
+            return r.ok;
+        } catch {
+            return false;
+        } finally {
+            refreshInFlight = null;
+        }
+    })();
+    return refreshInFlight;
+}
+
+function networkFailure(error) {
+    const timedOut = error?.name === "AbortError";
+    return {
+        ok: false,
+        status: 0,
+        data: {
+            message: timedOut
+                ? "La solicitud tardó demasiado. Intenta nuevamente."
+                : "No fue posible conectar con el servidor. Revisa tu conexión e intenta nuevamente.",
+        },
+    };
 }
 
 /**
@@ -93,12 +113,17 @@ export async function apiFetch(path, options = {}) {
     const { timeoutMs = DEFAULT_TIMEOUT_MS, ...requestOptions } = options;
     const headers = buildHeaders(requestOptions);
 
-    const res1 = await fetchWithTimeout(url, {
-        ...requestOptions,
-        credentials: "include",
-        headers,
-        timeoutMs,
-    });
+    let res1;
+    try {
+        res1 = await fetchWithTimeout(url, {
+            ...requestOptions,
+            credentials: "include",
+            headers,
+            timeoutMs,
+        });
+    } catch (error) {
+        return networkFailure(error);
+    }
 
     if (res1.status !== 401) {
         const data = await safeJson(res1);
@@ -111,12 +136,17 @@ export async function apiFetch(path, options = {}) {
         return { ok: false, status: 401, data: data?.message ? data : { message: "No autorizado" } };
     }
 
-    const res2 = await fetchWithTimeout(url, {
-        ...requestOptions,
-        credentials: "include",
-        headers,
-        timeoutMs,
-    });
+    let res2;
+    try {
+        res2 = await fetchWithTimeout(url, {
+            ...requestOptions,
+            credentials: "include",
+            headers,
+            timeoutMs,
+        });
+    } catch (error) {
+        return networkFailure(error);
+    }
 
     const data2 = await safeJson(res2);
     return { ok: res2.ok, status: res2.status, data: data2 };
@@ -131,8 +161,9 @@ export async function apiGet(path, options = {}) {
     return apiFetch(path, { ...options, method: "GET" });
 }
 
-export async function apiPost(path, body) {
+export async function apiPost(path, body, options = {}) {
     return apiFetch(path, {
+        ...options,
         method: "POST",
         body: JSON.stringify(body ?? {}),
     });

@@ -15,6 +15,8 @@ go-backend/api-gateway/pagv2strbx-gateway.exe
 # React / Frontend
 *.apk
 backend/storage/support/
+backend/storage/topup-proofs/
+frontend/public/topup-proofs/
 frontend/dist/
 frontend/build/
 frontend/android/keystore.properties

@@ -1,13 +1,22 @@
 const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
-const { addDaysExact, toSqlDateTime } = require("../utils/date");
+const {
+    addDaysBogotaDateOnly,
+    bogotaDateOnlyToUtcEndOfDay,
+    toSqlDateTime,
+} = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
-const { sendOrderDeliveryEmail } = require("./mailService");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
 const { isLiteChannel } = require("../utils/salesChannel");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
+const {
+    reserveCheckoutIdempotency,
+    completeCheckoutIdempotency,
+    failCheckoutIdempotency,
+} = require("./checkoutIdempotency.service");
+const { enqueueNotification } = require("./notificationOutbox.service");
 const {
     automaticProfitForEntry,
     automaticUnitCostForPlan,
@@ -194,7 +203,7 @@ async function loadComboEntries(conn, comboRequests, currency, salesChannel = "r
     return entries;
 }
 
-async function checkoutService({ userId, items, combos, recordProfit, profitAmount, salesChannel = "reseller" }) {
+async function checkoutService({ userId, items, combos, recordProfit, profitAmount, salesChannel = "reseller", idempotencyKey = null }) {
     const liteCheckout = isLiteChannel(salesChannel);
     const platformPriceIds = (Array.isArray(items) ? items : [])
         .map((x) => Number(x?.platformPriceId))
@@ -226,16 +235,38 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         throw err;
     }
 
+    const idempotencyPayload = {
+        items: platformPriceIds,
+        combos: comboRequests,
+        recordProfit: Boolean(recordProfit),
+        profitAmount: Number(profitAmount || 0),
+        salesChannel,
+    };
+    const reservation = await reserveCheckoutIdempotency({
+        userId,
+        key: idempotencyKey,
+        payload: idempotencyPayload,
+    });
+    if (reservation?.replay) return reservation.replay;
+
     const conn = await pool.getConnection();
 
     try {
         await conn.beginTransaction();
 
+        const [userRows] = liteCheckout
+            ? [[{ currency: "COP" }]]
+            : await conn.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
+        const userCurrency = normalizeCurrency(userRows?.[0]?.currency || "COP", "COP");
         const individualPlans = await loadIndividualPlans(conn, platformPriceIds, salesChannel);
         let currency = normalizeCurrency(individualPlans[0]?.currency || "", "");
         if (!currency) {
-            const [urows] = liteCheckout ? [[{ currency: "COP" }]] : await conn.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
-            currency = normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
+            currency = userCurrency;
+        }
+        if (!sameCurrency(currency, userCurrency)) {
+            const err = new Error(`Tu cuenta opera en ${userCurrency}; solo puedes comprar productos en esa moneda.`);
+            err.status = 400;
+            throw err;
         }
 
         const purchaseEntries = individualPlans.map((plan) => ({
@@ -263,18 +294,14 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         if (!walletRows.length) {
             const [wIns] = await conn.query(
                 "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
-                [userId, currency]
+                [userId, userCurrency]
             );
-            wallet = { id: wIns.insertId, balance: 0.0, currency };
+            wallet = { id: wIns.insertId, balance: 0.0, currency: userCurrency };
         } else {
             wallet = {
                 ...walletRows[0],
                 currency: normalizeCurrency(walletRows[0].currency || currency, currency),
             };
-            if (!sameCurrency(wallet.currency, currency)) {
-                await conn.query("UPDATE wallets SET currency = ? WHERE id = ?", [currency, wallet.id]);
-                wallet.currency = currency;
-            }
         }
 
         if (!sameCurrency(wallet.currency, currency)) {
@@ -318,8 +345,10 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             const account = resolvedAccount?.account || null;
             const deliveredPlatformId = resolvedAccount?.deliveredPlatformId || (needsAccount ? null : plan.platform_id);
 
-            const expiresAt = addDaysExact(new Date(), Number(plan.days));
-            const expiresAtSql = toSqlDateTime(expiresAt);
+            // subscriptions.expires_at is the contractual calendar date in Colombia.
+            // The account keeps a technical timestamp only for stock availability.
+            const expiresAt = addDaysBogotaDateOnly(Number(plan.days));
+            const expiresAtSql = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expiresAt));
             const itemPrice = Number(entry.salePrice || 0);
 
             const [subIns] = await conn.query(
@@ -334,7 +363,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                     plan.duration_id,
                     account?.id || null,
                     deliveredPlatformId,
-                    expiresAtSql,
+                    expiresAt,
                     itemPrice,
                     currency,
                 ]
@@ -357,18 +386,22 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             });
 
             const inventoryUnitCost = Number(account?.unit_cost || 0);
+            const unitCostCurrency = normalizeCurrency(account?.unit_cost_currency || "COP", "COP");
             const unitCost = inventoryUnitCost > 0 ? inventoryUnitCost : automaticUnitCostForPlan(plan);
-            const itemProfit = Number((itemPrice - unitCost).toFixed(2));
-            automaticProfitToAdd = Number((automaticProfitToAdd + automaticProfitForEntry({
-                plan,
-                salePrice: itemPrice,
-                unitCost,
-            })).toFixed(2));
+            const comparableCost = unitCost <= 0 || sameCurrency(unitCostCurrency, currency);
+            const itemProfit = comparableCost ? Number((itemPrice - unitCost).toFixed(2)) : null;
+            if (comparableCost) {
+                automaticProfitToAdd = Number((automaticProfitToAdd + automaticProfitForEntry({
+                    plan,
+                    salePrice: itemPrice,
+                    unitCost,
+                })).toFixed(2));
+            }
             await conn.query(
                 `INSERT INTO order_items
-                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, combo_id, combo_name, delivered_platform_id, product_details_snapshot)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, itemProfit, entry.comboId, entry.comboName, deliveredPlatformId, plan.product_details || null]
+                    (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, combo_id, combo_name, delivered_platform_id, product_details_snapshot)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [orderId, subscriptionId, plan.platform_id, plan.platform_price_id, itemPrice, unitCost, unitCost > 0 ? unitCostCurrency : currency, itemProfit, entry.comboId, entry.comboName, deliveredPlatformId, plan.product_details || null]
             );
 
             results.push({
@@ -420,37 +453,44 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             );
         }
 
-        await conn.commit();
-        schedulePlatformStockAlertCheck();
-
-        const buyerInfo = await pool.query(
-            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
-            [userId]
-        ).then(([r]) => r[0]).catch(() => null);
-
-        const { notifySale } = require("./telegramBot");
-        notifySale({
-            seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
-            platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
+        await completeCheckoutIdempotency(conn, reservation, {
+            orderId,
+            orderCode,
+            count: results.length,
             total,
             currency,
-            discount: total,
-            profit: profitToAdd,
-            newBalance,
-            orderCode,
-        }).catch((e) => console.error("[TelegramBot] notifySale error:", e?.message));
+        });
 
+        const [[buyerInfo]] = await conn.query(
+            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
+            [userId]
+        );
         if (buyerInfo?.email) {
-            sendOrderDeliveryEmail({
-                to: buyerInfo.email,
-                name: buyerInfo.name,
-                orderCode,
+            await enqueueNotification(conn, {
+                channel: "email",
+                eventType: "order_delivery",
+                dedupeKey: `order-delivery:${orderId}`,
+                payload: { orderId },
+            });
+        }
+        await enqueueNotification(conn, {
+            channel: "telegram",
+            eventType: "sale",
+            dedupeKey: `telegram-sale:${orderId}`,
+            payload: {
+                seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
+                platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
                 total,
                 currency,
-                results,
-                paymentMethod: "Balance de cuenta",
-            }).catch((e) => console.error("[mail] sendOrderDeliveryEmail error:", e?.message || e));
-        }
+                discount: total,
+                profit: profitToAdd,
+                newBalance,
+                orderCode,
+            },
+        });
+
+        await conn.commit();
+        schedulePlatformStockAlertCheck();
 
         const [wAfter] = await pool.query(
             "SELECT balance, profit_total, currency FROM wallets WHERE id = ? LIMIT 1",
@@ -479,6 +519,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         };
     } catch (err) {
         try { await conn.rollback(); } catch { }
+        await failCheckoutIdempotency(reservation);
         throw err;
     } finally {
         conn.release();

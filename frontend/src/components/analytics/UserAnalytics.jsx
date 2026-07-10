@@ -830,6 +830,7 @@ function UserAnalyticsContent({ admin }) {
     const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support"
     const [year, setYear] = useState(currentYear);
     const [chartType, setChartType] = useState("area");
+    const [currency, setCurrency] = useState("COP");
 
     const [users, setUsers] = useState([]);
     const [selectedUserIds, setSelectedUserIds] = useState([]);
@@ -879,9 +880,10 @@ function UserAnalyticsContent({ admin }) {
         setSelectedKeys([]);
         setMonthsData([]);
         setLoadingMonths(true);
-        let url = "/analytics/available-months";
-        if (admin && selectedUserIds.length === 0) url += "?global=true";
-        if (admin && selectedUserIds.length > 0) url += `?userIds=${selectedUserIds.join(",")}`;
+        const query = new URLSearchParams({ currency });
+        if (admin && selectedUserIds.length === 0) query.set("global", "true");
+        if (admin && selectedUserIds.length > 0) query.set("userIds", selectedUserIds.join(","));
+        const url = `/analytics/available-months?${query.toString()}`;
 
         apiGet(url)
             .then(res => {
@@ -910,7 +912,7 @@ function UserAnalyticsContent({ admin }) {
         return () => {
             cancelled = true;
         };
-    }, [admin, currentYear, selectedUserIds]);
+    }, [admin, currentYear, selectedUserIds, currency]);
 
     const filteredMonths = allHistorical.filter(m => m.year === year);
 
@@ -925,11 +927,12 @@ function UserAnalyticsContent({ admin }) {
         if (selectedKeys.length === 0) { setMonthsData([]); return; }
         setLoadingData(true);
         setError("");
+        const supportQuery = admin && viewMode === "support" ? "&includeSupport=true" : "&includeSupport=false";
         try {
             if (admin && selectedUserIds.length >= 2) {
                 const primaryMonth = selectedKeys[0];
                 const promises = selectedUserIds.map(async (uId) => {
-                    const res = await apiGet(`/analytics/sales/multi?months=${primaryMonth}&userIds=${uId}`);
+                    const res = await apiGet(`/analytics/sales/multi?months=${primaryMonth}&userIds=${uId}&currency=${currency}${supportQuery}`);
                     const data = assertApiOk(res, "No se pudieron cargar las ventas comparadas.");
                     const list = Array.isArray(data?.months) ? data.months : [];
                     const monthData = list[0];
@@ -941,7 +944,7 @@ function UserAnalyticsContent({ admin }) {
                 const results = (await Promise.all(promises)).filter(Boolean);
                 setMonthsData(results);
             } else {
-                let url = `/analytics/sales/multi?months=${selectedKeys.join(",")}`;
+                let url = `/analytics/sales/multi?months=${selectedKeys.join(",")}&currency=${currency}${supportQuery}`;
                 if (admin && selectedUserIds.length === 0) url += `&global=true`;
                 if (admin && selectedUserIds.length === 1) url += `&userIds=${selectedUserIds[0]}`;
                 const res = await apiGet(url);
@@ -955,7 +958,7 @@ function UserAnalyticsContent({ admin }) {
         } finally {
             setLoadingData(false);
         }
-    }, [selectedKeys, admin, selectedUserIds, users]);
+    }, [selectedKeys, admin, selectedUserIds, users, currency, viewMode]);
 
     useEffect(() => { loadMultiData(); }, [loadMultiData]);
 
@@ -1103,6 +1106,18 @@ function UserAnalyticsContent({ admin }) {
                             </div>
                         )}
 
+                        <PillSelect
+                            value={currency}
+                            onChange={e => { setCurrency(e.target.value); setSelectedKeys([]); }}
+                            options={[
+                                { value: "COP", label: "COP" },
+                                { value: "MXN", label: "MXN" },
+                                { value: "USD", label: "USD" },
+                            ]}
+                            icon="💱"
+                            fullWidth={isMobile}
+                        />
+
                         {/* Year picker */}
                         {availableYears.length > 0 && (
                             <PillSelect
@@ -1236,6 +1251,7 @@ function UserAnalyticsContent({ admin }) {
                         selectedMonthKeys={selectedKeys}
                         admin={admin}
                         selectedUserIds={selectedUserIds}
+                        currency={currency}
                         chartType={chartType}
                     />
                 </motion.div>

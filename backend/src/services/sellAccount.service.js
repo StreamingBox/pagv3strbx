@@ -1,9 +1,15 @@
 const pool = require("../db");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
-const { addDaysExact, bogotaDateOnlyToUtcEndOfDay, toSqlDateTime } = require("../utils/date");
+const {
+    addDaysBogotaDateOnly,
+    bogotaDateOnlyToUtcEndOfDay,
+    parseDateOnly,
+    toSqlDateTime,
+} = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
-const { sendOrderDeliveryEmail } = require("./mailService");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { enqueueNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 
 /**
@@ -80,7 +86,7 @@ async function sellAccountFromInventory(payload) {
 
         // 3. Obtener Usuario y Wallet (lock)
         const [userRows] = await conn.query(
-            "SELECT u.id, u.email, u.currency, w.id as wallet_id, w.balance FROM users u JOIN wallets w ON w.user_id = u.id WHERE u.id = ? FOR UPDATE",
+            "SELECT u.id, u.name, u.email, u.currency, w.id as wallet_id, w.balance, w.currency AS wallet_currency FROM users u JOIN wallets w ON w.user_id = u.id WHERE u.id = ? FOR UPDATE",
             [userId]
         );
         if (!userRows.length) {
@@ -96,6 +102,11 @@ async function sellAccountFromInventory(payload) {
             err.status = 400;
             throw err;
         }
+        if (!sameCurrency(targetUser.wallet_currency || "COP", targetUser.currency || "COP")) {
+            const err = new Error("La moneda de la billetera no coincide con la del usuario.");
+            err.status = 409;
+            throw err;
+        }
 
         if (Number(targetUser.balance) < totalAmount) {
             const err = new Error("Saldo insuficiente en la wallet del usuario.");
@@ -108,13 +119,18 @@ async function sellAccountFromInventory(payload) {
         let finalExpiresAt;
         if (customExpiryDate) {
             // Usar la fecha manual proporcionada por el admin
-            finalExpiresAt = bogotaDateOnlyToUtcEndOfDay(customExpiryDate);
+            finalExpiresAt = parseDateOnly(customExpiryDate);
+            if (!finalExpiresAt) {
+                const err = new Error("La fecha de vencimiento debe tener el formato YYYY-MM-DD.");
+                err.status = 400;
+                throw err;
+            }
         } else {
             // Usar la duración por defecto del plan
-            finalExpiresAt = addDaysExact(new Date(), Number(plan.days));
+            finalExpiresAt = addDaysBogotaDateOnly(Number(plan.days));
         }
 
-        const expiresAtSql = toSqlDateTime(finalExpiresAt);
+        const expiresAtSql = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(finalExpiresAt));
 
         // 5. Ejecutar Venta
         const orderCode = makeOrderCode();
@@ -131,21 +147,25 @@ async function sellAccountFromInventory(payload) {
             `INSERT INTO subscriptions 
              (user_id, platform_id, platform_price_id, duration_id, platform_account_id, status, expires_at, price, currency)
              VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-            [userId, plan.platform_id, plan.platform_price_id, plan.duration_id, accountId, expiresAtSql, totalAmount, plan.currency]
+            [userId, plan.platform_id, plan.platform_price_id, plan.duration_id, accountId, finalExpiresAt, totalAmount, plan.currency]
         );
         const subscriptionId = subIns.insertId;
 
         // 5.3 Crear Order Item
+        const unitCost = Number(account.unit_cost || 0);
+        const unitCostCurrency = normalizeCurrency(account.unit_cost_currency || "COP", "COP");
+        const comparableCost = unitCost <= 0 || sameCurrency(unitCostCurrency, plan.currency);
         await conn.query(
-            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, profit_amount, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 orderId,
                 subscriptionId,
                 plan.platform_id,
                 plan.platform_price_id,
                 totalAmount,
-                Number(account.unit_cost || 0),
-                Number((totalAmount - Number(account.unit_cost || 0)).toFixed(2)),
+                unitCost,
+                unitCost > 0 ? unitCostCurrency : plan.currency,
+                comparableCost ? Number((totalAmount - unitCost).toFixed(2)) : null,
                 plan.product_details || null,
             ]
         );
@@ -184,6 +204,15 @@ async function sellAccountFromInventory(payload) {
             );
         }
 
+        if (targetUser.email) {
+            await enqueueNotification(conn, {
+                channel: "email",
+                eventType: "order_delivery",
+                dedupeKey: `order-delivery:${orderId}`,
+                payload: { orderId },
+            });
+        }
+
         await conn.commit();
         schedulePlatformStockAlertCheck();
 
@@ -202,22 +231,6 @@ async function sellAccountFromInventory(payload) {
             token
         }];
 
-        const buyerInfo = await pool.query(
-            "SELECT name, email FROM users WHERE id = ? LIMIT 1",
-            [userId]
-        ).then(([r]) => r[0]).catch(() => null);
-
-        if (buyerInfo?.email) {
-            sendOrderDeliveryEmail({
-                to: buyerInfo.email,
-                name: buyerInfo.name,
-                orderCode,
-                total: totalAmount,
-                currency: plan.currency,
-                results,
-                paymentMethod: "Venta manual desde inventario",
-            }).catch((e) => console.error("[mail] sendOrderDeliveryEmail inventory error:", e?.message || e));
-        }
         const deliveryMessage = buildDeliveryMessage({
             orderCode,
             results,

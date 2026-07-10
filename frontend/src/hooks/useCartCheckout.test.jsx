@@ -51,7 +51,9 @@ describe("useCartCheckout", () => {
             combos: [{ comboId: 7, quantity: 1 }],
             recordProfit: true,
             profitAmount: 3500,
-        });
+        }, expect.objectContaining({
+            headers: expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+        }));
         expect(result.current.buyResult).toEqual({
             orderCode: "ORD-TEST",
             wallet: { balance: 12000, profit_total: 3500, currency: "COP" },

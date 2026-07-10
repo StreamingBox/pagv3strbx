@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { apiPost } from "../api/api";
 
 export function useCartCheckout({ cart, clearCart, setWallet, onPurchaseSuccess }) {
     const [buyLoading, setBuyLoading] = useState(false);
     const [buyResult, setBuyResult] = useState(null);
     const [error, setError] = useState("");
+    const idempotencyKeyRef = useRef(null);
 
     async function checkout({ recordProfit, profitAmount }) {
         if (!cart?.length) return;
@@ -15,6 +16,11 @@ export function useCartCheckout({ cart, clearCart, setWallet, onPurchaseSuccess 
 
         try {
             // ✅ cookies HttpOnly (apiPost -> apiFetch -> credentials: "include")
+            if (!idempotencyKeyRef.current) {
+                idempotencyKeyRef.current = globalThis.crypto?.randomUUID?.()
+                    || `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            }
+
             const res = await apiPost("/checkout", {
                 items: cart
                     .filter((c) => c.type !== "combo")
@@ -24,6 +30,8 @@ export function useCartCheckout({ cart, clearCart, setWallet, onPurchaseSuccess 
                     .map((c) => ({ comboId: c.comboId, quantity: 1 })),
                 recordProfit,
                 profitAmount: recordProfit ? Number(profitAmount || 0) : 0,
+            }, {
+                headers: { "Idempotency-Key": idempotencyKeyRef.current },
             });
 
             if (!res.ok) {
@@ -45,6 +53,7 @@ export function useCartCheckout({ cart, clearCart, setWallet, onPurchaseSuccess 
             }
 
             clearCart();
+            idempotencyKeyRef.current = null;
 
             // ✅ Llama al callback de éxito para cerrar el modal y recargar el catálogo
             if (typeof onPurchaseSuccess === "function") {

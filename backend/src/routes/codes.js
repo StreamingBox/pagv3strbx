@@ -2,6 +2,7 @@ const express = require("express");
 const requireAuth = require("../middleware/requireAuth");
 const { createCodeLogger } = require("../services/codeDeliveryLogger");
 const { requestCodeForOrder } = require("../services/codesService");
+const { finishCodeRequestReservation } = require("../services/codeRequestReservation.service");
 
 const router = express.Router();
 
@@ -20,13 +21,14 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
         platformSlug: String(platformSlug || "").trim().toLowerCase(),
     });
 
+    let result = null;
     try {
         if (!orderNumber || !String(orderNumber).trim()) {
             await saveLog({ status: "error", message: "Falta orderNumber" });
             return res.status(400).json({ ok: false, message: "Falta orderNumber" });
         }
 
-        const result = await requestCodeForOrder({
+        result = await requestCodeForOrder({
             orderNumber,
             platformSlug,
             user: req.user,
@@ -59,6 +61,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
                 status: result.body?.status || "error",
                 message: result.body?.message || "Error",
             });
+            await finishCodeRequestReservation(result.meta?.reservation, "failed");
             return res.status(result.http).json(result.body);
         }
 
@@ -76,10 +79,12 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
             status: "delivered",
             message: deliveredMessage,
         });
+        await finishCodeRequestReservation(result.meta?.reservation, "completed");
 
         return res.json(result.body);
     } catch (err) {
         await saveLog({ status: "error", message: err.message || "Error interno" });
+        await finishCodeRequestReservation(result?.meta?.reservation, "failed");
         console.error(err);
         const detail = process.env.NODE_ENV !== "production" ? err.message : undefined;
         return res.status(500).json({ ok: false, message: "Error interno", ...(detail ? { detail } : {}) });

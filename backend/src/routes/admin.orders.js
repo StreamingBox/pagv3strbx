@@ -3,7 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { renewSubscription } = require("../services/renewal.service");
-const { notifyRenewalSale } = require("../services/telegramBot");
+const { enqueueNotification } = require("../services/notificationOutbox.service");
 
 const router = express.Router();
 
@@ -168,11 +168,8 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
         pa.pin AS account_pin,
         pa.profile_number AS account_profile,
         pa.expires_at AS account_expires_at,
-        COALESCE(pa.expires_at, s.expires_at) AS effective_expires_at,
-        DATE_FORMAT(
-          CASE WHEN pa.expires_at IS NOT NULL THEN DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) ELSE DATE(s.expires_at) END,
-          '%Y-%m-%d'
-        ) AS expires_date
+        s.expires_at AS effective_expires_at,
+        DATE_FORMAT(DATE(s.expires_at), '%Y-%m-%d') AS expires_date
       FROM subscriptions s
       JOIN users u ON u.id = s.user_id
       JOIN platforms p ON p.id = s.platform_id
@@ -219,25 +216,30 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
             allowAccountChange: true,
         });
 
-        await conn.commit();
-
-        const [userRows] = await pool.query(
+        const [userRows] = await conn.query(
             "SELECT name, email FROM users WHERE id = ? LIMIT 1",
             [result.userId]
         );
         const buyer = userRows?.[0] || null;
-        notifyRenewalSale({
-            seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
-            platform: result.platformName,
-            total: result.amountCharged,
-            currency: result.currency,
-            newBalance: result.newBalance,
-            orderCode: result.renewalOrderCode,
-            subscriptionId: result.subscriptionId,
-            renewalOrderId: result.renewalOrderId,
-            previousOrderCode: result.previousOrderCode,
-            actor: req.user.email || req.user.name || "admin",
-        }).catch((e) => console.error("[TelegramBot] notifyRenewalSale admin error:", e?.message || e));
+        await enqueueNotification(conn, {
+            channel: "telegram",
+            eventType: "renewal_sale",
+            dedupeKey: `telegram-renewal:${result.renewalOrderId}`,
+            payload: {
+                seller: buyer?.name || buyer?.email || `ID ${result.userId}`,
+                platform: result.platformName,
+                total: result.amountCharged,
+                currency: result.currency,
+                newBalance: result.newBalance,
+                orderCode: result.renewalOrderCode,
+                subscriptionId: result.subscriptionId,
+                renewalOrderId: result.renewalOrderId,
+                previousOrderCode: result.previousOrderCode,
+                actor: req.user.email || req.user.name || "admin",
+            },
+        });
+
+        await conn.commit();
 
         return res.json(result);
     } catch (err) {
@@ -328,10 +330,9 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const offset = (page - 1) * limit;
 
         const { q, platform, email, accountEmail } = req.query;
-        const effectiveExpiresSql = "COALESCE(s.expires_at, acc.expires_at)";
-        const effectiveExpiresDateSql =
-            "CASE WHEN s.expires_at IS NOT NULL THEN DATE(s.expires_at) ELSE DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) END";
-        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
+        const effectiveExpiresSql = "s.expires_at";
+        const effectiveExpiresDateSql = "DATE(s.expires_at)";
+        const todayBogotaSql = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
         const notResoldLaterSql = `
             NOT EXISTS (
                 SELECT 1
@@ -489,7 +490,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              ${whereSql}
              ORDER BY
-                (SELECT MIN(CASE WHEN ex.expires_at IS NOT NULL THEN DATE(ex.expires_at) ELSE DATE(DATE_SUB(ex_acc.expires_at, INTERVAL 5 HOUR)) END)
+                (SELECT MIN(DATE(ex.expires_at))
                 FROM subscriptions ex
                 LEFT JOIN platform_accounts ex_acc ON ex_acc.id = ex.platform_account_id
                 WHERE ex.platform_account_id = s.platform_account_id
@@ -590,9 +591,8 @@ router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), asyn
 // ✅ Count pending expirations (Admin)
 router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const effectiveExpiresDateSql =
-            "CASE WHEN s.expires_at IS NOT NULL THEN DATE(s.expires_at) ELSE DATE(DATE_SUB(acc.expires_at, INTERVAL 5 HOUR)) END";
-        const todayBogotaSql = "DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))";
+        const effectiveExpiresDateSql = "DATE(s.expires_at)";
+        const todayBogotaSql = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
         const [rows] = await pool.query(
             `SELECT COUNT(*) as count
              FROM subscriptions s

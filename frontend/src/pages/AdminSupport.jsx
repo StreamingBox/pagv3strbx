@@ -133,19 +133,22 @@ export default function AdminSupport() {
     const loadTickets = useCallback(async () => {
         setLoading(true);
         setError("");
-        const params = new URLSearchParams({ status: filter });
-        if (search.trim()) params.set("q", search.trim());
-        const response = await apiFetch(`/admin/support-tickets?${params.toString()}`);
-        if (response.ok) {
-            const list = response.data?.tickets || [];
-            setTickets(list);
-            setSelectedId((current) => (
-                list.some((ticket) => ticket.id === current) ? current : list[0]?.id || null
-            ));
-        } else {
-            setError(response.data?.message || "No se pudieron cargar las solicitudes.");
+        try {
+            const params = new URLSearchParams({ status: filter });
+            if (search.trim()) params.set("q", search.trim());
+            const response = await apiFetch(`/admin/support-tickets?${params.toString()}`);
+            if (response.ok) {
+                const list = response.data?.tickets || [];
+                setTickets(list);
+                setSelectedId((current) => (
+                    list.some((ticket) => ticket.id === current) ? current : list[0]?.id || null
+                ));
+            } else {
+                setError(response.data?.message || "No se pudieron cargar las solicitudes.");
+            }
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }, [filter, search]);
 
     useEffect(() => {
@@ -168,13 +171,14 @@ export default function AdminSupport() {
         if (!selected?.id) return;
         let cancelled = false;
         setDetailLoading(true);
-        void apiFetch(`/admin/support-tickets/${selected.id}/detail`).then((response) => {
-            if (cancelled) return;
-            if (response.ok) {
-                setTicketDetail(response.data || null);
+        void (async () => {
+            try {
+                const response = await apiFetch(`/admin/support-tickets/${selected.id}/detail`);
+                if (!cancelled && response.ok) setTicketDetail(response.data || null);
+            } finally {
+                if (!cancelled) setDetailLoading(false);
             }
-            setDetailLoading(false);
-        });
+        })();
         return () => {
             cancelled = true;
         };
@@ -213,10 +217,14 @@ export default function AdminSupport() {
         if (!selected) return;
         setActionLoading(true);
         setError("");
-        const response = await apiFetch(`/admin/support-tickets/${selected.id}/start`, {
-            method: "PATCH",
-        });
-        setActionLoading(false);
+        let response;
+        try {
+            response = await apiFetch(`/admin/support-tickets/${selected.id}/start`, {
+                method: "PATCH",
+            });
+        } finally {
+            setActionLoading(false);
+        }
         if (!response.ok) {
             setError(response.data?.message || "No se pudo tomar el caso.");
             return;
@@ -239,19 +247,23 @@ export default function AdminSupport() {
         setActionLoading(true);
         setError("");
         setSuccess("");
-        const response = await apiFetch(`/admin/support-tickets/${selected.id}/resolve`, {
-            method: "POST",
-            body: JSON.stringify({
-                resolutionType,
-                resolutionSubtype,
-                resolutionMessage: resolutionMessage.trim(),
-                replacementAccountId: resolutionType === "replaced"
-                    ? (replacementAccountId || null)
-                    : null,
-            }),
-            timeoutMs: 60000,
-        });
-        setActionLoading(false);
+        let response;
+        try {
+            response = await apiFetch(`/admin/support-tickets/${selected.id}/resolve`, {
+                method: "POST",
+                body: JSON.stringify({
+                    resolutionType,
+                    resolutionSubtype,
+                    resolutionMessage: resolutionMessage.trim(),
+                    replacementAccountId: resolutionType === "replaced"
+                        ? (replacementAccountId || null)
+                        : null,
+                }),
+                timeoutMs: 60000,
+            });
+        } finally {
+            setActionLoading(false);
+        }
 
         if (!response.ok) {
             setError(response.data?.message || "No se pudo cerrar el caso.");
@@ -279,16 +291,20 @@ export default function AdminSupport() {
         }
         setTemplateSaving(true);
         setError("");
-        const response = await apiFetch("/admin/support-templates", {
-            method: "POST",
-            body: JSON.stringify({
-                title,
-                resolutionType,
-                resolutionSubtype,
-                body,
-            }),
-        });
-        setTemplateSaving(false);
+        let response;
+        try {
+            response = await apiFetch("/admin/support-templates", {
+                method: "POST",
+                body: JSON.stringify({
+                    title,
+                    resolutionType,
+                    resolutionSubtype,
+                    body,
+                }),
+            });
+        } finally {
+            setTemplateSaving(false);
+        }
         if (!response.ok) {
             setError(response.data?.message || "No se pudo guardar la plantilla.");
             return;

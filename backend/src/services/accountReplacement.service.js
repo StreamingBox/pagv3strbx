@@ -1,4 +1,9 @@
-const { isExpiryDateExpired } = require("../utils/date");
+const {
+    bogotaDateOnlyToUtcEndOfDay,
+    formatStoredDateOnly,
+    isStoredDateOnlyExpired,
+    toSqlDateTime,
+} = require("../utils/date");
 const { findAvailableAccountForPlatform } = require("./platformFallbacks.service");
 
 async function replaceSubscriptionAccount({
@@ -33,9 +38,8 @@ async function replaceSubscriptionAccount({
         throw error;
     }
 
-    const expired = subscription.account_expires_at
-        ? isExpiryDateExpired(subscription.account_expires_at)
-        : isExpiryDateExpired(subscription.expires_at, { storedDateOnly: true });
+    const expiryDate = formatStoredDateOnly(subscription.expires_at);
+    const expired = !expiryDate || expiryDate === "-" || isStoredDateOnlyExpired(expiryDate);
     if (expired) {
         const error = new Error("La suscripcion ya esta vencida.");
         error.status = 409;
@@ -63,13 +67,13 @@ async function replaceSubscriptionAccount({
     }
 
     const newAccount = resolvedAccount.account;
-    const effectiveExpiry = subscription.account_expires_at || subscription.expires_at;
+    const accountExpiry = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expiryDate));
 
     await conn.query(
         `UPDATE platform_accounts
             SET status = 'assigned', assigned_to_user_id = ?, assigned_at = NOW(), expires_at = ?
           WHERE id = ?`,
-        [subscription.user_id, effectiveExpiry, newAccount.id]
+        [subscription.user_id, accountExpiry, newAccount.id]
     );
     await conn.query(
         `UPDATE subscriptions
@@ -108,7 +112,7 @@ async function replaceSubscriptionAccount({
             subscription.old_account_email || null,
             newAccount.id,
             newAccount.email || null,
-            effectiveExpiry || null,
+            accountExpiry || null,
         ]
     );
 

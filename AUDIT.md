@@ -1,5 +1,17 @@
 # Auditoría Integral — Streaming Box v1.1.4
 
+## Actualizacion de integridad operativa - 2026-07-10
+
+- Se elimina la conversion silenciosa de moneda durante compra, recarga y renovacion. Las analiticas se consultan por COP, MXN o USD y la utilidad solo usa costos comparables en la misma moneda.
+- Las suscripciones son ahora la fuente contractual de vencimiento. La cuenta de inventario conserva un timestamp tecnico de fin de dia en Colombia, sin alterar la fecha mostrada al cliente.
+- Estados de inventario incompatibles se normalizan mediante la migracion `024_integrity_idempotency_outbox`; los registros ambiguos quedan en `legacy_review` y los conflictos activos quedan trazados en `account_integrity_conflicts`.
+- Checkout tiene llave de idempotencia y las solicitudes de codigo reservan el intento de forma atomica antes de consultar correo o Netflix.
+- Correo y Telegram de compras, stock y soporte usan una cola transaccional con reintentos y error persistente. Un mensaje no se marca enviado hasta recibir confirmacion del proveedor.
+- Los comprobantes antiguos publicos se migran a almacenamiento privado al aplicar la migracion `024`.
+- `/api/readiness` consulta la base de datos; el despliegue realiza respaldo, pruebas, build, reinicio y comprobacion de readiness con rollback de codigo y frontend si falla.
+
+Pendiente externo: trasladar secretos desde `backend/.env` a AWS Secrets Manager o SSM requiere una politica IAM y un secreto creado en la cuenta AWS. No se deben copiar secretos a Git.
+
 ## Seguridad
 
 ### Fortalezas

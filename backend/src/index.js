@@ -57,6 +57,7 @@ const { cleanupExpiredCredentialLinks } = require("./utils/tokens");
 const { processPendingBrebTopups } = require("./services/brebReconciliation.service");
 const { startPlatformStockAlertMonitor } = require("./services/stockAlertMonitor.service");
 const { startMonthlyPurchaseEnforcement } = require("./services/monthlyPurchaseEnforcement.service");
+const { startNotificationOutbox } = require("./services/notificationOutbox.service");
 
 function requireProdEnv(name, { minLength = 1 } = {}) {
     const value = String(process.env[name] || "").trim();
@@ -214,8 +215,8 @@ app.use(
 
 // Rate limit global: 120 req/min por IP
 const globalRateLimit = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 450,
+    windowMs: 60 * 1000,
+    max: 120,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiadas solicitudes. Intenta de nuevo en un minuto." },
@@ -242,7 +243,7 @@ const loginRateLimit = rateLimit({
 // Rate limit para códigos: 500 por hora
 const codesRateLimit = rateLimit({
     windowMs: 60 * 60 * 1000,
-    max: 400,
+    max: 500,
     message: { ok: false, message: "Límite de solicitudes de código excedido (máximo 500 por hora)." },
     standardHeaders: true,
     legacyHeaders: false,
@@ -265,7 +266,7 @@ const forgotPasswordRateLimit = rateLimit({
 // Rate limit para links compartidos: 30 req/min
 const shareRateLimit = rateLimit({
     windowMs: 60 * 1000,
-    max: 8,
+    max: 30,
     standardHeaders: true,
     legacyHeaders: false,
     message: { ok: false, message: "Demasiadas solicitudes al link compartido." },
@@ -303,9 +304,27 @@ app.use("/api", (_req, res, next) => {
    ROUTES (solo bajo /api)
    ======================= */
 
-// Health
-app.get("/health", (_, res) => res.json({ ok: true }));
-app.get("/api/health", (_, res) => res.json({ ok: true }));
+// Liveness stays cheap; readiness verifies the dependency required by business flows.
+app.get("/health", (_, res) => res.json({ ok: true, status: "live" }));
+async function readinessHandler(_req, res) {
+    let timeout;
+    try {
+        await Promise.race([
+            pool.query("SELECT 1"),
+            new Promise((_, reject) => {
+                timeout = setTimeout(() => reject(new Error("DB readiness timeout")), 3000);
+            }),
+        ]);
+        return res.json({ ok: true, status: "ready" });
+    } catch (error) {
+        logger.error("readiness_failed", { error });
+        return res.status(503).json({ ok: false, status: "not_ready" });
+    } finally {
+        if (timeout) clearTimeout(timeout);
+    }
+}
+app.get("/api/health", readinessHandler);
+app.get("/api/readiness", readinessHandler);
 
 // Auth — con rate limit específico en login
 app.use("/api/auth", forgotPasswordRateLimit);
@@ -415,6 +434,7 @@ async function startServer() {
         initBot();
         startPlatformStockAlertMonitor();
         startMonthlyPurchaseEnforcement();
+        startNotificationOutbox();
         processPendingBrebTopups().catch(() => { });
         setInterval(() => {
             processPendingBrebTopups().catch(() => { });

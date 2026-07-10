@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Info, ShoppingCart, X } from "lucide-react";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
@@ -71,12 +71,21 @@ function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
         [item?.platformSlug, item?.platformName]
     );
     const candidatesKey = candidates.join("|");
+
+    return (
+        <CatalogLogoImage
+            key={candidatesKey}
+            candidates={candidates}
+            platformName={item?.platformName}
+            className={className}
+            fallbackClassName={fallbackClassName}
+            fallbackStyle={fallbackStyle}
+        />
+    );
+}
+
+function CatalogLogoImage({ candidates, platformName, className, fallbackClassName, fallbackStyle }) {
     const [index, setIndex] = useState(0);
-
-    useEffect(() => {
-        setIndex(0);
-    }, [candidatesKey]);
-
     const logoSrc = candidates[index] || null;
 
     return (
@@ -84,7 +93,7 @@ function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
             {logoSrc ? (
                 <img
                     src={logoSrc}
-                    alt={item?.platformName || ""}
+                    alt={platformName || ""}
                     className={className}
                     onError={() => setIndex(current => current + 1)}
                 />
@@ -93,7 +102,7 @@ function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
                 className={fallbackClassName}
                 style={{ ...fallbackStyle, display: logoSrc ? "none" : "flex" }}
             >
-                {item?.platformName}
+                {platformName}
             </div>
         </>
     );

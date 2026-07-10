@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useCartCheckout } from "../../hooks/useCartCheckout.js";
 
 import CartItemsList from "./cart/CartItemsList.jsx";
@@ -19,7 +19,7 @@ export default function CartDrawer({
     const [profitOpen, setProfitOpen] = useState(false);
     const [recordProfit, setRecordProfit] = useState(false);
     const [profitAmount, setProfitAmount] = useState("");
-    const [detailsAccepted, setDetailsAccepted] = useState(false);
+    const [detailsConfirmation, setDetailsConfirmation] = useState({ signature: "", accepted: false });
 
     const cartTotal = useMemo(
         () => cart.reduce((sum, it) => sum + Number(it.price || 0), 0),
@@ -40,10 +40,7 @@ export default function CartDrawer({
     const detailsSignature = itemsWithDetails
         .map(item => `${item.platformPriceId}:${item.productDetails}`)
         .join("|");
-
-    useEffect(() => {
-        setDetailsAccepted(false);
-    }, [detailsSignature, open]);
+    const detailsAccepted = detailsConfirmation.signature === detailsSignature && detailsConfirmation.accepted;
 
     function removeFromCart(index) {
         setCart((prev) => prev.filter((_, i) => i !== index));
@@ -120,7 +117,10 @@ export default function CartDrawer({
                                     <input
                                         type="checkbox"
                                         checked={detailsAccepted}
-                                        onChange={event => setDetailsAccepted(event.target.checked)}
+                                        onChange={event => setDetailsConfirmation({
+                                            signature: detailsSignature,
+                                            accepted: event.target.checked,
+                                        })}
                                     />
                                     <span>Confirmo que leí y acepto las características y condiciones de los productos.</span>
                                 </label>

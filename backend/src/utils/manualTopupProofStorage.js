@@ -35,11 +35,7 @@ function getManualTopupProofPath(proofFileUrl) {
     const filename = path.basename(String(proofFileUrl || "").trim());
     if (!filename) return null;
 
-    const candidates = [
-        path.join(getProofStorageDir(), filename),
-        path.join(BACKEND_ROOT, "..", "frontend", "public", "topup-proofs", filename),
-        path.join(BACKEND_ROOT, "..", "frontend", "dist", "topup-proofs", filename),
-    ];
+    const candidates = [path.join(getProofStorageDir(), filename)];
     return candidates.find(filePath => fs.existsSync(filePath)) || null;
 }
 

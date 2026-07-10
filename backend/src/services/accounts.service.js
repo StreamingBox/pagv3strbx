@@ -10,7 +10,7 @@ const {
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
-const { sendStockAvailableEmail } = require("./mailService");
+const { enqueueNotification } = require("./notificationOutbox.service");
 
 const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
 const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
@@ -83,7 +83,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     );
     
     // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
-    await resolveStockAlertsWithEmail(conn, pid, pname);
+    await queueStockAvailabilityNotifications(conn, pid, pname);
     
     return ins.insertId;
 }
@@ -227,7 +227,7 @@ async function resolveStockAlerts(conn, pid, pname) {
     await Promise.all(notifyPromises);
 }
 
-async function resolveStockAlertsWithEmail(conn, pid, pname) {
+async function queueStockAvailabilityNotifications(conn, pid, pname) {
     if (!pid) return;
 
     const [subs] = await conn.query(`
@@ -248,7 +248,7 @@ async function resolveStockAlertsWithEmail(conn, pid, pname) {
 
     if (!subs.length) return;
 
-    const notifyPromises = subs.map(async (sub) => {
+    for (const sub of subs) {
         const platformName = sub.platform_name || pname || "este producto";
         const msg = `Ya hay stock disponible de ${platformName}. Ingresa al catalogo para comprar.`;
 
@@ -262,18 +262,19 @@ async function resolveStockAlertsWithEmail(conn, pid, pname) {
         `, [sub.sub_id]);
 
         if (sub.user_email) {
-            sendStockAvailableEmail({
-                to: sub.user_email,
-                name: sub.user_name,
-                platformName,
-                durationName: sub.duration_name,
-            }).catch((mailErr) => {
-                console.error("[mail] sendStockAvailableEmail:", mailErr?.message || mailErr);
+            await enqueueNotification(conn, {
+                channel: "email",
+                eventType: "stock_available",
+                dedupeKey: `stock-available:${sub.sub_id}`,
+                payload: {
+                    to: sub.user_email,
+                    name: sub.user_name,
+                    platformName,
+                    durationName: sub.duration_name,
+                },
             });
         }
-    });
-
-    await Promise.all(notifyPromises);
+    }
 }
 
 async function propagatePassword(conn, { pid, emailValue, password, newId }) {

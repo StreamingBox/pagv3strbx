@@ -10,17 +10,9 @@ async function cleanupExpiredCredentialLinks(connOrPool) {
         `DELETE cl
            FROM credential_links cl
            LEFT JOIN subscriptions s ON s.id = cl.subscription_id
-           LEFT JOIN platform_accounts a ON a.id = s.platform_account_id
-          WHERE s.id IS NULL
-             OR s.status <> 'active'
-             OR (
-                a.expires_at IS NOT NULL
-                AND DATE(DATE_SUB(a.expires_at, INTERVAL 5 HOUR)) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-             )
-             OR (
-                a.expires_at IS NULL
-                AND DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-             )`
+           WHERE s.id IS NULL
+              OR s.status <> 'active'
+              OR DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`
     );
     return Number(result?.affectedRows || 0);
 }

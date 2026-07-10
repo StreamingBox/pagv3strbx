@@ -1,40 +1,81 @@
 #!/usr/bin/env bash
-# Ejecutar EN EL SERVIDOR EC2 (Ubuntu), dentro del clon del repo.
-# Instala dependencias, construye el frontend y reinicia el backend con PM2.
-#
-# Uso (en EC2):
-#   cd /var/www/pageV3
-#   chmod +x scripts/deploy-on-ec2.sh
-#   ./scripts/deploy-on-ec2.sh
-#
-# Variables opcionales:
-#   PM2_APP=pagev3-api   nombre del proceso en PM2 (default: pagev3-api)
+# Production deployment with a local rollback point. Run on the EC2 instance.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-cd "$REPO_ROOT"
-
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PM2_APP="${PM2_APP:-pagev3-api}"
+REPO_BRANCH="${REPO_BRANCH:-main}"
+BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/streaming-box}"
+HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/readiness}"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
-echo ">>> git pull"
-git pull --ff-only
+cd "$PROJECT_DIR"
+PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 
-echo ">>> backend: npm ci"
-(cd backend && npm ci)
+mkdir -p "$BACKUP_DIR"
+printf '%s\n' "$PREVIOUS_COMMIT" > "$BACKUP_DIR/previous-commit"
+if [ -d frontend/dist ]; then
+  tar -C frontend -czf "$BACKUP_DIR/frontend-dist.tgz" dist
+fi
 
-echo ">>> frontend: npm ci && build"
-(cd frontend && npm ci && npm run build)
+# Keep server-only configuration private; it is intentionally not copied into Git.
+find backend -maxdepth 1 -type f -name '.env*.bak*' -exec chmod 600 {} \; 2>/dev/null || true
 
+if [ "${SKIP_DB_BACKUP:-false}" != "true" ]; then
+  echo ">>> database backup"
+  node backend/scripts/backup-database.js "$BACKUP_DIR/database.sql.gz"
+fi
+
+rollback() {
+  echo ">>> deployment failed; restoring $PREVIOUS_COMMIT"
+  git reset --hard "$PREVIOUS_COMMIT"
+  if [ -f "$BACKUP_DIR/frontend-dist.tgz" ]; then
+    rm -rf frontend/dist
+    tar -C frontend -xzf "$BACKUP_DIR/frontend-dist.tgz"
+  fi
+  (cd backend && npm ci --omit=dev)
+  pm2 restart "$PM2_APP" --update-env || true
+}
+trap rollback ERR
+
+echo ">>> updating source"
+git fetch origin "$REPO_BRANCH"
+git reset --hard "origin/$REPO_BRANCH"
+
+echo ">>> backend checks"
+(cd backend && npm ci && npm run check && npm test)
+
+echo ">>> database migrations"
+(cd backend && npm run migrate)
+
+echo ">>> frontend checks"
+(cd frontend && npm ci && npm run lint && npm test && npm run build)
+
+echo ">>> dependency audits"
+npm audit --audit-level=high
+(cd backend && npm audit --audit-level=high)
+(cd frontend && npm audit --audit-level=high)
+
+echo ">>> restarting API"
 if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
-  echo ">>> pm2 restart $PM2_APP"
-  pm2 restart "$PM2_APP"
+  pm2 restart "$PM2_APP" --update-env
 else
-  echo ">>> pm2 start (primera vez)"
-  (cd backend && pm2 start src/index.js --name "$PM2_APP")
+  (cd backend && pm2 start src/index.js --name "$PM2_APP" --update-env)
   pm2 save
 fi
 
-echo ">>> Listo. Comprueba: curl -sI http://127.0.0.1:3000/ | head -3"
-pm2 status
+echo ">>> readiness check"
+for attempt in $(seq 1 18); do
+  if curl --fail --silent --show-error "$HEALTH_URL" >/dev/null; then
+    trap - ERR
+    echo ">>> deployment complete; backup: $BACKUP_DIR"
+    exit 0
+  fi
+  sleep 2
+done
+
+echo "API did not become ready after restart." >&2
+exit 1

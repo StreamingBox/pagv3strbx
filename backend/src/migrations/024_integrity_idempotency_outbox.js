@@ -31,6 +31,14 @@ module.exports = {
     id: "024_integrity_idempotency_outbox",
     name: "Harden account integrity, checkout retries and notification delivery",
     async up({ query }) {
+        // Legacy MariaDB accepted zero datetimes. Normalize them before any
+        // ALTER runs under strict SQL mode, otherwise the table conversion is blocked.
+        await query(`
+            UPDATE platform_accounts
+               SET expires_at = NULL
+             WHERE CAST(expires_at AS CHAR) LIKE '0000-00-00%'
+        `);
+
         // The legacy ENUM silently converted unsupported values to an empty string.
         // Keep the column permissive long enough to classify every legacy record first.
         await query("ALTER TABLE platform_accounts MODIFY COLUMN status VARCHAR(24) NOT NULL DEFAULT 'available'");

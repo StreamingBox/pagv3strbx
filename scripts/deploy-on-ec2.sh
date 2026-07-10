@@ -78,4 +78,6 @@ for attempt in $(seq 1 18); do
 done
 
 echo "API did not become ready after restart." >&2
+trap - ERR
+rollback
 exit 1

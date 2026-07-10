@@ -45,7 +45,7 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber,
     if (status) {
         if (status === "sold") {
             where.push("pa.status IN ('assigned','sold')");
-        } else if (["assigned", "available", "inactive", "down"].includes(status)) {
+        } else if (["assigned", "available", "inactive", "down", "expired", "disabled", "legacy_review"].includes(status)) {
             where.push("pa.status = ?");
             params.push(status);
         } else {

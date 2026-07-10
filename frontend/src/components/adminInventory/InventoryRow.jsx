@@ -73,6 +73,12 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                 badgeBg = "rgba(107,114,128,0.15)"; badgeColor = "#9ca3af"; badgeText = "Inactiva"; break;
             case "down":
                 badgeBg = "rgba(239,68,68,0.15)"; badgeColor = "#ef4444"; badgeText = "Caída"; break;
+            case "expired":
+                badgeBg = "rgba(245,158,11,0.15)"; badgeColor = "#f59e0b"; badgeText = "Vencida"; break;
+            case "disabled":
+                badgeBg = "rgba(107,114,128,0.18)"; badgeColor = "#9ca3af"; badgeText = "Deshabilitada"; break;
+            case "legacy_review":
+                badgeBg = "rgba(245,158,11,0.15)"; badgeColor = "#fbbf24"; badgeText = "Revisión manual"; break;
             default:
                 badgeBg = "rgba(255,255,255,0.05)"; badgeColor = "var(--muted)"; badgeText = String(it.status); break;
         }

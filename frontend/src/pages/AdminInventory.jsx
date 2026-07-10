@@ -22,7 +22,7 @@ export default function AdminInventory() {
     const [total, setTotal] = useState(0);
 
     const [platformId, setPlatformId] = useState("");
-    const [status, setStatus] = useState(""); // available | assigned | sold | inactive | down
+    const [status, setStatus] = useState(""); // available | assigned | sold | inactive | down | expired | disabled | legacy_review
     const [q, setQ] = useState("");
     const [assignedTo, setAssignedTo] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
@@ -116,6 +116,9 @@ export default function AdminInventory() {
             { value: "sold", label: "🟣 Vendidas (alias)" },
             { value: "inactive", label: "⚪ Inactivas" },
             { value: "down", label: "🔴 Caídas" },
+            { value: "expired", label: "🟠 Vencidas" },
+            { value: "disabled", label: "⛔ Deshabilitadas" },
+            { value: "legacy_review", label: "🟡 Revisión manual" },
         ],
         []
     );
@@ -535,6 +538,12 @@ export default function AdminInventory() {
                         </form>
                     </motion.div>
 
+                    {status === "legacy_review" && (
+                        <div style={{ marginBottom: 16, border: "1px solid rgba(245,158,11,0.36)", background: "rgba(245,158,11,0.10)", borderRadius: 12, padding: "12px 14px", color: "#fbbf24", fontSize: 13, lineHeight: 1.45 }}>
+                            Estas cuentas venían de estados antiguos ambiguos. Se mantienen fuera de la venta hasta que revises sus datos y elijas un estado seguro.
+                        </div>
+                    )}
+
                     {/* Table */}
                     <div style={{ flex: 1, background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 10px 40px rgba(0,0,0,0.15)" }}>
                         <div style={{ overflowX: "auto" }}>
@@ -913,7 +922,9 @@ export default function AdminInventory() {
                                         <option value="sold">Vendida</option>
                                         <option value="inactive">Inactiva</option>
                                         <option value="down">Caída</option>
+                                        <option value="expired">Vencida</option>
                                         <option value="disabled">Deshabilitada</option>
+                                        <option value="legacy_review">Revisión manual</option>
                                     </select>
                                 </div>
                             </div>

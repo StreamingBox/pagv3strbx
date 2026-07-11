@@ -515,6 +515,34 @@
     letter-spacing: .5px;
 }
 
+.catalog-card__promo-urgency {
+    align-items: center;
+    background: rgba(245, 158, 11, .12);
+    border: 1px solid rgba(245, 158, 11, .38);
+    border-radius: 6px;
+    color: #fbbf24;
+    display: inline-flex;
+    font-size: 9px;
+    font-weight: 900;
+    gap: 4px;
+    letter-spacing: .25px;
+    line-height: 1.2;
+    margin-top: 4px;
+    padding: 4px 6px;
+    text-transform: uppercase;
+    width: fit-content;
+}
+
+.catalog-card__promo-urgency svg {
+    flex: 0 0 auto;
+}
+
+:root[data-theme="light"] .catalog-card__promo-urgency {
+    background: rgba(180, 83, 9, .10);
+    border-color: rgba(180, 83, 9, .36);
+    color: #9a4f0a;
+}
+
 .catalog-card__details-btn {
     width: fit-content;
     min-height: 28px;

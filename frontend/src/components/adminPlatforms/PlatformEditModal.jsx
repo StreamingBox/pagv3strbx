@@ -75,6 +75,18 @@ export default function PlatformEditModal({ editingPlatform, setEditingPlatform,
                                                 </div>
                                             </div>
                                         </div>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Aviso de promo</label>
+                                            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true) ? "rgba(245,158,11,0.60)" : "var(--stroke)"}`, background: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true) ? "rgba(245,158,11,0.12)" : "var(--bg0)", cursor: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? "pointer" : "not-allowed", opacity: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) ? 1 : 0.48 }}>
+                                                <span style={{ fontSize: 13, fontWeight: 700, color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true) && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true) ? "#fbbf24" : "var(--muted)" }}>Mostrar aviso de últimas unidades</span>
+                                                <input
+                                                    type="checkbox"
+                                                    disabled={!(editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)}
+                                                    checked={editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true}
+                                                    onChange={e => setEditingPlatform({ ...editingPlatform, show_promo_last_units: e.target.checked ? 1 : 0 })}
+                                                />
+                                            </label>
+                                        </div>
                                         <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
                                             <button type="button" onClick={() => setEditingPlatform(null)} style={{ flex: 1, height: 44, borderRadius: 12, background: "transparent", border: "1px solid var(--stroke)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
                                             <button type="submit" disabled={saving} style={{ flex: 1, height: 44, borderRadius: 12, background: "var(--accent)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(13,166,242,0.3)" }}>{saving ? "Guardando..." : "Guardar Cambios"}</button>

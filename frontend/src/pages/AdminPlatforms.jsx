@@ -30,6 +30,7 @@ export default function AdminPlatforms() {
     const [type, setType] = useState("normal");
     const [isPromo, setIsPromo] = useState(false);
     const [promoColor, setPromoColor] = useState(DEFAULT_PROMO_COLOR);
+    const [showPromoLastUnits, setShowPromoLastUnits] = useState(false);
     const [showDeviceRule, setShowDeviceRule] = useState(true);
     const [productDetails, setProductDetails] = useState("");
 
@@ -84,12 +85,13 @@ export default function AdminPlatforms() {
                 product_details: productDetails,
                 show_device_rule: showDeviceRule ? 1 : 0,
                 is_promo: isPromo,
-                promo_color: isPromo ? normalizePromoColor(promoColor) : null
+                promo_color: isPromo ? normalizePromoColor(promoColor) : null,
+                show_promo_last_units: isPromo && showPromoLastUnits ? 1 : 0
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setType("normal"); setSlugManual(false);
             setProductDetails("");
-            setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR);
+            setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR); setShowPromoLastUnits(false);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -179,7 +181,11 @@ export default function AdminPlatforms() {
                 is_promo: editingPlatform.is_promo === 1 || editingPlatform.is_promo === true,
                 promo_color: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
                     ? normalizePromoColor(editingPlatform.promo_color || DEFAULT_PROMO_COLOR)
-                    : null
+                    : null,
+                show_promo_last_units: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
+                    && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true)
+                    ? 1
+                    : 0
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");
@@ -375,7 +381,14 @@ export default function AdminPlatforms() {
                                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Promoción</label>
                                 <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, height: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${isPromo ? `${promoColor}66` : "var(--stroke)"}`, background: isPromo ? `${promoColor}14` : "var(--bg0)", boxShadow: isPromo ? `0 0 18px ${promoColor}22` : "none", cursor: "pointer" }}>
                                     <span style={{ fontSize: 13, fontWeight: 700, color: isPromo ? promoColor : "var(--text)" }}>Resaltar como promo</span>
-                                    <input type="checkbox" checked={isPromo} onChange={e => setIsPromo(e.target.checked)} />
+                                    <input type="checkbox" checked={isPromo} onChange={e => { setIsPromo(e.target.checked); if (!e.target.checked) setShowPromoLastUnits(false); }} />
+                                </label>
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Aviso de promo</label>
+                                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${isPromo && showPromoLastUnits ? "rgba(245,158,11,0.60)" : "var(--stroke)"}`, background: isPromo && showPromoLastUnits ? "rgba(245,158,11,0.12)" : "var(--bg0)", cursor: isPromo ? "pointer" : "not-allowed", opacity: isPromo ? 1 : 0.48 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: isPromo && showPromoLastUnits ? "#fbbf24" : "var(--muted)" }}>Últimas unidades</span>
+                                    <input type="checkbox" disabled={!isPromo} checked={showPromoLastUnits} onChange={e => setShowPromoLastUnits(e.target.checked)} />
                                 </label>
                             </div>
                             <div>
@@ -599,7 +612,7 @@ export default function AdminPlatforms() {
                                                             boxShadow: `0 0 16px ${(p.promo_color || DEFAULT_PROMO_COLOR)}22`
                                                         }}>
                                                             <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.promo_color || DEFAULT_PROMO_COLOR, boxShadow: `0 0 12px ${p.promo_color || DEFAULT_PROMO_COLOR}` }} />
-                                                            Promo
+                                                            {p.show_promo_last_units ? "Promo + últimas" : "Promo"}
                                                         </span>
                                                     ) : (
                                                         <span style={{ fontSize: 11, color: "var(--muted)" }}>--</span>

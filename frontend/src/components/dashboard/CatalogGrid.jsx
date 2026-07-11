@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Info, ShoppingCart, X } from "lucide-react";
+import { Flame, Info, ShoppingCart, X } from "lucide-react";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
@@ -169,6 +169,9 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const promoRing = hexToRgba(promoColor, 0.62);
                 const promoGlow = hexToRgba(promoColor, 0.28);
                 const promoGlowStrong = hexToRgba(promoColor, 0.44);
+                const showPromoLastUnits = isPromo
+                    && !outOfStock
+                    && (item.platformPromoLastUnits === 1 || item.platformPromoLastUnits === true);
                 const promoBadgeText = item.is_renewable === 1 ? "Promoción" : "Promo";
 
                 return (
@@ -243,6 +246,12 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 )}
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>
+                            {showPromoLastUnits ? (
+                                <span className="catalog-card__promo-urgency">
+                                    <Flame size={12} aria-hidden="true" />
+                                    Últimas unidades de la promo
+                                </span>
+                            ) : null}
 
                             {detailLines(item.productDetails).length ? (
                                 <button

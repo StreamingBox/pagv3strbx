@@ -12,6 +12,7 @@ const {
 } = require("../utils/supportAttachmentStorage");
 const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
+const { assertActiveSupportSubscription } = require("../services/supportSubscriptionEligibility.service");
 const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const {
@@ -583,9 +584,18 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
                 message: "No encontramos ese ID entre tus cuentas compradas.",
             });
         }
-        if (subscription.status !== "active") {
-            return res.status(409).json({
-                message: "Solo puedes reportar cuentas que se encuentren activas.",
+        try {
+            assertActiveSupportSubscription(
+                subscription,
+                {
+                    inactiveMessage: "Solo puedes reportar cuentas que se encuentren activas.",
+                    expiredMessage: "No puedes reportar una cuenta cuyo pedido ya vencio.",
+                }
+            );
+        } catch (error) {
+            return res.status(error.status).json({
+                code: error.code,
+                message: error.message,
             });
         }
 
@@ -992,6 +1002,25 @@ router.patch(
             if (ticket.status === "resolved") {
                 await conn.rollback();
                 return res.status(409).json({ message: "El caso ya fue resuelto." });
+            }
+            const [subscriptionRows] = await conn.query(
+                "SELECT id, status, expires_at FROM subscriptions WHERE id = ? FOR UPDATE",
+                [ticket.subscriptionId]
+            );
+            try {
+                assertActiveSupportSubscription(
+                    subscriptionRows[0],
+                    {
+                        inactiveMessage: "No se puede escalar el caso: el pedido ya no esta activo.",
+                        expiredMessage: "No se puede escalar el caso: el pedido ya vencio.",
+                    }
+                );
+            } catch (error) {
+                await conn.rollback();
+                return res.status(error.status).json({
+                    code: error.code,
+                    message: error.message,
+                });
             }
             await conn.query(
                 "UPDATE support_tickets SET status = 'in_progress' WHERE id = ?",

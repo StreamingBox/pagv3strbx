@@ -501,7 +501,7 @@ export default function AdminSupport() {
                                                     {selected.resolutionSubtypeLabel || getSubtypeLabel(selected.resolutionSubtype)}
                                                 </span>
                                             ) : null}
-                                            <p>{selected.resolutionMessage}</p>
+                                            <p style={{ whiteSpace: "pre-line" }}>{selected.resolutionMessage}</p>
                                             <span>Resuelto {formatDate(selected.resolvedAt)}</span>
                                         </div>
                                     ) : (

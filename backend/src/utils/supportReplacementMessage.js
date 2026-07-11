@@ -1,4 +1,4 @@
-const { formatDateOnlyBogota } = require("./date");
+const { buildAccountDeliveryMessage } = require("./deliveryMessage");
 
 function buildCredentialUrl(baseUrl, token) {
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
@@ -6,6 +6,7 @@ function buildCredentialUrl(baseUrl, token) {
 }
 
 function buildReplacementCredentialsMessage({
+    orderCode,
     subscriptionId,
     platformName,
     account,
@@ -13,37 +14,42 @@ function buildReplacementCredentialsMessage({
     token,
     baseUrl,
 }) {
-    const safeAccount = account || {};
-    const lines = [
-        "Nuevas credenciales de tu cuenta:",
-        `ID: ${subscriptionId || "-"} | ${platformName || "Cuenta reemplazada"}`,
-    ];
-
-    if (safeAccount.email) lines.push(`Correo: ${safeAccount.email}`);
-    if (safeAccount.password) lines.push(`Contraseña: ${safeAccount.password}`);
-    if (safeAccount.profile_number !== null && safeAccount.profile_number !== undefined && String(safeAccount.profile_number).trim() !== "") {
-        lines.push(`Perfil: ${safeAccount.profile_number}`);
-    }
-    if (safeAccount.pin !== null && safeAccount.pin !== undefined && String(safeAccount.pin).trim() !== "") {
-        lines.push(`Pin: ${safeAccount.pin}`);
-    }
-    if (expiresAt) lines.push(`Expira: ${formatDateOnlyBogota(expiresAt)}`);
-
-    const credentialUrl = buildCredentialUrl(baseUrl, token);
-    if (credentialUrl) lines.push(`Enlace de credenciales: ${credentialUrl}`);
-
-    return lines.join("\n");
+    return buildAccountDeliveryMessage({
+        intro: "Tu cuenta ha sido reemplazada por:",
+        orderCode,
+        itemCount: 1,
+        subscriptionId,
+        platformName: platformName || "Cuenta reemplazada",
+        account,
+        expiresAt,
+        token,
+        baseUrl,
+    });
 }
 
 function appendReplacementCredentialsMessage(resolutionMessage, replacementMessage) {
     const base = String(resolutionMessage || "").trim();
     const credentials = String(replacementMessage || "").trim();
+    const normalizedBase = base
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
     if (!base) return credentials;
     if (!credentials) return base;
+    if (
+        normalizedBase === "tu cuenta ha sido reemplazada por:" ||
+        normalizedBase.startsWith("nuevas credenciales de tu cuenta:") ||
+        normalizedBase.startsWith("reemplazamos tu cuenta.")
+    ) {
+        return credentials;
+    }
+
     return `${base}\n\n${credentials}`;
 }
 
 module.exports = {
     appendReplacementCredentialsMessage,
+    buildCredentialUrl,
     buildReplacementCredentialsMessage,
 };

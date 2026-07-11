@@ -266,6 +266,7 @@ async function buildReplacementResolutionMessage(conn, {
         createdByUserId,
     });
     const credentials = buildReplacementCredentialsMessage({
+        orderCode: ticket.orderCode || (ticket.orderId ? `#${ticket.orderId}` : "-"),
         subscriptionId: ticket.subscriptionId,
         platformName: ticket.platformName,
         account: replacement?.newAccount,
@@ -1034,7 +1035,7 @@ router.post(
             return res.status(400).json({ message: "Selecciona el resultado de la gestion." });
         }
         if (resolutionType === "replaced" && !resolutionMessage) {
-            resolutionMessage = "Reemplazamos tu cuenta. A continuacion encontraras las nuevas credenciales y el enlace de acceso actualizado.";
+            resolutionMessage = "Tu cuenta ha sido reemplazada por:";
         }
         if (resolutionMessage.length < 10 || resolutionMessage.length > 3000) {
             return res.status(400).json({

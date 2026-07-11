@@ -51,6 +51,61 @@ function salesContactPhone() {
     return String(process.env.SALES_CONTACT_PHONE || "3152485340").trim();
 }
 
+function buildAccountDeliveryMessage({
+    intro = "",
+    orderCode,
+    itemCount = 1,
+    subscriptionId,
+    platformName,
+    account,
+    expiresAt,
+    token,
+    baseUrl,
+}) {
+    const safeAccount = account || {};
+    const lines = [];
+    const url = token ? credentialUrl(baseUrl, token) : "";
+
+    if (String(intro || "").trim()) {
+        lines.push(String(intro).trim());
+        lines.push("");
+    }
+
+    lines.push(`🧾 Orden: ${orderCode || "-"}`);
+    lines.push(`📦 Pedido múltiple (${Number(itemCount) || 1} items)`);
+    lines.push("");
+    lines.push(`🆔 ID: ${subscriptionId || "-"} | 🖥️ ${platformName || "Producto"}`);
+
+    if (safeAccount.email) {
+        lines.push(`📧 Correo: ${safeAccount.email}`);
+    }
+
+    if (safeAccount.password) {
+        lines.push(`🔑 Contraseña: ${safeAccount.password}`);
+    }
+
+    const profile = safeAccount.profile_number;
+    if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
+        lines.push(`👤 Perfil: ${profile}`);
+    }
+
+    const pin = safeAccount.pin;
+    if (pin !== null && pin !== undefined && String(pin).trim() !== "") {
+        lines.push(`🔢 Pin: ${pin}`);
+    }
+
+    if (expiresAt) {
+        lines.push(`📅 Expira: ${formatDateOnlyBogota(expiresAt)}`);
+    }
+
+    if (url) {
+        lines.push("");
+        lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
+    }
+
+    return lines.join("\n").trim();
+}
+
 function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
@@ -122,6 +177,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
 
 module.exports = {
     activationServiceName,
+    buildAccountDeliveryMessage,
     buildDeliveryMessage,
     isAssistedActivationProduct,
     salesContactPhone,

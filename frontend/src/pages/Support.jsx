@@ -302,7 +302,7 @@ export default function Support() {
                                         {ticket.status === "resolved" ? (
                                             <div className="support-resolution">
                                                 <strong>{RESULT[ticket.resolutionType] || "Caso resuelto"}</strong>
-                                                <p>{ticket.resolutionMessage}</p>
+                                                <p style={{ whiteSpace: "pre-line" }}>{ticket.resolutionMessage}</p>
                                                 <span>{formatDate(ticket.resolvedAt)}</span>
                                                 {ticket.canReopen ? (
                                                     <button

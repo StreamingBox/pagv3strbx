@@ -1,8 +1,7 @@
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
 const {
-    activationServiceName,
-    isAssistedActivationProduct,
+    buildDeliveryMessage,
     salesContactPhone,
 } = require("../utils/deliveryMessage");
 
@@ -188,16 +187,6 @@ function formatDateTime(value) {
     }).format(date);
 }
 
-function formatDateOnly(value) {
-    if (!value) return null;
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return new Intl.DateTimeFormat("es-CO", {
-        dateStyle: "long",
-        timeZone: "America/Bogota",
-    }).format(date);
-}
-
 function formatMoney(value, currency = "COP") {
     return new Intl.NumberFormat("es-CO", {
         style: "currency",
@@ -224,67 +213,16 @@ function escapeHtml(value) {
         .replace(/'/g, "&#39;");
 }
 
-function buildCredentialFields(result) {
-    const account = result?.account || {};
-    const fields = [];
-
-    fields.push({
-        label: "ID de entrega",
-        value: result?.subscriptionId ? String(result.subscriptionId) : null,
-    });
-
-    if (account.email) fields.push({ label: "Correo", value: account.email, type: "email" });
-    if (account.password) fields.push({ label: "Contrasena", value: account.password, type: "code" });
-
-    if (account.profile_number !== null && account.profile_number !== undefined && String(account.profile_number).trim() !== "") {
-        fields.push({ label: "Perfil", value: String(account.profile_number) });
-    }
-
-    if (account.pin !== null && account.pin !== undefined && String(account.pin).trim() !== "") {
-        fields.push({ label: "PIN", value: String(account.pin), type: "code" });
-    }
-
-    if (account.access_url) {
-        fields.push({ label: "URL de acceso", value: account.access_url, type: "link" });
-    }
-
-    if (result?.expiresAt) {
-        fields.push({ label: "Expira", value: formatDateTime(result.expiresAt) || formatDateOnly(result.expiresAt) });
-    }
-
-    if (!fields.some((field) => field.label === "Correo" || field.label === "Contrasena")) {
-        fields.push({
-            label: "Entrega",
-            value: "Tu entrega fue registrada. Si este producto requiere activacion manual, revisa tu panel o contacta soporte.",
-        });
-    }
-
-    return fields.filter((field) => field.value);
+function plainTextToHtml(value) {
+    return escapeHtml(value).replace(/\n/g, "<br>");
 }
 
-function renderHtmlField(field) {
-    const label = escapeHtml(field.label);
-    const value = String(field.value || "");
-
-    if (field.type === "link") {
-        const safeHref = escapeHtml(value);
-        return `<div style="margin:0 0 10px;font-size:15px;color:#334155"><strong style="color:#0f172a">${label}:</strong> <a href="${safeHref}" style="color:#2563eb;text-decoration:none;word-break:break-all">${safeHref}</a></div>`;
-    }
-
-    if (field.type === "email") {
-        const safeMail = escapeHtml(value);
-        return `<div style="margin:0 0 10px;font-size:15px;color:#334155"><strong style="color:#0f172a">${label}:</strong> <a href="mailto:${safeMail}" style="color:#2563eb;text-decoration:none;word-break:break-all">${safeMail}</a></div>`;
-    }
-
-    if (field.type === "code") {
-        return `<div style="margin:0 0 10px;font-size:15px;color:#334155"><strong style="color:#0f172a">${label}:</strong> <span style="display:inline-block;background:#e2e8f0;border-radius:8px;padding:4px 8px;font-family:Consolas,Monaco,'Courier New',monospace;color:#0f172a;word-break:break-all">${escapeHtml(value)}</span></div>`;
-    }
-
-    return `<div style="margin:0 0 10px;font-size:15px;color:#334155"><strong style="color:#0f172a">${label}:</strong> ${escapeHtml(value)}</div>`;
-}
-
-function renderTextField(field) {
-    return `${field.label}: ${field.value}`;
+function buildPlainMessageBox(message) {
+    return `
+        <div style="border:1px solid #d8e1f0;border-radius:16px;background:#f8fbff;padding:18px 20px;margin:0 0 20px;font-size:15px;line-height:1.7;color:#0f172a;word-break:break-word">
+            ${plainTextToHtml(message)}
+        </div>
+    `;
 }
 
 async function sendPasswordResetEmail({ to, name, resetUrl, expiresMinutes }) {
@@ -369,71 +307,27 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
     const contactPhone = salesContactPhone();
 
     const normalizedResults = Array.isArray(results) ? results : [];
-    const itemCount = normalizedResults.length;
-
-    const itemBlocksText = normalizedResults.map((result, index) => {
-        const plan = result?.plan || {};
-        const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
-        const assistedActivation = isAssistedActivationProduct(platformLabel);
-        const credentialUrl = !assistedActivation && result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = assistedActivation
-            ? [{
-                label: "Activación",
-                value: `Comunícate al WhatsApp ${contactPhone} para que te ayuden con la activación. Indica la orden ${orderCode}.`,
-            }]
-            : buildCredentialFields(result);
-        const lines = [`🆔 ID: ${result?.subscriptionId || "-"} | 🖥️ ${platformLabel}`];
-        for (const field of fields) {
-            if (field.label === "Correo") lines.push(`📧 ${renderTextField(field)}`);
-            else if (field.label === "Contrasena") lines.push(`🔑 ${renderTextField(field)}`);
-            else if (field.label === "Perfil") lines.push(`👤 ${renderTextField(field)}`);
-            else if (field.label === "PIN") lines.push(`🔐 ${renderTextField(field)}`);
-            else if (field.label === "Expira") lines.push(`📅 ${renderTextField(field)}`);
-            else lines.push(renderTextField(field));
-        }
-        if (credentialUrl) lines.push(`🔗 Acceso seguro: ${credentialUrl}`);
-        return lines.join("\n");
-    }).join("\n\n");
+    const deliveryMessage = buildDeliveryMessage({
+        orderCode,
+        results: normalizedResults,
+        baseUrl,
+    });
 
     const text = [
         `Hola ${greetingName},`,
         "",
-        "Tu compra fue entregada correctamente. Guarda esta informacion en un lugar seguro.",
+        "Tu compra fue entregada correctamente. Guarda esta información en un lugar seguro.",
         "",
-        `🧾 Orden: ${orderCode}`,
-        `📦 Pedido multiple (${itemCount} item${itemCount === 1 ? "" : "s"})`,
-        `💳 Metodo de pago: ${paymentMethod}`,
+        deliveryMessage,
+        "",
+        `💳 Método de pago: ${paymentMethod}`,
         `💰 Total pagado: ${totalText}`,
-        "",
-        itemBlocksText,
         "",
         contactPhone ? `📞 Ventas y soporte: ${contactPhone}` : "",
         "Si no reconoces esta compra, responde a este correo.",
     ].join("\n");
 
-    const itemBlocksHtml = normalizedResults.map((result, index) => {
-        const plan = result?.plan || {};
-        const platformLabel = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
-        const assistedActivation = isAssistedActivationProduct(platformLabel);
-        const credentialUrl = !assistedActivation && result?.token ? `${baseUrl}/s/${result.token}` : null;
-        const fields = assistedActivation
-            ? [{
-                label: "Activación",
-                value: `Comunícate al WhatsApp ${contactPhone} para que te ayuden con la activación. Indica la orden ${orderCode} y el producto ${activationServiceName(platformLabel)}.`,
-            }]
-            : buildCredentialFields(result);
-
-        return `
-            <div style="border:1px solid #cfd8ea;border-radius:16px;padding:18px 18px 14px;margin:0 0 18px;background:#f8fbff">
-                <div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#2557d6;margin:0 0 10px">📦 Licencia #${index + 1}</div>
-                <div style="font-size:19px;font-weight:800;color:#0f172a;margin:0 0 8px">${escapeHtml(platformLabel)}</div>
-                <div style="font-size:15px;color:#334155;margin:0 0 12px"><strong style="color:#0f172a">🆔 ID:</strong> ${escapeHtml(result?.subscriptionId || "-")}</div>
-                ${fields.map(renderHtmlField).join("")}
-                ${credentialUrl ? `<div style="margin-top:12px"><a href="${escapeHtml(credentialUrl)}" style="display:inline-block;background:#2557d6;color:#ffffff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 14px;border-radius:10px">🔗 Abrir acceso seguro</a></div>` : ""}
-            </div>
-        `;
-    }).join("");
-
+    const deliveryMessageHtml = buildPlainMessageBox(deliveryMessage);
     const html = `
         <div style="margin:0;padding:28px;background:#eaf0ff;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
             <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #dbe4f5;border-radius:20px;overflow:hidden">
@@ -445,18 +339,16 @@ async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, re
                 <div style="padding:30px">
                     <div style="font-size:16px;font-weight:700;margin:0 0 10px">Hola ${escapeHtml(greetingName)},</div>
                     <div style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 22px">
-                        Tu orden fue entregada correctamente. Guarda esta informacion en un lugar seguro.
+                        Tu orden fue entregada correctamente. Guarda esta información en un lugar seguro.
                     </div>
 
+                    ${deliveryMessageHtml}
+
                     <div style="border:1px solid #d8e1f0;border-radius:16px;background:#f8fbff;padding:16px 18px;margin:0 0 20px">
-                        <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">🧾 Orden:</strong> ${escapeHtml(orderCode)}</div>
-                        <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">📦 Pedido multiple:</strong> ${escapeHtml(String(itemCount))} item${itemCount === 1 ? "" : "s"}</div>
-                        <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">💳 Metodo de pago:</strong> ${escapeHtml(paymentMethod)}</div>
+                        <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">💳 Método de pago:</strong> ${escapeHtml(paymentMethod)}</div>
                         <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">💰 Total pagado:</strong> ${escapeHtml(totalText)}</div>
                         <div style="font-size:14px;color:#64748b"><strong style="color:#334155">🕒 Fecha de entrega:</strong> ${escapeHtml(orderDateText)}</div>
                     </div>
-
-                    ${itemBlocksHtml}
 
                     <div style="border:1px solid #d8e1f0;border-radius:16px;background:#ffffff;padding:16px 18px;margin-top:8px">
                         <div style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 8px">📞 Contacto de ventas</div>
@@ -735,7 +627,7 @@ async function sendStockAvailableEmail({ to, name, platformName, durationName })
     }
 }
 
-function buildSupportEmailFrame({ title, subtitle, greetingName, body, details, footer }) {
+function buildSupportEmailFrame({ title, subtitle, greetingName, body, details = [], footer, messageHtml = "" }) {
     const appName = process.env.APP_NAME || "Streaming Box";
     const detailRows = details
         .filter((item) => item?.value !== null && item?.value !== undefined && String(item.value).trim())
@@ -758,9 +650,12 @@ function buildSupportEmailFrame({ title, subtitle, greetingName, body, details, 
                 <div style="padding:30px">
                     <div style="font-size:16px;font-weight:700;margin:0 0 12px">Hola ${escapeHtml(greetingName || "cliente")},</div>
                     <div style="font-size:15px;line-height:1.65;color:#475569;margin:0 0 20px">${escapeHtml(body)}</div>
-                    <div style="border:1px solid #d8e1f0;border-radius:14px;background:#f8fbff;padding:17px 18px;margin:0 0 20px">
-                        ${detailRows}
-                    </div>
+                    ${messageHtml || ""}
+                    ${detailRows ? `
+                        <div style="border:1px solid #d8e1f0;border-radius:14px;background:#f8fbff;padding:17px 18px;margin:0 0 20px">
+                            ${detailRows}
+                        </div>
+                    ` : ""}
                     <div style="font-size:13px;line-height:1.6;color:#64748b">${escapeHtml(footer)}</div>
                 </div>
             </div>
@@ -860,6 +755,7 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
         other: "Caso resuelto",
     };
     const resultLabel = resolutionLabels[ticket.resolutionType] || "Caso resuelto";
+    const isReplacementResolution = ticket.resolutionType === "replaced";
     const details = [
         { label: "Caso", value: ticket.ticketCode },
         { label: "ID de cuenta", value: `#${ticket.subscriptionId}` },
@@ -868,20 +764,30 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
         ...(ticket.resolutionSubtypeLabel ? [{ label: "Detalle del cierre", value: ticket.resolutionSubtypeLabel }] : []),
         { label: "Respuesta de soporte", value: ticket.resolutionMessage },
     ];
+    const visibleDetails = isReplacementResolution
+        ? details.filter((item) => item.label !== "Respuesta de soporte")
+        : details;
     const subject = `${process.env.APP_NAME || "Streaming Box"} | ${resultLabel} ${ticket.ticketCode}`;
     const text = [
         `Hola ${customerName || "cliente"},`,
         "",
         "Tu solicitud de soporte fue atendida.",
         "",
-        ...details.map((item) => `${item.label}: ${item.value}`),
+        ...(isReplacementResolution
+            ? [
+                ...visibleDetails.map((item) => `${item.label}: ${item.value}`),
+                "",
+                ticket.resolutionMessage,
+            ]
+            : details.map((item) => `${item.label}: ${item.value}`)),
     ].join("\n");
     const html = buildSupportEmailFrame({
         title: resultLabel,
         subtitle: "Tu solicitud de soporte fue atendida.",
         greetingName: customerName,
         body: "Revisamos la novedad reportada. A continuacion encuentras el resultado de la gestion realizada.",
-        details,
+        details: visibleDetails,
+        messageHtml: isReplacementResolution ? buildPlainMessageBox(ticket.resolutionMessage) : "",
         footer: `Si la novedad continua, responde este correo o crea un nuevo caso. Correo de soporte: ${inbox}`,
     });
 

@@ -6,37 +6,59 @@ const {
     buildReplacementCredentialsMessage,
 } = require("../src/utils/supportReplacementMessage");
 
-test("replacement support message includes the delivered account and existing credential link", () => {
+test("replacement support message uses the full delivery format", () => {
     const message = buildReplacementCredentialsMessage({
-        subscriptionId: 4708,
-        platformName: "Netflix",
+        orderCode: "ORD-MRBEMA3D-HZYGJF",
+        subscriptionId: 4750,
+        platformName: "Max",
         account: {
-            email: "new-account@example.com",
-            password: "NewPassword1",
-            pin: "1234",
-            profile_number: 3,
+            email: "medrano364uz@jeffpremium.com",
+            password: "miskiye534",
+            pin: "3833",
+            profile_number: 2,
         },
-        expiresAt: "2026-08-03",
-        token: "safe-token",
+        expiresAt: "2026-08-06",
+        token: "UBV8slY3Ai",
         baseUrl: "https://strbx.com.co/",
     });
 
-    assert.match(message, /Correo: new-account@example.com/);
-    assert.match(message, /Contraseña: NewPassword1/);
-    assert.match(message, /Perfil: 3/);
-    assert.match(message, /Pin: 1234/);
-    assert.match(message, /Expira: 2026-08-03/);
-    assert.match(message, /https:\/\/strbx.com.co\/s\/safe-token/);
+    assert.equal(
+        message,
+        [
+            "Tu cuenta ha sido reemplazada por:",
+            "",
+            "🧾 Orden: ORD-MRBEMA3D-HZYGJF",
+            "📦 Pedido múltiple (1 items)",
+            "",
+            "🆔 ID: 4750 | 🖥️ Max",
+            "📧 Correo: medrano364uz@jeffpremium.com",
+            "🔑 Contraseña: miskiye534",
+            "👤 Perfil: 2",
+            "🔢 Pin: 3833",
+            "📅 Expira: 2026-08-06",
+            "",
+            "🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace https://strbx.com.co/s/UBV8slY3Ai puedes consultar la contraseña hasta tu último día contratado. 💻🔑:",
+        ].join("\n")
+    );
 });
 
-test("replacement credentials are appended after the agent response", () => {
+test("default replacement intro is not duplicated before the delivery block", () => {
     const message = appendReplacementCredentialsMessage(
-        "Reemplazamos tu cuenta.",
-        "Nuevas credenciales de tu cuenta:\nCorreo: new-account@example.com"
+        "Tu cuenta ha sido reemplazada por:",
+        "Tu cuenta ha sido reemplazada por:\n\n🧾 Orden: ORD-TEST"
+    );
+
+    assert.equal(message, "Tu cuenta ha sido reemplazada por:\n\n🧾 Orden: ORD-TEST");
+});
+
+test("custom agent responses are kept before replacement credentials", () => {
+    const message = appendReplacementCredentialsMessage(
+        "Ya revisamos tu caso y realizamos el cambio.",
+        "Tu cuenta ha sido reemplazada por:\n\n🧾 Orden: ORD-TEST"
     );
 
     assert.equal(
         message,
-        "Reemplazamos tu cuenta.\n\nNuevas credenciales de tu cuenta:\nCorreo: new-account@example.com"
+        "Ya revisamos tu caso y realizamos el cambio.\n\nTu cuenta ha sido reemplazada por:\n\n🧾 Orden: ORD-TEST"
     );
 });

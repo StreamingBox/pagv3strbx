@@ -4,7 +4,6 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const {
-    formatDateOnlyBogota,
     bogotaDateOnlyToUtcEndOfDay,
     isStoredDateOnlyExpired,
     toSqlDateTime,
@@ -13,6 +12,7 @@ const {
     findAvailableAccountForPlatform,
     getCandidatePlatformsForPlatform,
 } = require("../services/platformFallbacks.service");
+const { buildAccountDeliveryMessage } = require("../utils/deliveryMessage");
 
 const router = express.Router();
 
@@ -24,37 +24,6 @@ const router = express.Router();
  * Nota: NO cambia la orden, ni el plan, ni la fecha de expiraciÃ³n (expires_at).
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
-
-function buildAccountDeliveryMessage({ intro = "Detalle de la cuenta:", orderCode, subscriptionId, platformName, account, expiresAt, token, baseUrl }) {
-    const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
-    const credentialUrl = token ? `${cleanBaseUrl}/s/${token}` : "";
-    const lines = [
-        intro,
-        "",
-        `🧾 Orden: ${orderCode || "-"}`,
-        "📦 Pedido múltiple (1 items)",
-        "",
-        `🆔 ID: ${subscriptionId || "-"} | 🖥️ ${platformName || "—"}`,
-    ];
-
-    if (account?.email) lines.push(`📧 Correo: ${account.email}`);
-    if (account?.password) lines.push(`🔑 Contraseña: ${account.password}`);
-    if (account?.profile_number !== null && account?.profile_number !== undefined && String(account.profile_number).trim() !== "") {
-        lines.push(`👤 Perfil: ${account.profile_number}`);
-    }
-    if (account?.pin !== null && account?.pin !== undefined && String(account.pin).trim() !== "") {
-        lines.push(`🔢 Pin: ${account.pin}`);
-    }
-    if (expiresAt) {
-        lines.push(`📅 Expira: ${formatDateOnlyBogota(expiresAt)}`);
-    }
-    if (credentialUrl) {
-        lines.push("");
-        lines.push(`*🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${credentialUrl} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:*`);
-    }
-
-    return lines.join("\n").trim();
-}
 
 async function getReplacementCandidates(conn, { platformId, currentAccountId, additionalPlatformIds = [] }) {
     const candidatePlatforms = await getCandidatePlatformsForPlatform(

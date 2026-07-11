@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { buildDeliveryMessage } = require("../src/utils/deliveryMessage");
+const {
+    buildAccountDeliveryMessage,
+    buildDeliveryMessage,
+} = require("../src/utils/deliveryMessage");
 
 function buildSingleItemMessage({ platformName, type = "normal", account = {}, showDeviceRule }) {
     return buildDeliveryMessage({
@@ -119,16 +122,14 @@ test("ChatGPT Cuenta Personal delivers only email, password, and optional 2FA", 
         platformName: "ChatGPT Cuenta Personal",
         account: { two_factor_secret: "2fa-secreto" },
     });
-    const lines = message.split("\n");
-
-    assert.deepEqual(lines, [
-        "Correo: cliente@example.com",
-        lines[1],
-        "2FA: 2fa-secreto",
-    ]);
-    assert.match(lines[1], /^Contrase/);
-    assert.match(lines[1], /secret$/);
-    assert.doesNotMatch(message, /Orden:|Perfil:|Pin:|Expira:|Regla de uso|strbx\.com\.co\/s\//);
+    assert.match(message, /Orden: ORD-TEST/);
+    assert.match(message, /Pedido m/);
+    assert.match(message, /ID: 123 .*ChatGPT Cuenta Personal/);
+    assert.match(message, /Correo: cliente@example\.com/);
+    assert.match(message, /Contrase.*secret/);
+    assert.match(message, /2FA: 2fa-secreto/);
+    assert.match(message, /Consulta 2FA: https:\/\/2fa\.live\//);
+    assert.doesNotMatch(message, /Perfil:|Pin:|Expira:|Regla de uso|strbx\.com\.co\/s\//);
 });
 
 test("ChatGPT Cuenta Personal omits 2FA when it was left empty", () => {
@@ -136,11 +137,34 @@ test("ChatGPT Cuenta Personal omits 2FA when it was left empty", () => {
         platformName: "ChatGPT Cuenta Personal",
         account: { two_factor_secret: "" },
     });
-    const lines = message.split("\n");
-
-    assert.equal(lines.length, 2);
-    assert.equal(lines[0], "Correo: cliente@example.com");
-    assert.match(lines[1], /^Contrase/);
-    assert.match(lines[1], /secret$/);
+    assert.match(message, /Orden: ORD-TEST/);
+    assert.match(message, /ID: 123 .*ChatGPT Cuenta Personal/);
+    assert.match(message, /Correo: cliente@example\.com/);
+    assert.match(message, /Contrase.*secret/);
     assert.doesNotMatch(message, /2FA/);
+    assert.doesNotMatch(message, /2fa\.live/);
+});
+
+test("ChatGPT Cuenta Personal replacement keeps the delivery header without contract details", () => {
+    const message = buildAccountDeliveryMessage({
+        intro: "Tu cuenta ha sido reemplazada por:",
+        orderCode: "ORD-REEMPLAZO",
+        subscriptionId: 456,
+        platformName: "ChatGPT Cuenta Personal",
+        account: {
+            email: "cliente@example.com",
+            password: "secret",
+            two_factor_secret: "2fa-secreto",
+        },
+        expiresAt: "2026-07-31",
+        token: "TOKEN123",
+        baseUrl: "https://strbx.com.co",
+    });
+
+    assert.match(message, /^Tu cuenta ha sido reemplazada por:/);
+    assert.match(message, /Orden: ORD-REEMPLAZO/);
+    assert.match(message, /ID: 456 .*ChatGPT Cuenta Personal/);
+    assert.match(message, /2FA: 2fa-secreto/);
+    assert.match(message, /Consulta 2FA: https:\/\/2fa\.live\//);
+    assert.doesNotMatch(message, /Perfil:|Pin:|Expira:|strbx\.com\.co\/s\//);
 });

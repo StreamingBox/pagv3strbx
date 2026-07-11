@@ -55,6 +55,7 @@ function buildChatGPTPersonalCredentialsMessage(account = {}) {
     ];
     if (String(twoFactor || "").trim()) {
         lines.push("2FA: " + String(twoFactor).trim());
+        lines.push("Consulta 2FA: https://2fa.live/");
     }
     return lines.join("\n");
 }
@@ -91,13 +92,6 @@ function buildAccountDeliveryMessage({
     const lines = [];
     const url = token ? credentialUrl(baseUrl, token) : "";
 
-    if (isChatGPTPersonalProduct({ platformName, platformSlug })) {
-        const credentials = buildChatGPTPersonalCredentialsMessage(safeAccount);
-        return String(intro || "").trim()
-            ? String(intro).trim() + "\n\n" + credentials
-            : credentials;
-    }
-
     if (String(intro || "").trim()) {
         lines.push(String(intro).trim());
         lines.push("");
@@ -107,6 +101,11 @@ function buildAccountDeliveryMessage({
     lines.push(`📦 Pedido múltiple (${Number(itemCount) || 1} items)`);
     lines.push("");
     lines.push(`🆔 ID: ${subscriptionId || "-"} | 🖥️ ${platformName || "Producto"}`);
+
+    if (isChatGPTPersonalProduct({ platformName, platformSlug })) {
+        lines.push(buildChatGPTPersonalCredentialsMessage(safeAccount));
+        return lines.join("\n").trim();
+    }
 
     if (safeAccount.email) {
         lines.push(`📧 Correo: ${safeAccount.email}`);
@@ -148,10 +147,6 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         });
     };
 
-    if (safeResults.length === 1 && isChatGPTPersonalResult(safeResults[0])) {
-        return buildChatGPTPersonalCredentialsMessage(safeResults[0]?.account || {});
-    }
-
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
         return !isChatGPTPersonalResult(result)
@@ -171,6 +166,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
         if (isChatGPTPersonalResult(result)) {
+            lines.push(`\u{1F194} ID: ${result?.subscriptionId || "-"} | \u{1F5A5}\uFE0F ${platformName}`);
             lines.push(buildChatGPTPersonalCredentialsMessage(account));
             lines.push("");
             continue;

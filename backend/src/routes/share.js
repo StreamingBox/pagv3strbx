@@ -7,6 +7,7 @@ const {
   formatStoredDateOnly,
   isStoredDateOnlyExpired,
 } = require("../utils/date");
+const { isChatGPTPersonalProduct } = require("../utils/deliveryMessage");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -98,9 +99,11 @@ async function loadCredentialByToken(token) {
        s.expires_at,
        s.status,
        p.name AS platform_name,
+       p.slug AS platform_slug,
        a.email,
        a.password,
        a.pin,
+       a.two_factor_secret,
        a.profile_number,
        a.expires_at AS account_expires_at,
        NULLIF(TRIM(u.whatsapp), '') AS buyer_whatsapp,
@@ -162,6 +165,10 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     const exp = formatStoredDateOnly(r.expires_at);
     const remaining = daysRemainingStoredDateOnly(r.expires_at);
     const isEmailMode = r.platform_type === "correo";
+    const isChatGPTPersonal = isChatGPTPersonalProduct({
+      platformName: r.platform_name,
+      platformSlug: r.platform_slug,
+    });
     const rawWhatsappUrl = buildAccountHelpWhatsappUrl({
       platformName: r.platform_name,
       orderId: r.order_id,
@@ -179,6 +186,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         email: r.email,
         password: r.password,
         pin: r.pin,
+        twoFactorSecret: r.two_factor_secret,
         profileNumber: r.profile_number,
         expiresAt: displayExpiresAt,
         expiresLabel: exp,
@@ -188,6 +196,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         showWhatsapp: Boolean(rawWhatsappUrl),
         waLink: rawWhatsappUrl || null,
         isEmailMode,
+        isChatGPTPersonal,
       });
     }
 
@@ -214,6 +223,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         <div id="cred-status" class="row" style="display:none;"><div class="label"></div><div class="value cred-err"></div></div>
         <div class="row cred-row"><div class="label">Correo:</div><div class="value" id="cred-email">Cargando…</div></div>
         <div class="row cred-row"><div class="label">Contraseña:</div><div class="value" id="cred-pass">…</div></div>
+        <div id="cred-2fa-row" class="row cred-row" style="display:none;"><div class="label">2FA:</div><div class="value" id="cred-2fa">…</div></div>
         <div class="row cred-row"><div class="label">Perfil:</div><div class="value" id="cred-profile">…</div></div>
         <div class="row cred-row"><div class="label">Pin:</div><div class="value" id="cred-pin">…</div></div>
         <script>
@@ -241,6 +251,18 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
                 set("cred-pass", d.password);
                 set("cred-profile", d.profileNumber);
                 set("cred-pin", d.pin);
+                if (d.isChatGPTPersonal) {
+                  var profileRow = document.getElementById("cred-profile");
+                  var pinRow = document.getElementById("cred-pin");
+                  if (profileRow && profileRow.parentElement) profileRow.parentElement.style.display = "none";
+                  if (pinRow && pinRow.parentElement) pinRow.parentElement.style.display = "none";
+                  var twoFactorValue = d.twoFactorSecret == null ? "" : String(d.twoFactorSecret).trim();
+                  var twoFactorRow = document.getElementById("cred-2fa-row");
+                  if (twoFactorRow && twoFactorValue) {
+                    set("cred-2fa", twoFactorValue);
+                    twoFactorRow.style.display = "flex";
+                  }
+                }
               })
               .catch(function () {
                 document.querySelectorAll(".cred-row").forEach(function (el) { el.style.display = "none"; });
@@ -287,6 +309,9 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       box-shadow: var(--shadow);
       padding: 26px 22px 22px;
       overflow:hidden;
+    }
+    .card--chatgpt-personal .contract-row{
+      display:none !important;
     }
     .brand{
       text-align:center;
@@ -365,23 +390,23 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="card${isChatGPTPersonal ? " card--chatgpt-personal" : ""}">
     <div class="brand">${platformName}</div>
     <div class="title">Detalle Cuenta</div>
     <div class="divider"></div>
 
-    <div class="row"><div class="label">ID:</div><div class="value">${orderId}</div></div>
+    <div class="row contract-row"><div class="label">ID:</div><div class="value">${orderId}</div></div>
 
     ${credentialsBlock}
 
-    <div class="row"><div class="label">Fecha Final:</div><div class="value">${expEsc}</div></div>
-    <div class="row"><div class="label">Días restantes:</div><div class="value">${remainingEsc}</div></div>
-    <div class="row"><div class="label">Estado:</div>
+    <div class="row contract-row"><div class="label">Fecha Final:</div><div class="value">${expEsc}</div></div>
+    <div class="row contract-row"><div class="label">Días restantes:</div><div class="value">${remainingEsc}</div></div>
+    <div class="row contract-row"><div class="label">Estado:</div>
       <div class="value"><span class="status ${statusClass}">${escapeHtml(statusText)}</span></div>
     </div>
 
     ${whatsappUrl ? `
-    <div class="wa">
+    <div class="wa contract-row">
       <a href="${whatsappUrl}" target="_blank" rel="noopener noreferrer" aria-label="Contactar soporte por WhatsApp">
         <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
           <path d="M19.11 17.31c-.25-.12-1.48-.73-1.71-.81-.23-.09-.4-.12-.57.12-.17.25-.66.81-.81.98-.15.17-.3.19-.56.06-.25-.12-1.06-.39-2.02-1.24-.75-.67-1.26-1.49-1.41-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.3.38-.45.13-.15.17-.25.25-.42.09-.17.04-.32-.02-.45-.06-.12-.57-1.37-.78-1.88-.21-.5-.42-.43-.57-.43h-.49c-.17 0-.45.06-.68.32-.23.25-.89.87-.89 2.12 0 1.24.91 2.45 1.04 2.62.12.17 1.79 2.74 4.33 3.84.61.26 1.08.42 1.44.54.61.19 1.16.16 1.6.1.49-.07 1.48-.6 1.69-1.18.21-.57.21-1.06.15-1.18-.06-.11-.23-.17-.48-.3Z" fill="white"/>
@@ -391,7 +416,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       </a>
     </div>` : ""}
 
-    <div class="hint">Si el link expira, solicita uno nuevo.</div>
+    <div class="hint contract-row">Si el link expira, solicita uno nuevo.</div>
   </div>
 </body>
 </html>`);

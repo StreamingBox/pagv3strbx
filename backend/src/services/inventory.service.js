@@ -140,10 +140,12 @@ async function getInventory(query = {}) {
       pa.id,
       pa.platform_id,
       p.name AS platform_name_ref,
+      p.slug AS platform_slug,
       pa.platform_name AS platform_name_raw,
       pa.email,
       pa.password,
       pa.pin,
+      pa.two_factor_secret,
       pa.profile_number,
       pa.parent_account_cost_total,
       pa.parent_profiles_total,
@@ -223,6 +225,7 @@ async function exportInventoryCsv(query = {}) {
       pa.email,
       pa.password,
       pa.pin,
+      pa.two_factor_secret,
       pa.profile_number,
       pa.parent_account_cost_total,
       pa.parent_profiles_total,
@@ -251,6 +254,7 @@ async function exportInventoryCsv(query = {}) {
         "email",
         "password",
         "pin",
+        "two_factor_secret",
         "profile_number",
         "account_cost_total",
         "account_profiles_total",
@@ -268,6 +272,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.email),
             escapeCsv(r.password),
             escapeCsv(r.pin),
+            escapeCsv(r.two_factor_secret),
             escapeCsv(r.profile_number),
             escapeCsv(r.parent_account_cost_total),
             escapeCsv(r.parent_profiles_total),
@@ -301,6 +306,7 @@ async function getInventoryAccountDetail(id) {
             pa.email,
             pa.password,
             pa.pin,
+            pa.two_factor_secret,
             pa.profile_number,
             pa.parent_account_cost_total,
             pa.parent_profiles_total,
@@ -427,6 +433,7 @@ async function patchInventory(id, body = {}) {
         email,
         password,
         pin,
+        two_factor_secret,
         profile_number,
         reset_assign,
         expires_at,
@@ -490,7 +497,7 @@ async function patchInventory(id, body = {}) {
         }
 
         const [[current]] = await conn.query(
-            `SELECT id, identity_id, platform_id, email, password, pin, profile_number
+            `SELECT id, identity_id, platform_id, email, password, pin, two_factor_secret, profile_number
              FROM platform_accounts
              WHERE id = ?
              FOR UPDATE`,
@@ -567,6 +574,12 @@ async function patchInventory(id, body = {}) {
             sets.push("pin = ?");
             params.push(nextPin);
             refreshIdentity = true;
+        }
+
+        if (has("two_factor_secret") || has("twoFactorSecret")) {
+            const rawTwoFactor = has("twoFactorSecret") ? body.twoFactorSecret : two_factor_secret;
+            sets.push("two_factor_secret = ?");
+            params.push(normalizeOptionalValue(rawTwoFactor));
         }
 
         if (has("profile_number")) {

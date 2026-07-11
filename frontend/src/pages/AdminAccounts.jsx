@@ -49,6 +49,17 @@ function positiveNumber(value) {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function isChatGPTPersonalPlatform(platform) {
+    const compact = String(platform?.slug || platform?.name || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("chatgpt")
+        && compact.includes("personal")
+        && !compact.includes("business");
+}
+
 function summarizeExcelRows(rows) {
     const summary = {
         total: rows.length,
@@ -216,6 +227,7 @@ export default function AdminAccounts() {
     const [platformName, setPlatformName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [twoFactorSecret, setTwoFactorSecret] = useState("");
     const [pin, setPin] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
     const [costMode, setCostMode] = useState("screen");
@@ -236,6 +248,7 @@ export default function AdminAccounts() {
         () => platforms.find((p) => String(p.id) === String(platformId)),
         [platforms, platformId]
     );
+    const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
     const manualUnitCost = costMode === "account"
@@ -280,6 +293,7 @@ export default function AdminAccounts() {
                     platformName: platformName || selectedPlatform?.name || "",
                     email,
                     password,
+                    twoFactorSecret: twoFactorSecret || null,
                     pin: pin || null,
                     profileNumber: profileNumber || null,
                     costMode,
@@ -291,6 +305,7 @@ export default function AdminAccounts() {
             if (data?.id) {
                 setEmail("");
                 setPassword("");
+                setTwoFactorSecret("");
                 setPin("");
                 setProfileNumber("");
                 setMotherCostTotal("");
@@ -474,6 +489,7 @@ export default function AdminAccounts() {
             "plataforma",
             "correo",
             "contrasena",
+            "2FA",
             "perfil",
             "pin",
             "tipoCosto",
@@ -487,6 +503,7 @@ export default function AdminAccounts() {
                 plataforma: "Netflix",
                 correo: "cuenta.netflix@correo.com",
                 contrasena: "Clave123",
+                "2FA": "",
                 perfil: "1",
                 pin: "1234",
                 tipoCosto: "CUENTA",
@@ -499,6 +516,7 @@ export default function AdminAccounts() {
                 plataforma: "Netflix",
                 correo: "cuenta.netflix@correo.com",
                 contrasena: "Clave123",
+                "2FA": "",
                 perfil: "2",
                 pin: "2345",
                 tipoCosto: "CUENTA",
@@ -511,6 +529,7 @@ export default function AdminAccounts() {
                 plataforma: "Prime Video",
                 correo: "prime@correo.com",
                 contrasena: "Prime123",
+                "2FA": "",
                 perfil: "1",
                 pin: "",
                 tipoCosto: "PANTALLA",
@@ -518,12 +537,25 @@ export default function AdminAccounts() {
                 totalPantallas: "",
                 costoUnitarioCalculado: 9000,
             },
+            {
+                plataformaId: "",
+                plataforma: "ChatGPT Cuenta Personal",
+                correo: "cuenta.chatgpt@correo.com",
+                contrasena: "ClaveChatGPT",
+                "2FA": "Clave o código 2FA opcional",
+                perfil: "",
+                pin: "",
+                tipoCosto: "PANTALLA",
+                valorCosto: "",
+                totalPantallas: "",
+                costoUnitarioCalculado: "",
+            },
         ];
         const XLSX = await loadXlsx();
 
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
-            { wch: 13 }, { wch: 22 }, { wch: 30 }, { wch: 18 }, { wch: 10 },
+            { wch: 13 }, { wch: 22 }, { wch: 30 }, { wch: 18 }, { wch: 28 }, { wch: 10 },
             { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
@@ -540,6 +572,7 @@ export default function AdminAccounts() {
             ["Cuando una cuenta completa tiene varios perfiles, repite el costo total y total de pantallas en cada fila."],
             ["La columna costoUnitarioCalculado es informativa; el sistema calcula nuevamente el valor al cargar."],
             ["Las cuentas sin costo se pueden cargar, pero no aportaran una utilidad neta exacta."],
+            ["ChatGPT Cuenta Personal:", "2FA es opcional. Si la llenas, se entrega junto con correo y contraseña."],
             [""],
             ["UTILIDAD NETA"],
             ["El sistema calcula: precio de venta - costo unitario = utilidad neta."],
@@ -570,6 +603,12 @@ export default function AdminAccounts() {
     useEffect(() => {
         setPlatformName(selectedPlatform?.name || "");
     }, [selectedPlatform]);
+
+    useEffect(() => {
+        if (!isChatGPTPersonal) return;
+        setProfileNumber("");
+        setPin("");
+    }, [isChatGPTPersonal]);
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -853,7 +892,22 @@ export default function AdminAccounts() {
                                 />
                             </div>
 
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {isChatGPTPersonal && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        2FA <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
+                                    </label>
+                                    <input
+                                        style={inputStyle}
+                                        type="text"
+                                        placeholder="Clave o código de autenticación"
+                                        value={twoFactorSecret}
+                                        onChange={(e) => setTwoFactorSecret(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
+                            <div style={{ display: isChatGPTPersonal ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Perfil <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
@@ -865,7 +919,7 @@ export default function AdminAccounts() {
                                 />
                             </div>
 
-                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: isChatGPTPersonal ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Pin <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>

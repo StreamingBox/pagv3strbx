@@ -11,6 +11,17 @@ import { formatBogotaDate, normalizeDateOnly } from "../utils/datetime.js";
 
 const LOGO_URL = "/api/branding/logo";
 
+function isChatGPTPersonalInventoryAccount(item) {
+    const compact = String(item?.platform_slug || item?.platform_name || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("chatgpt")
+        && compact.includes("personal")
+        && !compact.includes("business");
+}
+
 export default function AdminInventory() {
     const [platforms, setPlatforms] = useState([]);
     const [users, setUsers] = useState([]);
@@ -47,6 +58,7 @@ export default function AdminInventory() {
     const [editData, setEditData] = useState({
         email: "",
         password: "",
+        two_factor_secret: "",
         pin: "",
         profile_number: "",
         expiresAt: "",
@@ -83,6 +95,7 @@ export default function AdminInventory() {
         ? (editCostAmount > 0 && editProfilesTotal > 0 ? editCostAmount / editProfilesTotal : 0)
         : editCostAmount;
     const editCostIncomplete = editData.costMode === "account" && editCostAmount > 0 && editProfilesTotal <= 0;
+    const isChatGPTPersonalEditing = isChatGPTPersonalInventoryAccount(editModal.item);
 
     async function logout() {
         try { await apiLogout(); } catch (e) { console.error(e); }
@@ -222,6 +235,7 @@ export default function AdminInventory() {
         setEditData({
             email: item.email || "",
             password: item.password || "",
+            two_factor_secret: item.two_factor_secret || "",
             pin: item.pin || "",
             profile_number: item.profile_number ?? "",
             expiresAt: normalizeDateOnly(item.display_expires_at || item.expires_at),
@@ -251,6 +265,7 @@ export default function AdminInventory() {
             const r = await apiPatch(`/api/admin/inventory/${editModal.item.id}`, {
                 email: editData.email,
                 password: editData.password,
+                two_factor_secret: editData.two_factor_secret,
                 pin: editData.pin,
                 profile_number: editData.profile_number,
                 expiresAt: editData.expiresAt,
@@ -879,7 +894,21 @@ export default function AdminInventory() {
                                         onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
                                     />
                                 </div>
-                                <div>
+                                {isChatGPTPersonalEditing && (
+                                    <div>
+                                        <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>
+                                            2FA <span style={{ fontWeight: 500, textTransform: "none" }}>(opcional)</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            style={inputStyle}
+                                            placeholder="Clave o codigo de autenticacion"
+                                            value={editData.two_factor_secret}
+                                            onChange={(e) => setEditData((prev) => ({ ...prev, two_factor_secret: e.target.value }))}
+                                        />
+                                    </div>
+                                )}
+                                <div style={{ display: isChatGPTPersonalEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>PIN</label>
                                     <input
                                         type="text"
@@ -889,7 +918,7 @@ export default function AdminInventory() {
                                         onChange={(e) => setEditData((prev) => ({ ...prev, pin: e.target.value }))}
                                     />
                                 </div>
-                                <div>
+                                <div style={{ display: isChatGPTPersonalEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Perfil / pantalla</label>
                                     <input
                                         type="number"

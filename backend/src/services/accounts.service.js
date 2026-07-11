@@ -62,11 +62,11 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, pin, accountProf, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, pin, twoFactorSecret, accountProf, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
-     (identity_id, platform_id, platform_name, email, password, pin, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
+     (identity_id, platform_id, platform_name, email, password, pin, two_factor_secret, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
         [
             identityId,
             pid,
@@ -74,6 +74,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
             emailValue,
             password,
             pin,
+            twoFactorSecret,
             accountProf,
             exp,
             costModel?.parentCostTotal ?? null,
@@ -335,6 +336,13 @@ async function createAccountOne(conn, body) {
     }
 
     const emailValue = String(email).trim();
+    const twoFactorSecret = normalizeOptionalValue(
+        body.twoFactorSecret
+        ?? body.two_factor_secret
+        ?? body.twoFactor
+        ?? body["2FA"]
+        ?? body["2fa"]
+    );
     const identityProf = normalizeProfileForIdentity(profileNumber);
     const accountProf = normalizeProfileForAccount(profileNumber);
     const exp = expiresAt ? toSqlDateStart(expiresAt) : null;
@@ -378,6 +386,7 @@ async function createAccountOne(conn, body) {
         emailValue,
         password,
         pin: normalizeOptionalValue(pin),
+        twoFactorSecret,
         accountProf,
         exp,
         costModel,
@@ -421,6 +430,13 @@ function normalizeBulkRows(rows) {
             email: String(r.email || r.correo || "").trim(),
             password: String(r.password || r.contrasena || r.clave || "").trim(),
             pin: normalizeOptionalValue(r.pin),
+            twoFactorSecret: normalizeOptionalValue(
+                r.twoFactorSecret
+                ?? r.two_factor_secret
+                ?? r.twoFactor
+                ?? r["2FA"]
+                ?? r["2fa"]
+            ),
             profileNumber,
             expiresAt: String(r.expiresAt || r.expires_at || r.expiracion || "").trim(),
             costMode: r.costMode ?? r.tipoCosto ?? r.tipo_costo ?? "",
@@ -510,6 +526,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             emailValue: r.email,
             password: r.password,
             pin: r.pin,
+            twoFactorSecret: r.twoFactorSecret,
             accountProf,
             exp,
             costModel,

@@ -342,7 +342,7 @@ async function renewSubscription({
     let account = null;
     if (finalAccountId) {
         const [accountRows] = await conn.query(
-            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.profile_number, pa.access_url, pa.expires_at,
+            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.access_url, pa.expires_at,
                     p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
              FROM platform_accounts pa
              LEFT JOIN platforms p ON p.id = pa.platform_id

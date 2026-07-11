@@ -35,6 +35,30 @@ function isAssistedActivationProduct(platformName) {
     );
 }
 
+function isChatGPTPersonalProduct({ platformName, platformSlug } = {}) {
+    const compact = normalizeProductName(String(platformSlug || "") + " " + String(platformName || ""))
+        .replace(/\s+/g, "");
+    return compact.includes("chatgpt")
+        && compact.includes("personal")
+        && !compact.includes("business");
+}
+
+function buildChatGPTPersonalCredentialsMessage(account = {}) {
+    const twoFactor = account.two_factor_secret
+        ?? account.twoFactorSecret
+        ?? account.two_factor
+        ?? account.twoFactor
+        ?? account["2FA"];
+    const lines = [
+        "Correo: " + (account.email || "-"),
+        "Contraseña: " + (account.password || "-"),
+    ];
+    if (String(twoFactor || "").trim()) {
+        lines.push("2FA: " + String(twoFactor).trim());
+    }
+    return lines.join("\n");
+}
+
 function activationServiceName(platformName) {
     const cleanName = String(platformName || "")
         .replace(/\s+a\s+correo\s*$/i, "")
@@ -61,10 +85,18 @@ function buildAccountDeliveryMessage({
     expiresAt,
     token,
     baseUrl,
+    platformSlug,
 }) {
     const safeAccount = account || {};
     const lines = [];
     const url = token ? credentialUrl(baseUrl, token) : "";
+
+    if (isChatGPTPersonalProduct({ platformName, platformSlug })) {
+        const credentials = buildChatGPTPersonalCredentialsMessage(safeAccount);
+        return String(intro || "").trim()
+            ? String(intro).trim() + "\n\n" + credentials
+            : credentials;
+    }
 
     if (String(intro || "").trim()) {
         lines.push(String(intro).trim());
@@ -108,9 +140,23 @@ function buildAccountDeliveryMessage({
 
 function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     const safeResults = Array.isArray(results) ? results : [];
+    const isChatGPTPersonalResult = (result) => {
+        const plan = result?.plan || {};
+        return isChatGPTPersonalProduct({
+            platformName: result?.purchasedPlatformName || result?.platformName || plan.platform_name,
+            platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
+        });
+    };
+
+    if (safeResults.length === 1 && isChatGPTPersonalResult(safeResults[0])) {
+        return buildChatGPTPersonalCredentialsMessage(safeResults[0]?.account || {});
+    }
+
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
-        return !isEmailDelivery(plan) && shouldShowDeviceUsageRule(plan);
+        return !isChatGPTPersonalResult(result)
+            && !isEmailDelivery(plan)
+            && shouldShowDeviceUsageRule(plan);
     });
     const lines = [];
 
@@ -123,6 +169,12 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const account = result?.account || {};
         const url = credentialUrl(baseUrl, result?.token || "");
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
+
+        if (isChatGPTPersonalResult(result)) {
+            lines.push(buildChatGPTPersonalCredentialsMessage(account));
+            lines.push("");
+            continue;
+        }
 
         if (isEmailDelivery(plan) && isAssistedActivationProduct(platformName)) {
             const activationService = activationServiceName(platformName);
@@ -178,7 +230,9 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
 module.exports = {
     activationServiceName,
     buildAccountDeliveryMessage,
+    buildChatGPTPersonalCredentialsMessage,
     buildDeliveryMessage,
     isAssistedActivationProduct,
+    isChatGPTPersonalProduct,
     salesContactPhone,
 };

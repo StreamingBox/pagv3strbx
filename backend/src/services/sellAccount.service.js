@@ -224,6 +224,7 @@ async function sellAccountFromInventory(payload) {
                 email: account.email,
                 password: account.password,
                 pin: account.pin,
+                two_factor_secret: account.two_factor_secret,
                 profile_number: account.profile_number,
                 access_url: account.access_url
             },

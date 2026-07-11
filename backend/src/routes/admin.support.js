@@ -38,7 +38,7 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
     );
 
     const [rows] = await conn.query(
-        `SELECT pa.id, pa.email, pa.password, pa.pin, pa.profile_number, pa.expires_at,
+        `SELECT pa.id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.expires_at,
                 pa.platform_id, p.name AS platform_name
            FROM platform_accounts pa
            JOIN platforms p ON p.id = pa.platform_id
@@ -57,6 +57,7 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
             email: row.email,
             password: row.password,
             pin: row.pin,
+            two_factor_secret: row.two_factor_secret,
             profile_number: row.profile_number,
             expiresAt: row.expires_at || null,
             platformId: row.platform_id,
@@ -88,6 +89,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         a.email,
         a.password,
         a.pin,
+        a.two_factor_secret,
         a.profile_number,
         a.platform_id AS account_platform_id,
         a.expires_at AS account_expires_at
@@ -138,6 +140,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
             email: r.email,
             password: r.password,
             pin: r.pin,
+            two_factor_secret: r.two_factor_secret,
             profile_number: r.profile_number,
         },
         expiresAt: r.expires_at,

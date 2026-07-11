@@ -113,3 +113,34 @@ test("credential products can disable the one-device usage rule", () => {
     assert.match(message, /Correo: cliente@example\.com/);
     assert.doesNotMatch(message, /Regla de uso/);
 });
+
+test("ChatGPT Cuenta Personal delivers only email, password, and optional 2FA", () => {
+    const message = buildSingleItemMessage({
+        platformName: "ChatGPT Cuenta Personal",
+        account: { two_factor_secret: "2fa-secreto" },
+    });
+    const lines = message.split("\n");
+
+    assert.deepEqual(lines, [
+        "Correo: cliente@example.com",
+        lines[1],
+        "2FA: 2fa-secreto",
+    ]);
+    assert.match(lines[1], /^Contrase/);
+    assert.match(lines[1], /secret$/);
+    assert.doesNotMatch(message, /Orden:|Perfil:|Pin:|Expira:|Regla de uso|strbx\.com\.co\/s\//);
+});
+
+test("ChatGPT Cuenta Personal omits 2FA when it was left empty", () => {
+    const message = buildSingleItemMessage({
+        platformName: "ChatGPT Cuenta Personal",
+        account: { two_factor_secret: "" },
+    });
+    const lines = message.split("\n");
+
+    assert.equal(lines.length, 2);
+    assert.equal(lines[0], "Correo: cliente@example.com");
+    assert.match(lines[1], /^Contrase/);
+    assert.match(lines[1], /secret$/);
+    assert.doesNotMatch(message, /2FA/);
+});

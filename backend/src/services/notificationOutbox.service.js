@@ -49,6 +49,7 @@ async function buildOrderDeliveryPayload(orderId) {
             pa.email AS account_email,
             pa.password AS account_password,
             pa.pin AS account_pin,
+            pa.two_factor_secret AS account_two_factor_secret,
             pa.profile_number AS account_profile,
             cl.token
          FROM order_items oi
@@ -85,6 +86,7 @@ async function buildOrderDeliveryPayload(orderId) {
                 email: row.account_email,
                 password: row.account_password,
                 pin: row.account_pin,
+                two_factor_secret: row.account_two_factor_secret,
                 profile_number: row.account_profile,
             } : null,
         })),

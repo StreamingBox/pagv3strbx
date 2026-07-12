@@ -168,3 +168,48 @@ test("ChatGPT Cuenta Personal replacement keeps the delivery header without cont
     assert.match(message, /Consulta 2FA: https:\/\/2fa\.live\//);
     assert.doesNotMatch(message, /Perfil:|Pin:|Expira:|strbx\.com\.co\/s\//);
 });
+
+test("IPTV delivers only username, password, and URL after the standard header", () => {
+    const message = buildSingleItemMessage({
+        platformName: "IPTV 3 MESES",
+        account: {
+            email: "PMVZ5mXZyh",
+            password: "aNsftq3BV3",
+            access_url: "http://red4tv.lat",
+            profile_number: 3,
+            pin: "1234",
+        },
+    });
+
+    assert.match(message, /Orden: ORD-TEST/);
+    assert.match(message, /Pedido m/);
+    assert.match(message, /ID: 123 .*IPTV 3 MESES/);
+    assert.match(message, /Usuario: PMVZ5mXZyh/);
+    assert.match(message, /Contrase.*aNsftq3BV3/);
+    assert.match(message, /URL: http:\/\/red4tv\.lat/);
+    assert.doesNotMatch(message, /Correo:|Perfil:|Pin:|Expira:|Regla de uso|strbx\.com\.co\/s\//);
+});
+
+test("IPTV replacement keeps the delivery header without contract or link details", () => {
+    const message = buildAccountDeliveryMessage({
+        intro: "Tu cuenta ha sido reemplazada por:",
+        orderCode: "ORD-REEMPLAZO-IPTV",
+        subscriptionId: 789,
+        platformName: "IPTV",
+        account: {
+            email: "PMVZ5mXZyh",
+            password: "aNsftq3BV3",
+            access_url: "http://red4tv.lat",
+        },
+        expiresAt: "2026-07-31",
+        token: "TOKEN123",
+        baseUrl: "https://strbx.com.co",
+    });
+
+    assert.match(message, /^Tu cuenta ha sido reemplazada por:/);
+    assert.match(message, /Orden: ORD-REEMPLAZO-IPTV/);
+    assert.match(message, /ID: 789 .*IPTV/);
+    assert.match(message, /Usuario: PMVZ5mXZyh/);
+    assert.match(message, /URL: http:\/\/red4tv\.lat/);
+    assert.doesNotMatch(message, /Correo:|Perfil:|Pin:|Expira:|strbx\.com\.co\/s\//);
+});

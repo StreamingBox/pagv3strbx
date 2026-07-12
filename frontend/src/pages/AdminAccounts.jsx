@@ -60,7 +60,16 @@ function isChatGPTPersonalPlatform(platform) {
         && !compact.includes("business");
 }
 
-function summarizeExcelRows(rows) {
+function isIptvPlatform(platform) {
+    const compact = String(platform?.slug || platform?.name || platform || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("iptv");
+}
+
+function summarizeExcelRows(rows, platforms = []) {
     const summary = {
         total: rows.length,
         valid: 0,
@@ -69,15 +78,25 @@ function summarizeExcelRows(rows) {
         accountCost: 0,
         withoutCost: 0,
         invalidCost: 0,
+        invalidIptvRows: [],
     };
 
-    for (const row of rows) {
+    for (const [index, row] of rows.entries()) {
         const platform = readExcelValue(row, ["platformid", "plataformaid", "platform", "platformname", "plataforma"]);
-        const email = readExcelValue(row, ["email", "correo"]);
+        const email = readExcelValue(row, ["usuario", "username", "user", "email", "correo"]);
         const password = readExcelValue(row, ["password", "contrasena", "clave"]);
-        const valid = !!String(platform).trim() && !!String(email).trim() && !!String(password).trim();
+        const accessUrl = readExcelValue(row, ["url", "accessurl", "access_url"]);
+        const platformById = platforms.find((item) => String(item?.id) === String(platform).trim());
+        const requiresIptvAccess = isIptvPlatform(platformById || platform);
+        const valid = !!String(platform).trim()
+            && !!String(email).trim()
+            && !!String(password).trim()
+            && (!requiresIptvAccess || !!String(accessUrl).trim());
         if (!valid) {
             summary.invalid += 1;
+            if (requiresIptvAccess && (!String(email).trim() || !String(password).trim() || !String(accessUrl).trim())) {
+                summary.invalidIptvRows.push(index + 2);
+            }
             continue;
         }
         summary.valid += 1;
@@ -227,6 +246,7 @@ export default function AdminAccounts() {
     const [platformName, setPlatformName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [accessUrl, setAccessUrl] = useState("");
     const [twoFactorSecret, setTwoFactorSecret] = useState("");
     const [pin, setPin] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
@@ -249,6 +269,8 @@ export default function AdminAccounts() {
         [platforms, platformId]
     );
     const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
+    const isIptv = isIptvPlatform(selectedPlatform);
+    const hasCompactCredentials = isChatGPTPersonal || isIptv;
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
     const manualUnitCost = costMode === "account"
@@ -293,7 +315,8 @@ export default function AdminAccounts() {
                     platformName: platformName || selectedPlatform?.name || "",
                     email,
                     password,
-                    twoFactorSecret: twoFactorSecret || null,
+                    accessUrl: accessUrl || null,
+                    twoFactorSecret: isChatGPTPersonal ? (twoFactorSecret || null) : null,
                     pin: pin || null,
                     profileNumber: profileNumber || null,
                     costMode,
@@ -305,6 +328,7 @@ export default function AdminAccounts() {
             if (data?.id) {
                 setEmail("");
                 setPassword("");
+                setAccessUrl("");
                 setTwoFactorSecret("");
                 setPin("");
                 setProfileNumber("");
@@ -344,7 +368,10 @@ export default function AdminAccounts() {
             const ws = wb.Sheets[wb.SheetNames[0]];
             const rows = XLSX.utils.sheet_to_json(ws, { defval: "" });
 
-            const summary = summarizeExcelRows(rows);
+            const summary = summarizeExcelRows(rows, platforms);
+            if (summary.invalidIptvRows.length) {
+                throw new Error(`IPTV requiere Usuario, Contrase\u00f1a y URL. Revisa las filas: ${summary.invalidIptvRows.join(", ")}.`);
+            }
             if (!summary.valid) throw new Error("El archivo no tiene cuentas validas.");
 
             setExcelPreview({
@@ -488,7 +515,9 @@ export default function AdminAccounts() {
             "plataformaId",
             "plataforma",
             "correo",
+            "usuario",
             "contrasena",
+            "url",
             "2FA",
             "perfil",
             "pin",
@@ -502,7 +531,9 @@ export default function AdminAccounts() {
                 plataformaId: 1,
                 plataforma: "Netflix",
                 correo: "cuenta.netflix@correo.com",
+                usuario: "",
                 contrasena: "Clave123",
+                url: "",
                 "2FA": "",
                 perfil: "1",
                 pin: "1234",
@@ -515,7 +546,9 @@ export default function AdminAccounts() {
                 plataformaId: 1,
                 plataforma: "Netflix",
                 correo: "cuenta.netflix@correo.com",
+                usuario: "",
                 contrasena: "Clave123",
+                url: "",
                 "2FA": "",
                 perfil: "2",
                 pin: "2345",
@@ -528,7 +561,9 @@ export default function AdminAccounts() {
                 plataformaId: 2,
                 plataforma: "Prime Video",
                 correo: "prime@correo.com",
+                usuario: "",
                 contrasena: "Prime123",
+                url: "",
                 "2FA": "",
                 perfil: "1",
                 pin: "",
@@ -541,8 +576,25 @@ export default function AdminAccounts() {
                 plataformaId: "",
                 plataforma: "ChatGPT Cuenta Personal",
                 correo: "cuenta.chatgpt@correo.com",
+                usuario: "",
                 contrasena: "ClaveChatGPT",
+                url: "",
                 "2FA": "Clave o código 2FA opcional",
+                perfil: "",
+                pin: "",
+                tipoCosto: "PANTALLA",
+                valorCosto: "",
+                totalPantallas: "",
+                costoUnitarioCalculado: "",
+            },
+            {
+                plataformaId: "",
+                plataforma: "IPTV 3 MESES",
+                correo: "",
+                usuario: "PMVZ5mXZyh",
+                contrasena: "aNsftq3BV3",
+                url: "http://red4tv.lat",
+                "2FA": "",
                 perfil: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
@@ -555,8 +607,8 @@ export default function AdminAccounts() {
 
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
-            { wch: 13 }, { wch: 22 }, { wch: 30 }, { wch: 18 }, { wch: 28 }, { wch: 10 },
-            { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
+            { wch: 13 }, { wch: 22 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
+            { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
         wsExamples["!cols"] = wsCuentas["!cols"];
@@ -573,6 +625,8 @@ export default function AdminAccounts() {
             ["La columna costoUnitarioCalculado es informativa; el sistema calcula nuevamente el valor al cargar."],
             ["Las cuentas sin costo se pueden cargar, pero no aportaran una utilidad neta exacta."],
             ["ChatGPT Cuenta Personal:", "2FA es opcional. Si la llenas, se entrega junto con correo y contraseña."],
+            [""],
+            ["IPTV / IPTV 3 MESES:", "usuario, contrasena y url son obligatorios. Solo se entregan esos tres datos."],
             [""],
             ["UTILIDAD NETA"],
             ["El sistema calcula: precio de venta - costo unitario = utilidad neta."],
@@ -605,10 +659,14 @@ export default function AdminAccounts() {
     }, [selectedPlatform]);
 
     useEffect(() => {
-        if (!isChatGPTPersonal) return;
+        if (!hasCompactCredentials) return;
         setProfileNumber("");
         setPin("");
-    }, [isChatGPTPersonal]);
+    }, [hasCompactCredentials]);
+
+    useEffect(() => {
+        if (!isIptv) setAccessUrl("");
+    }, [isIptv]);
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -868,12 +926,12 @@ export default function AdminAccounts() {
 
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                    Email de la cuenta *
+                                    {isIptv ? "Usuario *" : "Email de la cuenta *"}
                                 </label>
                                 <input
                                     style={inputStyle}
-                                    type="email"
-                                    placeholder="correo@ejemplo.com"
+                                    type={isIptv ? "text" : "email"}
+                                    placeholder={isIptv ? "Usuario IPTV" : "correo@ejemplo.com"}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                 />
@@ -892,6 +950,21 @@ export default function AdminAccounts() {
                                 />
                             </div>
 
+                            {isIptv && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        URL *
+                                    </label>
+                                    <input
+                                        style={inputStyle}
+                                        type="url"
+                                        placeholder="http://red4tv.lat"
+                                        value={accessUrl}
+                                        onChange={(e) => setAccessUrl(e.target.value)}
+                                    />
+                                </div>
+                            )}
+
                             {isChatGPTPersonal && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                     <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
@@ -907,7 +980,7 @@ export default function AdminAccounts() {
                                 </div>
                             )}
 
-                            <div style={{ display: isChatGPTPersonal ? "none" : "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: hasCompactCredentials ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Perfil <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
@@ -919,7 +992,7 @@ export default function AdminAccounts() {
                                 />
                             </div>
 
-                            <div style={{ display: isChatGPTPersonal ? "none" : "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: hasCompactCredentials ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Pin <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
@@ -1019,7 +1092,7 @@ export default function AdminAccounts() {
                                 className="btn"
                                 style={{ width: "100%", maxWidth: 320, fontSize: 14, fontWeight: 800, height: 48 }}
                                 onClick={createAccount}
-                                disabled={saving || !platformId || !email || !password || manualCostIncomplete}
+                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || manualCostIncomplete}
                             >
                                 {saving ? "Guardando..." : "✅ Agregar Cuenta"}
                             </button>

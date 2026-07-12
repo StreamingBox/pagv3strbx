@@ -38,7 +38,7 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
     );
 
     const [rows] = await conn.query(
-        `SELECT pa.id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.expires_at,
+        `SELECT pa.id, pa.email, pa.password, pa.access_url, pa.pin, pa.two_factor_secret, pa.profile_number, pa.expires_at,
                 pa.platform_id, p.name AS platform_name
            FROM platform_accounts pa
            JOIN platforms p ON p.id = pa.platform_id
@@ -56,6 +56,7 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
             id: row.id,
             email: row.email,
             password: row.password,
+            access_url: row.access_url,
             pin: row.pin,
             two_factor_secret: row.two_factor_secret,
             profile_number: row.profile_number,
@@ -88,6 +89,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         p.slug AS platform_slug,
         a.email,
         a.password,
+        a.access_url,
         a.pin,
         a.two_factor_secret,
         a.profile_number,
@@ -139,6 +141,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         account: {
             email: r.email,
             password: r.password,
+            access_url: r.access_url,
             pin: r.pin,
             two_factor_secret: r.two_factor_secret,
             profile_number: r.profile_number,
@@ -146,6 +149,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         expiresAt: r.expires_at,
         token,
         baseUrl,
+        platformSlug: r.platform_slug,
     });
 
     return {
@@ -161,6 +165,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         account: {
             email: r.email,
             password: r.password,
+            access_url: r.access_url,
             pin: r.pin,
             profile_number: r.profile_number,
         },
@@ -343,6 +348,7 @@ router.post(
                     expiresAt: info.expiresAt,
                     token: info.token,
                     baseUrl,
+                    platformSlug: info.platformSlug,
                 });
                 info.replaced = {
                     oldAccountId: sub.platform_account_id,

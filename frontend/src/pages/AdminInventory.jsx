@@ -22,6 +22,15 @@ function isChatGPTPersonalInventoryAccount(item) {
         && !compact.includes("business");
 }
 
+function isIptvInventoryAccount(item) {
+    const compact = String(item?.platform_slug || item?.platform_name || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("iptv");
+}
+
 export default function AdminInventory() {
     const [platforms, setPlatforms] = useState([]);
     const [users, setUsers] = useState([]);
@@ -58,6 +67,7 @@ export default function AdminInventory() {
     const [editData, setEditData] = useState({
         email: "",
         password: "",
+        access_url: "",
         two_factor_secret: "",
         pin: "",
         profile_number: "",
@@ -96,6 +106,8 @@ export default function AdminInventory() {
         : editCostAmount;
     const editCostIncomplete = editData.costMode === "account" && editCostAmount > 0 && editProfilesTotal <= 0;
     const isChatGPTPersonalEditing = isChatGPTPersonalInventoryAccount(editModal.item);
+    const isIptvEditing = isIptvInventoryAccount(editModal.item);
+    const hasCompactCredentialsEditing = isChatGPTPersonalEditing || isIptvEditing;
 
     async function logout() {
         try { await apiLogout(); } catch (e) { console.error(e); }
@@ -235,6 +247,7 @@ export default function AdminInventory() {
         setEditData({
             email: item.email || "",
             password: item.password || "",
+            access_url: item.access_url || "",
             two_factor_secret: item.two_factor_secret || "",
             pin: item.pin || "",
             profile_number: item.profile_number ?? "",
@@ -250,7 +263,11 @@ export default function AdminInventory() {
     async function handleEditSave() {
         if (!editModal.item?.id) return;
         if (!String(editData.email || "").trim()) {
-            setEditError("El correo es obligatorio.");
+            setEditError(isIptvEditing ? "El usuario es obligatorio para IPTV." : "El correo es obligatorio.");
+            return;
+        }
+        if (isIptvEditing && !String(editData.access_url || "").trim()) {
+            setEditError("La URL es obligatoria para IPTV.");
             return;
         }
         if (editCostIncomplete) {
@@ -265,6 +282,7 @@ export default function AdminInventory() {
             const r = await apiPatch(`/api/admin/inventory/${editModal.item.id}`, {
                 email: editData.email,
                 password: editData.password,
+                ...(isIptvEditing ? { access_url: editData.access_url } : {}),
                 two_factor_secret: editData.two_factor_secret,
                 pin: editData.pin,
                 profile_number: editData.profile_number,
@@ -877,9 +895,11 @@ export default function AdminInventory() {
 
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
                                 <div>
-                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Correo</label>
+                                    <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>
+                                        {isIptvEditing ? "Usuario" : "Correo"}
+                                    </label>
                                     <input
-                                        type="email"
+                                        type={isIptvEditing ? "text" : "email"}
                                         style={inputStyle}
                                         value={editData.email}
                                         onChange={(e) => setEditData((prev) => ({ ...prev, email: e.target.value }))}
@@ -894,6 +914,18 @@ export default function AdminInventory() {
                                         onChange={(e) => setEditData((prev) => ({ ...prev, password: e.target.value }))}
                                     />
                                 </div>
+                                {isIptvEditing && (
+                                    <div>
+                                        <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>URL</label>
+                                        <input
+                                            type="url"
+                                            style={inputStyle}
+                                            placeholder="http://red4tv.lat"
+                                            value={editData.access_url}
+                                            onChange={(e) => setEditData((prev) => ({ ...prev, access_url: e.target.value }))}
+                                        />
+                                    </div>
+                                )}
                                 {isChatGPTPersonalEditing && (
                                     <div>
                                         <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>
@@ -908,7 +940,7 @@ export default function AdminInventory() {
                                         />
                                     </div>
                                 )}
-                                <div style={{ display: isChatGPTPersonalEditing ? "none" : "block" }}>
+                                <div style={{ display: hasCompactCredentialsEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>PIN</label>
                                     <input
                                         type="text"
@@ -918,7 +950,7 @@ export default function AdminInventory() {
                                         onChange={(e) => setEditData((prev) => ({ ...prev, pin: e.target.value }))}
                                     />
                                 </div>
-                                <div style={{ display: isChatGPTPersonalEditing ? "none" : "block" }}>
+                                <div style={{ display: hasCompactCredentialsEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Perfil / pantalla</label>
                                     <input
                                         type="number"
@@ -1036,7 +1068,7 @@ export default function AdminInventory() {
                                     className="btn-primary"
                                     style={{ height: 44, minWidth: 160, borderRadius: 12, background: "#10b981", color: "white", fontWeight: 800, border: "none", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.75 : 1 }}
                                     onClick={handleEditSave}
-                                    disabled={saving || editCostIncomplete}
+                                    disabled={saving || editCostIncomplete || (isIptvEditing && !String(editData.access_url || "").trim())}
                                 >
                                     {saving ? "Guardando..." : "Guardar cambios"}
                                 </button>

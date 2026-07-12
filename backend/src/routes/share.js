@@ -7,7 +7,7 @@ const {
   formatStoredDateOnly,
   isStoredDateOnlyExpired,
 } = require("../utils/date");
-const { isChatGPTPersonalProduct } = require("../utils/deliveryMessage");
+const { isChatGPTPersonalProduct, isIptvProduct } = require("../utils/deliveryMessage");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -102,6 +102,7 @@ async function loadCredentialByToken(token) {
        p.slug AS platform_slug,
        a.email,
        a.password,
+       a.access_url,
        a.pin,
        a.two_factor_secret,
        a.profile_number,
@@ -169,6 +170,10 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       platformName: r.platform_name,
       platformSlug: r.platform_slug,
     });
+    const isIptv = isIptvProduct({
+      platformName: r.platform_name,
+      platformSlug: r.platform_slug,
+    });
     const rawWhatsappUrl = buildAccountHelpWhatsappUrl({
       platformName: r.platform_name,
       orderId: r.order_id,
@@ -185,6 +190,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         orderId: r.order_id,
         email: r.email,
         password: r.password,
+        accessUrl: r.access_url,
         pin: r.pin,
         twoFactorSecret: r.two_factor_secret,
         profileNumber: r.profile_number,
@@ -197,6 +203,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         waLink: rawWhatsappUrl || null,
         isEmailMode,
         isChatGPTPersonal,
+        isIptv,
       });
     }
 
@@ -211,7 +218,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
 
     const customWaitMsg = "Por favor, contacta a soporte para continuar con el proceso.";
 
-    const credentialsBlock = isEmailMode
+    const credentialsBlock = isEmailMode && !isIptv
       ? `
         <div class="row" style="flex-direction: column; text-align: center; gap: 8px; padding: 20px 0;">
             <div style="font-size: 24px;">📧</div>
@@ -221,11 +228,13 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     `
       : `
         <div id="cred-status" class="row" style="display:none;"><div class="label"></div><div class="value cred-err"></div></div>
+        <div id="cred-username-row" class="row cred-row" style="display:none;"><div class="label">Usuario:</div><div class="value" id="cred-username">...</div></div>
         <div class="row cred-row"><div class="label">Correo:</div><div class="value" id="cred-email">Cargando…</div></div>
         <div class="row cred-row"><div class="label">Contraseña:</div><div class="value" id="cred-pass">…</div></div>
         <div id="cred-2fa-row" class="row cred-row" style="display:none;"><div class="label">2FA:</div><div class="value" id="cred-2fa">…</div></div>
         <div class="row cred-row"><div class="label">Perfil:</div><div class="value" id="cred-profile">…</div></div>
         <div class="row cred-row"><div class="label">Pin:</div><div class="value" id="cred-pin">…</div></div>
+        <div id="cred-url-row" class="row cred-row" style="display:none;"><div class="label">URL:</div><div class="value" id="cred-url">...</div></div>
         <script>
           (function () {
             var q = location.search ? "&" : "?";
@@ -251,7 +260,22 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
                 set("cred-pass", d.password);
                 set("cred-profile", d.profileNumber);
                 set("cred-pin", d.pin);
-                if (d.isChatGPTPersonal) {
+                if (d.isIptv) {
+                  var emailRow = document.getElementById("cred-email");
+                  var profileRow = document.getElementById("cred-profile");
+                  var pinRow = document.getElementById("cred-pin");
+                  var twoFactorRow = document.getElementById("cred-2fa-row");
+                  if (emailRow && emailRow.parentElement) emailRow.parentElement.style.display = "none";
+                  if (profileRow && profileRow.parentElement) profileRow.parentElement.style.display = "none";
+                  if (pinRow && pinRow.parentElement) pinRow.parentElement.style.display = "none";
+                  if (twoFactorRow) twoFactorRow.style.display = "none";
+                  set("cred-username", d.email);
+                  set("cred-url", d.accessUrl);
+                  var usernameRow = document.getElementById("cred-username-row");
+                  var urlRow = document.getElementById("cred-url-row");
+                  if (usernameRow) usernameRow.style.display = "flex";
+                  if (urlRow) urlRow.style.display = "flex";
+                } else if (d.isChatGPTPersonal) {
                   var profileRow = document.getElementById("cred-profile");
                   var pinRow = document.getElementById("cred-pin");
                   if (profileRow && profileRow.parentElement) profileRow.parentElement.style.display = "none";
@@ -390,7 +414,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
   </style>
 </head>
 <body>
-  <div class="card${isChatGPTPersonal ? " card--chatgpt-personal" : ""}">
+  <div class="card${(isChatGPTPersonal || isIptv) ? " card--chatgpt-personal" : ""}">
     <div class="brand">${platformName}</div>
     <div class="title">Detalle Cuenta</div>
     <div class="divider"></div>

@@ -48,6 +48,7 @@ async function buildOrderDeliveryPayload(orderId) {
             p.show_device_rule,
             pa.email AS account_email,
             pa.password AS account_password,
+            pa.access_url AS account_access_url,
             pa.pin AS account_pin,
             pa.two_factor_secret AS account_two_factor_secret,
             pa.profile_number AS account_profile,
@@ -85,6 +86,7 @@ async function buildOrderDeliveryPayload(orderId) {
             account: row.account_email ? {
                 email: row.account_email,
                 password: row.account_password,
+                access_url: row.account_access_url,
                 pin: row.account_pin,
                 two_factor_secret: row.account_two_factor_secret,
                 profile_number: row.account_profile,

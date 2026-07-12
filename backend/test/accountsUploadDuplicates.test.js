@@ -81,6 +81,9 @@ test("bulk upload can force assigned screen duplicates when admin confirms", asy
             if (/SELECT\s+pa\.id/.test(sql)) {
                 throw new Error("duplicate lookup should be skipped when forcing");
             }
+            if (/SELECT id, name, slug FROM platforms WHERE id IN/i.test(sql)) {
+                return [[{ id: 4, name: "Prime Video", slug: "prime-video" }]];
+            }
             if (sql.includes("INSERT INTO account_identities")) {
                 return [{ insertId: 9001 }];
             }

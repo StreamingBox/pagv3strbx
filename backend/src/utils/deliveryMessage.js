@@ -1,4 +1,9 @@
 const { formatDateOnlyBogota } = require("./date");
+const {
+    isChatGPTPersonalProduct,
+    isIptvProduct,
+    normalizeProductName,
+} = require("./productDeliveryProfile");
 
 function credentialUrl(baseUrl, token) {
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
@@ -17,15 +22,6 @@ function shouldShowDeviceUsageRule(plan) {
     return normalized !== "0" && normalized !== "false";
 }
 
-function normalizeProductName(value) {
-    return String(value || "")
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim();
-}
-
 function isAssistedActivationProduct(platformName) {
     const normalized = normalizeProductName(platformName);
     return (
@@ -33,14 +29,6 @@ function isAssistedActivationProduct(platformName) {
         normalized.includes("notion") ||
         normalized.includes("gemini")
     );
-}
-
-function isChatGPTPersonalProduct({ platformName, platformSlug } = {}) {
-    const compact = normalizeProductName(String(platformSlug || "") + " " + String(platformName || ""))
-        .replace(/\s+/g, "");
-    return compact.includes("chatgpt")
-        && compact.includes("personal")
-        && !compact.includes("business");
 }
 
 function buildChatGPTPersonalCredentialsMessage(account = {}) {
@@ -58,6 +46,20 @@ function buildChatGPTPersonalCredentialsMessage(account = {}) {
         lines.push("Consulta 2FA: https://2fa.live/");
     }
     return lines.join("\n");
+}
+
+function buildIptvCredentialsMessage(account = {}) {
+    const username = account.username
+        ?? account.user
+        ?? account.email;
+    const accessUrl = account.access_url
+        ?? account.accessUrl
+        ?? account.url;
+    return [
+        "Usuario: " + (username || "-"),
+        "ContraseÃ±a: " + (account.password || "-"),
+        "URL: " + (accessUrl || "-"),
+    ].join("\n");
 }
 
 function activationServiceName(platformName) {
@@ -102,8 +104,12 @@ function buildAccountDeliveryMessage({
     lines.push("");
     lines.push(`🆔 ID: ${subscriptionId || "-"} | 🖥️ ${platformName || "Producto"}`);
 
-    if (isChatGPTPersonalProduct({ platformName, platformSlug })) {
-        lines.push(buildChatGPTPersonalCredentialsMessage(safeAccount));
+    if (isChatGPTPersonalProduct({ platformName, platformSlug }) || isIptvProduct({ platformName, platformSlug })) {
+        lines.push(
+            isIptvProduct({ platformName, platformSlug })
+                ? buildIptvCredentialsMessage(safeAccount)
+                : buildChatGPTPersonalCredentialsMessage(safeAccount)
+        );
         return lines.join("\n").trim();
     }
 
@@ -146,10 +152,18 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
             platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
         });
     };
+    const isIptvResult = (result) => {
+        const plan = result?.plan || {};
+        return isIptvProduct({
+            platformName: result?.purchasedPlatformName || result?.platformName || plan.platform_name,
+            platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
+        });
+    };
 
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
         return !isChatGPTPersonalResult(result)
+            && !isIptvResult(result)
             && !isEmailDelivery(plan)
             && shouldShowDeviceUsageRule(plan);
     });
@@ -165,9 +179,13 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         const url = credentialUrl(baseUrl, result?.token || "");
         const platformName = result?.purchasedPlatformName || result?.platformName || plan.platform_name || "Producto";
 
-        if (isChatGPTPersonalResult(result)) {
+        if (isChatGPTPersonalResult(result) || isIptvResult(result)) {
             lines.push(`\u{1F194} ID: ${result?.subscriptionId || "-"} | \u{1F5A5}\uFE0F ${platformName}`);
-            lines.push(buildChatGPTPersonalCredentialsMessage(account));
+            lines.push(
+                isIptvResult(result)
+                    ? buildIptvCredentialsMessage(account)
+                    : buildChatGPTPersonalCredentialsMessage(account)
+            );
             lines.push("");
             continue;
         }
@@ -228,7 +246,9 @@ module.exports = {
     buildAccountDeliveryMessage,
     buildChatGPTPersonalCredentialsMessage,
     buildDeliveryMessage,
+    buildIptvCredentialsMessage,
     isAssistedActivationProduct,
     isChatGPTPersonalProduct,
+    isIptvProduct,
     salesContactPhone,
 };

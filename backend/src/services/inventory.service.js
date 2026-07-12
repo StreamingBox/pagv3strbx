@@ -14,6 +14,8 @@ const {
     normalizeProfileForIdentity,
 } = require("../utils/normalize");
 const { validateCostModelInput } = require("../utils/accountCosts");
+const { normalizeAccessUrl } = require("../utils/accountAccess");
+const { isIptvProduct } = require("../utils/productDeliveryProfile");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
@@ -144,6 +146,7 @@ async function getInventory(query = {}) {
       pa.platform_name AS platform_name_raw,
       pa.email,
       pa.password,
+      pa.access_url,
       pa.pin,
       pa.two_factor_secret,
       pa.profile_number,
@@ -224,6 +227,7 @@ async function exportInventoryCsv(query = {}) {
       COALESCE(p.name, pa.platform_name) AS platform_name,
       pa.email,
       pa.password,
+      pa.access_url,
       pa.pin,
       pa.two_factor_secret,
       pa.profile_number,
@@ -253,6 +257,7 @@ async function exportInventoryCsv(query = {}) {
         "platform",
         "email",
         "password",
+        "access_url",
         "pin",
         "two_factor_secret",
         "profile_number",
@@ -271,6 +276,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.platform_name),
             escapeCsv(r.email),
             escapeCsv(r.password),
+            escapeCsv(r.access_url),
             escapeCsv(r.pin),
             escapeCsv(r.two_factor_secret),
             escapeCsv(r.profile_number),
@@ -305,6 +311,7 @@ async function getInventoryAccountDetail(id) {
             COALESCE(p.name, pa.platform_name) AS platform_name,
             pa.email,
             pa.password,
+            pa.access_url,
             pa.pin,
             pa.two_factor_secret,
             pa.profile_number,
@@ -432,6 +439,7 @@ async function patchInventory(id, body = {}) {
         status,
         email,
         password,
+        access_url,
         pin,
         two_factor_secret,
         profile_number,
@@ -497,9 +505,11 @@ async function patchInventory(id, body = {}) {
         }
 
         const [[current]] = await conn.query(
-            `SELECT id, identity_id, platform_id, email, password, pin, two_factor_secret, profile_number
-             FROM platform_accounts
-             WHERE id = ?
+            `SELECT pa.id, pa.identity_id, pa.platform_id, pa.email, pa.password, pa.access_url, pa.pin,
+                    pa.two_factor_secret, pa.profile_number, p.name AS platform_name, p.slug AS platform_slug
+             FROM platform_accounts pa
+             LEFT JOIN platforms p ON p.id = pa.platform_id
+             WHERE pa.id = ?
              FOR UPDATE`,
             [accountId]
         );
@@ -516,6 +526,7 @@ async function patchInventory(id, body = {}) {
 
         let nextEmail = current.email;
         let nextPassword = current.password;
+        let nextAccessUrl = current.access_url;
         let nextPin = current.pin;
         let nextProfile = current.profile_number;
         let refreshIdentity = false;
@@ -569,6 +580,20 @@ async function patchInventory(id, body = {}) {
             refreshIdentity = true;
         }
 
+        if (has("access_url") || has("accessUrl") || has("url")) {
+            const rawAccessUrl = has("accessUrl")
+                ? body.accessUrl
+                : (has("url") ? body.url : access_url);
+            nextAccessUrl = normalizeAccessUrl(rawAccessUrl, {
+                required: isIptvProduct({
+                    platformName: current.platform_name,
+                    platformSlug: current.platform_slug,
+                }),
+            });
+            sets.push("access_url = ?");
+            params.push(nextAccessUrl);
+        }
+
         if (has("pin")) {
             nextPin = normalizeOptionalValue(pin);
             sets.push("pin = ?");
@@ -611,6 +636,15 @@ async function patchInventory(id, body = {}) {
             }
             sets.push("expires_at = ?");
             params.push(expOnly ? toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expOnly)) : null);
+        }
+
+        if (isIptvProduct({
+            platformName: current.platform_name,
+            platformSlug: current.platform_slug,
+        }) && !nextAccessUrl) {
+            const err = new Error("URL es obligatoria para IPTV.");
+            err.status = 400;
+            throw err;
         }
 
         const hasCostFields = [

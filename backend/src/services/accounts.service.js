@@ -10,6 +10,8 @@ const {
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
+const { isIptvProduct } = require("../utils/productDeliveryProfile");
+const { normalizeAccessUrl } = require("../utils/accountAccess");
 const { enqueueNotification } = require("./notificationOutbox.service");
 
 const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
@@ -18,10 +20,11 @@ const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
 async function resolvePlatform(conn, { platformId, platformName }) {
     let pid = platformId ? Number(platformId) : null;
     let pname = String(platformName || "").trim();
+    let platformSlug = "";
 
     if (!pid) {
         const [ps] = await conn.query(
-            `SELECT id, name FROM platforms WHERE LOWER(name) = LOWER(?) LIMIT 1`,
+            `SELECT id, name, slug FROM platforms WHERE LOWER(name) = LOWER(?) LIMIT 1`,
             [pname]
         );
         if (!ps.length) {
@@ -32,12 +35,16 @@ async function resolvePlatform(conn, { platformId, platformName }) {
         }
         pid = Number(ps[0].id);
         pname = ps[0].name;
-    } else if (!pname) {
-        const [ps] = await conn.query(`SELECT name FROM platforms WHERE id=? LIMIT 1`, [pid]);
-        if (ps.length) pname = ps[0].name;
+        platformSlug = ps[0].slug || "";
+    } else {
+        const [ps] = await conn.query(`SELECT name, slug FROM platforms WHERE id=? LIMIT 1`, [pid]);
+        if (ps.length) {
+            if (!pname) pname = ps[0].name;
+            platformSlug = ps[0].slug || "";
+        }
     }
 
-    return { pid, pname };
+    return { pid, pname, platformSlug };
 }
 
 async function upsertIdentity(conn, { pid, emailValue, identityProf, password, pin }) {
@@ -62,17 +69,18 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, pin, twoFactorSecret, accountProf, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, accountProf, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
-     (identity_id, platform_id, platform_name, email, password, pin, two_factor_secret, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
+     (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
         [
             identityId,
             pid,
             pname || "",
             emailValue,
             password,
+            accessUrl,
             pin,
             twoFactorSecret,
             accountProf,
@@ -87,6 +95,15 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     await queueStockAvailabilityNotifications(conn, pid, pname);
     
     return ins.insertId;
+}
+
+function firstNonEmpty(...values) {
+    for (const value of values) {
+        if (value !== null && value !== undefined && String(value).trim()) {
+            return String(value).trim();
+        }
+    }
+    return "";
 }
 
 function isScreenCostInput(costInput = {}) {
@@ -327,7 +344,8 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
 }
 
 async function createAccountOne(conn, body) {
-    const { platformId, platformName, email, password, pin, profileNumber, expiresAt } = body;
+    const { platformId, platformName, password, pin, profileNumber, expiresAt } = body;
+    const email = firstNonEmpty(body.email, body.correo, body.username, body.user, body.usuario);
 
     if (!email || !password || (!platformId && !platformName)) {
         const err = new Error("platformId o platformName, email y password son obligatorios.");
@@ -356,7 +374,11 @@ async function createAccountOne(conn, body) {
     };
     const costModel = validateCostModelInput(costInput);
 
-    const { pid, pname } = await resolvePlatform(conn, { platformId, platformName });
+    const { pid, pname, platformSlug } = await resolvePlatform(conn, { platformId, platformName });
+    const accessUrl = normalizeAccessUrl(
+        body.accessUrl ?? body.access_url ?? body.url ?? body.URL,
+        { required: isIptvProduct({ platformName: pname, platformSlug }) }
+    );
 
     if (isScreenCostInput(costInput)) {
         const duplicate = await findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf });
@@ -385,6 +407,7 @@ async function createAccountOne(conn, body) {
         pname,
         emailValue,
         password,
+        accessUrl,
         pin: normalizeOptionalValue(pin),
         twoFactorSecret,
         accountProf,
@@ -397,18 +420,38 @@ async function createAccountOne(conn, body) {
     return { id: newId, platformId: pid, platformName: pname };
 }
 
-async function resolvePlatformsByName(rows) {
+async function resolvePlatformsByName(conn, rows) {
     const needResolve = rows.filter((r) => !r.platformId && r.platformName);
     if (!needResolve.length) return new Map();
 
     const names = [...new Set(needResolve.map((r) => r.platformName.toLowerCase()))];
     const placeholders = names.map(() => "?").join(",");
 
-    const [ps] = await pool.query(
-        `SELECT id, name FROM platforms WHERE LOWER(name) IN (${placeholders})`,
+    const [ps] = await conn.query(
+        `SELECT id, name, slug FROM platforms WHERE LOWER(name) IN (${placeholders})`,
         names
     );
-    return new Map(ps.map((p) => [String(p.name).toLowerCase(), Number(p.id)]));
+    return new Map(ps.map((p) => [
+        String(p.name).toLowerCase(),
+        { id: Number(p.id), name: p.name, slug: p.slug || "" },
+    ]));
+}
+
+async function resolvePlatformsById(conn, rows) {
+    const ids = [...new Set(
+        rows.map((row) => Number(row.platformId)).filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    if (!ids.length) return new Map();
+
+    const placeholders = ids.map(() => "?").join(",");
+    const [platforms] = await conn.query(
+        `SELECT id, name, slug FROM platforms WHERE id IN (${placeholders})`,
+        ids
+    );
+    return new Map(platforms.map((platform) => [
+        Number(platform.id),
+        { id: Number(platform.id), name: platform.name, slug: platform.slug || "" },
+    ]));
 }
 
 function normalizeBulkRows(rows) {
@@ -427,8 +470,9 @@ function normalizeBulkRows(rows) {
             rowNumber: index + 2,
             platformId,
             platformName,
-            email: String(r.email || r.correo || "").trim(),
+            email: firstNonEmpty(r.usuario, r.Usuario, r.username, r.user, r.email, r.correo),
             password: String(r.password || r.contrasena || r.clave || "").trim(),
+            accessUrl: normalizeOptionalValue(r.accessUrl ?? r.access_url ?? r.url ?? r.URL ?? r.Url),
             pin: normalizeOptionalValue(r.pin),
             twoFactorSecret: normalizeOptionalValue(
                 r.twoFactorSecret
@@ -463,7 +507,8 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         throw err;
     }
 
-    const mapByName = await resolvePlatformsByName(candidates);
+    const mapByName = await resolvePlatformsByName(conn, candidates);
+    const mapById = await resolvePlatformsById(conn, candidates);
 
     let inserted = 0;
     const missingPlatforms = new Set();
@@ -472,8 +517,9 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
     for (const [rowIndex, r] of candidates.entries()) {
-        let pid = r.platformId;
-        if (!pid) pid = mapByName.get(String(r.platformName).toLowerCase()) || null;
+        let platform = r.platformId ? mapById.get(Number(r.platformId)) : null;
+        if (!platform) platform = mapByName.get(String(r.platformName).toLowerCase()) || null;
+        const pid = platform?.id || null;
 
         if (!pid) {
             missingPlatforms.add(r.platformName || "(vacío)");
@@ -484,6 +530,15 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         const identityProf = normalizeProfileForIdentity(r.profileNumber);
         const accountProf = normalizeProfileForAccount(r.profileNumber);
         const exp = r.expiresAt ? toSqlDateStart(r.expiresAt) : null;
+        let accessUrl;
+        try {
+            accessUrl = normalizeAccessUrl(r.accessUrl, {
+                required: isIptvProduct({ platformName: platform.name, platformSlug: platform.slug }),
+            });
+        } catch (err) {
+            err.message = `Fila ${r.rowNumber || rowIndex + 2}: ${err.message}`;
+            throw err;
+        }
         const costInput = {
             costMode: r.costMode,
             costAmount: r.costAmount,
@@ -522,9 +577,10 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         const newId = await insertAccount(conn, {
             identityId,
             pid,
-            pname: r.platformName || "",
+            pname: platform.name,
             emailValue: r.email,
             password: r.password,
+            accessUrl,
             pin: r.pin,
             twoFactorSecret: r.twoFactorSecret,
             accountProf,

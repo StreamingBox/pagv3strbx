@@ -185,7 +185,8 @@ test("IPTV delivers only username, password, and URL after the standard header",
     assert.match(message, /Pedido m/);
     assert.match(message, /ID: 123 .*IPTV 3 MESES/);
     assert.match(message, /Usuario: PMVZ5mXZyh/);
-    assert.match(message, /Contrase.*aNsftq3BV3/);
+    assert.match(message, new RegExp("Contrase\\u00f1a: aNsftq3BV3"));
+    assert.doesNotMatch(message, new RegExp("Contrase\\u00c3\\u00b1a"));
     assert.match(message, /URL: http:\/\/red4tv\.lat/);
     assert.doesNotMatch(message, /Correo:|Perfil:|Pin:|Expira:|Regla de uso|strbx\.com\.co\/s\//);
 });

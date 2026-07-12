@@ -193,14 +193,19 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
            AND LOWER(pa.email) = LOWER(?)
            AND ${profileSql}
            AND (
-                LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned'
-                OR pa.assigned_to_user_id IS NOT NULL
-                OR active_sub.id IS NOT NULL
-           )
-           AND (
-                pa.expires_at IS NULL
-                OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-                OR DATE(active_sub.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                (
+                    active_sub.id IS NOT NULL
+                    AND DATE(active_sub.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                )
+                OR (
+                    active_sub.id IS NULL
+                    AND (
+                        LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned'
+                        OR pa.assigned_to_user_id IS NOT NULL
+                    )
+                    AND pa.expires_at IS NOT NULL
+                    AND DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                )
            )
          ORDER BY pa.id DESC
          LIMIT 1`,

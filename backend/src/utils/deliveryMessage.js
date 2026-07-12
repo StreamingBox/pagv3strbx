@@ -57,7 +57,7 @@ function buildIptvCredentialsMessage(account = {}) {
         ?? account.url;
     return [
         "Usuario: " + (username || "-"),
-        "ContraseÃ±a: " + (account.password || "-"),
+        "Contrase\u00f1a: " + (account.password || "-"),
         "URL: " + (accessUrl || "-"),
     ].join("\n");
 }

@@ -68,8 +68,9 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) = 'assigned'/);
     assert.match(calls[0].sql, /pa\.assigned_to_user_id IS NOT NULL/);
     assert.match(calls[0].sql, /active_sub\.id IS NOT NULL/);
-    assert.match(calls[0].sql, /pa\.expires_at IS NULL/);
-    assert.match(calls[0].sql, /active_sub\.expires_at/);
+    assert.match(calls[0].sql, /active_sub\.id IS NULL/);
+    assert.match(calls[0].sql, /pa\.expires_at IS NOT NULL/);
+    assert.match(calls[0].sql, /DATE\(active_sub\.expires_at\) >= DATE\(DATE_SUB\(UTC_TIMESTAMP\(\), INTERVAL 5 HOUR\)\)/);
     assert.match(calls[0].sql, /CAST\(pa\.profile_number AS CHAR\) = \?/);
 });
 

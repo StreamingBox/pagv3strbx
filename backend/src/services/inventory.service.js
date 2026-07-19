@@ -16,6 +16,7 @@ const {
 const { validateCostModelInput } = require("../utils/accountCosts");
 const { normalizeAccessUrl } = require("../utils/accountAccess");
 const { isIptvProduct } = require("../utils/productDeliveryProfile");
+const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
@@ -31,6 +32,162 @@ LEFT JOIN (
         GROUP BY new_account_id
     ) arl_last ON arl_last.max_id = arl1.id
 ) latest_replacement ON latest_replacement.new_account_id = pa.id`;
+
+function toMoney(value) {
+    const amount = Number(value || 0);
+    return Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0;
+}
+
+async function refundSubscriptionRelease(conn, { subscription, releaseLogId, orderCode }) {
+    const subscriptionId = Number(subscription?.id || 0);
+    const userId = Number(subscription?.user_id || 0);
+    if (!subscriptionId || !userId) return null;
+
+    const [[existingRefund]] = await conn.query(
+        `SELECT id, amount, balance_after
+           FROM wallet_transactions
+          WHERE reference_type = 'subscription_release_refund'
+            AND reference_id = ?
+          LIMIT 1`,
+        [subscriptionId]
+    );
+    if (existingRefund) {
+        if (releaseLogId) {
+            await conn.query(
+                `UPDATE account_release_logs
+                    SET wallet_transaction_id = ?,
+                        wallet_amount = ?,
+                        wallet_currency = ?
+                  WHERE id = ?`,
+                [
+                    existingRefund.id,
+                    toMoney(existingRefund.amount),
+                    normalizeCurrency(subscription.currency || "COP", "COP"),
+                    releaseLogId,
+                ]
+            );
+        }
+        return {
+            alreadyRefunded: true,
+            walletTransactionId: existingRefund.id,
+            refundedAmount: toMoney(existingRefund.amount),
+        };
+    }
+
+    const refundAmount = toMoney(subscription.item_price ?? subscription.price);
+    if (refundAmount <= 0) return null;
+
+    const targetCurrency = normalizeCurrency(subscription.currency || subscription.order_currency || "COP", "COP");
+    const [walletRows] = await conn.query(
+        "SELECT id, balance, profit_total, currency FROM wallets WHERE user_id = ? FOR UPDATE",
+        [userId]
+    );
+
+    let wallet;
+    if (!walletRows.length) {
+        const [walletInsert] = await conn.query(
+            "INSERT INTO wallets (user_id, balance, currency) VALUES (?, 0.00, ?)",
+            [userId, targetCurrency]
+        );
+        wallet = { id: walletInsert.insertId, balance: 0, profit_total: 0, currency: targetCurrency };
+    } else {
+        wallet = {
+            ...walletRows[0],
+            balance: toMoney(walletRows[0].balance),
+            profit_total: toMoney(walletRows[0].profit_total),
+            currency: normalizeCurrency(walletRows[0].currency || targetCurrency, targetCurrency),
+        };
+    }
+
+    if (!sameCurrency(wallet.currency, targetCurrency)) {
+        const err = new Error(`No se pudo devolver la venta: la wallet esta en ${wallet.currency} y la venta en ${targetCurrency}.`);
+        err.status = 409;
+        throw err;
+    }
+
+    const newBalance = toMoney(wallet.balance + refundAmount);
+    const itemProfit = Math.max(toMoney(subscription.profit_amount), 0);
+    let profitToReverse = 0;
+    if (itemProfit > 0 && subscription.order_id) {
+        const [[profitRows]] = await conn.query(
+            `SELECT
+                COALESCE(SUM(CASE WHEN type = 'profit' THEN amount ELSE 0 END), 0) AS order_profit,
+                COALESCE((
+                    SELECT SUM(ABS(wtr.amount))
+                      FROM wallet_transactions wtr
+                     WHERE wtr.wallet_id = ?
+                       AND wtr.type = 'profit_reversal'
+                       AND wtr.reference_type = 'subscription_release_profit'
+                       AND wtr.reference_id IN (
+                            SELECT oi.subscription_id
+                              FROM order_items oi
+                             WHERE oi.order_id = ?
+                       )
+                ), 0) AS already_reversed
+               FROM wallet_transactions
+              WHERE wallet_id = ?
+                AND reference_type = 'order'
+                AND reference_id = ?`,
+            [wallet.id, subscription.order_id, wallet.id, subscription.order_id]
+        );
+        const remainingProfit = Math.max(toMoney(profitRows.order_profit) - toMoney(profitRows.already_reversed), 0);
+        profitToReverse = Math.min(itemProfit, remainingProfit);
+    }
+    const newProfitTotal = toMoney(wallet.profit_total - profitToReverse);
+
+    await conn.query(
+        "UPDATE wallets SET balance = ?, profit_total = ? WHERE id = ?",
+        [newBalance, newProfitTotal, wallet.id]
+    );
+
+    const [refundInsert] = await conn.query(
+        `INSERT INTO wallet_transactions
+            (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+         VALUES (?, 'refund', ?, ?, 'subscription_release_refund', ?, ?)`,
+        [
+            wallet.id,
+            refundAmount,
+            newBalance,
+            subscriptionId,
+            `Devolucion por liberacion forzada${orderCode ? `: ${orderCode}` : ""}`,
+        ]
+    );
+
+    if (profitToReverse > 0) {
+        await conn.query(
+            `INSERT INTO wallet_transactions
+                (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+             VALUES (?, 'profit_reversal', ?, ?, 'subscription_release_profit', ?, ?)`,
+            [
+                wallet.id,
+                -profitToReverse,
+                newBalance,
+                subscriptionId,
+                `Reversa de ganancia por liberacion forzada${orderCode ? `: ${orderCode}` : ""}`,
+            ]
+        );
+    }
+
+    if (releaseLogId) {
+        await conn.query(
+            `UPDATE account_release_logs
+                SET wallet_transaction_id = ?,
+                    wallet_amount = ?,
+                    wallet_currency = ?
+              WHERE id = ?`,
+            [refundInsert.insertId, refundAmount, targetCurrency, releaseLogId]
+        );
+    }
+
+    return {
+        alreadyRefunded: false,
+        walletTransactionId: refundInsert.insertId,
+        refundedAmount: refundAmount,
+        currency: targetCurrency,
+        balanceAfter: newBalance,
+        reversedProfit: profitToReverse,
+    };
+}
 
 /**
  * Construye WHERE dinámico + params para inventory/export.
@@ -397,6 +554,9 @@ async function getInventoryAccountDetail(id) {
             arl.previous_expires_at,
             arl.reason,
             arl.forced,
+            arl.wallet_transaction_id,
+            arl.wallet_amount,
+            arl.wallet_currency,
             arl.created_at,
             admin.email AS admin_email,
             admin.name AS admin_name,
@@ -521,7 +681,18 @@ async function patchInventory(id, body = {}, options = {}) {
             }
 
             const [activeSubscriptions] = await conn.query(
-                `SELECT DISTINCT s.id, s.user_id, s.expires_at, oi.order_id, o.order_code
+                `SELECT DISTINCT
+                        s.id,
+                        s.user_id,
+                        s.expires_at,
+                        s.price,
+                        s.currency,
+                        oi.id AS order_item_id,
+                        oi.order_id,
+                        oi.price AS item_price,
+                        oi.profit_amount,
+                        o.order_code,
+                        o.currency AS order_currency
                    FROM subscriptions s
                    LEFT JOIN order_items oi ON oi.subscription_id = s.id
                    LEFT JOIN orders o ON o.id = oi.order_id
@@ -549,9 +720,10 @@ async function patchInventory(id, body = {}, options = {}) {
                 throw error;
             }
 
+            const releaseRefunds = [];
             if (activeSubscriptions.length) {
                 for (const sub of activeSubscriptions) {
-                    await conn.query(
+                    const [releaseInsert] = await conn.query(
                         `INSERT INTO account_release_logs
                             (account_id, subscription_id, order_id, order_code, user_id, admin_user_id,
                              previous_status, previous_assigned_to_user_id, previous_expires_at, reason, forced)
@@ -569,10 +741,17 @@ async function patchInventory(id, body = {}, options = {}) {
                             normalizeOptionalValue(releaseReason) || "Liberacion forzada desde inventario",
                         ]
                     );
+                    const refund = await refundSubscriptionRelease(conn, {
+                        subscription: sub,
+                        releaseLogId: releaseInsert.insertId,
+                        orderCode: sub.order_code || null,
+                    });
+                    if (refund) releaseRefunds.push({ subscriptionId: sub.id, ...refund });
                 }
                 await conn.query(
                     `UPDATE subscriptions
-                        SET platform_account_id = NULL
+                        SET platform_account_id = NULL,
+                            status = 'cancelled'
                       WHERE platform_account_id = ?
                         AND status = 'active'
                         AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`,
@@ -606,7 +785,13 @@ async function patchInventory(id, body = {}, options = {}) {
                 [accountId]
             );
             await conn.commit();
-            return { ok: true, reset: true, forced: shouldForceRelease, detachedSubscriptions: activeSubscriptions.length };
+            return {
+                ok: true,
+                reset: true,
+                forced: shouldForceRelease,
+                detachedSubscriptions: activeSubscriptions.length,
+                refundedSubscriptions: releaseRefunds.length,
+            };
         }
 
         if (reset_assign) {

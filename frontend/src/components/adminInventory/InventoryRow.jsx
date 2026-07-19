@@ -128,7 +128,15 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "available" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar disponible">🟢</button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "inactive" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar inactiva">⚪</button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "down" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar caída">🔴</button>
-                        <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ reset_assign: true })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Reset asignación">🔄</button>
+                        <button
+                            className="btn-ghost"
+                            disabled={saving}
+                            onClick={() => onUpdate({ reset_assign: true })}
+                            style={{ ...rowBtnStyle, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.35)", fontWeight: 800 }}
+                            title="Liberar cuenta"
+                        >
+                            Liberar
+                        </button>
                     </div>
                 </td>
             </motion.tr>

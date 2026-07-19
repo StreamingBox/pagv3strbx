@@ -84,6 +84,7 @@ export default function AdminInventory() {
     const [supportError, setSupportError] = useState("");
     const [supportCopied, setSupportCopied] = useState("");
     const [supportReplacementId, setSupportReplacementId] = useState("");
+    const [releaseModal, setReleaseModal] = useState({ open: false, item: null, activeSubscription: null, message: "" });
     const [detailById, setDetailById] = useState({});
     const [detailLoadingById, setDetailLoadingById] = useState({});
     const [detailErrorById, setDetailErrorById] = useState({});
@@ -230,10 +231,48 @@ export default function AdminInventory() {
         setError("");
         try {
             const r = await apiPatch(`/api/admin/inventory/${id}`, patch);
-            if (!r.ok) throw new Error(r.data?.message || "No se pudo actualizar.");
+            if (!r.ok) {
+                if (patch?.reset_assign && r.status === 409 && r.data?.code === "ACTIVE_SUBSCRIPTION") {
+                    const item = items.find((current) => String(current.id) === String(id)) || null;
+                    setReleaseModal({
+                        open: true,
+                        item,
+                        activeSubscription: r.data?.activeSubscription || null,
+                        message: r.data?.message || "La cuenta sigue asignada a una venta activa.",
+                    });
+                    return;
+                }
+                throw new Error(r.data?.message || "No se pudo actualizar.");
+            }
             await loadInventory(page);
         } catch (e) {
             setError(e?.message || "Error actualizando.");
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function confirmForceRelease() {
+        const item = releaseModal.item;
+        if (!item?.id) return;
+        setSaving(true);
+        setError("");
+        try {
+            const r = await apiPatch(`/api/admin/inventory/${item.id}`, {
+                reset_assign: true,
+                forceRelease: true,
+                releaseReason: "Liberacion forzada confirmada desde inventario",
+            });
+            if (!r.ok) throw new Error(r.data?.message || "No se pudo liberar la cuenta.");
+            setReleaseModal({ open: false, item: null, activeSubscription: null, message: "" });
+            setDetailById((prev) => {
+                const next = { ...prev };
+                delete next[item.id];
+                return next;
+            });
+            await loadInventory(page);
+        } catch (e) {
+            setError(e?.message || "No se pudo liberar la cuenta.");
         } finally {
             setSaving(false);
         }
@@ -659,6 +698,68 @@ export default function AdminInventory() {
                     </div>
                 </main>
             </div>
+
+            <AnimatePresence>
+                {releaseModal.open && (
+                    <div className="modal-overlay" style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,0.72)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.94, y: 18 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.94, y: 18 }}
+                            style={{ background: "var(--bg1)", border: "1px solid rgba(245,158,11,0.42)", borderRadius: 22, width: "100%", maxWidth: 620, padding: 26, boxShadow: "0 20px 80px rgba(0,0,0,0.55)", position: "relative", overflow: "hidden" }}
+                        >
+                            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 6, background: "linear-gradient(90deg, #f59e0b 0%, #ef4444 100%)" }} />
+                            <h2 style={{ margin: 0, fontSize: 21, fontWeight: 900, color: "var(--text)" }}>Confirmar liberacion</h2>
+                            <p style={{ margin: "8px 0 0", color: "var(--muted)", fontSize: 14, lineHeight: 1.45 }}>
+                                {releaseModal.message || "Esta cuenta sigue asociada a una venta activa."}
+                            </p>
+
+                            <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                                <div style={{ background: "var(--bg0)", border: "1px solid var(--stroke2)", borderRadius: 12, padding: 14 }}>
+                                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>Cuenta</div>
+                                    <div style={{ marginTop: 6, color: "var(--text)", fontWeight: 900 }}>#{releaseModal.item?.id || "-"}</div>
+                                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12, wordBreak: "break-word" }}>{releaseModal.item?.email || ""}</div>
+                                </div>
+                                <div style={{ background: "var(--bg0)", border: "1px solid var(--stroke2)", borderRadius: 12, padding: 14 }}>
+                                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>Venta activa</div>
+                                    <div style={{ marginTop: 6, color: "#f59e0b", fontWeight: 900 }}>#{releaseModal.activeSubscription?.id || releaseModal.item?.sale_id || "-"}</div>
+                                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>{releaseModal.activeSubscription?.orderCode || "Sin orden"}</div>
+                                </div>
+                                <div style={{ background: "var(--bg0)", border: "1px solid var(--stroke2)", borderRadius: 12, padding: 14 }}>
+                                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 800 }}>Expira</div>
+                                    <div style={{ marginTop: 6, color: "var(--text)", fontWeight: 900 }}>{formatBogotaDate(releaseModal.activeSubscription?.expiresAt || releaseModal.item?.display_expires_at || releaseModal.item?.expires_at)}</div>
+                                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>{releaseModal.item?.assigned_user_email || "Sin usuario"}</div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: 16, background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.34)", borderRadius: 14, padding: "12px 14px", color: "#fbbf24", fontSize: 13, lineHeight: 1.45, fontWeight: 700 }}>
+                                Si continuas, la cuenta quedara disponible y la venta activa dejara de apuntar a esta cuenta. Usa esto solo cuando realmente necesitas liberar ese acceso.
+                            </div>
+
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
+                                <button
+                                    type="button"
+                                    className="btn-ghost"
+                                    disabled={saving}
+                                    onClick={() => setReleaseModal({ open: false, item: null, activeSubscription: null, message: "" })}
+                                    style={{ height: 44, padding: "0 18px" }}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    disabled={saving}
+                                    onClick={confirmForceRelease}
+                                    style={{ height: 44, minWidth: 190, borderRadius: 12, background: "linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)", color: "white", fontWeight: 900, border: "none", cursor: saving ? "wait" : "pointer", opacity: saving ? 0.75 : 1 }}
+                                >
+                                    {saving ? "Liberando..." : "Liberar de todas formas"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Modal Soporte */}
             <AnimatePresence>

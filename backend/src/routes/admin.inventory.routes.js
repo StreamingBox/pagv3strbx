@@ -45,11 +45,15 @@ router.get("/admin/inventory/export", requireAuth, requireRole("admin"), async (
 
 router.patch("/admin/inventory/:id", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const out = await patchInventory(req.params.id, req.body || {});
+        const out = await patchInventory(req.params.id, req.body || {}, { adminUserId: req.user?.id || null });
         return res.json(out);
     } catch (e) {
         const status = e.status || 500;
-        return res.status(status).json({ message: e.message || "Error interno." });
+        return res.status(status).json({
+            message: e.message || "Error interno.",
+            code: e.code || undefined,
+            ...(e.payload || {}),
+        });
     }
 });
 

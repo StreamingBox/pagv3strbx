@@ -383,6 +383,33 @@ async function getInventoryAccountDetail(id) {
         [accountId, accountId]
     );
 
+    const [releaseRows] = await pool.query(
+        `SELECT
+            arl.id,
+            arl.account_id,
+            arl.subscription_id,
+            arl.order_id,
+            arl.order_code,
+            arl.user_id,
+            arl.admin_user_id,
+            arl.previous_status,
+            arl.previous_assigned_to_user_id,
+            arl.previous_expires_at,
+            arl.reason,
+            arl.forced,
+            arl.created_at,
+            admin.email AS admin_email,
+            admin.name AS admin_name,
+            usr.email AS user_email,
+            usr.name AS user_name
+         FROM account_release_logs arl
+         LEFT JOIN users admin ON admin.id = arl.admin_user_id
+         LEFT JOIN users usr ON usr.id = arl.user_id
+         WHERE arl.account_id = ?
+         ORDER BY arl.id DESC`,
+        [accountId]
+    );
+
     const currentSubscription = subscriptionRows.find((row) => String(row.status) === "active") || null;
     const lastSubscription = subscriptionRows[0] || null;
 
@@ -408,6 +435,16 @@ async function getInventoryAccountDetail(id) {
             expires_at: row.previous_expires_at,
             admin_email: row.admin_email || null,
         })),
+        ...releaseRows.map((row) => ({
+            type: "release",
+            created_at: row.created_at,
+            title: row.forced ? "Cuenta liberada forzada" : "Cuenta liberada",
+            subtitle: row.order_code || (row.order_id ? `Orden #${row.order_id}` : row.subscription_id ? `Venta #${row.subscription_id}` : "Sin venta asociada"),
+            meta: `${row.user_email || row.user_name || "Sin comprador"}${row.reason ? ` · ${row.reason}` : ""}`,
+            status: row.previous_status || null,
+            expires_at: row.previous_expires_at,
+            admin_email: row.admin_email || null,
+        })),
     ].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     return {
@@ -424,6 +461,7 @@ async function getInventoryAccountDetail(id) {
             ...row,
             direction: row.new_account_id === accountId ? "incoming" : "outgoing",
         })),
+        releases: releaseRows,
         timeline,
     };
 }
@@ -434,7 +472,7 @@ async function getInventoryAccountDetail(id) {
  *  - resetear asignación
  *  - cambiar status/email/password/pin/profile_number/expires_at
  */
-async function patchInventory(id, body = {}) {
+async function patchInventory(id, body = {}, options = {}) {
     const {
         status,
         email,
@@ -444,6 +482,9 @@ async function patchInventory(id, body = {}) {
         two_factor_secret,
         profile_number,
         reset_assign,
+        force_release,
+        forceRelease,
+        releaseReason,
         expires_at,
         expiresAt,
         costMode,
@@ -463,6 +504,110 @@ async function patchInventory(id, body = {}) {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
+
+        if (reset_assign) {
+            const shouldForceRelease = force_release === true || forceRelease === true;
+            const [[accountToReset]] = await conn.query(
+                `SELECT id, status, assigned_to_user_id, expires_at
+                   FROM platform_accounts
+                  WHERE id = ?
+                  FOR UPDATE`,
+                [accountId]
+            );
+            if (!accountToReset) {
+                const error = new Error("Cuenta no encontrada.");
+                error.status = 404;
+                throw error;
+            }
+
+            const [activeSubscriptions] = await conn.query(
+                `SELECT DISTINCT s.id, s.user_id, s.expires_at, oi.order_id, o.order_code
+                   FROM subscriptions s
+                   LEFT JOIN order_items oi ON oi.subscription_id = s.id
+                   LEFT JOIN orders o ON o.id = oi.order_id
+                  WHERE s.platform_account_id = ?
+                    AND s.status = 'active'
+                    AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                  ORDER BY s.expires_at DESC, s.id DESC
+                  FOR UPDATE`,
+                [accountId]
+            );
+
+            if (activeSubscriptions.length && !shouldForceRelease) {
+                const activeSubscription = activeSubscriptions[0];
+                const error = new Error(`No se puede liberar esta cuenta: sigue asignada a la suscripcion #${activeSubscription.id} hasta ${String(activeSubscription.expires_at).slice(0, 10)}.`);
+                error.status = 409;
+                error.code = "ACTIVE_SUBSCRIPTION";
+                error.payload = {
+                    activeSubscription: {
+                        id: activeSubscription.id,
+                        orderId: activeSubscription.order_id || null,
+                        orderCode: activeSubscription.order_code || null,
+                        expiresAt: activeSubscription.expires_at,
+                    },
+                };
+                throw error;
+            }
+
+            if (activeSubscriptions.length) {
+                for (const sub of activeSubscriptions) {
+                    await conn.query(
+                        `INSERT INTO account_release_logs
+                            (account_id, subscription_id, order_id, order_code, user_id, admin_user_id,
+                             previous_status, previous_assigned_to_user_id, previous_expires_at, reason, forced)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+                        [
+                            accountId,
+                            sub.id,
+                            sub.order_id || null,
+                            sub.order_code || null,
+                            sub.user_id || null,
+                            options.adminUserId || null,
+                            accountToReset.status || null,
+                            accountToReset.assigned_to_user_id || null,
+                            accountToReset.expires_at || null,
+                            normalizeOptionalValue(releaseReason) || "Liberacion forzada desde inventario",
+                        ]
+                    );
+                }
+                await conn.query(
+                    `UPDATE subscriptions
+                        SET platform_account_id = NULL
+                      WHERE platform_account_id = ?
+                        AND status = 'active'
+                        AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`,
+                    [accountId]
+                );
+            } else {
+                await conn.query(
+                    `INSERT INTO account_release_logs
+                        (account_id, subscription_id, user_id, admin_user_id,
+                         previous_status, previous_assigned_to_user_id, previous_expires_at, reason, forced)
+                     VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        accountId,
+                        options.adminUserId || null,
+                        accountToReset.status || null,
+                        accountToReset.assigned_to_user_id || null,
+                        accountToReset.expires_at || null,
+                        normalizeOptionalValue(releaseReason) || "Liberacion desde inventario",
+                        shouldForceRelease ? 1 : 0,
+                    ]
+                );
+            }
+
+            await conn.query(
+                `UPDATE platform_accounts
+                    SET assigned_to_user_id = NULL,
+                        assigned_at = NULL,
+                        expires_at = NULL,
+                        status = 'available'
+                  WHERE id = ?`,
+                [accountId]
+            );
+            await conn.commit();
+            return { ok: true, reset: true, forced: shouldForceRelease, detachedSubscriptions: activeSubscriptions.length };
+        }
 
         if (reset_assign) {
             const [[accountToReset]] = await conn.query(

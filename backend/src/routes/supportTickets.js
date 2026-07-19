@@ -22,6 +22,7 @@ const {
 
 const router = express.Router();
 const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+const TRANSIENT_DB_ERRORS = new Set(["ECONNRESET", "ETIMEDOUT", "PROTOCOL_CONNECTION_LOST", "ECONNREFUSED"]);
 
 const RESOLUTION_SUBTYPE_LABELS = {
     password_updated: "Clave actualizada",
@@ -65,6 +66,11 @@ function minutesBetween(start, end) {
     const endMs = new Date(end).getTime();
     if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs < startMs) return null;
     return Math.round((endMs - startMs) / 60000);
+}
+
+function isTransientDatabaseError(error) {
+    if (TRANSIENT_DB_ERRORS.has(error?.code)) return true;
+    return Array.isArray(error?.errors) && error.errors.some((item) => TRANSIENT_DB_ERRORS.has(item?.code));
 }
 
 function mapEvent(row) {
@@ -676,6 +682,11 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
         if (storedFile) await removeSupportAttachment(storedFile).catch(() => {});
         console.error("[support] Create ticket error:", error);
         if (!res.headersSent) {
+            if (isTransientDatabaseError(error)) {
+                return res.status(503).json({
+                    message: "La base de datos no respondio a tiempo. Intenta enviar la solicitud nuevamente en unos segundos.",
+                });
+            }
             return res.status(500).json({ message: "No se pudo crear la solicitud de soporte." });
         }
     } finally {

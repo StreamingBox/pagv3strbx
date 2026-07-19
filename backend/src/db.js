@@ -36,14 +36,28 @@ async function configureConnection(conn) {
     return conn;
 }
 
-pool.getConnection = async function getConfiguredConnection() {
-    const conn = await originalGetConnection();
-    try {
-        return await configureConnection(conn);
-    } catch (error) {
-        conn.destroy();
-        throw error;
+async function openConfiguredConnectionWithRetry() {
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+            const conn = await originalGetConnection();
+            try {
+                return await configureConnection(conn);
+            } catch (error) {
+                conn.destroy();
+                throw error;
+            }
+        } catch (error) {
+            lastError = error;
+            if (!isTransientDatabaseError(error) || attempt === 2) throw error;
+            await wait(180 + attempt * 220 + Math.floor(Math.random() * 160));
+        }
     }
+    throw lastError;
+}
+
+pool.getConnection = async function getConfiguredConnection() {
+    return openConfiguredConnectionWithRetry();
 };
 
 // Direct pool reads are safe to retry once after a transient network reset.

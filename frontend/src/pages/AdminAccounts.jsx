@@ -49,6 +49,16 @@ function positiveNumber(value) {
     return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+function parseManualProfiles(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return [];
+    return raw
+        .split(/[,\n;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .filter((item, index, list) => list.findIndex((current) => current.toLowerCase() === item.toLowerCase()) === index);
+}
+
 function isChatGPTPersonalPlatform(platform) {
     const compact = String(platform?.slug || platform?.name || "")
         .normalize("NFD")
@@ -277,6 +287,11 @@ export default function AdminAccounts() {
         ? (manualCostAmount > 0 && manualProfiles > 0 ? manualCostAmount / manualProfiles : 0)
         : manualCostAmount;
     const manualCostIncomplete = costMode === "account" && manualCostAmount > 0 && manualProfiles <= 0;
+    const manualProfileList = useMemo(() => parseManualProfiles(profileNumber), [profileNumber]);
+    const manualCreateCount = hasCompactCredentials ? 1 : Math.max(1, manualProfileList.length);
+    const manualProfileSummary = manualProfileList.length > 1
+        ? `Se crearan ${manualProfileList.length} registros con los perfiles: ${manualProfileList.join(", ")}.`
+        : "Para crear varios perfiles con los mismos datos, escribe: 1,2,3,4.";
 
     async function loadPlatforms() {
         setLoading(true);
@@ -335,7 +350,14 @@ export default function AdminAccounts() {
                 setMotherCostTotal("");
                 setMotherProfilesTotal("");
                 setExcelError(false);
-                setExcelMsg(`✅ Cuenta cargada correctamente (ID: ${data.id})`);
+                const created = Number(data.created || data.ids?.length || 1);
+                const ids = Array.isArray(data.ids) && data.ids.length
+                    ? data.ids.join(", ")
+                    : data.id;
+                setExcelMsg(created > 1
+                    ? `✅ ${created} perfiles cargados correctamente (IDs: ${ids})`
+                    : `✅ Cuenta cargada correctamente (ID: ${data.id})`
+                );
                 setTimeout(() => setExcelMsg(""), 5000);
             }
         } catch (e) {
@@ -982,14 +1004,17 @@ export default function AdminAccounts() {
 
                             <div style={{ display: hasCompactCredentials ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                    Perfil <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
+                                    Perfil(es) <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
                                 <input
                                     style={inputStyle}
-                                    placeholder="Ej: 1, 2, Kids..."
+                                    placeholder="Ej: 1 o 1,2,3,4"
                                     value={profileNumber}
                                     onChange={(e) => setProfileNumber(e.target.value)}
                                 />
+                                <div style={{ fontSize: 11, color: manualProfileList.length > 1 ? "#22d3ee" : "var(--muted)", lineHeight: 1.35 }}>
+                                    {manualProfileSummary}
+                                </div>
                             </div>
 
                             <div style={{ display: hasCompactCredentials ? "none" : "flex", flexDirection: "column", gap: 8 }}>
@@ -1081,7 +1106,7 @@ export default function AdminAccounts() {
                                     <div style={{ maxWidth: 380, fontSize: 12, color: "var(--muted)", lineHeight: 1.45 }}>
                                         {manualCostIncomplete
                                             ? "Falta indicar la cantidad de pantallas para calcular el costo unitario."
-                                            : "Utilidad neta = precio de venta menos este costo. La verás en Admin > Analíticas."}
+                                            : `Se creara${manualCreateCount > 1 ? "n" : ""} ${manualCreateCount} registro${manualCreateCount > 1 ? "s" : ""}. Utilidad neta = precio de venta menos este costo.`}
                                     </div>
                                 </div>
                             </div>

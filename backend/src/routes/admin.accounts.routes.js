@@ -11,24 +11,79 @@ const {
 
 const router = express.Router();
 
+function makeBadRequest(message) {
+    const err = new Error(message);
+    err.status = 400;
+    return err;
+}
+
+function parseManualProfileNumbers(value) {
+    const raw = String(value ?? "").trim();
+    if (!raw) return [null];
+
+    const parts = raw
+        .split(/[,\n;]+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+    if (parts.length <= 1) return [raw];
+    if (parts.length > 30) {
+        throw makeBadRequest("Puedes crear maximo 30 perfiles en una sola carga manual.");
+    }
+
+    const seen = new Set();
+    const profiles = [];
+    for (const part of parts) {
+        if (!/^[\w\s.-]{1,40}$/.test(part)) {
+            throw makeBadRequest(`Perfil invalido: ${part}. Usa valores como 1,2,3,4.`);
+        }
+        const key = part.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        profiles.push(part);
+    }
+
+    return profiles.length ? profiles : [null];
+}
+
 router.post("/admin/accounts", requireAuth, requireRole("admin"), async (req, res) => {
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        const out = await createAccountOne(conn, req.body || {});
+        const profileNumbers = parseManualProfileNumbers(
+            req.body?.profileNumber ?? req.body?.profile_number ?? req.body?.profile ?? req.body?.perfil
+        );
+        const created = [];
+        for (const profileNumber of profileNumbers) {
+            created.push(await createAccountOne(conn, {
+                ...(req.body || {}),
+                profileNumber,
+            }));
+        }
+        const out = created[0] || {};
         await conn.commit();
 
         // Registrar log
         const adminEmail = req.user?.email || null;
         const adminId    = req.user?.id    || null;
+        const notes = created.length > 1
+            ? `Cuenta: ${req.body?.email || ""} | Perfiles: ${profileNumbers.join(", ")}`
+            : `Cuenta: ${req.body?.email || ""}`;
         pool.query(
             `INSERT INTO account_upload_logs
              (type, admin_id, admin_email, platform_id, platform_name, total_rows, inserted, skipped, errors, notes)
-             VALUES ('manual', ?, ?, ?, ?, 1, 1, 0, 0, ?)`,
-            [adminId, adminEmail, out.platformId || null, out.platformName || null, `Cuenta: ${req.body?.email || ''}`]
+             VALUES ('manual', ?, ?, ?, ?, ?, ?, 0, 0, ?)`,
+            [adminId, adminEmail, out.platformId || null, out.platformName || null, created.length, created.length, notes]
         ).catch(() => {});
 
-        return res.status(201).json({ ok: true, ...out });
+        return res.status(201).json({
+            ok: true,
+            ...out,
+            created: created.length,
+            ids: created.map((item) => item.id),
+            profileNumbers,
+            accounts: created,
+        });
     } catch (e) {
         await conn.rollback();
         const status = e.status || 500;

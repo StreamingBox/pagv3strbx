@@ -190,6 +190,13 @@ export default function AdminMasterAccounts() {
         setPlatformFilter("all");
     }
 
+    function filterByTopPlatform(platform) {
+        setSearchDraft("");
+        setQ("");
+        setStatus("inactive");
+        setPlatformFilter(String(platform.id));
+    }
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden><div className="bg-grid" /></div>
@@ -343,9 +350,15 @@ export default function AdminMasterAccounts() {
                         {summary.topPlatforms?.length ? (
                             <div className="master-top-platforms" aria-label="Top plataformas inactivas">
                                 {summary.topPlatforms.map((platform, index) => (
-                                    <span key={platform.id}>
+                                    <button
+                                        type="button"
+                                        key={platform.id}
+                                        className={String(platformFilter) === String(platform.id) && status === "inactive" ? "is-active" : ""}
+                                        onClick={() => filterByTopPlatform(platform)}
+                                        title={`Filtrar por ${platform.name}`}
+                                    >
                                         #{index + 1} {platform.name} <strong>{platform.total}</strong>
-                                    </span>
+                                    </button>
                                 ))}
                             </div>
                         ) : null}

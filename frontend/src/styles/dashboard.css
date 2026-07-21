@@ -308,7 +308,7 @@
     margin-top: 12px;
 }
 
-.master-top-platforms span {
+.master-top-platforms button {
     display: inline-flex;
     gap: 6px;
     align-items: center;
@@ -319,6 +319,17 @@
     background: rgba(34, 211, 238, .08);
     font-size: 12px;
     font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
+    transition: border-color .16s ease, background .16s ease, color .16s ease, transform .16s ease;
+}
+
+.master-top-platforms button:hover,
+.master-top-platforms button.is-active {
+    color: #ffffff;
+    border-color: rgba(34, 211, 238, .55);
+    background: rgba(34, 211, 238, .18);
+    transform: translateY(-1px);
 }
 
 .master-top-platforms strong {

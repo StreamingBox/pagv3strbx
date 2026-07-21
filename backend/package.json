@@ -19,7 +19,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "axios": "^1.13.6",
+    "axios": "^1.18.1",
     "bcrypt": "^6.0.0",
     "cheerio": "^1.2.0",
     "cookie-parser": "^1.4.7",
@@ -37,6 +37,8 @@
     "nodemailer": "^9.0.1"
   },
   "overrides": {
+    "body-parser": "^2.3.0",
+    "brace-expansion": "1.1.16",
     "imap": "0.8.17"
   },
   "devDependencies": {

@@ -93,6 +93,61 @@ function analyticsMissingCostSql({ orderAlias = "o", itemAlias = "oi", accountAl
         AND NOT ${knownNoCostPlatformSql(platformAlias)})`;
 }
 
+function buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column = "applies_to_user_id" } = {}) {
+    if (isGlobalAdmin) {
+        return { sql: "", params: [] };
+    }
+    const ids = Array.isArray(targetUserIds) ? targetUserIds.filter((id) => Number(id) > 0) : [];
+    if (ids.length === 0) {
+        return { sql: "AND 1 = 0", params: [] };
+    }
+    return {
+        sql: `AND ${column} IN (${ids.map(() => "?").join(",")})`,
+        params: ids,
+    };
+}
+
+async function getMonthlySalesAdjustments({ year, month, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds });
+    const [rows] = await pool.query(`
+        SELECT DAY(adjustment_date) AS day, SUM(amount) AS amount
+        FROM sales_adjustments
+        WHERE YEAR(adjustment_date) = ?
+          AND MONTH(adjustment_date) = ?
+          AND UPPER(currency) = ?
+          ${userFilter.sql}
+        GROUP BY DAY(adjustment_date)
+        ORDER BY day ASC
+    `, [year, month, currency, ...userFilter.params]);
+    return rows.map((row) => ({
+        day: Number(row.day),
+        amount: Number(row.amount || 0),
+    }));
+}
+
+function mergeSalesAdjustmentsIntoDaily(dailyRows, adjustmentRows) {
+    const byDay = new Map();
+    for (const row of dailyRows || []) {
+        const day = Number(row.day);
+        byDay.set(day, {
+            ...row,
+            day,
+            orders: Number(row.orders || 0),
+            revenue: Number(row.revenue || 0),
+            adjustment: Number(row.adjustment || 0),
+        });
+    }
+    for (const adjustment of adjustmentRows || []) {
+        const day = Number(adjustment.day);
+        const amount = Number(adjustment.amount || 0);
+        const current = byDay.get(day) || { day, orders: 0, revenue: 0, adjustment: 0 };
+        current.revenue = Number(current.revenue || 0) + amount;
+        current.adjustment = Number(current.adjustment || 0) + amount;
+        byDay.set(day, current);
+    }
+    return Array.from(byDay.values()).sort((a, b) => Number(a.day) - Number(b.day));
+}
+
 /**
  * Returns daily sales comparison for current month vs previous month.
  * Admin endpoint: GET /admin/analytics/sales?userId=&year=&month=
@@ -154,10 +209,19 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
         `;
 
         // ✅ Paralelo: curRows y prevRows al mismo tiempo
-        const [[curRows], [prevRows]] = await Promise.all([
+        const adjustmentScope = {
+            isGlobalAdmin: !userId,
+            targetUserIds: userId ? [Number(userId)] : [],
+        };
+
+        const [[rawCurRows], [rawPrevRows], curAdjustments, prevAdjustments] = await Promise.all([
             pool.query(curQuery, curParams),
             pool.query(prevQuery, prevParams),
+            getMonthlySalesAdjustments({ year: targetYear, month: targetMonth, currency: targetCurrency, ...adjustmentScope }),
+            getMonthlySalesAdjustments({ year: prevYear, month: prevMonth, currency: targetCurrency, ...adjustmentScope }),
         ]);
+        const curRows = mergeSalesAdjustmentsIntoDaily(rawCurRows, curAdjustments);
+        const prevRows = mergeSalesAdjustmentsIntoDaily(rawPrevRows, prevAdjustments);
 
         // Summary totals
         const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
@@ -167,8 +231,22 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 
         return res.json({
             currency: targetCurrency,
-            current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders },
-            previous: { year: prevYear, month: prevMonth, daily: prevRows, total: prevTotal, orders: prevOrders },
+            current: {
+                year: targetYear,
+                month: targetMonth,
+                daily: curRows,
+                total: curTotal,
+                orders: curOrders,
+                adjustmentsTotal: curAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            },
+            previous: {
+                year: prevYear,
+                month: prevMonth,
+                daily: prevRows,
+                total: prevTotal,
+                orders: prevOrders,
+                adjustmentsTotal: prevAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            },
         });
     } catch (err) {
         console.error("Error GET /admin/analytics/sales:", err);
@@ -380,11 +458,27 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         `;
 
         // ✅ Paralelo: las 3 queries al mismo tiempo
-        const [[curRows], [prevRows], [curDistRows]] = await Promise.all([
+        const [[rawCurRows], [rawPrevRows], [curDistRows], curAdjustments, prevAdjustments] = await Promise.all([
             pool.query(curQuery, [userId, targetYear, targetMonth, targetCurrency]),
             pool.query(prevQuery, [userId, prevYear, prevMonth, targetCurrency]),
             pool.query(curDistQuery, [userId, targetYear, targetMonth, targetCurrency]),
+            getMonthlySalesAdjustments({
+                year: targetYear,
+                month: targetMonth,
+                currency: targetCurrency,
+                isGlobalAdmin: false,
+                targetUserIds: [userId],
+            }),
+            getMonthlySalesAdjustments({
+                year: prevYear,
+                month: prevMonth,
+                currency: targetCurrency,
+                isGlobalAdmin: false,
+                targetUserIds: [userId],
+            }),
         ]);
+        const curRows = mergeSalesAdjustmentsIntoDaily(rawCurRows, curAdjustments);
+        const prevRows = mergeSalesAdjustmentsIntoDaily(rawPrevRows, prevAdjustments);
 
         const curTotal = curRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
         const prevTotal = prevRows.reduce((s, r) => s + Number(r.revenue || 0), 0);
@@ -393,8 +487,23 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
 
         return res.json({
             currency: targetCurrency,
-            current: { year: targetYear, month: targetMonth, daily: curRows, total: curTotal, orders: curOrders, distribution: curDistRows },
-            previous: { year: prevYear, month: prevMonth, daily: prevRows, total: prevTotal, orders: prevOrders },
+            current: {
+                year: targetYear,
+                month: targetMonth,
+                daily: curRows,
+                total: curTotal,
+                orders: curOrders,
+                distribution: curDistRows,
+                adjustmentsTotal: curAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            },
+            previous: {
+                year: prevYear,
+                month: prevMonth,
+                daily: prevRows,
+                total: prevTotal,
+                orders: prevOrders,
+                adjustmentsTotal: prevAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+            },
         });
     } catch (err) {
         console.error("Error GET /analytics/sales:", err);
@@ -523,13 +632,22 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             dailyQ += ` GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) ORDER BY day ASC`;
             distQ += ` GROUP BY p.id, p.name ORDER BY value DESC`;
 
-            const [[daily], [dist]] = await Promise.all([
+            const [[dailyRows], [dist], adjustmentRows] = await Promise.all([
                 pool.query(dailyQ, dailyParams),
                 pool.query(distQ, distParams),
+                getMonthlySalesAdjustments({
+                    year,
+                    month,
+                    currency: targetCurrency,
+                    isGlobalAdmin,
+                    targetUserIds,
+                }),
             ]);
+            const daily = mergeSalesAdjustmentsIntoDaily(dailyRows, adjustmentRows);
             const total = daily.reduce((s, r) => s + Number(r.revenue || 0), 0);
             const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
-            const monthData = { year, month, currency: targetCurrency, daily, total, orders, distribution: dist };
+            const adjustmentsTotal = adjustmentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+            const monthData = { year, month, currency: targetCurrency, daily, total, orders, distribution: dist, adjustmentsTotal };
 
             if (isAdmin) {
                 const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
@@ -715,6 +833,8 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
         // Build user filter
         let userFilter = "";
         let params = [targetYear, targetMonth, targetCurrency];
+        let targetUserIds = [actingUser.id];
+        let isGlobalAdmin = false;
 
         if (isAdmin && req.query.userIds) {
             const ids = req.query.userIds.split(",")
@@ -722,10 +842,13 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
             if (ids.length > 0) {
                 userFilter = `AND user_id IN (${ids.map(() => "?").join(",")})`;
                 params.push(...ids);
+                targetUserIds = ids;
             }
             // no userIds param → si es global=true (todos los usuarios), sin filtro extra
         } else if (isAdmin && req.query.global === 'true') {
             userFilter = "";
+            isGlobalAdmin = true;
+            targetUserIds = [];
         } else {
             // Personal view for admin (global NO es true) o vista de usuario normal
             userFilter = "AND user_id = ?";
@@ -733,7 +856,8 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
         }
 
         // Daily totals for the month (Colombia time UTC-5)
-        const [rows] = await pool.query(`
+        const [[rawRows], adjustmentRows] = await Promise.all([
+            pool.query(`
             SELECT
                 DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) AS day,
                 COUNT(id)    AS orders,
@@ -745,7 +869,16 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
               ${userFilter}
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
-        `, params);
+        `, params),
+            getMonthlySalesAdjustments({
+                year: targetYear,
+                month: targetMonth,
+                currency: targetCurrency,
+                isGlobalAdmin,
+                targetUserIds,
+            }),
+        ]);
+        const rows = mergeSalesAdjustmentsIntoDaily(rawRows, adjustmentRows);
 
         // Week buckets
         const WEEKS = [
@@ -778,7 +911,16 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
         const totalRevenue = weeks.reduce((s, w) => s + w.revenue, 0);
         const totalOrders = weeks.reduce((s, w) => s + w.orders, 0);
 
-        return res.json({ year: targetYear, month: targetMonth, currency: targetCurrency, weeks, bestWeek, total: totalRevenue, orders: totalOrders });
+        return res.json({
+            year: targetYear,
+            month: targetMonth,
+            currency: targetCurrency,
+            weeks,
+            bestWeek,
+            total: totalRevenue,
+            orders: totalOrders,
+            adjustmentsTotal: adjustmentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+        });
     } catch (err) {
         console.error("Error GET /analytics/sales/weekly:", err);
         res.status(500).json({ error: "Error interno del servidor" });

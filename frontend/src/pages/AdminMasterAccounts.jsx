@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DatabaseZap, RefreshCcw, Save, Search, Trash2 } from "lucide-react";
+import {
+    AlertTriangle,
+    CheckCircle2,
+    DatabaseZap,
+    RefreshCcw,
+    Save,
+    Search,
+    Trash2,
+    XCircle,
+} from "lucide-react";
 
 import { apiDelete, apiFetch, apiLogout, apiPatch, apiPost } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -9,28 +18,55 @@ import "../styles/dashboard.css";
 
 const inputStyle = {
     width: "100%",
-    minHeight: 42,
+    minHeight: 48,
     boxSizing: "border-box",
     border: "1px solid var(--stroke)",
     borderRadius: 8,
     outline: "none",
     background: "var(--input-bg)",
     color: "var(--text)",
-    padding: "0 12px",
+    padding: "0 14px",
     font: "inherit",
 };
 
+const emptySummary = {
+    total: 0,
+    inactive: 0,
+    active: 0,
+    topPlatforms: [],
+};
+
 function statusLabel(status) {
-    return status === "inactive" ? "Inactiva / caída" : "Activa";
+    return status === "inactive" ? "Inactiva / caida" : "Activa";
+}
+
+function platformIsActive(platform) {
+    const value = platform?.is_active ?? platform?.isActive ?? platform?.active;
+    return value === undefined || value === null || Number(value) === 1 || value === true;
+}
+
+function formatDate(value) {
+    if (!value) return "-";
+    return new Date(value).toLocaleString("es-CO", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+    });
 }
 
 export default function AdminMasterAccounts() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
     const [items, setItems] = useState([]);
+    const [summary, setSummary] = useState(emptySummary);
+    const [matching, setMatching] = useState(0);
     const [platforms, setPlatforms] = useState([]);
+    const [searchDraft, setSearchDraft] = useState("");
     const [q, setQ] = useState("");
     const [status, setStatus] = useState("all");
+    const [platformFilter, setPlatformFilter] = useState("all");
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
@@ -42,10 +78,15 @@ export default function AdminMasterAccounts() {
         notes: "",
     });
 
-    const inactiveCount = useMemo(
-        () => items.filter((item) => item.status === "inactive").length,
-        [items]
+    const activePlatforms = useMemo(
+        () => platforms
+            .filter(platformIsActive)
+            .slice()
+            .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "es")),
+        [platforms]
     );
+
+    const topPlatformLabel = summary.topPlatforms?.[0]?.name || "Sin datos";
 
     async function logout() {
         await apiLogout().catch(() => {});
@@ -64,18 +105,21 @@ export default function AdminMasterAccounts() {
         setLoading(true);
         setError("");
         try {
-            const params = new URLSearchParams({ status });
+            const params = new URLSearchParams({ status, limit: "10" });
             if (q.trim()) params.set("q", q.trim());
+            if (platformFilter !== "all") params.set("platformId", platformFilter);
             const response = await apiFetch(`/admin/master-accounts?${params.toString()}`, { method: "GET" });
             if (response.ok) {
                 setItems(response.data?.items || []);
+                setSummary(response.data?.summary || emptySummary);
+                setMatching(Number(response.data?.matching || 0));
             } else {
                 setError(response.data?.message || "No se pudieron cargar las cuentas maestras.");
             }
         } finally {
             setLoading(false);
         }
-    }, [q, status]);
+    }, [platformFilter, q, status]);
 
     useEffect(() => {
         void loadPlatforms();
@@ -134,6 +178,18 @@ export default function AdminMasterAccounts() {
         await loadItems();
     }
 
+    function submitSearch(event) {
+        event.preventDefault();
+        setQ(searchDraft.trim());
+    }
+
+    function clearFilters() {
+        setSearchDraft("");
+        setQ("");
+        setStatus("all");
+        setPlatformFilter("all");
+    }
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden><div className="bg-grid" /></div>
@@ -145,84 +201,60 @@ export default function AdminMasterAccounts() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "22px 24px 44px", minWidth: 0 }}>
-                    <header style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 16,
-                        flexWrap: "wrap",
-                        paddingBottom: 22,
-                        marginBottom: 22,
-                        borderBottom: "1px solid var(--stroke)",
-                    }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-                            <span style={{
-                                width: 50,
-                                height: 50,
-                                display: "grid",
-                                placeItems: "center",
-                                border: "1px solid rgba(34,211,238,.35)",
-                                borderRadius: 10,
-                                color: "#22d3ee",
-                                background: "rgba(34,211,238,.11)",
-                                flexShrink: 0,
-                            }}>
-                                <DatabaseZap size={25} aria-hidden />
-                            </span>
-                            <div style={{ minWidth: 0 }}>
-                                <h1 style={{ margin: 0, color: "var(--text)", fontSize: 24, letterSpacing: 0 }}>
-                                    Cuentas maestras
-                                </h1>
-                                <p style={{ margin: "5px 0 0", color: "var(--muted)", fontSize: 13 }}>
-                                    Marca cuentas caídas para que soporte intente reemplazo automático cuando haya stock.
-                                </p>
+                <main className="main master-accounts-page">
+                    <header className="master-hero">
+                        <div className="master-hero-title">
+                            <span className="master-hero-icon"><DatabaseZap size={26} aria-hidden /></span>
+                            <div>
+                                <p className="master-kicker">Inventario critico</p>
+                                <h1>Cuentas maestras</h1>
+                                <p>Marca cuentas caidas para que soporte intente reemplazo automatico cuando haya stock.</p>
                             </div>
                         </div>
-                        <span style={{
-                            padding: "8px 12px",
-                            border: "1px solid rgba(245,158,11,.32)",
-                            borderRadius: 999,
-                            color: "#fbbf24",
-                            background: "rgba(245,158,11,.10)",
-                            fontSize: 12,
-                            fontWeight: 900,
-                        }}>
-                            {inactiveCount} inactivas
-                        </span>
+                        <div className="master-hero-count">
+                            <strong>{summary.inactive}</strong>
+                            <span>inactivas</span>
+                        </div>
                     </header>
 
-                    {error ? <div className="error" style={{ marginBottom: 14 }}>{error}</div> : null}
-                    {success ? (
-                        <div style={{
-                            marginBottom: 14,
-                            padding: "12px 14px",
-                            border: "1px solid rgba(16,185,129,.32)",
-                            borderRadius: 8,
-                            color: "#6ee7b7",
-                            background: "rgba(16,185,129,.10)",
-                            fontWeight: 800,
-                        }}>{success}</div>
-                    ) : null}
+                    <section className="master-stats-grid" aria-label="Resumen de cuentas maestras">
+                        <article className="master-stat-card">
+                            <AlertTriangle size={18} aria-hidden />
+                            <span>Inactivas</span>
+                            <strong>{summary.inactive}</strong>
+                        </article>
+                        <article className="master-stat-card">
+                            <CheckCircle2 size={18} aria-hidden />
+                            <span>Activas</span>
+                            <strong>{summary.active}</strong>
+                        </article>
+                        <article className="master-stat-card">
+                            <DatabaseZap size={18} aria-hidden />
+                            <span>Total</span>
+                            <strong>{summary.total}</strong>
+                        </article>
+                        <article className="master-stat-card master-stat-wide">
+                            <XCircle size={18} aria-hidden />
+                            <span>Plataforma con mas alertas</span>
+                            <strong>{topPlatformLabel}</strong>
+                        </article>
+                    </section>
 
-                    <section style={{
-                        padding: 18,
-                        marginBottom: 18,
-                        border: "1px solid var(--stroke)",
-                        borderRadius: 12,
-                        background: "var(--card)",
-                    }}>
-                        <form
-                            onSubmit={saveAccount}
-                            style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                                gap: 12,
-                                alignItems: "end",
-                            }}
-                        >
-                            <label style={{ display: "grid", gap: 7 }}>
-                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 900 }}>Plataforma</span>
+                    {error ? <div className="error master-message">{error}</div> : null}
+                    {success ? <div className="master-success master-message">{success}</div> : null}
+
+                    <section className="master-panel master-form-panel">
+                        <div className="master-section-heading">
+                            <div>
+                                <p className="master-kicker">Nueva regla</p>
+                                <h2>Agregar cuenta maestra</h2>
+                            </div>
+                            <span>{activePlatforms.length} plataformas activas</span>
+                        </div>
+
+                        <form onSubmit={saveAccount} className="master-form-grid">
+                            <label>
+                                <span>Plataforma</span>
                                 <select
                                     style={inputStyle}
                                     value={form.platformId}
@@ -230,13 +262,13 @@ export default function AdminMasterAccounts() {
                                     required
                                 >
                                     <option value="">Seleccionar plataforma</option>
-                                    {platforms.map((platform) => (
+                                    {activePlatforms.map((platform) => (
                                         <option value={platform.id} key={platform.id}>{platform.name}</option>
                                     ))}
                                 </select>
                             </label>
-                            <label style={{ display: "grid", gap: 7 }}>
-                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 900 }}>Correo de cuenta</span>
+                            <label>
+                                <span>Correo de cuenta</span>
                                 <input
                                     style={inputStyle}
                                     value={form.accountEmail}
@@ -245,19 +277,19 @@ export default function AdminMasterAccounts() {
                                     required
                                 />
                             </label>
-                            <label style={{ display: "grid", gap: 7 }}>
-                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 900 }}>Estado</span>
+                            <label>
+                                <span>Estado</span>
                                 <select
                                     style={inputStyle}
                                     value={form.status}
                                     onChange={(event) => setForm((current) => ({ ...current, status: event.target.value }))}
                                 >
-                                    <option value="inactive">Inactiva / caída</option>
+                                    <option value="inactive">Inactiva / caida</option>
                                     <option value="active">Activa</option>
                                 </select>
                             </label>
-                            <label style={{ display: "grid", gap: 7 }}>
-                                <span style={{ color: "var(--text)", fontSize: 12, fontWeight: 900 }}>Nota</span>
+                            <label>
+                                <span>Nota interna</span>
                                 <input
                                     style={inputStyle}
                                     value={form.notes}
@@ -265,107 +297,107 @@ export default function AdminMasterAccounts() {
                                     placeholder="Motivo o detalle interno"
                                 />
                             </label>
-                            <button
-                                type="submit"
-                                disabled={saving}
-                                style={{
-                                    minHeight: 42,
-                                    border: 0,
-                                    borderRadius: 8,
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    gap: 8,
-                                    color: "#07111f",
-                                    background: "#22d3ee",
-                                    fontWeight: 900,
-                                    cursor: saving ? "wait" : "pointer",
-                                }}
-                            >
+                            <button type="submit" disabled={saving} className="master-primary-button">
                                 <Save size={17} aria-hidden />
                                 {saving ? "Guardando..." : "Guardar"}
                             </button>
                         </form>
                     </section>
 
-                    <section style={{
-                        padding: 14,
-                        marginBottom: 18,
-                        border: "1px solid var(--stroke)",
-                        borderRadius: 12,
-                        background: "var(--card)",
-                        display: "flex",
-                        gap: 10,
-                        flexWrap: "wrap",
-                    }}>
-                        <div style={{ flex: "1 1 260px", display: "flex", alignItems: "center", gap: 8, padding: "0 12px", border: "1px solid var(--stroke)", borderRadius: 8, background: "var(--input-bg)" }}>
-                            <Search size={17} color="var(--muted)" aria-hidden />
-                            <input
-                                value={q}
-                                onChange={(event) => setQ(event.target.value)}
-                                placeholder="Buscar cuenta, plataforma o nota"
-                                style={{ flex: 1, minWidth: 0, height: 40, border: 0, outline: 0, color: "var(--text)", background: "transparent" }}
-                            />
+                    <section className="master-panel master-search-panel">
+                        <form onSubmit={submitSearch} className="master-search-row">
+                            <div className="master-search-box">
+                                <Search size={18} aria-hidden />
+                                <input
+                                    value={searchDraft}
+                                    onChange={(event) => setSearchDraft(event.target.value)}
+                                    placeholder="Buscar por cuenta, plataforma o nota"
+                                />
+                            </div>
+                            <select style={inputStyle} value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}>
+                                <option value="all">Todas las plataformas activas</option>
+                                {activePlatforms.map((platform) => (
+                                    <option value={platform.id} key={platform.id}>{platform.name}</option>
+                                ))}
+                            </select>
+                            <select style={inputStyle} value={status} onChange={(event) => setStatus(event.target.value)}>
+                                <option value="all">Todos los estados</option>
+                                <option value="inactive">Solo inactivas</option>
+                                <option value="active">Solo activas</option>
+                            </select>
+                            <button type="submit" className="master-primary-button">
+                                <Search size={16} aria-hidden />
+                                Buscar
+                            </button>
+                            <button type="button" className="btn-ghost" onClick={clearFilters}>Limpiar</button>
+                            <button type="button" className="btn-ghost" onClick={() => void loadItems()}>
+                                <RefreshCcw size={16} aria-hidden /> Refrescar
+                            </button>
+                        </form>
+
+                        <div className="master-results-info">
+                            <strong>Top 10</strong>
+                            <span>{matching} coincidencias con los filtros actuales</span>
                         </div>
-                        <select style={{ ...inputStyle, width: 180 }} value={status} onChange={(event) => setStatus(event.target.value)}>
-                            <option value="all">Todos</option>
-                            <option value="inactive">Inactivas</option>
-                            <option value="active">Activas</option>
-                        </select>
-                        <button type="button" className="btn-ghost" onClick={() => void loadItems()}>
-                            <RefreshCcw size={16} aria-hidden /> Refrescar
-                        </button>
+
+                        {summary.topPlatforms?.length ? (
+                            <div className="master-top-platforms" aria-label="Top plataformas inactivas">
+                                {summary.topPlatforms.map((platform, index) => (
+                                    <span key={platform.id}>
+                                        #{index + 1} {platform.name} <strong>{platform.total}</strong>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
                     </section>
 
-                    <section style={{ border: "1px solid var(--stroke)", borderRadius: 14, overflow: "hidden", background: "var(--card)" }}>
-                        <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <section className="master-table-card">
+                        <div className="master-table-head">
+                            <div>
+                                <p className="master-kicker">Listado</p>
+                                <h2>Top 10 mas recientes</h2>
+                            </div>
+                            {loading ? <span>Cargando...</span> : <span>{items.length} visibles</span>}
+                        </div>
+                        <div className="master-table-wrap">
+                            <table className="master-table">
                                 <thead>
-                                    <tr style={{ background: "rgba(0,0,0,.18)", borderBottom: "1px solid var(--stroke)" }}>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Plataforma</th>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Cuenta</th>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Estado</th>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Nota</th>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Actualizada</th>
-                                        <th style={{ padding: 14, textAlign: "left" }}>Acciones</th>
+                                    <tr>
+                                        <th>Plataforma</th>
+                                        <th>Cuenta</th>
+                                        <th>Estado</th>
+                                        <th>Nota</th>
+                                        <th>Actualizada</th>
+                                        <th>Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {loading ? (
-                                        <tr><td colSpan={6} style={{ padding: 36, textAlign: "center" }}><div className="spinner" style={{ margin: "0 auto" }} /></td></tr>
+                                        <tr><td colSpan={6} className="master-empty"><div className="spinner" /></td></tr>
                                     ) : items.length ? items.map((item) => (
-                                        <tr key={item.id} style={{ borderBottom: "1px solid var(--stroke2)" }}>
-                                            <td style={{ padding: 14, color: "var(--text)", fontWeight: 900 }}>{item.platformName}</td>
-                                            <td style={{ padding: 14 }}>{item.accountEmail}</td>
-                                            <td style={{ padding: 14 }}>
-                                                <span style={{
-                                                    display: "inline-flex",
-                                                    padding: "5px 9px",
-                                                    borderRadius: 999,
-                                                    color: item.status === "inactive" ? "#fbbf24" : "#6ee7b7",
-                                                    background: item.status === "inactive" ? "rgba(245,158,11,.12)" : "rgba(16,185,129,.12)",
-                                                    fontSize: 11,
-                                                    fontWeight: 900,
-                                                }}>
+                                        <tr key={item.id}>
+                                            <td data-label="Plataforma"><strong>{item.platformName}</strong></td>
+                                            <td data-label="Cuenta">{item.accountEmail}</td>
+                                            <td data-label="Estado">
+                                                <span className={`master-status master-status-${item.status}`}>
                                                     {statusLabel(item.status)}
                                                 </span>
                                             </td>
-                                            <td style={{ padding: 14, color: "var(--muted)", maxWidth: 260 }}>{item.notes || "-"}</td>
-                                            <td style={{ padding: 14, color: "var(--muted)" }}>{item.updatedAt ? new Date(item.updatedAt).toLocaleString("es-CO") : "-"}</td>
-                                            <td style={{ padding: 14 }}>
-                                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                            <td data-label="Nota" className="master-note">{item.notes || "-"}</td>
+                                            <td data-label="Actualizada">{formatDate(item.updatedAt)}</td>
+                                            <td data-label="Acciones">
+                                                <div className="master-actions">
                                                     <button
                                                         type="button"
                                                         className="btn-ghost"
                                                         onClick={() => updateStatus(item, item.status === "inactive" ? "active" : "inactive")}
                                                     >
-                                                        {item.status === "inactive" ? "Marcar activa" : "Marcar caída"}
+                                                        {item.status === "inactive" ? "Marcar activa" : "Marcar caida"}
                                                     </button>
                                                     <button
                                                         type="button"
-                                                        className="btn-ghost"
+                                                        className="btn-ghost master-danger-button"
                                                         onClick={() => removeItem(item)}
-                                                        style={{ color: "#fca5a5" }}
                                                     >
                                                         <Trash2 size={15} aria-hidden /> Eliminar
                                                     </button>
@@ -373,7 +405,7 @@ export default function AdminMasterAccounts() {
                                             </td>
                                         </tr>
                                     )) : (
-                                        <tr><td colSpan={6} style={{ padding: 36, textAlign: "center", color: "var(--muted)" }}>No hay cuentas maestras registradas.</td></tr>
+                                        <tr><td colSpan={6} className="master-empty">No hay cuentas maestras con esos filtros.</td></tr>
                                     )}
                                 </tbody>
                             </table>

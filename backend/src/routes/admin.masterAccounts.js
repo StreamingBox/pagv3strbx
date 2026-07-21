@@ -9,12 +9,19 @@ const router = express.Router();
 router.get("/admin/master-accounts", requireAuth, requireRole("admin"), async (req, res) => {
     const q = String(req.query.q || "").trim();
     const status = String(req.query.status || "all").trim().toLowerCase();
+    const platformId = Number(req.query.platformId || req.query.platform_id || 0);
+    const limitRaw = Number(req.query.limit || 10);
+    const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.floor(limitRaw))) : 10;
     const params = [];
     const conditions = [];
 
     if (["active", "inactive"].includes(status)) {
         conditions.push("ma.status = ?");
         params.push(status);
+    }
+    if (Number.isInteger(platformId) && platformId > 0) {
+        conditions.push("ma.platform_id = ?");
+        params.push(platformId);
     }
     if (q) {
         conditions.push("(ma.account_email LIKE ? OR p.name LIKE ? OR ma.notes LIKE ?)");
@@ -30,10 +37,40 @@ router.get("/admin/master-accounts", requireAuth, requireRole("admin"), async (r
                JOIN platforms p ON p.id = ma.platform_id
               ${where}
               ORDER BY ma.status = 'inactive' DESC, ma.updated_at DESC, ma.id DESC
-              LIMIT 300`,
+              LIMIT ?`,
+            [...params, limit]
+        );
+        const [[summary]] = await pool.query(
+            `SELECT
+                COUNT(*) AS total,
+                SUM(status = 'inactive') AS inactive,
+                SUM(status = 'active') AS active
+               FROM master_accounts`
+        );
+        const [[matching]] = await pool.query(
+            `SELECT COUNT(*) AS total FROM master_accounts ma JOIN platforms p ON p.id = ma.platform_id ${where}`,
             params
         );
-        return res.json({ items: rows.map(mapMasterAccount) });
+        const [topPlatforms] = await pool.query(
+            `SELECT p.id, p.name, COUNT(*) AS total
+               FROM master_accounts ma
+               JOIN platforms p ON p.id = ma.platform_id
+              WHERE ma.status = 'inactive'
+              GROUP BY p.id, p.name
+              ORDER BY total DESC, p.name ASC
+              LIMIT 10`
+        );
+        return res.json({
+            items: rows.map(mapMasterAccount),
+            limit,
+            matching: Number(matching?.total || 0),
+            summary: {
+                total: Number(summary?.total || 0),
+                inactive: Number(summary?.inactive || 0),
+                active: Number(summary?.active || 0),
+                topPlatforms,
+            },
+        });
     } catch (error) {
         console.error("[master-accounts] list error:", error);
         return res.status(500).json({ message: "No se pudieron cargar las cuentas maestras." });

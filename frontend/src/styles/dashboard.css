@@ -241,6 +241,22 @@
     opacity: .72;
 }
 
+.master-accounts-page select {
+    color-scheme: dark;
+    appearance: auto;
+}
+
+.master-accounts-page select option {
+    color: var(--text);
+    background: #111a33;
+}
+
+.master-accounts-page select option:checked,
+.master-accounts-page select option:hover {
+    color: #ffffff;
+    background: #1e40af;
+}
+
 .master-search-row {
     display: grid;
     grid-template-columns: minmax(260px, 1.4fr) minmax(210px, .7fr) minmax(170px, .6fr) auto auto auto;

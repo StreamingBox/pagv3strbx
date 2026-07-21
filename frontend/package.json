@@ -29,6 +29,15 @@
     "recharts": "^3.7.0",
     "vite-plugin-compression": "^0.5.1"
   },
+  "overrides": {
+    "brace-expansion": "1.1.16",
+    "glob": {
+      "brace-expansion": "5.0.7"
+    },
+    "esbuild": "0.28.1",
+    "js-yaml": "^5.2.1",
+    "tar": "^7.5.20"
+  },
   "devDependencies": {
     "@capacitor/android": "^8.3.0",
     "@capacitor/cli": "^8.3.0",

@@ -12,6 +12,9 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install"
   },
+  "overrides": {
+    "shell-quote": "^1.10.0"
+  },
   "devDependencies": {
     "concurrently": "^8.2.2"
   }

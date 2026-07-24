@@ -6,9 +6,10 @@ const {
     sendSupportTicketResolvedEmail,
 } = require("./mailService");
 
-const DEFAULT_INTERVAL_MS = 15 * 1000;
+const DEFAULT_INTERVAL_MS = 5 * 1000;
 const STALE_PROCESSING_MINUTES = 5;
 let workerRunning = false;
+let wakeTimer = null;
 
 function safeJson(value) {
     try { return JSON.parse(value || "{}"); } catch { return {}; }
@@ -22,6 +23,7 @@ async function enqueueNotification(conn, { channel = "email", eventType, payload
          ON DUPLICATE KEY UPDATE id = id`,
         [channel, eventType, dedupeKey || null, JSON.stringify(payload || {})]
     );
+    wakeNotificationOutbox();
 }
 
 async function buildOrderDeliveryPayload(orderId) {
@@ -146,7 +148,7 @@ async function claimNotifications(limit = 10) {
                     status = 'processing'
                     AND updated_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ${STALE_PROCESSING_MINUTES} MINUTE)
               )
-              ORDER BY id ASC
+              ORDER BY CASE WHEN channel = 'telegram' THEN 0 ELSE 1 END, id ASC
               LIMIT ?
               FOR UPDATE SKIP LOCKED`,
             [Math.max(1, Math.min(50, Number(limit) || 10))]
@@ -217,9 +219,19 @@ function startNotificationOutbox() {
     setInterval(() => processNotificationOutbox().catch(() => {}), interval).unref();
 }
 
+function wakeNotificationOutbox(delayMs = 1200) {
+    if (wakeTimer) return;
+    wakeTimer = setTimeout(() => {
+        wakeTimer = null;
+        processNotificationOutbox(10).catch(() => {});
+    }, Math.max(250, Number(delayMs) || 1200));
+    wakeTimer.unref?.();
+}
+
 module.exports = {
     enqueueNotification,
     processNotificationOutbox,
     startNotificationOutbox,
+    wakeNotificationOutbox,
     buildOrderDeliveryPayload,
 };

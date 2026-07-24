@@ -1082,11 +1082,7 @@ async function notifySale({ seller, platforms, total, currency, discount, profit
         `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
         `🔑 Orden: \`${escMd(orderCode)}\``;
 
-    for (const chatId of AUTHORIZED) {
-        bot.sendMessage(chatId, msg, { parse_mode: "MarkdownV2" }).catch(e =>
-            console.error(`[TelegramBot] Error enviando a ${chatId}:`, e?.message)
-        );
-    }
+    await notifyAuthorizedChats(msg, { parse_mode: "MarkdownV2" });
 }
 
 async function notifyRenewalSale({

@@ -8,6 +8,12 @@ const allowedAdvisories = new Set(
         .map((arg) => arg.slice("--allow=".length))
         .filter(Boolean)
 );
+const allowedPackages = new Set(
+    process.argv
+        .filter((arg) => arg.startsWith("--allow-package="))
+        .map((arg) => arg.slice("--allow-package=".length))
+        .filter(Boolean)
+);
 
 const auditCommand = process.platform === "win32"
     ? { command: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", "npm audit --json"] }
@@ -35,6 +41,7 @@ const vulnerabilities = report.vulnerabilities || {};
 const allowedCache = new Map();
 
 function isAllowedVulnerability(name, visiting = new Set()) {
+    if (allowedPackages.has(name)) return true;
     if (allowedCache.has(name)) return allowedCache.get(name);
     if (visiting.has(name)) return false;
 

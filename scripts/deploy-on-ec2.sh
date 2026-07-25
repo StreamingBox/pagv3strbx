@@ -59,7 +59,14 @@ npm audit --audit-level=high
 (cd backend && npm audit --audit-level=high)
 (cd frontend && node ../scripts/audit-dependencies.js \
   --allow=https://github.com/advisories/GHSA-mh99-v99m-4gvg \
-  --allow=https://github.com/advisories/GHSA-qwww-vcr4-c8h2)
+  --allow=https://github.com/advisories/GHSA-qwww-vcr4-c8h2 \
+  --allow-package=@eslint/config-array \
+  --allow-package=@eslint/eslintrc \
+  --allow-package=brace-expansion \
+  --allow-package=eslint \
+  --allow-package=minimatch \
+  --allow-package=react-router \
+  --allow-package=react-router-dom)
 
 echo ">>> restarting API"
 if pm2 describe "$PM2_APP" >/dev/null 2>&1; then

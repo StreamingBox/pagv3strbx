@@ -455,6 +455,14 @@
     flex: 0 0 auto;
 }
 
+/* El aviso acompana los datos del producto, sin invadir el logo. */
+.catalog-card__new-product {
+    align-self: flex-start;
+    font-size: 9px;
+    margin-top: 2px;
+    padding: 4px 8px;
+}
+
 :root[data-theme="light"] .catalog-card--new {
     border-color: rgba(101, 163, 13, .72);
     box-shadow: 0 0 0 1px rgba(101, 163, 13, .62), 0 0 24px rgba(132, 204, 22, .18), 0 10px 28px rgba(0, 0, 0, .16);

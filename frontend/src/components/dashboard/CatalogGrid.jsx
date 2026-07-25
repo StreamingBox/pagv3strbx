@@ -201,16 +201,10 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     : "0 18px 48px rgba(13,166,242,.22), 0 0 0 1px rgba(13,166,242,.28)"
                         } : {}}
                     >
-                        {/* Solo SIN STOCK va arriba a la derecha */}
-                        {(outOfStock || isNewProduct) && (
+                        {/* Solo SIN STOCK va arriba a la derecha. */}
+                        {outOfStock && (
                             <div className="catalog-card__badges">
-                                {isNewProduct ? (
-                                    <span className="badge badge--new">
-                                        <Sparkles size={10} aria-hidden="true" />
-                                        Producto nuevo
-                                    </span>
-                                ) : null}
-                                {outOfStock ? <span className="badge badge--out">SIN STOCK</span> : null}
+                                <span className="badge badge--out">SIN STOCK</span>
                             </div>
                         )}
 
@@ -255,6 +249,12 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 )}
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>
+                            {isNewProduct ? (
+                                <span className="badge badge--new catalog-card__new-product">
+                                    <Sparkles size={11} aria-hidden="true" />
+                                    Producto nuevo
+                                </span>
+                            ) : null}
                             {showPromoLastUnits ? (
                                 <span className="catalog-card__promo-urgency">
                                     <Flame size={12} aria-hidden="true" />

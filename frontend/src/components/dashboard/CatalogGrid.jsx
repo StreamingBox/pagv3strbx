@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Flame, Info, ShoppingCart, X } from "lucide-react";
+import { Flame, Info, ShoppingCart, Sparkles, X } from "lucide-react";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
@@ -165,6 +165,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const stockReached = !isUnlimited && inCartCount >= stock;
                 const color = getPlatformColor(item.platformSlug, item.platformName);
                 const isPromo = item.platformPromo === 1 || item.platformPromo === true;
+                const isNewProduct = item.platformNewProduct === 1 || item.platformNewProduct === true;
                 const promoColor = normalizePromoColor(item.platformPromoColor);
                 const promoRing = hexToRgba(promoColor, 0.62);
                 const promoGlow = hexToRgba(promoColor, 0.28);
@@ -177,7 +178,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 return (
                     <MotionDiv
                         key={item.platformPriceId}
-                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}${isPromo ? " catalog-card--promo" : ""}`}
+                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}${isPromo ? " catalog-card--promo" : ""}${isNewProduct ? " catalog-card--new" : ""}`}
                         style={isPromo ? {
                             "--promo-color": promoColor,
                             "--promo-ring": promoRing,
@@ -195,13 +196,21 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             y: -5,
                             boxShadow: isPromo
                                 ? `0 18px 48px ${promoGlowStrong}, 0 0 0 1px ${promoRing}, 0 0 26px ${promoGlowStrong}`
-                                : "0 18px 48px rgba(13,166,242,.22), 0 0 0 1px rgba(13,166,242,.28)"
+                                : isNewProduct
+                                    ? "0 18px 48px rgba(163,230,53,.18), 0 0 0 1px rgba(190,242,100,.82), 0 0 26px rgba(163,230,53,.24)"
+                                    : "0 18px 48px rgba(13,166,242,.22), 0 0 0 1px rgba(13,166,242,.28)"
                         } : {}}
                     >
                         {/* Solo SIN STOCK va arriba a la derecha */}
-                        {outOfStock && (
+                        {(outOfStock || isNewProduct) && (
                             <div className="catalog-card__badges">
-                                <span className="badge badge--out">SIN STOCK</span>
+                                {isNewProduct ? (
+                                    <span className="badge badge--new">
+                                        <Sparkles size={10} aria-hidden="true" />
+                                        Producto nuevo
+                                    </span>
+                                ) : null}
+                                {outOfStock ? <span className="badge badge--out">SIN STOCK</span> : null}
                             </div>
                         )}
 

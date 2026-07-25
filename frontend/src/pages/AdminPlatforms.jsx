@@ -31,6 +31,7 @@ export default function AdminPlatforms() {
     const [isPromo, setIsPromo] = useState(false);
     const [promoColor, setPromoColor] = useState(DEFAULT_PROMO_COLOR);
     const [showPromoLastUnits, setShowPromoLastUnits] = useState(false);
+    const [isNewProduct, setIsNewProduct] = useState(false);
     const [showDeviceRule, setShowDeviceRule] = useState(true);
     const [productDetails, setProductDetails] = useState("");
 
@@ -86,12 +87,13 @@ export default function AdminPlatforms() {
                 show_device_rule: showDeviceRule ? 1 : 0,
                 is_promo: isPromo,
                 promo_color: isPromo ? normalizePromoColor(promoColor) : null,
-                show_promo_last_units: isPromo && showPromoLastUnits ? 1 : 0
+                show_promo_last_units: isPromo && showPromoLastUnits ? 1 : 0,
+                is_new_product: isNewProduct ? 1 : 0
             });
             if (!r.ok) throw new Error(r.data?.message || "No se pudo crear.");
             setName(""); setSlug(""); setCategoryId(""); setType("normal"); setSlugManual(false);
             setProductDetails("");
-            setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR); setShowPromoLastUnits(false);
+            setShowDeviceRule(true); setIsPromo(false); setPromoColor(DEFAULT_PROMO_COLOR); setShowPromoLastUnits(false); setIsNewProduct(false);
             setSuccessMsg("✅ Plataforma creada correctamente.");
             setTimeout(() => setSuccessMsg(""), 4000);
             await load();
@@ -185,7 +187,8 @@ export default function AdminPlatforms() {
                 show_promo_last_units: (editingPlatform.is_promo === 1 || editingPlatform.is_promo === true)
                     && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true)
                     ? 1
-                    : 0
+                    : 0,
+                is_new_product: editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");
@@ -389,6 +392,13 @@ export default function AdminPlatforms() {
                                 <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${isPromo && showPromoLastUnits ? "rgba(245,158,11,0.60)" : "var(--stroke)"}`, background: isPromo && showPromoLastUnits ? "rgba(245,158,11,0.12)" : "var(--bg0)", cursor: isPromo ? "pointer" : "not-allowed", opacity: isPromo ? 1 : 0.48 }}>
                                     <span style={{ fontSize: 13, fontWeight: 700, color: isPromo && showPromoLastUnits ? "#fbbf24" : "var(--muted)" }}>Últimas unidades</span>
                                     <input type="checkbox" disabled={!isPromo} checked={showPromoLastUnits} onChange={e => setShowPromoLastUnits(e.target.checked)} />
+                                </label>
+                            </div>
+                            <div>
+                                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Producto nuevo</label>
+                                <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${isNewProduct ? "rgba(163,230,53,0.62)" : "var(--stroke)"}`, background: isNewProduct ? "rgba(163,230,53,0.12)" : "var(--bg0)", boxShadow: isNewProduct ? "0 0 18px rgba(163,230,53,0.16)" : "none", cursor: "pointer" }}>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: isNewProduct ? "#bef264" : "var(--muted)" }}>{isNewProduct ? "Se muestra destacado" : "No se muestra"}</span>
+                                    <input type="checkbox" checked={isNewProduct} onChange={e => setIsNewProduct(e.target.checked)} />
                                 </label>
                             </div>
                             <div>
@@ -597,6 +607,7 @@ export default function AdminPlatforms() {
                                                 </td>
 
                                                 <td style={{ padding: "12px 16px" }}>
+                                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                                                     {p.is_promo ? (
                                                         <span style={{
                                                             display: "inline-flex",
@@ -615,8 +626,15 @@ export default function AdminPlatforms() {
                                                             {p.show_promo_last_units ? "Promo + últimas" : "Promo"}
                                                         </span>
                                                     ) : (
-                                                        <span style={{ fontSize: 11, color: "var(--muted)" }}>--</span>
+                                                        null
                                                     )}
+                                                    {p.is_new_product ? (
+                                                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 900, color: "#bef264", background: "rgba(163,230,53,0.12)", border: "1px solid rgba(163,230,53,0.62)", boxShadow: "0 0 16px rgba(163,230,53,0.16)" }}>
+                                                            Nuevo
+                                                        </span>
+                                                    ) : null}
+                                                    {!p.is_promo && !p.is_new_product ? <span style={{ fontSize: 11, color: "var(--muted)" }}>--</span> : null}
+                                                    </div>
                                                 </td>
 
                                                 {/* Categoría inline select */}

@@ -87,6 +87,13 @@ export default function PlatformEditModal({ editingPlatform, setEditingPlatform,
                                                 />
                                             </label>
                                         </div>
+                                        <div>
+                                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Producto nuevo</label>
+                                            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${(editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true) ? "rgba(163,230,53,0.62)" : "var(--stroke)"}`, background: (editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true) ? "rgba(163,230,53,0.12)" : "var(--bg0)", boxShadow: (editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true) ? "0 0 18px rgba(163,230,53,0.16)" : "none", cursor: "pointer" }}>
+                                                <span style={{ fontSize: 13, fontWeight: 800, color: (editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true) ? "#bef264" : "var(--muted)" }}>{(editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true) ? "Se muestra destacado" : "No se muestra"}</span>
+                                                <input type="checkbox" checked={editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true} onChange={e => setEditingPlatform({ ...editingPlatform, is_new_product: e.target.checked ? 1 : 0 })} />
+                                            </label>
+                                        </div>
                                         <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
                                             <button type="button" onClick={() => setEditingPlatform(null)} style={{ flex: 1, height: 44, borderRadius: 12, background: "transparent", border: "1px solid var(--stroke)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
                                             <button type="submit" disabled={saving} style={{ flex: 1, height: 44, borderRadius: 12, background: "var(--accent)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(13,166,242,0.3)" }}>{saving ? "Guardando..." : "Guardar Cambios"}</button>

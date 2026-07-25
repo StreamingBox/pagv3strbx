@@ -134,7 +134,7 @@ router.delete("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin")
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, type,
-        is_promo, promo_color, show_promo_last_units, show_device_rule, product_details
+        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
     } = req.body || {};
 
     if (!name || !slug) {
@@ -144,6 +144,7 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const promoEnabled = is_promo ? 1 : 0;
     const promoColor = promoEnabled ? (normalizePromoColor(promo_color) || "#22D3EE") : null;
     const showPromoLastUnits = promoEnabled && show_promo_last_units ? 1 : 0;
+    const isNewProduct = is_new_product ? 1 : 0;
     const showDeviceRule = show_device_rule === undefined ? 1 : (show_device_rule ? 1 : 0);
 
     let r;
@@ -151,10 +152,10 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         [r] = await pool.query(
             `INSERT INTO platforms (
                 name, slug, category_id, type, is_active, allowed_currencies,
-                is_promo, promo_color, show_promo_last_units, show_device_rule, product_details
+                is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
              )
-             VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?)`,
-            [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showPromoLastUnits, showDeviceRule, normalizeProductDetails(product_details)]
+             VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?)`,
+            [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showPromoLastUnits, isNewProduct, showDeviceRule, normalizeProductDetails(product_details)]
         );
     } catch (error) {
         if (isDuplicateEntry(error)) {
@@ -174,6 +175,7 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         is_promo: promoEnabled,
         promo_color: promoColor,
         show_promo_last_units: showPromoLastUnits,
+        is_new_product: isNewProduct,
         show_device_rule: showDeviceRule,
         product_details: normalizeProductDetails(product_details)
     });
@@ -185,7 +187,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, type, allowed_currencies,
-        is_promo, promo_color, show_promo_last_units, show_device_rule, product_details
+        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -218,6 +220,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const promoFlag = is_promo !== undefined ? (is_promo ? 1 : 0) : null;
     const normalizedPromoColor = promo_color !== undefined ? normalizePromoColor(promo_color) : null;
     const promoLastUnitsFlag = show_promo_last_units !== undefined ? (show_promo_last_units ? 1 : 0) : null;
+    const newProductFlag = is_new_product !== undefined ? (is_new_product ? 1 : 0) : null;
     const showDeviceRule = show_device_rule !== undefined ? (show_device_rule ? 1 : 0) : null;
     const hasProductDetails = Object.prototype.hasOwnProperty.call(req.body || {}, "product_details");
     const productDetails = hasProductDetails ? normalizeProductDetails(product_details) : null;
@@ -237,6 +240,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
                 WHEN ? IS NULL THEN show_promo_last_units
                 ELSE ?
              END,
+             is_new_product = COALESCE(?, is_new_product),
              show_device_rule = COALESCE(?, show_device_rule),
              product_details = CASE WHEN ? = 1 THEN ? ELSE product_details END,
              promo_color = CASE
@@ -256,6 +260,7 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
                 promoFlag,
                 promoLastUnitsFlag,
                 promoLastUnitsFlag,
+                newProductFlag,
                 showDeviceRule,
                 hasProductDetails ? 1 : 0,
                 productDetails,

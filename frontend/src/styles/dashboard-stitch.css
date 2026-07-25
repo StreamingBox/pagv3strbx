@@ -367,6 +367,23 @@
     opacity: 0.9;
 }
 
+/* Producto nuevo: distintivo independiente de las promociones. */
+.catalog-card--new {
+    border-color: rgba(190, 242, 100, 0.82);
+    box-shadow:
+        0 0 0 1px rgba(190, 242, 100, 0.72),
+        0 0 26px rgba(163, 230, 53, 0.22),
+        0 10px 28px rgba(0, 0, 0, 0.42);
+}
+
+.catalog-card--promo.catalog-card--new {
+    box-shadow:
+        0 0 0 1px rgba(190, 242, 100, 0.72),
+        0 0 22px rgba(163, 230, 53, 0.18),
+        0 0 24px var(--promo-glow, rgba(34, 211, 238, 0.28)),
+        0 10px 28px rgba(0, 0, 0, 0.42);
+}
+
 .catalog-card:hover {
     border-color: rgba(13, 166, 242, 0.35);
     box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45), 0 0 16px rgba(13, 166, 242, 0.08);
@@ -422,6 +439,31 @@
     background: rgba(239, 68, 68, .12);
     color: #fca5a5;
     border: 1px solid rgba(239, 68, 68, .25);
+}
+
+.badge--new {
+    align-items: center;
+    background: rgba(163, 230, 53, .16);
+    border: 1px solid rgba(190, 242, 100, .72);
+    box-shadow: 0 0 14px rgba(163, 230, 53, .26);
+    color: #d9f99d;
+    display: inline-flex;
+    gap: 4px;
+}
+
+.badge--new svg {
+    flex: 0 0 auto;
+}
+
+:root[data-theme="light"] .catalog-card--new {
+    border-color: rgba(101, 163, 13, .72);
+    box-shadow: 0 0 0 1px rgba(101, 163, 13, .62), 0 0 24px rgba(132, 204, 22, .18), 0 10px 28px rgba(0, 0, 0, .16);
+}
+
+:root[data-theme="light"] .badge--new {
+    background: rgba(101, 163, 13, .12);
+    border-color: rgba(101, 163, 13, .52);
+    color: #3f6212;
 }
 
 /* Logo circular */

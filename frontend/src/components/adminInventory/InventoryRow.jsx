@@ -167,6 +167,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
                                                 <DetailStat label="Correo" value={it.email} />
                                                 <DetailStat label="Contraseña" value={it.password} mono />
+                                                {it.two_factor_secret ? <DetailStat label="2FA" value={it.two_factor_secret} mono tone="accent" /> : null}
                                                 <DetailStat label="Pin" value={it.pin} mono />
                                                 <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
                                                 <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />
@@ -338,6 +339,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
                                         <DetailStat label="Correo" value={it.email} />
                                         <DetailStat label="Contraseña" value={it.password} mono />
+                                        {it.two_factor_secret ? <DetailStat label="2FA" value={it.two_factor_secret} mono tone="accent" /> : null}
                                         <DetailStat label="Pin" value={it.pin} mono />
                                         <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
                                         <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />

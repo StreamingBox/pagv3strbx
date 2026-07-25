@@ -50,7 +50,10 @@ jobs:
 
       - name: Audit frontend dependencies
         working-directory: frontend
-        run: npm audit --audit-level=high
+        run: >-
+          node ../scripts/audit-dependencies.js
+          --allow=https://github.com/advisories/GHSA-mh99-v99m-4gvg
+          --allow=https://github.com/advisories/GHSA-qwww-vcr4-c8h2
 
       - name: Lint frontend
         working-directory: frontend

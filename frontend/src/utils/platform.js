@@ -70,6 +70,7 @@ export function getPlatformLogoCandidates(slug, name, ts) {
     if (raw.includes("iptv")) base.push("iptv-3-meses");
     if (raw.includes("spotify")) base.push("spotify-3-meses");
     if (raw.includes("youtube")) base.push("youtube-music");
+    if (raw.includes("capcut")) base.push("capcut-pro-1-dispositivo");
     if (raw.includes("chat") || raw.includes("gpt")) base.push("chat-gpt-cuenta-personal-solo-un-dispositivo", "chatgpt", "chat-gpt");
 
     return [...new Set(base.filter(Boolean))].map(candidate => getPlatformLogo(candidate, "", ts));

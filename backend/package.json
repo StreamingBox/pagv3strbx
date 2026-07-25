@@ -38,10 +38,10 @@
   },
   "overrides": {
     "body-parser": "^2.3.0",
-    "brace-expansion": "1.1.16",
+    "brace-expansion": "5.0.8",
     "imap": "0.8.17"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "nodemon": "^3.1.14"
   }
 }

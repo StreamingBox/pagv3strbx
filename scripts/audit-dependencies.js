@@ -2,17 +2,24 @@
 
 const { spawnSync } = require("node:child_process");
 
+const splitEnvironmentList = (value) => String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const allowedAdvisories = new Set(
     process.argv
         .filter((arg) => arg.startsWith("--allow="))
         .map((arg) => arg.slice("--allow=".length))
         .filter(Boolean)
+        .concat(splitEnvironmentList(process.env.AUDIT_ALLOW_ADVISORIES))
 );
 const allowedPackages = new Set(
     process.argv
         .filter((arg) => arg.startsWith("--allow-package="))
         .map((arg) => arg.slice("--allow-package=".length))
         .filter(Boolean)
+        .concat(splitEnvironmentList(process.env.AUDIT_ALLOW_PACKAGES))
 );
 
 const auditCommand = process.platform === "win32"

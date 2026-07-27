@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import SalesChart from "./SalesChart";
 import DistributionChart from "./DistributionChart";
 import WeeklyChart from "./WeeklyChart";
+import PlatformProfitView from "./PlatformProfitView";
 import { apiGet } from "../../api/api";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
@@ -827,7 +828,7 @@ function UserAnalyticsContent({ admin }) {
     const now = new Date();
     const currentYear = now.getFullYear();
 
-    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support"
+    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support" | "platform"
     const [year, setYear] = useState(currentYear);
     const [chartType, setChartType] = useState("area");
     const [currency, setCurrency] = useState("COP");
@@ -844,6 +845,8 @@ function UserAnalyticsContent({ admin }) {
 
     const [monthsData, setMonthsData] = useState([]);
     const [loadingData, setLoadingData] = useState(false);
+    const [platformProfit, setPlatformProfit] = useState(null);
+    const [loadingPlatformProfit, setLoadingPlatformProfit] = useState(false);
     const [error, setError] = useState("");
     const isMobile = useMediaQuery("(max-width: 640px)");
     const isNarrow = useMediaQuery("(max-width: 430px)");
@@ -924,6 +927,10 @@ function UserAnalyticsContent({ admin }) {
     }, [filteredMonths, loadingMonths, selectedKeys.length]);
 
     const loadMultiData = useCallback(async () => {
+        if (viewMode === "platform") {
+            setLoadingData(false);
+            return;
+        }
         if (selectedKeys.length === 0) { setMonthsData([]); return; }
         setLoadingData(true);
         setError("");
@@ -961,6 +968,40 @@ function UserAnalyticsContent({ admin }) {
     }, [selectedKeys, admin, selectedUserIds, users, currency, viewMode]);
 
     useEffect(() => { loadMultiData(); }, [loadMultiData]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!admin || viewMode !== "platform" || selectedKeys.length === 0) {
+            setPlatformProfit(null);
+            setLoadingPlatformProfit(false);
+            return () => { cancelled = true; };
+        }
+
+        setLoadingPlatformProfit(true);
+        setError("");
+        const query = new URLSearchParams({ months: selectedKeys.join(","), currency });
+        if (selectedUserIds.length === 0) query.set("global", "true");
+        if (selectedUserIds.length > 0) query.set("userIds", selectedUserIds.join(","));
+
+        apiGet(`/admin/analytics/platform-profit?${query.toString()}`)
+            .then((res) => {
+                const data = assertApiOk(res, "No se pudo cargar la rentabilidad por plataforma.");
+                if (!cancelled) setPlatformProfit(data);
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setPlatformProfit(null);
+                    setError(err.message || "No se pudo cargar la rentabilidad por plataforma.");
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingPlatformProfit(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [admin, viewMode, selectedKeys, selectedUserIds, currency]);
 
     useEffect(() => {
         if (admin && selectedUserIds.length >= 2 && selectedKeys.length > 1) {
@@ -1017,6 +1058,7 @@ function UserAnalyticsContent({ admin }) {
         monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt
     );
     const supportMonths = admin ? monthsData.filter((month) => month.supportStats) : [];
+    const activeDataLoading = viewMode === "platform" ? loadingPlatformProfit : loadingData;
 
     return (
         <motion.div style={{ marginTop: isMobile ? 0 : 16, width: "100%", minWidth: 0 }} initial="hidden" animate="show" variants={containerVariants}>
@@ -1050,7 +1092,9 @@ function UserAnalyticsContent({ admin }) {
                                         ? "Desglose semanal del mes seleccionado"
                                         : viewMode === "support"
                                             ? "Novedades de soporte, cierres, pendientes e impacto por periodo"
-                                        : "Selecciona hasta 6 meses para comparar"}
+                                            : viewMode === "platform"
+                                                ? "Rentabilidad por plataforma con costos registrados y margen real"
+                                                : "Selecciona hasta 6 meses para comparar"}
                         </p>
                     </div>
 
@@ -1139,9 +1183,10 @@ function UserAnalyticsContent({ admin }) {
 
                         {/* Tab toggle Mensual / Semanal / Soportes */}
                         <div style={{
-                            display: "inline-flex", background: "var(--bg0)",
+                            display: isMobile ? "grid" : "inline-flex", background: "var(--bg0)",
                             border: "1px solid var(--stroke)", borderRadius: 12,
                             padding: 3, gap: 2,
+                            gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
                             width: isMobile ? "100%" : undefined,
                             minWidth: 0,
                         }}>
@@ -1149,16 +1194,18 @@ function UserAnalyticsContent({ admin }) {
                                 { key: "monthly", icon: "📅", label: "Mensual" },
                                 { key: "weekly", icon: "📊", label: "Semanal" },
                                 ...(admin ? [{ key: "support", icon: "🎧", label: "Soportes" }] : []),
+                                ...(admin ? [{ key: "platform", icon: "📈", label: "Plataformas" }] : []),
                             ].map(tab => (
                                 <button
                                     key={tab.key}
                                     onClick={() => setViewMode(tab.key)}
                                     style={{
-                                        height: CTRL_H, padding: "0 12px", borderRadius: 9,
+                                        height: CTRL_H, padding: isMobile ? "0 8px" : "0 12px", borderRadius: 9,
                                         fontSize: 12, fontWeight: 700, fontFamily: "var(--font)",
                                         cursor: "pointer", border: "none",
                                         display: "inline-flex", alignItems: "center", gap: 5,
                                         flex: isMobile ? 1 : undefined,
+                                        width: isMobile ? "100%" : undefined,
                                         justifyContent: "center",
                                         background: viewMode === tab.key
                                             ? "linear-gradient(135deg, var(--accent), #8b5cf6)"
@@ -1200,7 +1247,9 @@ function UserAnalyticsContent({ admin }) {
                                     ? "Mes a desglosar:"
                                     : viewMode === "support"
                                         ? "Meses de soporte:"
-                                        : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
+                                        : viewMode === "platform"
+                                            ? "Meses a rentabilizar:"
+                                            : isComparingUsers ? "Mes a analizar:" : "Comparar:"}
                             </span>
                             {filteredMonths.map((m) => {
                                 const key = monthKey(m.year, m.month);
@@ -1233,7 +1282,7 @@ function UserAnalyticsContent({ admin }) {
             {/* Removed redundant insight chips row */}
 
             {/* Loader */}
-            {(loadingData || loadingMonths) && (
+            {(activeDataLoading || loadingMonths) && (
                 <motion.div variants={itemVariants} style={{
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     padding: "60px 20px", gap: 14, color: "var(--muted)",
@@ -1275,6 +1324,14 @@ function UserAnalyticsContent({ admin }) {
             )}
 
             {/* KPI Cards — solo mensual */}
+            {admin && viewMode === "platform" && selectedKeys.length > 0 && !loadingMonths && !loadingPlatformProfit && (
+                <PlatformProfitView
+                    data={platformProfit}
+                    isMobile={isMobile}
+                    trackingStartLabel={formatTrackingStart(platformProfit?.netProfitTrackingStartAt)}
+                />
+            )}
+
             {viewMode === "monthly" && monthsData.length > 0 && !loadingData && (
                 <motion.div initial="hidden" animate="show" variants={containerVariants}
                     className="kpi-cards-grid"

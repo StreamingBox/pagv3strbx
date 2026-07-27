@@ -811,6 +811,152 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
 });
 
 /**
+ * Rentabilidad por plataforma para administracion.
+ * GET /admin/analytics/platform-profit?months=2026-07,2026-06&currency=COP&global=true
+ *
+ * Los costos solo se comparan cuando estan registrados en la misma moneda de la
+ * venta. Esto evita presentar como utilidad un ingreso cuyo costo aun no esta
+ * cargado o pertenece a otra moneda.
+ */
+router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin: true });
+        const rawMonths = String(req.query.months || "").trim();
+        if (!rawMonths) {
+            return res.status(400).json({ error: "Parametro months requerido" });
+        }
+
+        const monthList = rawMonths
+            .split(",")
+            .slice(0, 6)
+            .map((value) => {
+                const [year, month] = value.trim().split("-").map(Number);
+                return { year, month };
+            })
+            .filter(({ year, month }) => Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12);
+
+        if (monthList.length === 0) {
+            return res.status(400).json({ error: "No hay meses validos para analizar" });
+        }
+
+        let targetUserIds = [];
+        let isGlobalAdmin = req.query.global === "true";
+        if (!isGlobalAdmin && req.query.userIds) {
+            targetUserIds = req.query.userIds
+                .split(",")
+                .map((id) => Number(id.trim()))
+                .filter((id) => Number.isInteger(id) && id > 0);
+        }
+
+        // The admin dashboard defaults to the whole operation when no user was selected.
+        if (!isGlobalAdmin && targetUserIds.length === 0) {
+            isGlobalAdmin = true;
+        }
+
+        const monthFilter = monthList
+            .map(() => "(YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?)")
+            .join(" OR ");
+        const monthParams = monthList.flatMap(({ year, month }) => [year, month]);
+        const userFilter = isGlobalAdmin
+            ? ""
+            : `AND o.user_id IN (${targetUserIds.map(() => "?").join(",")})`;
+        const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
+        const costSql = analyticsCostSql();
+
+        const [rows] = await pool.query(`
+            SELECT
+                p.id AS platform_id,
+                p.name AS platform_name,
+                p.slug AS platform_slug,
+                COUNT(oi.id) AS sales_count,
+                SUM(oi.price) AS revenue_total,
+                SUM(CASE WHEN ${comparableCostSql} THEN 1 ELSE 0 END) AS tracked_sales_count,
+                SUM(CASE WHEN ${comparableCostSql} THEN oi.price ELSE 0 END) AS tracked_revenue,
+                SUM(CASE WHEN ${comparableCostSql} THEN ${costSql} ELSE 0 END) AS cost_total,
+                SUM(CASE WHEN ${comparableCostSql} THEN oi.price - ${costSql} ELSE 0 END) AS net_profit,
+                SUM(CASE WHEN ${comparableCostSql} THEN 0 ELSE 1 END) AS untracked_sales_count,
+                SUM(CASE WHEN ${comparableCostSql} THEN 0 ELSE oi.price END) AS untracked_revenue
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            JOIN platforms p ON p.id = oi.platform_id
+            LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+            LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+            WHERE (${monthFilter})
+              AND UPPER(o.currency) = ?
+              AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+              ${userFilter}
+            GROUP BY p.id, p.name, p.slug
+            ORDER BY net_profit DESC, tracked_revenue DESC, revenue_total DESC, p.name ASC
+        `, [
+            ...monthParams,
+            targetCurrency,
+            NET_PROFIT_TRACKING_START_AT,
+            ...(!isGlobalAdmin ? targetUserIds : []),
+        ]);
+
+        const platforms = rows.map((row) => {
+            const salesCount = Number(row.sales_count || 0);
+            const revenueTotal = Number(row.revenue_total || 0);
+            const trackedSalesCount = Number(row.tracked_sales_count || 0);
+            const trackedRevenue = Number(row.tracked_revenue || 0);
+            const costTotal = Number(row.cost_total || 0);
+            const netProfit = Number(row.net_profit || 0);
+            const untrackedSalesCount = Number(row.untracked_sales_count || 0);
+            const untrackedRevenue = Number(row.untracked_revenue || 0);
+            return {
+                platformId: Number(row.platform_id),
+                platformName: row.platform_name || "Sin plataforma",
+                platformSlug: row.platform_slug || "",
+                salesCount,
+                revenueTotal,
+                trackedSalesCount,
+                trackedRevenue,
+                costTotal,
+                netProfit,
+                untrackedSalesCount,
+                untrackedRevenue,
+                marginPct: trackedRevenue > 0 ? Number(((netProfit / trackedRevenue) * 100).toFixed(2)) : 0,
+            };
+        });
+
+        const totals = platforms.reduce((summary, row) => ({
+            salesCount: summary.salesCount + row.salesCount,
+            revenueTotal: summary.revenueTotal + row.revenueTotal,
+            trackedSalesCount: summary.trackedSalesCount + row.trackedSalesCount,
+            trackedRevenue: summary.trackedRevenue + row.trackedRevenue,
+            costTotal: summary.costTotal + row.costTotal,
+            netProfit: summary.netProfit + row.netProfit,
+            untrackedSalesCount: summary.untrackedSalesCount + row.untrackedSalesCount,
+            untrackedRevenue: summary.untrackedRevenue + row.untrackedRevenue,
+        }), {
+            salesCount: 0,
+            revenueTotal: 0,
+            trackedSalesCount: 0,
+            trackedRevenue: 0,
+            costTotal: 0,
+            netProfit: 0,
+            untrackedSalesCount: 0,
+            untrackedRevenue: 0,
+        });
+        totals.marginPct = totals.trackedRevenue > 0
+            ? Number(((totals.netProfit / totals.trackedRevenue) * 100).toFixed(2))
+            : 0;
+
+        return res.json({
+            currency: targetCurrency,
+            months: monthList,
+            netProfitTrackingStartAt: NET_PROFIT_TRACKING_START_AT,
+            excludesSalesAdjustments: true,
+            platforms,
+            totals,
+        });
+    } catch (err) {
+        console.error("Error GET /admin/analytics/platform-profit:", err);
+        res.status(err?.status || 500).json({ error: err?.status ? err.message : "Error interno del servidor" });
+    }
+});
+
+/**
  * Ventas semanales: GET /analytics/sales/weekly?year=&month=&userIds=
  * Agrupa las órdenes del mes en 4 semanas:
  *   Sem1: días 1-7 | Sem2: 8-14 | Sem3: 15-21 | Sem4: 22-fin

@@ -11,6 +11,16 @@ export function slugifyLogo(text) {
         .replace(/^-|-$/g, "");             // quita guiones al inicio/fin
 }
 
+// Algunas plataformas usan su archivo oficial en SVG para conservar el logotipo
+// nítido sobre el fondo oscuro del catálogo. Las demás siguen usando PNG.
+const PLATFORM_LOGO_EXTENSION_OVERRIDES = Object.freeze({
+    "hbo-max-standar-cuenta-completa": "svg",
+});
+
+function getPlatformLogoExtension(slug) {
+    return PLATFORM_LOGO_EXTENSION_OVERRIDES[slugifyLogo(slug)] || "png";
+}
+
 const sessionLogoVersion = typeof window !== "undefined" ? String(Date.now()) : "";
 
 export function bumpPlatformLogoVersion(value = Date.now()) {
@@ -43,7 +53,10 @@ export function getPlatformLogo(slug, name, ts) {
     const safe = slugifyLogo(slug || name);
     if (!safe) return null;
     const version = getPlatformLogoVersion(ts);
-    return version ? `/platform-logos/${safe}.png?t=${encodeURIComponent(version)}` : `/platform-logos/${safe}.png`;
+    const extension = getPlatformLogoExtension(safe);
+    return version
+        ? `/platform-logos/${safe}.${extension}?t=${encodeURIComponent(version)}`
+        : `/platform-logos/${safe}.${extension}`;
 }
 
 export function getPlatformLogoCandidates(slug, name, ts) {

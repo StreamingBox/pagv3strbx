@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { getPlatformLogo } from "../../utils/platform.js";
 
 const fmtCOP = (n) => new Intl.NumberFormat("es-CO").format(Number(n || 0));
 const fmtPlain = (n) => { const v = Number(n); return Number.isFinite(v) && v > 0 ? String(v) : "—"; };
@@ -52,7 +53,7 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
             {/* Plataforma */}
             <td style={{ padding: "12px 16px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <img src={`/platform-logos/${r.platform_slug}.png`} alt={r.platform_name}
+                    <img src={getPlatformLogo(r.platform_slug, r.platform_name)} alt={r.platform_name}
                         style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover", background: "rgba(255,255,255,0.05)", border: "1px solid var(--stroke2)", flexShrink: 0 }}
                         onError={e => e.target.style.display = "none"}
                     />

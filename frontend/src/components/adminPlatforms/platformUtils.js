@@ -1,3 +1,5 @@
+import { getPlatformLogo } from "../../utils/platform.js";
+
 export function slugify(text) {
     return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
         .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -6,8 +8,7 @@ export function slugify(text) {
 // Mismo algoritmo que usa el backend para nombrar el archivo del logo
 // ts = timestamp opcional para cache-busting
 export const logoSrc = (slug, ts) => {
-    const safe = slugify(slug);
-    return ts ? `/platform-logos/${safe}.png?t=${ts}` : `/platform-logos/${safe}.png`;
+    return getPlatformLogo(slug, "", ts);
 };
 
 export const inputStyle = {

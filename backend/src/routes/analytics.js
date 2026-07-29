@@ -125,6 +125,212 @@ async function getMonthlySalesAdjustments({ year, month, currency, isGlobalAdmin
     }));
 }
 
+async function getMonthlyPlatformSalesAdjustments({ year, month, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const [rows] = await pool.query(`
+        SELECT
+            COALESCE(sa.platform_id, oi.platform_id) AS platform_id,
+            COALESCE(MAX(p.name), 'Sin plataforma') AS name,
+            SUM(sa.amount) AS amount
+        FROM sales_adjustments sa
+        LEFT JOIN order_items oi ON oi.id = sa.order_item_id
+        LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
+        WHERE YEAR(sa.adjustment_date) = ?
+          AND MONTH(sa.adjustment_date) = ?
+          AND UPPER(sa.currency) = ?
+          AND COALESCE(sa.platform_id, oi.platform_id) IS NOT NULL
+          ${userFilter.sql}
+        GROUP BY COALESCE(sa.platform_id, oi.platform_id)
+    `, [year, month, currency, ...userFilter.params]);
+    return rows.map((row) => ({
+        platformId: Number(row.platform_id),
+        name: row.name || "Sin plataforma",
+        amount: Number(row.amount || 0),
+    }));
+}
+
+async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const comparableCostSql = analyticsComparableCostSql({
+        orderAlias: "o",
+        itemAlias: "oi",
+        accountAlias: "pa",
+        platformAlias: "p",
+        currency,
+    });
+    const sourceItemIsTrackedSql = `(
+        sa.order_item_id IS NOT NULL
+        AND o.id IS NOT NULL
+        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND ${comparableCostSql}
+    )`;
+    const sourceItemIsUntrackedSql = `(
+        sa.order_item_id IS NOT NULL
+        AND o.id IS NOT NULL
+        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND NOT ${comparableCostSql}
+    )`;
+    const genericAdjustmentSql = "(sa.order_item_id IS NULL OR o.id IS NULL)";
+    const matchingReversalCostSql = `(
+        sa.cost_reversal_amount IS NOT NULL
+        AND UPPER(COALESCE(NULLIF(sa.cost_reversal_currency, ''), sa.currency)) = ?
+    )`;
+
+    const [rows] = await pool.query(`
+        SELECT
+            COALESCE(SUM(sa.amount), 0) AS revenue_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${genericAdjustmentSql} THEN sa.amount
+                WHEN ${sourceItemIsTrackedSql} THEN sa.amount
+                ELSE 0
+            END), 0) AS tracked_revenue_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${genericAdjustmentSql} THEN sa.amount
+                WHEN ${sourceItemIsTrackedSql} THEN sa.amount + CASE WHEN ${matchingReversalCostSql} THEN sa.cost_reversal_amount ELSE 0 END
+                ELSE 0
+            END), 0) AS net_profit_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${sourceItemIsTrackedSql} AND ${matchingReversalCostSql} THEN sa.cost_reversal_amount
+                ELSE 0
+            END), 0) AS cost_reversal_total,
+            COALESCE(SUM(CASE WHEN ${sourceItemIsTrackedSql} THEN sa.item_count_delta ELSE 0 END), 0) AS tracked_sales_count_delta,
+            COALESCE(SUM(CASE WHEN ${sourceItemIsUntrackedSql} THEN sa.item_count_delta ELSE 0 END), 0) AS missing_cost_count_delta
+        FROM sales_adjustments sa
+        LEFT JOIN order_items oi ON oi.id = sa.order_item_id
+        LEFT JOIN orders o ON o.id = COALESCE(sa.order_id, oi.order_id)
+        LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
+        LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+        LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+        WHERE YEAR(sa.adjustment_date) = ?
+          AND MONTH(sa.adjustment_date) = ?
+          AND UPPER(sa.currency) = ?
+          ${userFilter.sql}
+    `, [
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        currency,
+        NET_PROFIT_TRACKING_START_AT,
+        currency,
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        year,
+        month,
+        currency,
+        ...userFilter.params,
+    ]);
+
+    const row = rows[0] || {};
+    return {
+        revenueAdjustment: Number(row.revenue_adjustment || 0),
+        trackedRevenueAdjustment: Number(row.tracked_revenue_adjustment || 0),
+        netProfitAdjustment: Number(row.net_profit_adjustment || 0),
+        costReversalTotal: Number(row.cost_reversal_total || 0),
+        trackedSalesCountDelta: Number(row.tracked_sales_count_delta || 0),
+        missingCostCountDelta: Number(row.missing_cost_count_delta || 0),
+    };
+}
+
+async function getPlatformSalesAdjustmentImpacts({ monthList, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const monthFilter = monthList
+        .map(() => "(YEAR(sa.adjustment_date) = ? AND MONTH(sa.adjustment_date) = ?)")
+        .join(" OR ");
+    const monthParams = monthList.flatMap(({ year, month }) => [year, month]);
+    const comparableCostSql = analyticsComparableCostSql({
+        orderAlias: "o",
+        itemAlias: "oi",
+        accountAlias: "pa",
+        platformAlias: "p",
+        currency,
+    });
+
+    const [rows] = await pool.query(`
+        SELECT
+            sa.platform_id,
+            sa.order_item_id,
+            sa.amount,
+            sa.cost_reversal_amount,
+            sa.cost_reversal_currency,
+            sa.item_count_delta,
+            COALESCE(p.id, sa.platform_id, oi.platform_id) AS resolved_platform_id,
+            COALESCE(p.name, 'Ajustes generales') AS platform_name,
+            CASE
+                WHEN sa.order_item_id IS NOT NULL
+                 AND o.id IS NOT NULL
+                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                THEN 1 ELSE 0
+            END AS source_item_in_tracking,
+            CASE
+                WHEN sa.order_item_id IS NOT NULL
+                 AND o.id IS NOT NULL
+                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                 AND ${comparableCostSql}
+                THEN 1 ELSE 0
+            END AS source_item_tracked
+        FROM sales_adjustments sa
+        LEFT JOIN order_items oi ON oi.id = sa.order_item_id
+        LEFT JOIN orders o ON o.id = COALESCE(sa.order_id, oi.order_id)
+        LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
+        LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+        LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+        WHERE (${monthFilter})
+          AND UPPER(sa.currency) = ?
+          ${userFilter.sql}
+    `, [
+        ...monthParams,
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        currency,
+        ...userFilter.params,
+    ]);
+
+    const impacts = new Map();
+    for (const row of rows) {
+        const hasLinkedItem = Number(row.order_item_id || 0) > 0;
+        const isInTrackedPeriod = Number(row.source_item_in_tracking || 0) === 1;
+        if (hasLinkedItem && !isInTrackedPeriod) continue;
+
+        const platformId = Number(row.resolved_platform_id || 0) || null;
+        const key = platformId || "general";
+        const current = impacts.get(key) || {
+            platformId,
+            platformName: row.platform_name || "Ajustes generales",
+            salesCountDelta: 0,
+            revenueTotalAdjustment: 0,
+            trackedSalesCountDelta: 0,
+            trackedRevenueAdjustment: 0,
+            costReversalTotal: 0,
+            netProfitAdjustment: 0,
+            untrackedSalesCountDelta: 0,
+            untrackedRevenueAdjustment: 0,
+        };
+
+        const amount = Number(row.amount || 0);
+        const itemCountDelta = Number(row.item_count_delta || 0);
+        const isTracked = !hasLinkedItem || Number(row.source_item_tracked || 0) === 1;
+        const costCurrency = String(row.cost_reversal_currency || currency).toUpperCase();
+        const costReversal = isTracked && hasLinkedItem && costCurrency === currency
+            ? Math.max(0, Number(row.cost_reversal_amount || 0))
+            : 0;
+
+        current.revenueTotalAdjustment += amount;
+        if (hasLinkedItem) current.salesCountDelta += itemCountDelta;
+
+        if (isTracked) {
+            current.trackedRevenueAdjustment += amount;
+            current.costReversalTotal += costReversal;
+            current.netProfitAdjustment += amount + costReversal;
+            if (hasLinkedItem) current.trackedSalesCountDelta += itemCountDelta;
+        } else {
+            current.untrackedRevenueAdjustment += amount;
+            current.untrackedSalesCountDelta += itemCountDelta;
+        }
+        impacts.set(key, current);
+    }
+
+    return Array.from(impacts.values());
+}
+
 function mergeSalesAdjustmentsIntoDaily(dailyRows, adjustmentRows) {
     const byDay = new Map();
     for (const row of dailyRows || []) {
@@ -146,6 +352,35 @@ function mergeSalesAdjustmentsIntoDaily(dailyRows, adjustmentRows) {
         byDay.set(day, current);
     }
     return Array.from(byDay.values()).sort((a, b) => Number(a.day) - Number(b.day));
+}
+
+function mergeSalesAdjustmentsIntoDistribution(distributionRows, adjustmentRows) {
+    const byPlatform = new Map();
+    for (const row of distributionRows || []) {
+        const platformId = Number(row.platform_id ?? row.platformId ?? row.id);
+        if (!platformId) continue;
+        byPlatform.set(platformId, {
+            ...row,
+            platform_id: platformId,
+            value: Number(row.value || 0),
+        });
+    }
+
+    for (const adjustment of adjustmentRows || []) {
+        const platformId = Number(adjustment.platformId || adjustment.platform_id);
+        if (!platformId) continue;
+        const current = byPlatform.get(platformId) || {
+            platform_id: platformId,
+            name: adjustment.name || "Sin plataforma",
+            value: 0,
+        };
+        current.value = Number(current.value || 0) + Number(adjustment.amount || 0);
+        byPlatform.set(platformId, current);
+    }
+
+    return Array.from(byPlatform.values())
+        .filter((row) => Math.abs(Number(row.value || 0)) > 0.004)
+        .sort((a, b) => Number(b.value || 0) - Number(a.value || 0));
 }
 
 /**
@@ -445,7 +680,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
 
         // Distribución por plataforma (mes actual)
         const curDistQuery = `
-            SELECT p.name as name, SUM(oi.price) as value
+            SELECT p.id AS platform_id, p.name AS name, SUM(oi.price) AS value
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             JOIN platforms p ON p.id = oi.platform_id
@@ -458,7 +693,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         `;
 
         // ✅ Paralelo: las 3 queries al mismo tiempo
-        const [[rawCurRows], [rawPrevRows], [curDistRows], curAdjustments, prevAdjustments] = await Promise.all([
+        const [[rawCurRows], [rawPrevRows], [curDistRows], curAdjustments, prevAdjustments, curPlatformAdjustments] = await Promise.all([
             pool.query(curQuery, [userId, targetYear, targetMonth, targetCurrency]),
             pool.query(prevQuery, [userId, prevYear, prevMonth, targetCurrency]),
             pool.query(curDistQuery, [userId, targetYear, targetMonth, targetCurrency]),
@@ -472,6 +707,13 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             getMonthlySalesAdjustments({
                 year: prevYear,
                 month: prevMonth,
+                currency: targetCurrency,
+                isGlobalAdmin: false,
+                targetUserIds: [userId],
+            }),
+            getMonthlyPlatformSalesAdjustments({
+                year: targetYear,
+                month: targetMonth,
                 currency: targetCurrency,
                 isGlobalAdmin: false,
                 targetUserIds: [userId],
@@ -493,7 +735,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
                 daily: curRows,
                 total: curTotal,
                 orders: curOrders,
-                distribution: curDistRows,
+                distribution: mergeSalesAdjustmentsIntoDistribution(curDistRows, curPlatformAdjustments),
                 adjustmentsTotal: curAdjustments.reduce((sum, row) => sum + Number(row.amount || 0), 0),
             },
             previous: {
@@ -609,7 +851,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                   AND UPPER(currency) = ?
             `;
             let distQ = `
-                SELECT p.name as name, SUM(oi.price) as value
+                SELECT p.id AS platform_id, p.name AS name, SUM(oi.price) AS value
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 JOIN platforms p ON p.id = oi.platform_id
@@ -632,10 +874,17 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             dailyQ += ` GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) ORDER BY day ASC`;
             distQ += ` GROUP BY p.id, p.name ORDER BY value DESC`;
 
-            const [[dailyRows], [dist], adjustmentRows] = await Promise.all([
+            const [[dailyRows], [dist], adjustmentRows, platformAdjustmentRows] = await Promise.all([
                 pool.query(dailyQ, dailyParams),
                 pool.query(distQ, distParams),
                 getMonthlySalesAdjustments({
+                    year,
+                    month,
+                    currency: targetCurrency,
+                    isGlobalAdmin,
+                    targetUserIds,
+                }),
+                getMonthlyPlatformSalesAdjustments({
                     year,
                     month,
                     currency: targetCurrency,
@@ -647,7 +896,16 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
             const total = daily.reduce((s, r) => s + Number(r.revenue || 0), 0);
             const orders = daily.reduce((s, r) => s + Number(r.orders || 0), 0);
             const adjustmentsTotal = adjustmentRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-            const monthData = { year, month, currency: targetCurrency, daily, total, orders, distribution: dist, adjustmentsTotal };
+            const monthData = {
+                year,
+                month,
+                currency: targetCurrency,
+                daily,
+                total,
+                orders,
+                distribution: mergeSalesAdjustmentsIntoDistribution(dist, platformAdjustmentRows),
+                adjustmentsTotal,
+            };
 
             if (isAdmin) {
                 const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
@@ -681,12 +939,27 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     profitParams.push(...targetUserIds);
                 }
 
-                const [[profitRow]] = await pool.query(profitQ, profitParams);
-                const trackedSalesCount = Number(profitRow?.tracked_sales_count || 0);
-                const trackedRevenue = Number(profitRow?.tracked_revenue || 0);
-                const costTotal = Number(profitRow?.cost_total || 0);
-                const netProfit = Number(profitRow?.net_profit || 0);
-                const missingCostCount = Number(profitRow?.missing_cost_count || 0);
+                const [[profitRow], adjustmentImpact] = await Promise.all([
+                    pool.query(profitQ, profitParams),
+                    getMonthlySalesAdjustmentImpact({
+                        year,
+                        month,
+                        currency: targetCurrency,
+                        isGlobalAdmin,
+                        targetUserIds,
+                    }),
+                ]);
+                const trackedSalesCount = Math.max(
+                    0,
+                    Number(profitRow?.tracked_sales_count || 0) + adjustmentImpact.trackedSalesCountDelta
+                );
+                const trackedRevenue = Number(profitRow?.tracked_revenue || 0) + adjustmentImpact.trackedRevenueAdjustment;
+                const costTotal = Math.max(0, Number(profitRow?.cost_total || 0) - adjustmentImpact.costReversalTotal);
+                const netProfit = Number(profitRow?.net_profit || 0) + adjustmentImpact.netProfitAdjustment;
+                const missingCostCount = Math.max(
+                    0,
+                    Number(profitRow?.missing_cost_count || 0) + adjustmentImpact.missingCostCountDelta
+                );
                 const marginPct = trackedRevenue > 0 ? Number(((netProfit / trackedRevenue) * 100).toFixed(2)) : 0;
 
                 monthData.netProfitTrackingStartAt = NET_PROFIT_TRACKING_START_AT;
@@ -697,6 +970,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 monthData.marginPct = marginPct;
                 monthData.missingCostCount = missingCostCount;
                 monthData.balanceComplete = missingCostCount === 0;
+                monthData.salesAdjustments = adjustmentImpact;
 
                 if (!includeSupport) return monthData;
                 let supportFilter = "";
@@ -863,7 +1137,8 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
         const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
         const costSql = analyticsCostSql();
 
-        const [rows] = await pool.query(`
+        const [[rows], adjustmentImpacts] = await Promise.all([
+            pool.query(`
             SELECT
                 p.id AS platform_id,
                 p.name AS platform_name,
@@ -892,9 +1167,16 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
             targetCurrency,
             NET_PROFIT_TRACKING_START_AT,
             ...(!isGlobalAdmin ? targetUserIds : []),
+            ]),
+            getPlatformSalesAdjustmentImpacts({
+                monthList,
+                currency: targetCurrency,
+                isGlobalAdmin,
+                targetUserIds,
+            }),
         ]);
 
-        const platforms = rows.map((row) => {
+        const platformById = new Map(rows.map((row) => {
             const salesCount = Number(row.sales_count || 0);
             const revenueTotal = Number(row.revenue_total || 0);
             const trackedSalesCount = Number(row.tracked_sales_count || 0);
@@ -903,7 +1185,7 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
             const netProfit = Number(row.net_profit || 0);
             const untrackedSalesCount = Number(row.untracked_sales_count || 0);
             const untrackedRevenue = Number(row.untracked_revenue || 0);
-            return {
+            const platform = {
                 platformId: Number(row.platform_id),
                 platformName: row.platform_name || "Sin plataforma",
                 platformSlug: row.platform_slug || "",
@@ -917,7 +1199,46 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
                 untrackedRevenue,
                 marginPct: trackedRevenue > 0 ? Number(((netProfit / trackedRevenue) * 100).toFixed(2)) : 0,
             };
-        });
+            return [platform.platformId, platform];
+        }));
+
+        for (const impact of adjustmentImpacts) {
+            const key = impact.platformId || "general";
+            const current = platformById.get(key) || {
+                platformId: impact.platformId,
+                platformName: impact.platformName,
+                platformSlug: "",
+                salesCount: 0,
+                revenueTotal: 0,
+                trackedSalesCount: 0,
+                trackedRevenue: 0,
+                costTotal: 0,
+                netProfit: 0,
+                untrackedSalesCount: 0,
+                untrackedRevenue: 0,
+            };
+            current.salesCount = Math.max(0, current.salesCount + impact.salesCountDelta);
+            current.revenueTotal += impact.revenueTotalAdjustment;
+            current.trackedSalesCount = Math.max(0, current.trackedSalesCount + impact.trackedSalesCountDelta);
+            current.trackedRevenue += impact.trackedRevenueAdjustment;
+            current.costTotal = Math.max(0, current.costTotal - impact.costReversalTotal);
+            current.netProfit += impact.netProfitAdjustment;
+            current.untrackedSalesCount = Math.max(0, current.untrackedSalesCount + impact.untrackedSalesCountDelta);
+            current.untrackedRevenue += impact.untrackedRevenueAdjustment;
+            current.marginPct = current.trackedRevenue > 0
+                ? Number(((current.netProfit / current.trackedRevenue) * 100).toFixed(2))
+                : 0;
+            platformById.set(key, current);
+        }
+
+        const platforms = Array.from(platformById.values())
+            .filter((row) => Math.abs(Number(row.revenueTotal || 0)) > 0.004 || Number(row.salesCount || 0) > 0)
+            .sort((a, b) => (
+                Number(b.netProfit || 0) - Number(a.netProfit || 0)
+                || Number(b.trackedRevenue || 0) - Number(a.trackedRevenue || 0)
+                || Number(b.revenueTotal || 0) - Number(a.revenueTotal || 0)
+                || String(a.platformName || "").localeCompare(String(b.platformName || ""))
+            ));
 
         const totals = platforms.reduce((summary, row) => ({
             salesCount: summary.salesCount + row.salesCount,
@@ -946,7 +1267,7 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
             currency: targetCurrency,
             months: monthList,
             netProfitTrackingStartAt: NET_PROFIT_TRACKING_START_AT,
-            excludesSalesAdjustments: true,
+            includesSalesAdjustments: true,
             platforms,
             totals,
         });

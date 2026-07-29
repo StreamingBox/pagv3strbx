@@ -383,7 +383,7 @@ export default function PlatformProfitView({ data, isMobile, trackingStartLabel 
                     </div>
                 )}
                 <p style={{ margin: "12px 0 0", color: "var(--muted)", fontSize: 11, lineHeight: 1.45 }}>
-                    Los ajustes manuales de ventas no se reparten entre plataformas, por eso no aparecen en este detalle.
+                    Las liberaciones forzadas revierten ingreso, costo y ganancia en su plataforma. Los ajustes sin plataforma se muestran como Ajustes generales.
                 </p>
             </div>
         </motion.section>

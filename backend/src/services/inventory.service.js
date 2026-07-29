@@ -38,10 +38,97 @@ function toMoney(value) {
     return Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0;
 }
 
-async function refundSubscriptionRelease(conn, { subscription, releaseLogId, orderCode }) {
+async function ensureSubscriptionReleaseSalesAdjustment(conn, {
+    subscription,
+    releaseLogId,
+    orderCode,
+    refundAmount,
+    createdByUserId,
+}) {
     const subscriptionId = Number(subscription?.id || 0);
     const userId = Number(subscription?.user_id || 0);
     if (!subscriptionId || !userId) return null;
+
+    const sourceType = "subscription_release_refund";
+    const [[existingAdjustment]] = await conn.query(
+        `SELECT id
+           FROM sales_adjustments
+          WHERE source_type = ?
+            AND source_id = ?
+          LIMIT 1
+          FOR UPDATE`,
+        [sourceType, subscriptionId]
+    );
+
+    if (existingAdjustment) {
+        if (releaseLogId) {
+            await conn.query(
+                `UPDATE account_release_logs
+                    SET sales_adjustment_id = ?
+                  WHERE id = ?`,
+                [existingAdjustment.id, releaseLogId]
+            );
+        }
+        return { id: existingAdjustment.id, alreadyRecorded: true };
+    }
+
+    const amount = toMoney(refundAmount ?? subscription.item_price ?? subscription.price);
+    if (amount <= 0) return null;
+
+    const orderItemId = Number(subscription.order_item_id || 0) || null;
+    const orderId = Number(subscription.order_id || 0) || null;
+    const platformId = Number(subscription.platform_id || 0) || null;
+    const costAmount = orderItemId ? Math.max(toMoney(subscription.item_cost_amount), 0) : null;
+    const currency = normalizeCurrency(subscription.currency || subscription.order_currency || "COP", "COP");
+    const costCurrency = orderItemId
+        ? normalizeCurrency(subscription.item_cost_currency || subscription.order_currency || currency, currency)
+        : null;
+    const orderDate = formatDateOnlyBogota(subscription.order_created_at);
+    const adjustmentDate = orderDate !== "-" ? orderDate : formatDateOnlyBogota(new Date());
+
+    const [insert] = await conn.query(
+        `INSERT INTO sales_adjustments
+            (adjustment_date, currency, amount, reason, created_by_user_id, applies_to_user_id,
+             source_type, source_id, release_log_id, order_id, order_item_id, platform_id,
+             cost_reversal_amount, cost_reversal_currency, item_count_delta)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ,
+        [
+            adjustmentDate,
+            currency,
+            -amount,
+            `Reversa analitica por liberacion forzada${orderCode ? `: ${orderCode}` : ""}`,
+            Number(createdByUserId || 0) || null,
+            userId,
+            sourceType,
+            subscriptionId,
+            releaseLogId || null,
+            orderId,
+            orderItemId,
+            platformId,
+            costAmount,
+            costCurrency,
+            orderItemId ? -1 : 0,
+        ]
+    );
+
+    if (releaseLogId) {
+        await conn.query(
+            `UPDATE account_release_logs
+                SET sales_adjustment_id = ?
+              WHERE id = ?`,
+            [insert.insertId, releaseLogId]
+        );
+    }
+
+    return { id: insert.insertId, alreadyRecorded: false };
+}
+
+async function refundSubscriptionRelease(conn, { subscription, releaseLogId, orderCode, createdByUserId }) {
+    const subscriptionId = Number(subscription?.id || 0);
+    const userId = Number(subscription?.user_id || 0);
+    if (!subscriptionId || !userId) return null;
+
+    const targetCurrency = normalizeCurrency(subscription.currency || subscription.order_currency || "COP", "COP");
 
     const [[existingRefund]] = await conn.query(
         `SELECT id, amount, balance_after
@@ -67,17 +154,24 @@ async function refundSubscriptionRelease(conn, { subscription, releaseLogId, ord
                 ]
             );
         }
+        const salesAdjustment = await ensureSubscriptionReleaseSalesAdjustment(conn, {
+            subscription,
+            releaseLogId,
+            orderCode,
+            refundAmount: existingRefund.amount,
+            createdByUserId,
+        });
         return {
             alreadyRefunded: true,
             walletTransactionId: existingRefund.id,
             refundedAmount: toMoney(existingRefund.amount),
+            salesAdjustmentId: salesAdjustment?.id || null,
         };
     }
 
     const refundAmount = toMoney(subscription.item_price ?? subscription.price);
     if (refundAmount <= 0) return null;
 
-    const targetCurrency = normalizeCurrency(subscription.currency || subscription.order_currency || "COP", "COP");
     const [walletRows] = await conn.query(
         "SELECT id, balance, profit_total, currency FROM wallets WHERE user_id = ? FOR UPDATE",
         [userId]
@@ -179,6 +273,14 @@ async function refundSubscriptionRelease(conn, { subscription, releaseLogId, ord
         );
     }
 
+    const salesAdjustment = await ensureSubscriptionReleaseSalesAdjustment(conn, {
+        subscription,
+        releaseLogId,
+        orderCode,
+        refundAmount,
+        createdByUserId,
+    });
+
     return {
         alreadyRefunded: false,
         walletTransactionId: refundInsert.insertId,
@@ -186,6 +288,7 @@ async function refundSubscriptionRelease(conn, { subscription, releaseLogId, ord
         currency: targetCurrency,
         balanceAfter: newBalance,
         reversedProfit: profitToReverse,
+        salesAdjustmentId: salesAdjustment?.id || null,
     };
 }
 
@@ -690,8 +793,12 @@ async function patchInventory(id, body = {}, options = {}) {
                         oi.id AS order_item_id,
                         oi.order_id,
                         oi.price AS item_price,
+                        oi.cost_amount AS item_cost_amount,
+                        oi.cost_currency AS item_cost_currency,
                         oi.profit_amount,
+                        oi.platform_id,
                         o.order_code,
+                        o.created_at AS order_created_at,
                         o.currency AS order_currency
                    FROM subscriptions s
                    LEFT JOIN order_items oi ON oi.subscription_id = s.id
@@ -745,6 +852,7 @@ async function patchInventory(id, body = {}, options = {}) {
                         subscription: sub,
                         releaseLogId: releaseInsert.insertId,
                         orderCode: sub.order_code || null,
+                        createdByUserId: options.adminUserId || null,
                     });
                     if (refund) releaseRefunds.push({ subscriptionId: sub.id, ...refund });
                 }

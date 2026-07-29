@@ -1047,7 +1047,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     profitParams.push(...targetUserIds);
                 }
 
-                const [[profitRow], adjustmentImpact] = await Promise.all([
+                const [[profitRows], adjustmentImpact] = await Promise.all([
                     pool.query(profitQ, profitParams),
                     getMonthlySalesAdjustmentImpact({
                         year,
@@ -1057,6 +1057,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                         targetUserIds,
                     }),
                 ]);
+                const profitRow = profitRows[0] || {};
                 const trackedSalesCount = Math.max(
                     0,
                     Number(profitRow?.tracked_sales_count || 0) + adjustmentImpact.trackedSalesCountDelta

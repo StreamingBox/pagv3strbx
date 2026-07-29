@@ -510,42 +510,148 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             return res.status(400).json({ error: "ParÃ¡metro currency invÃ¡lido" });
         }
 
-        const [salesRows] = await pool.query(`
-            SELECT
-                u.id AS user_id,
-                COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS user_name,
-                u.email,
-                COUNT(o.id) AS orders_count,
-                SUM(o.total) AS revenue
-            FROM orders o
-            JOIN users u ON u.id = o.user_id
-            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND o.currency = ?
-            GROUP BY u.id, u.name, u.email
-            HAVING SUM(o.total) > 0
-            ORDER BY revenue DESC, orders_count DESC, user_name ASC
-        `, [targetYear, targetMonth, targetCurrency]);
+        const adjustmentWhere = `
+            YEAR(sa.adjustment_date) = ?
+              AND MONTH(sa.adjustment_date) = ?
+              AND UPPER(sa.currency) = ?
+        `;
+        const [[rawSalesRows], [rawPlatformRows], [sellerAdjustmentRows], [platformAdjustmentRows], [summaryAdjustmentRows]] = await Promise.all([
+            pool.query(`
+                SELECT
+                    u.id AS user_id,
+                    COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS user_name,
+                    u.email,
+                    COUNT(o.id) AS orders_count,
+                    SUM(o.total) AS revenue
+                FROM orders o
+                JOIN users u ON u.id = o.user_id
+                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                  AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                  AND UPPER(o.currency) = ?
+                GROUP BY u.id, u.name, u.email
+                HAVING SUM(o.total) > 0
+            `, [targetYear, targetMonth, targetCurrency]),
+            pool.query(`
+                SELECT
+                    o.user_id,
+                    p.id AS platform_id,
+                    p.name AS platform_name,
+                    COUNT(oi.id) AS platform_sales_count,
+                    SUM(oi.price) AS platform_revenue,
+                    SUM(${analyticsCostSql()}) AS platform_cost
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN platforms p ON p.id = oi.platform_id
+                LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+                LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                  AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                  AND UPPER(o.currency) = ?
+                  AND oi.price > 0
+                GROUP BY o.user_id, p.id, p.name
+            `, [targetYear, targetMonth, targetCurrency]),
+            pool.query(`
+                SELECT
+                    sa.applies_to_user_id AS user_id,
+                    COALESCE(NULLIF(TRIM(u.name), ''), u.email) AS user_name,
+                    u.email,
+                    SUM(sa.amount) AS revenue_adjustment
+                FROM sales_adjustments sa
+                JOIN users u ON u.id = sa.applies_to_user_id
+                WHERE ${adjustmentWhere}
+                  AND sa.applies_to_user_id IS NOT NULL
+                GROUP BY sa.applies_to_user_id, u.name, u.email
+            `, [targetYear, targetMonth, targetCurrency]),
+            pool.query(`
+                SELECT
+                    sa.applies_to_user_id AS user_id,
+                    sa.platform_id,
+                    COALESCE(p.name, '-') AS platform_name,
+                    SUM(sa.amount) AS revenue_adjustment,
+                    SUM(sa.item_count_delta) AS sales_count_adjustment,
+                    SUM(
+                        CASE
+                            WHEN UPPER(COALESCE(NULLIF(sa.cost_reversal_currency, ''), sa.currency)) = ?
+                                THEN COALESCE(sa.cost_reversal_amount, 0)
+                            ELSE 0
+                        END
+                    ) AS cost_reversal
+                FROM sales_adjustments sa
+                LEFT JOIN platforms p ON p.id = sa.platform_id
+                WHERE ${adjustmentWhere}
+                  AND sa.applies_to_user_id IS NOT NULL
+                  AND sa.platform_id IS NOT NULL
+                GROUP BY sa.applies_to_user_id, sa.platform_id, p.name
+            `, [targetCurrency, targetYear, targetMonth, targetCurrency]),
+            pool.query(`
+                SELECT COALESCE(SUM(sa.amount), 0) AS revenue_adjustment
+                FROM sales_adjustments sa
+                WHERE ${adjustmentWhere}
+            `, [targetYear, targetMonth, targetCurrency]),
+        ]);
 
-        const [platformRows] = await pool.query(`
-            SELECT
-                o.user_id,
-                p.name AS platform_name,
-                COUNT(oi.id) AS platform_sales_count,
-                SUM(oi.price) AS platform_revenue,
-                SUM(${analyticsCostSql()}) AS platform_cost
-            FROM order_items oi
-            JOIN orders o ON o.id = oi.order_id
-            JOIN platforms p ON p.id = oi.platform_id
-            LEFT JOIN subscriptions s ON s.id = oi.subscription_id
-            LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
-            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND o.currency = ?
-              AND oi.price > 0
-            GROUP BY o.user_id, p.id, p.name
-            ORDER BY o.user_id ASC, platform_sales_count DESC, platform_revenue DESC, p.name ASC
-        `, [targetYear, targetMonth, targetCurrency]);
+        const sellersById = new Map();
+        for (const row of rawSalesRows) {
+            sellersById.set(Number(row.user_id), {
+                ...row,
+                revenue: Number(row.revenue || 0),
+                orders_count: Number(row.orders_count || 0),
+            });
+        }
+        for (const row of sellerAdjustmentRows) {
+            const userId = Number(row.user_id);
+            const seller = sellersById.get(userId) || {
+                user_id: userId,
+                user_name: row.user_name || row.email,
+                email: row.email,
+                orders_count: 0,
+                revenue: 0,
+            };
+            seller.revenue += Number(row.revenue_adjustment || 0);
+            sellersById.set(userId, seller);
+        }
+        const salesRows = Array.from(sellersById.values())
+            .filter((row) => Math.abs(Number(row.revenue || 0)) > 0.004)
+            .sort((a, b) => (
+                Number(b.revenue || 0) - Number(a.revenue || 0)
+                || Number(b.orders_count || 0) - Number(a.orders_count || 0)
+                || String(a.user_name || '').localeCompare(String(b.user_name || ''))
+            ));
+
+        const platformsByUserAndId = new Map();
+        for (const row of rawPlatformRows) {
+            const key = `${Number(row.user_id)}:${Number(row.platform_id)}`;
+            platformsByUserAndId.set(key, {
+                ...row,
+                platform_sales_count: Number(row.platform_sales_count || 0),
+                platform_revenue: Number(row.platform_revenue || 0),
+                platform_cost: Number(row.platform_cost || 0),
+            });
+        }
+        for (const row of platformAdjustmentRows) {
+            const userId = Number(row.user_id);
+            const platformId = Number(row.platform_id);
+            const key = `${userId}:${platformId}`;
+            const platform = platformsByUserAndId.get(key) || {
+                user_id: userId,
+                platform_id: platformId,
+                platform_name: row.platform_name || '-',
+                platform_sales_count: 0,
+                platform_revenue: 0,
+                platform_cost: 0,
+            };
+            platform.platform_sales_count = Math.max(0, Number(platform.platform_sales_count || 0) + Number(row.sales_count_adjustment || 0));
+            platform.platform_revenue = Number(platform.platform_revenue || 0) + Number(row.revenue_adjustment || 0);
+            platform.platform_cost = Math.max(0, Number(platform.platform_cost || 0) - Number(row.cost_reversal || 0));
+            platformsByUserAndId.set(key, platform);
+        }
+        const platformRows = Array.from(platformsByUserAndId.values())
+            .filter((row) => Math.abs(Number(row.platform_revenue || 0)) > 0.004 || Number(row.platform_sales_count || 0) > 0);
+        const totalAdjustments = Number(summaryAdjustmentRows[0]?.revenue_adjustment || 0);
+        const sellerAdjustments = sellerAdjustmentRows.reduce(
+            (sum, row) => sum + Number(row.revenue_adjustment || 0),
+            0,
+        );
 
         const platformStatsByUser = new Map();
         let globalTopPlatform = { name: "—", salesCount: 0, revenue: 0 };
@@ -615,9 +721,11 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
 
         const summary = {
             currency: targetCurrency,
-            monthRevenue: items.reduce((sum, item) => sum + item.monthRevenue, 0),
+            monthRevenue: items.reduce((sum, item) => sum + item.monthRevenue, 0) + (totalAdjustments - sellerAdjustments),
             ordersCount: items.reduce((sum, item) => sum + item.ordersCount, 0),
             costTotal: items.reduce((sum, item) => sum + item.costTotal, 0),
+            salesAdjustmentsTotal: totalAdjustments,
+            unassignedAdjustmentsTotal: totalAdjustments - sellerAdjustments,
             topPlatform: globalTopPlatform,
             topSeller: items[0] || null,
         };

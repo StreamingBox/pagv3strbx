@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, Crown, Eye, EyeOff, Factory, RefreshCcw, RotateCcw, Save, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
+import { CalendarClock, Crown, Factory, RefreshCcw, RotateCcw, Save, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -83,7 +83,6 @@ function initialAccount() {
         providerId: "",
         platformId: "",
         accountEmail: "",
-        accountPassword: "",
         purchaseDate: localToday(),
         ipAddress: "",
         amount: "",
@@ -103,7 +102,6 @@ export default function AdminProviders() {
     const [accountSearch, setAccountSearch] = useState("");
     const [accountOrder, setAccountOrder] = useState("desc");
     const [accountLimit, setAccountLimit] = useState("10");
-    const [visiblePasswords, setVisiblePasswords] = useState({});
     const [loading, setLoading] = useState(true);
     const [savingProvider, setSavingProvider] = useState(false);
     const [savingAccount, setSavingAccount] = useState(false);
@@ -245,7 +243,6 @@ export default function AdminProviders() {
             providerId: String(account.providerId),
             platformId: String(account.platformId),
             accountEmail: account.accountEmail || "",
-            accountPassword: account.accountPassword || "",
             purchaseDate: String(account.purchaseDate || "").slice(0, 10),
             ipAddress: account.ipAddress || "",
             amount: account.amount ?? "",
@@ -488,14 +485,10 @@ export default function AdminProviders() {
                                         </select>
                                     </div>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                <div>
                                     <div>
                                         <label style={labelStyle}>Correo de la cuenta *</label>
                                         <input style={inputStyle} type="email" value={accountForm.accountEmail} onChange={(event) => setAccountForm({ ...accountForm, accountEmail: event.target.value })} placeholder="cuenta@dominio.com" required />
-                                    </div>
-                                    <div>
-                                        <label style={labelStyle}>Contraseña *</label>
-                                        <input style={inputStyle} type="password" value={accountForm.accountPassword} onChange={(event) => setAccountForm({ ...accountForm, accountPassword: event.target.value })} placeholder="Contraseña de la cuenta" required />
                                     </div>
                                 </div>
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
@@ -590,17 +583,15 @@ export default function AdminProviders() {
                         </div>
                         <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
-                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Contraseña", "Compra", "Vencimiento", "IP", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "IP", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
                                         const days = getDaysRemaining(account.expiresAt);
-                                        const passwordVisible = Boolean(visiblePasswords[account.id]);
                                         return <tr key={account.id}>
                                             <td style={{ padding: "13px 11px", color: "#67e8f9", fontWeight: 900, fontSize: 12 }}>#{account.id}</td>
                                             <td style={{ padding: "13px 11px" }}><div style={{ color: "var(--text)", fontWeight: 800 }}>{account.providerName}</div><div style={{ color: "#a78bfa", fontSize: 12, marginTop: 3 }}>{account.platformName}</div></td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
-                                            <td style={{ padding: "13px 11px", color: "var(--muted)", fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>{passwordVisible ? account.accountPassword : "••••••••"} <button type="button" title={passwordVisible ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setVisiblePasswords((current) => ({ ...current, [account.id]: !passwordVisible }))} style={{ display: "inline-grid", placeItems: "center", border: 0, background: "transparent", color: "#22d3ee", cursor: "pointer", verticalAlign: "middle" }}>{passwordVisible ? <EyeOff size={14} /> : <Eye size={14} />}</button></td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
                                             <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12 }}>{account.ipAddress || "-"}</td>
@@ -609,7 +600,7 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button></div></td>
                                         </tr>;
                                     })}
-                                    {!visibleAccounts.length && <tr><td colSpan="10" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                    {!visibleAccounts.length && <tr><td colSpan="9" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

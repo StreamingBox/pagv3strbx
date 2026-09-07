@@ -91,7 +91,6 @@ async function getAccountById(id) {
             pl.name AS platformName,
             pl.slug AS platformSlug,
             pa.account_email AS accountEmail,
-            pa.account_password AS accountPassword,
             DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
             DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
             pa.ip_address AS ipAddress,
@@ -265,7 +264,6 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
                 pl.name AS platformName,
                 pl.slug AS platformSlug,
                 pa.account_email AS accountEmail,
-                pa.account_password AS accountPassword,
                 DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
                 DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
                 pa.ip_address AS ipAddress,
@@ -289,7 +287,7 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
 
 router.post("/admin/provider-accounts", requireAuth, requireRole("admin"), async (req, res) => {
     const payload = accountPayload(req.body);
-    const validationError = validateAccountPayload(payload);
+    const validationError = validateAccountPayload(payload, { passwordRequired: false });
     if (validationError) return res.status(400).json({ message: validationError });
 
     try {
@@ -357,7 +355,7 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
             currency: body.currency ?? existing.currency,
         };
         const payload = accountPayload(merged);
-        const validationError = validateAccountPayload(payload);
+        const validationError = validateAccountPayload(payload, { passwordRequired: false });
         if (validationError) return res.status(400).json({ message: validationError });
 
         const [providerRows] = await pool.query(

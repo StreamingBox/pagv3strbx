@@ -29,6 +29,7 @@ const NAV_GROUPS = [
         links: [
             { path: "/admin/accounts", label: "Inventario de Cuentas", icon: "🔐" },
             { path: "/admin/inventory", label: "Inventario General", icon: "📦" },
+            { path: "/admin/providers", label: "Proveedores", icon: "🏭" },
             { path: "/admin/master-accounts", label: "Cuentas Maestras", icon: <DatabaseZap size={18} strokeWidth={2.4} aria-hidden /> },
             { path: "/admin/links", label: "Links", icon: "🔗" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },

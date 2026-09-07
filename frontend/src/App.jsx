@@ -17,6 +17,7 @@ const Admin = lazy(() => import("./pages/Admin.jsx"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers.jsx"));
 const AdminTransactions = lazy(() => import("./pages/AdminTransactions.jsx"));
 const AdminPlatforms = lazy(() => import("./pages/AdminPlatforms.jsx"));
+const AdminProviders = lazy(() => import("./pages/AdminProviders.jsx"));
 const AdminAccounts = lazy(() => import("./pages/AdminAccounts.jsx"));
 const AdminOrders = lazy(() => import("./pages/AdminOrders.jsx"));
 const AdminPrices = lazy(() => import("./pages/AdminPrices.jsx"));
@@ -225,6 +226,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminPlatforms />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/providers"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminProviders />
                         </ProtectedRoute>
                     }
                 />

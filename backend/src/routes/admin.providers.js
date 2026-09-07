@@ -69,7 +69,10 @@ function validateAccountPayload(payload, { passwordRequired = true } = {}) {
 
 async function getProviderById(id) {
     const [rows] = await pool.query(
-        `SELECT id, name, contact_email AS contactEmail, notes, is_active AS isActive
+        `SELECT id, name, whatsapp_number AS whatsappNumber,
+                code_page_url AS codePageUrl,
+                code_page_username AS codePageUsername,
+                notes, is_active AS isActive
            FROM providers
           WHERE id = ?
           LIMIT 1`,
@@ -113,7 +116,9 @@ router.get("/admin/providers", requireAuth, requireRole("admin"), async (_req, r
             SELECT
                 p.id,
                 p.name,
-                p.contact_email AS contactEmail,
+                p.whatsapp_number AS whatsappNumber,
+                p.code_page_url AS codePageUrl,
+                p.code_page_username AS codePageUsername,
                 p.notes,
                 p.is_active AS isActive,
                 p.created_at AS createdAt,
@@ -140,16 +145,24 @@ router.get("/admin/providers", requireAuth, requireRole("admin"), async (_req, r
 
 router.post("/admin/providers", requireAuth, requireRole("admin"), async (req, res) => {
     const name = cleanText(req.body?.name, 160);
-    const contactEmail = cleanText(req.body?.contactEmail ?? req.body?.contact_email, 190);
+    const whatsappNumber = cleanText(req.body?.whatsappNumber ?? req.body?.whatsapp_number, 40);
+    const codePageUrl = cleanText(req.body?.codePageUrl ?? req.body?.code_page_url, 500);
+    const codePageUsername = cleanText(req.body?.codePageUsername ?? req.body?.code_page_username, 190);
+    const codePagePassword = String(req.body?.codePagePassword ?? req.body?.code_page_password ?? "");
     const notes = cleanText(req.body?.notes, 5000);
 
     if (!name) return res.status(400).json({ message: "El nombre del proveedor es obligatorio." });
+    if (!codePageUrl) return res.status(400).json({ message: "La página de códigos es obligatoria." });
+    if (!codePageUsername) return res.status(400).json({ message: "El usuario de la página es obligatorio." });
+    if (!codePagePassword) return res.status(400).json({ message: "La contraseña de la página es obligatoria." });
 
     try {
         const [result] = await pool.query(
-            `INSERT INTO providers (name, contact_email, notes, is_active)
-             VALUES (?, ?, ?, 1)`,
-            [name, contactEmail, notes]
+            `INSERT INTO providers (
+                name, whatsapp_number, code_page_url, code_page_username,
+                code_page_password, notes, is_active
+             ) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+            [name, whatsappNumber, codePageUrl, codePageUsername, codePagePassword, notes]
         );
         return res.status(201).json(await getProviderById(result.insertId));
     } catch (error) {
@@ -173,9 +186,23 @@ router.patch("/admin/providers/:id", requireAuth, requireRole("admin"), async (r
         fields.push("name = ?");
         params.push(name);
     }
-    if (Object.prototype.hasOwnProperty.call(req.body || {}, "contactEmail") || Object.prototype.hasOwnProperty.call(req.body || {}, "contact_email")) {
-        fields.push("contact_email = ?");
-        params.push(cleanText(req.body.contactEmail ?? req.body.contact_email, 190));
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "whatsappNumber") || Object.prototype.hasOwnProperty.call(req.body || {}, "whatsapp_number")) {
+        fields.push("whatsapp_number = ?");
+        params.push(cleanText(req.body.whatsappNumber ?? req.body.whatsapp_number, 40));
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "codePageUrl") || Object.prototype.hasOwnProperty.call(req.body || {}, "code_page_url")) {
+        fields.push("code_page_url = ?");
+        params.push(cleanText(req.body.codePageUrl ?? req.body.code_page_url, 500));
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "codePageUsername") || Object.prototype.hasOwnProperty.call(req.body || {}, "code_page_username")) {
+        fields.push("code_page_username = ?");
+        params.push(cleanText(req.body.codePageUsername ?? req.body.code_page_username, 190));
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "codePagePassword") || Object.prototype.hasOwnProperty.call(req.body || {}, "code_page_password")) {
+        const codePagePassword = String(req.body.codePagePassword ?? req.body.code_page_password ?? "");
+        if (!codePagePassword) return res.status(400).json({ message: "La contraseña de la página no puede quedar vacía." });
+        fields.push("code_page_password = ?");
+        params.push(codePagePassword);
     }
     if (Object.prototype.hasOwnProperty.call(req.body || {}, "notes")) {
         fields.push("notes = ?");

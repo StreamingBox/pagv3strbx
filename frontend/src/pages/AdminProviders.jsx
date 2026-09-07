@@ -69,7 +69,14 @@ async function apiFetch(path, options = {}) {
     return response.data;
 }
 
-const emptyProvider = { name: "", contactEmail: "", notes: "" };
+const emptyProvider = {
+    name: "",
+    whatsappNumber: "",
+    codePageUrl: "",
+    codePageUsername: "",
+    codePagePassword: "",
+    notes: "",
+};
 
 function initialAccount() {
     return {
@@ -98,6 +105,7 @@ export default function AdminProviders() {
     const [savingProvider, setSavingProvider] = useState(false);
     const [savingAccount, setSavingAccount] = useState(false);
     const [renewingAccountId, setRenewingAccountId] = useState(null);
+    const [editingProviderId, setEditingProviderId] = useState(null);
     const [editingAccountId, setEditingAccountId] = useState(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -151,24 +159,46 @@ export default function AdminProviders() {
         window.setTimeout(() => setSuccess((current) => current === message ? "" : current), 4000);
     }
 
-    async function createProvider(event) {
+    async function saveProvider(event) {
         event.preventDefault();
         if (!providerForm.name.trim()) return;
         setSavingProvider(true);
         setError("");
         try {
-            await apiFetch("/admin/providers", {
-                method: "POST",
-                body: JSON.stringify(providerForm),
+            const payload = { ...providerForm };
+            if (editingProviderId && !payload.codePagePassword.trim()) delete payload.codePagePassword;
+            await apiFetch(editingProviderId ? `/admin/providers/${editingProviderId}` : "/admin/providers", {
+                method: editingProviderId ? "PATCH" : "POST",
+                body: JSON.stringify(payload),
             });
+            const wasEditing = Boolean(editingProviderId);
+            setEditingProviderId(null);
             setProviderForm(emptyProvider);
-            showMessage("Proveedor creado correctamente.");
+            showMessage(wasEditing ? "Proveedor actualizado correctamente." : "Proveedor creado correctamente.");
             await load();
         } catch (requestError) {
             setError(requestError?.message || "No se pudo crear el proveedor.");
         } finally {
             setSavingProvider(false);
         }
+    }
+
+    function editProvider(provider) {
+        setEditingProviderId(provider.id);
+        setProviderForm({
+            name: provider.name || "",
+            whatsappNumber: provider.whatsappNumber || "",
+            codePageUrl: provider.codePageUrl || "",
+            codePageUsername: provider.codePageUsername || "",
+            codePagePassword: "",
+            notes: provider.notes || "",
+        });
+        window.requestAnimationFrame(() => document.getElementById("provider-form")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    }
+
+    function cancelEditProvider() {
+        setEditingProviderId(null);
+        setProviderForm(emptyProvider);
     }
 
     async function saveAccount(event) {
@@ -377,26 +407,45 @@ export default function AdminProviders() {
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                                 <ShieldCheck size={18} color="#22d3ee" aria-hidden />
                                 <div>
-                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Nuevo proveedor</h2>
-                                    <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 12 }}>El proveedor agrupa sus cuentas de acceso.</p>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>{editingProviderId ? "Editar proveedor" : "Nuevo proveedor"}</h2>
+                                    <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 12 }}>Datos de contacto y acceso a su página de códigos.</p>
                                 </div>
                             </div>
-                            <form onSubmit={createProvider} style={{ display: "grid", gap: 13 }}>
+                            <form id="provider-form" onSubmit={saveProvider} style={{ display: "grid", gap: 13 }}>
                                 <div>
                                     <label style={labelStyle}>Nombre del proveedor *</label>
                                     <input style={inputStyle} value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} placeholder="Ej. StoreTools.co" required />
                                 </div>
-                                <div>
-                                    <label style={labelStyle}>Correo de contacto</label>
-                                    <input style={inputStyle} type="email" value={providerForm.contactEmail} onChange={(event) => setProviderForm({ ...providerForm, contactEmail: event.target.value })} placeholder="proveedor@dominio.com" />
+                                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, .8fr) minmax(0, 1.2fr)", gap: 12 }}>
+                                    <div>
+                                        <label style={labelStyle}>Número de WhatsApp</label>
+                                        <input style={inputStyle} type="tel" value={providerForm.whatsappNumber} onChange={(event) => setProviderForm({ ...providerForm, whatsappNumber: event.target.value })} placeholder="+57 300 000 0000" maxLength={40} />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Página de códigos *</label>
+                                        <input style={inputStyle} type="url" value={providerForm.codePageUrl} onChange={(event) => setProviderForm({ ...providerForm, codePageUrl: event.target.value })} placeholder="https://proveedor.com/consultar" required />
+                                    </div>
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                    <div>
+                                        <label style={labelStyle}>Usuario de la página *</label>
+                                        <input style={inputStyle} value={providerForm.codePageUsername} onChange={(event) => setProviderForm({ ...providerForm, codePageUsername: event.target.value })} placeholder="Usuario de acceso" required />
+                                    </div>
+                                    <div>
+                                        <label style={labelStyle}>Contraseña de la página {editingProviderId ? "" : "*"}</label>
+                                        <input style={inputStyle} type="password" value={providerForm.codePagePassword} onChange={(event) => setProviderForm({ ...providerForm, codePagePassword: event.target.value })} placeholder={editingProviderId ? "Vacío = conservar actual" : "Contraseña de acceso"} required={!editingProviderId} />
+                                    </div>
                                 </div>
                                 <div>
                                     <label style={labelStyle}>Notas</label>
                                     <textarea style={{ ...inputStyle, minHeight: 80, resize: "vertical" }} value={providerForm.notes} onChange={(event) => setProviderForm({ ...providerForm, notes: event.target.value })} placeholder="Observaciones internas" />
                                 </div>
-                                <button className="btn" type="submit" disabled={savingProvider || !providerForm.name.trim()} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 800 }}>
-                                    <Save size={16} aria-hidden /> {savingProvider ? "Guardando..." : "Guardar proveedor"}
-                                </button>
+                                <div style={{ display: "flex", gap: 9, flexWrap: "wrap" }}>
+                                    <button className="btn" type="submit" disabled={savingProvider || !providerForm.name.trim()} style={{ minHeight: 42, flex: "1 1 220px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontWeight: 800 }}>
+                                        <Save size={16} aria-hidden /> {savingProvider ? "Guardando..." : editingProviderId ? "Actualizar proveedor" : "Guardar proveedor"}
+                                    </button>
+                                    {editingProviderId && <button className="btn-ghost" type="button" onClick={cancelEditProvider} style={{ minHeight: 42, padding: "0 18px" }}>Cancelar edición</button>}
+                                </div>
                             </form>
                         </div>
 
@@ -480,20 +529,21 @@ export default function AdminProviders() {
                             </div>
                         </div>
                         <div style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 650 }}>
-                                <thead><tr>{["Proveedor", "Contacto", "Cuentas", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 12px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)" }}>{title}</th>)}</tr></thead>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+                                <thead><tr>{["Proveedor", "WhatsApp", "Página de códigos", "Cuentas", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 12px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {providers.map((provider) => {
                                         const active = Number(provider.isActive) === 1;
                                         return <tr key={provider.id}>
                                             <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 800 }}>{provider.name}</td>
-                                            <td style={{ padding: "13px 12px", color: "var(--muted)", fontSize: 13 }}>{provider.contactEmail || "-"}</td>
+                                            <td style={{ padding: "13px 12px", color: "var(--muted)", fontSize: 13, whiteSpace: "nowrap" }}>{provider.whatsappNumber || "-"}</td>
+                                            <td style={{ padding: "13px 12px", maxWidth: 260 }}><a href={provider.codePageUrl || "#"} target="_blank" rel="noreferrer" style={{ color: "#67e8f9", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{provider.codePageUrl || "-"}</a></td>
                                             <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 700 }}>{provider.activeAccountCount || 0} activas <span style={{ color: "var(--muted)", fontWeight: 500 }}>({provider.accountCount || 0} total)</span></td>
                                             <td style={{ padding: "13px 12px" }}><span style={{ color: active ? "#86efac" : "#fca5a5", fontWeight: 800, fontSize: 13 }}>{active ? "Activo" : "Inactivo"}</span></td>
-                                            <td style={{ padding: "13px 12px" }}><button className="btn-ghost" type="button" onClick={() => toggleProvider(provider)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 10px" }}>{active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} {active ? "Desactivar" : "Activar"}</button></td>
+                                            <td style={{ padding: "13px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><button className="btn-ghost" type="button" onClick={() => editProvider(provider)} style={{ height: 34, padding: "0 10px" }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleProvider(provider)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 10px" }}>{active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} {active ? "Desactivar" : "Activar"}</button></div></td>
                                         </tr>;
                                     })}
-                                    {!providers.length && <tr><td colSpan="5" style={{ padding: 22, textAlign: "center", color: "var(--muted)" }}>Aún no hay proveedores registrados.</td></tr>}
+                                    {!providers.length && <tr><td colSpan="6" style={{ padding: 22, textAlign: "center", color: "var(--muted)" }}>Aún no hay proveedores registrados.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

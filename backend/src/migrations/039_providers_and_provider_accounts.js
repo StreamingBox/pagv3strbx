@@ -21,7 +21,7 @@ module.exports = {
             CREATE TABLE IF NOT EXISTS provider_accounts (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 provider_id INT NOT NULL,
-                platform_id INT NOT NULL,
+                platform_id BIGINT UNSIGNED NOT NULL,
                 account_email VARCHAR(190) NOT NULL,
                 account_password TEXT NOT NULL,
                 purchase_date DATE NOT NULL,

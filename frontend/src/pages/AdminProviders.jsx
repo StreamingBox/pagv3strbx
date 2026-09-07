@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Factory, RefreshCcw, Save, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
+import { CalendarClock, Crown, Eye, EyeOff, Factory, RefreshCcw, RotateCcw, Save, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -97,6 +97,7 @@ export default function AdminProviders() {
     const [loading, setLoading] = useState(true);
     const [savingProvider, setSavingProvider] = useState(false);
     const [savingAccount, setSavingAccount] = useState(false);
+    const [renewingAccountId, setRenewingAccountId] = useState(null);
     const [editingAccountId, setEditingAccountId] = useState(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
@@ -240,7 +241,35 @@ export default function AdminProviders() {
         }
     }
 
+    async function renewAccount(account) {
+        setRenewingAccountId(account.id);
+        setError("");
+        try {
+            await apiFetch(`/admin/provider-accounts/${account.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ purchaseDate: localToday(), status: "active" }),
+            });
+            showMessage(`Cuenta ${account.accountEmail} renovada por 30 días calendario.`);
+            await load();
+        } catch (requestError) {
+            setError(requestError?.message || "No se pudo renovar la cuenta.");
+        } finally {
+            setRenewingAccountId(null);
+        }
+    }
+
     const activeProviders = providers.filter((item) => Number(item.isActive) === 1);
+    const topProviders = useMemo(() => [...providers]
+        .sort((left, right) => Number(right.activeAccountCount || 0) - Number(left.activeAccountCount || 0)
+            || Number(right.accountCount || 0) - Number(left.accountCount || 0)
+            || String(left.name || "").localeCompare(String(right.name || "")))
+        .slice(0, 5), [providers]);
+    const upcomingRenewals = useMemo(() => accounts
+        .map((account) => ({ ...account, daysRemaining: getDaysRemaining(account.expiresAt) }))
+        .filter((account) => account.status === "active" && account.daysRemaining !== null && account.daysRemaining <= 7)
+        .sort((left, right) => left.daysRemaining - right.daysRemaining)
+        .slice(0, 5), [accounts]);
+    const topProviderMax = Math.max(1, ...topProviders.map((provider) => Number(provider.activeAccountCount || 0)));
 
     return (
         <div className="page-shell">
@@ -280,6 +309,68 @@ export default function AdminProviders() {
 
                     {error && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#fca5a5", background: "rgba(239,68,68,.11)", border: "1px solid rgba(239,68,68,.35)", fontSize: 13, fontWeight: 700 }}>{error}</div>}
                     {success && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#86efac", background: "rgba(16,185,129,.11)", border: "1px solid rgba(16,185,129,.35)", fontSize: 13, fontWeight: 700 }}>{success}</div>}
+
+                    <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(360px, .85fr)", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
+                        <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                                <Crown size={19} color="#fbbf24" aria-hidden />
+                                <div>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Top 5 proveedores</h2>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Ranking por cuentas activas en inventario.</p>
+                                </div>
+                            </div>
+                            {topProviders.length ? (
+                                <div style={{ display: "grid", gap: 10 }}>
+                                    {topProviders.map((provider, index) => {
+                                        const activeCount = Number(provider.activeAccountCount || 0);
+                                        const totalCount = Number(provider.accountCount || 0);
+                                        return <div key={provider.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
+                                            <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 9, color: index === 0 ? "#111827" : "var(--text)", background: index === 0 ? "#fbbf24" : "rgba(139,92,246,.18)", border: "1px solid rgba(139,92,246,.32)", fontWeight: 900, fontSize: 12 }}>{index + 1}</span>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, color: "var(--text)", fontSize: 13, fontWeight: 800 }}>
+                                                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{provider.name}</span>
+                                                    <span style={{ color: "#86efac", whiteSpace: "nowrap" }}>{activeCount} activas</span>
+                                                </div>
+                                                <div style={{ height: 5, marginTop: 7, overflow: "hidden", borderRadius: 99, background: "rgba(148,163,184,.16)" }}>
+                                                    <div style={{ width: `${activeCount ? Math.max(8, (activeCount / topProviderMax) * 100) : 3}%`, height: "100%", borderRadius: 99, background: index === 0 ? "#fbbf24" : "#8b5cf6" }} />
+                                                </div>
+                                            </div>
+                                            <span style={{ color: "var(--muted)", fontSize: 11, whiteSpace: "nowrap" }}>{totalCount} total</span>
+                                        </div>;
+                                    })}
+                                </div>
+                            ) : <div style={{ padding: "18px 0 6px", color: "var(--muted)", fontSize: 13 }}>Aún no hay proveedores para mostrar.</div>}
+                        </div>
+
+                        <div style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                                <CalendarClock size={19} color="#fbbf24" aria-hidden />
+                                <div>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Recordatorio de renovación</h2>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Cuentas activas que vencen en 7 días o menos.</p>
+                                </div>
+                            </div>
+                            {upcomingRenewals.length ? (
+                                <div style={{ display: "grid", gap: 9 }}>
+                                    {upcomingRenewals.map((account) => {
+                                        const expired = account.daysRemaining < 0;
+                                        return <div key={account.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
+                                            <div style={{ minWidth: 0 }}>
+                                                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12, fontWeight: 800 }}>{account.accountEmail}</div>
+                                                <div style={{ marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: 11 }}>{account.providerName} · {account.platformName} · vence {shortDate(account.expiresAt)}</div>
+                                            </div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                                <span style={{ color: expired ? "#fca5a5" : "#fbbf24", fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" }}>{expired ? `Vencida hace ${Math.abs(account.daysRemaining)} d` : account.daysRemaining === 0 ? "Vence hoy" : `${account.daysRemaining} d`}</span>
+                                                <button className="btn-ghost" type="button" onClick={() => renewAccount(account)} disabled={renewingAccountId === account.id} title="Renovar por 30 días" style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fbbf24", borderColor: "rgba(245,158,11,.35)", fontSize: 11 }}>
+                                                    <RotateCcw size={13} aria-hidden /> {renewingAccountId === account.id ? "..." : "Renovar"}
+                                                </button>
+                                            </div>
+                                        </div>;
+                                    })}
+                                </div>
+                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "#86efac", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> No hay cuentas próximas a vencer.</div>}
+                        </div>
+                    </section>
 
                     <section style={{ display: "grid", gridTemplateColumns: "minmax(280px, .82fr) minmax(480px, 1.5fr)", gap: 18, alignItems: "start", marginBottom: 18 }}>
                         <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>

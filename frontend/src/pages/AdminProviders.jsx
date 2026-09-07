@@ -100,6 +100,9 @@ export default function AdminProviders() {
     const [providerForm, setProviderForm] = useState(emptyProvider);
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
+    const [accountSearch, setAccountSearch] = useState("");
+    const [accountOrder, setAccountOrder] = useState("desc");
+    const [accountLimit, setAccountLimit] = useState("10");
     const [visiblePasswords, setVisiblePasswords] = useState({});
     const [loading, setLoading] = useState(true);
     const [savingProvider, setSavingProvider] = useState(false);
@@ -150,9 +153,20 @@ export default function AdminProviders() {
     }, [providers, accountForm.providerId]);
 
     const filteredAccounts = useMemo(() => {
-        if (!filterProviderId) return accounts;
-        return accounts.filter((account) => String(account.providerId) === String(filterProviderId));
-    }, [accounts, filterProviderId]);
+        const query = accountSearch.trim().toLowerCase();
+        return accounts
+            .filter((account) => !filterProviderId || String(account.providerId) === String(filterProviderId))
+            .filter((account) => {
+                if (!query) return true;
+                return [account.id, account.accountEmail, account.providerName, account.platformName, account.ipAddress]
+                    .some((value) => String(value || "").toLowerCase().includes(query));
+            })
+            .sort((left, right) => accountOrder === "asc"
+                ? Number(left.id) - Number(right.id)
+                : Number(right.id) - Number(left.id));
+    }, [accounts, accountOrder, accountSearch, filterProviderId]);
+
+    const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
 
     function showMessage(message) {
         setSuccess(message);
@@ -553,22 +567,37 @@ export default function AdminProviders() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
                             <div>
                                 <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Cuentas de proveedor</h2>
-                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>El vencimiento se conserva en la base de datos como compra + 30 días calendario.</p>
+                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca y controla las cuentas más recientes por proveedor.</p>
                             </div>
-                            <select style={{ ...inputStyle, width: 240, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px", gap: 10, marginBottom: 10 }}>
+                            <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
                                 <option value="">Todos los proveedores</option>
                                 {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
                             </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountOrder} onChange={(event) => setAccountOrder(event.target.value)} aria-label="Orden de cuentas">
+                                <option value="desc">ID descendente</option>
+                                <option value="asc">ID ascendente</option>
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => setAccountLimit(event.target.value)} aria-label="Cantidad de cuentas visibles">
+                                {[5, 10, 15, 20].map((amount) => <option key={amount} value={amount}>Últimos {amount}</option>)}
+                            </select>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>
+                            <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
+                            <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
-                                <thead><tr>{["Proveedor / plataforma", "Cuenta", "Contraseña", "Compra", "Vencimiento", "IP", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Contraseña", "Compra", "Vencimiento", "IP", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
-                                    {filteredAccounts.map((account) => {
+                                    {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
                                         const days = getDaysRemaining(account.expiresAt);
                                         const passwordVisible = Boolean(visiblePasswords[account.id]);
                                         return <tr key={account.id}>
+                                            <td style={{ padding: "13px 11px", color: "#67e8f9", fontWeight: 900, fontSize: 12 }}>#{account.id}</td>
                                             <td style={{ padding: "13px 11px" }}><div style={{ color: "var(--text)", fontWeight: 800 }}>{account.providerName}</div><div style={{ color: "#a78bfa", fontSize: 12, marginTop: 3 }}>{account.platformName}</div></td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontFamily: "monospace", fontSize: 12, whiteSpace: "nowrap" }}>{passwordVisible ? account.accountPassword : "••••••••"} <button type="button" title={passwordVisible ? "Ocultar contraseña" : "Mostrar contraseña"} onClick={() => setVisiblePasswords((current) => ({ ...current, [account.id]: !passwordVisible }))} style={{ display: "inline-grid", placeItems: "center", border: 0, background: "transparent", color: "#22d3ee", cursor: "pointer", verticalAlign: "middle" }}>{passwordVisible ? <EyeOff size={14} /> : <Eye size={14} />}</button></td>
@@ -580,7 +609,7 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button></div></td>
                                         </tr>;
                                     })}
-                                    {!filteredAccounts.length && <tr><td colSpan="9" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                    {!visibleAccounts.length && <tr><td colSpan="10" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

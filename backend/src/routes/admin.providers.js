@@ -278,7 +278,7 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
             JOIN providers p ON p.id = pa.provider_id
             JOIN platforms pl ON pl.id = pa.platform_id
             ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-            ORDER BY pa.expires_at ASC, pa.id DESC
+            ORDER BY pa.id DESC
         `, params);
         return res.json(rows);
     } catch (error) {

@@ -77,6 +77,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
+                { icon: "🏭", tone: "orange", title: "Proveedores", hint: "Gestiona proveedores y sus cuentas.", path: "/admin/providers" },
                 { icon: <DatabaseZap size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Cuentas Maestras", hint: "Cuentas caidas y reemplazo automatico.", path: "/admin/master-accounts" },
                 { icon: "🔗", tone: "teal", title: "Links", hint: "Enlaces de credenciales.", path: "/admin/links" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },

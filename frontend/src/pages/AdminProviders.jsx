@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { animate } from "animejs/animation";
+import { createScope } from "animejs/scope";
+import { stagger } from "animejs/utils";
 import { useNavigate } from "react-router-dom";
 import { CalendarClock, ChevronDown, Crown, Factory, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -197,6 +200,8 @@ export default function AdminProviders() {
     const [editingAccountId, setEditingAccountId] = useState(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const topRankingRef = useRef(null);
+    const renewalListRef = useRef(null);
 
     async function logout() {
         try { await apiLogout(); } catch { /* logout remains local even if the request fails */ }
@@ -399,6 +404,63 @@ export default function AdminProviders() {
         .sort((left, right) => left.daysRemaining - right.daysRemaining), [accounts]);
     const topProviderMax = Math.max(1, ...topProviders.map((provider) => Number(provider.activeAccountCount || 0)));
 
+    useEffect(() => {
+        const root = topRankingRef.current;
+        if (!root || !topProviders.length) return undefined;
+        const scope = createScope({
+            root,
+            mediaQueries: { reduceMotion: "(prefers-reduced-motion: reduce)" },
+        }).add(({ matches }) => {
+            if (matches.reduceMotion) return;
+            animate("[data-provider-rank]", {
+                opacity: [0, 1],
+                y: [12, 0],
+                delay: stagger(65),
+                duration: 380,
+                ease: "out(4)",
+            });
+            animate("[data-provider-bar]", {
+                scaleX: [0, 1],
+                delay: stagger(65, { start: 145 }),
+                duration: 620,
+                ease: "outExpo",
+            });
+            root.querySelectorAll("[data-provider-active-count]").forEach((element, index) => {
+                const target = Number(element.dataset.value || 0);
+                const counter = { value: 0 };
+                animate(counter, {
+                    value: [0, target],
+                    delay: 145 + index * 65,
+                    duration: 620,
+                    ease: "outExpo",
+                    onRender: () => {
+                        element.textContent = `${Math.round(counter.value)} activas`;
+                    },
+                });
+            });
+        });
+        return () => scope.revert();
+    }, [topProviders, topProviderMax]);
+
+    useEffect(() => {
+        const root = renewalListRef.current;
+        if (!root || !upcomingRenewals.length) return undefined;
+        const scope = createScope({
+            root,
+            mediaQueries: { reduceMotion: "(prefers-reduced-motion: reduce)" },
+        }).add(({ matches }) => {
+            if (matches.reduceMotion) return;
+            animate("[data-renewal-row]", {
+                opacity: [0, 1],
+                x: [14, 0],
+                delay: stagger(55),
+                duration: 360,
+                ease: "out(3)",
+            });
+        });
+        return () => scope.revert();
+    }, [upcomingRenewals]);
+
     return (
         <div className="page-shell">
             <div className="page-shell-bg" aria-hidden>
@@ -448,19 +510,19 @@ export default function AdminProviders() {
                                 </div>
                             </div>
                             {topProviders.length ? (
-                                <div style={{ display: "grid", gap: 10 }}>
+                                <div ref={topRankingRef} style={{ display: "grid", gap: 10 }}>
                                     {topProviders.map((provider, index) => {
                                         const activeCount = Number(provider.activeAccountCount || 0);
                                         const totalCount = Number(provider.accountCount || 0);
-                                        return <div key={provider.id} style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
+                                        return <div key={provider.id} data-provider-rank style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
                                             <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 9, color: index === 0 ? "#111827" : "var(--text)", background: index === 0 ? "#fbbf24" : "rgba(139,92,246,.18)", border: "1px solid rgba(139,92,246,.32)", fontWeight: 900, fontSize: 12 }}>{index + 1}</span>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, color: "var(--text)", fontSize: 13, fontWeight: 800 }}>
                                                     <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{provider.name}</span>
-                                                    <span style={{ color: "#86efac", whiteSpace: "nowrap" }}>{activeCount} activas</span>
+                                                    <span data-provider-active-count data-value={activeCount} style={{ color: "#86efac", whiteSpace: "nowrap" }}>{activeCount} activas</span>
                                                 </div>
                                                 <div style={{ height: 5, marginTop: 7, overflow: "hidden", borderRadius: 99, background: "rgba(148,163,184,.16)" }}>
-                                                    <div style={{ width: `${activeCount ? Math.max(8, (activeCount / topProviderMax) * 100) : 3}%`, height: "100%", borderRadius: 99, background: index === 0 ? "#fbbf24" : "#8b5cf6" }} />
+                                                    <div data-provider-bar style={{ transformOrigin: "left center", width: `${activeCount ? Math.max(8, (activeCount / topProviderMax) * 100) : 3}%`, height: "100%", borderRadius: 99, background: index === 0 ? "#fbbf24" : "#8b5cf6" }} />
                                                 </div>
                                             </div>
                                             <span style={{ color: "var(--muted)", fontSize: 11, whiteSpace: "nowrap" }}>{totalCount} total</span>
@@ -479,10 +541,10 @@ export default function AdminProviders() {
                                 </div>
                             </div>
                             {upcomingRenewals.length ? (
-                                <div style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#fbbf24 rgba(148,163,184,.14)" }}>
+                                <div ref={renewalListRef} style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#fbbf24 rgba(148,163,184,.14)" }}>
                                     {upcomingRenewals.map((account) => {
                                         const expired = account.daysRemaining < 0;
-                                        return <div key={account.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
+                                        return <div key={account.id} data-renewal-row style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12, fontWeight: 800 }}>{account.accountEmail}</div>
                                                 <div style={{ marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: 11 }}>{account.providerName} · {account.platformName} · vence {shortDate(account.expiresAt)}</div>

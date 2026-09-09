@@ -62,7 +62,6 @@ function calculateRenewedExpiry(currentExpiry, renewalDate = currentBogotaDateOn
     const baseDate = isDateOnly(existingExpiry) && existingExpiry >= today ? existingExpiry : today;
     return addCalendarDays(baseDate, 30);
 }
-
 function validateAccountPayload(payload, { passwordRequired = true } = {}) {
     if (!payload.providerId) return "Selecciona un proveedor.";
     if (!payload.platformId) return "Selecciona una plataforma activa.";

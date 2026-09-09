@@ -59,3 +59,8 @@ build/
 .gradle-cache/
 .gradle-user-home/
 .tools/
+
+# Local deployment/export artifacts
+*.tgz
+*.tar.gz
+/tmp/

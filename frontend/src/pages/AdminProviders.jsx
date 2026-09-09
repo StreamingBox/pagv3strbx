@@ -150,7 +150,6 @@ function CountryPicker({ value, onChange }) {
         </div>
     );
 }
-
 async function apiFetch(path, options = {}) {
     const response = await baseApiFetch(path, options);
     if (!response.ok) throw new Error(response.data?.message || `HTTP ${response.status}`);
@@ -683,7 +682,7 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
                                             <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
-                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
+                                            <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
                                             <td style={{ padding: "13px 11px", color: active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{active ? "Activo" : "Inactivo"}</td>
                                             <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button></div></td>

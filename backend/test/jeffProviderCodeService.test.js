@@ -40,6 +40,18 @@ test("does not mistake dates for provider codes", () => {
     assert.equal(extractJeffProviderCode(html), "");
 });
 
+test("prefers the code after the Netflix instruction over date digits", () => {
+    const html = `
+        <main>
+            <p>Fecha: Wed, 9 Sep 2026 23:24:14 +0000</p>
+            <h1>Ingresa este código para iniciar sesión</h1>
+            <div>4497</div>
+        </main>
+    `;
+
+    assert.equal(extractJeffProviderCode(html), "4497");
+});
+
 test("does not report a provider error when the inbox has no recent code", async () => {
     const originalRequest = axios.request;
     axios.request = async (options) => {

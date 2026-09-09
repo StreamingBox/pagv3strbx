@@ -49,10 +49,16 @@ async function getSubscriptionWithAccount(orderId) {
 async function getLastDelivered(orderId, platformSlugLower) {
     const [rows] = await pool.query(
         `SELECT id, credential_fingerprint, created_at
-     FROM code_deliveries
+     FROM code_deliveries cd
      WHERE order_id = ?
        AND platform_slug = ?
        AND status = 'delivered'
+       AND NOT EXISTS (
+            SELECT 1
+            FROM users admin_requester
+            WHERE admin_requester.id = cd.requested_by_user_id
+              AND LOWER(admin_requester.role) = 'admin'
+       )
      ORDER BY created_at DESC
      LIMIT 1`,
         [Number(orderId), String(platformSlugLower || "").toLowerCase()]
@@ -75,6 +81,12 @@ async function countDeliveredByFingerprint({
         "platform_slug = ?",
         "status = 'delivered'",
         "credential_fingerprint = ?",
+        `NOT EXISTS (
+            SELECT 1
+            FROM users admin_requester
+            WHERE admin_requester.id = code_deliveries.requested_by_user_id
+              AND LOWER(admin_requester.role) = 'admin'
+        )`,
     ];
     const params = [Number(orderId), String(platformSlugLower || "").toLowerCase(), String(credentialFingerprint || "")];
 
@@ -140,11 +152,17 @@ async function getDeliveryCountersByFingerprint({ orderId, platformSlugLower, cr
                     OR (action IS NULL AND message LIKE 'OK:approve%')
                  )
                 THEN 1 ELSE 0 END) AS approvals
-         FROM code_deliveries
+         FROM code_deliveries cd
          WHERE order_id = ?
            AND platform_slug = ?
            AND status = 'delivered'
            AND credential_fingerprint = ?
+           AND NOT EXISTS (
+                SELECT 1
+                FROM users admin_requester
+                WHERE admin_requester.id = cd.requested_by_user_id
+                  AND LOWER(admin_requester.role) = 'admin'
+           )
            AND id > COALESCE((
                 SELECT MAX(reset_rows.id)
                 FROM code_deliveries reset_rows

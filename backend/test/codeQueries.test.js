@@ -31,6 +31,7 @@ test("approval counters include delivered Netflix approval links", async () => {
         });
         assert.match(calls[0].sql, /action = 'approve'/);
         assert.match(calls[0].sql, /message LIKE 'OK:approve%'/);
+        assert.match(calls[0].sql, /LOWER\(admin_requester\.role\) = 'admin'/);
     } finally {
         pool.query = originalQuery;
     }

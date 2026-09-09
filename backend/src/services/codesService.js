@@ -318,12 +318,16 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    const netflixRule = await enforceNetflixActionRules({
-        orderNumber,
-        requestedSlug,
-        fingerprint,
-        action: normalizedAction,
-    });
+    // El administrador necesita poder revisar nuevamente una cuenta para soporte.
+    // Los límites siguen aplicando a los clientes, pero no a las consultas internas.
+    const netflixRule = isAdmin
+        ? { blocked: false }
+        : await enforceNetflixActionRules({
+            orderNumber,
+            requestedSlug,
+            fingerprint,
+            action: normalizedAction,
+        });
     if (netflixRule.blocked) {
         return {
             http: 429,
@@ -339,7 +343,9 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    const limitRule = getRequestLimitRule({ policyPlatform, action: normalizedAction });
+    const limitRule = isAdmin
+        ? { limited: false, maxRequests: null, countOnlyDeliveredCodes: false, message: null }
+        : getRequestLimitRule({ policyPlatform, action: normalizedAction });
     if (limitRule.limited && requestedSlug !== "netflix") {
         const deliveredCount = await countDeliveredByFingerprint({
             orderId: orderNumber,
@@ -429,15 +435,19 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         platformSlugLower: requestedSlug,
         credentialFingerprint: fingerprint,
     });
-    const reservation = await reserveCodeRequest({
-        orderId: orderNumber,
-        platformSlug: requestedSlug,
-        action: normalizedAction,
-        credentialFingerprint: fingerprint,
-        resetMarker: lastReset?.id || 0,
-        allowCompletedReuse: requestedSlug !== "netflix" && !limitRule.limited,
-    });
-    if (reservation.inProgress) {
+    // No bloqueamos la revisión administrativa con la reserva de una solicitud
+    // del cliente. La consulta del admin queda registrada, pero no consume cupo.
+    const reservation = isAdmin
+        ? null
+        : await reserveCodeRequest({
+            orderId: orderNumber,
+            platformSlug: requestedSlug,
+            action: normalizedAction,
+            credentialFingerprint: fingerprint,
+            resetMarker: lastReset?.id || 0,
+            allowCompletedReuse: requestedSlug !== "netflix" && !limitRule.limited,
+        });
+    if (reservation?.inProgress) {
         return {
             http: 409,
             body: {
@@ -448,7 +458,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, reservation },
         };
     }
-    if (reservation.completed) {
+    if (reservation?.completed) {
         return {
             http: 429,
             body: {

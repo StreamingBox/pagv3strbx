@@ -94,6 +94,23 @@ export default function PlatformEditModal({ editingPlatform, setEditingPlatform,
                                                 <input type="checkbox" checked={editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true} onChange={e => setEditingPlatform({ ...editingPlatform, is_new_product: e.target.checked ? 1 : 0 })} />
                                             </label>
                                         </div>
+                                        <div style={{ gridColumn: "1 / -1" }}>
+                                            <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 6 }}>Entrega por partido</label>
+                                            <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, minHeight: 42, padding: "0 14px", borderRadius: 10, border: `1px solid ${(editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true) ? "rgba(34,211,238,0.62)" : "var(--stroke)"}`, background: (editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true) ? "rgba(34,211,238,0.10)" : "var(--bg0)", cursor: "pointer" }}>
+                                                <span style={{ fontSize: 13, fontWeight: 800, color: (editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true) ? "#67e8f9" : "var(--muted)" }}>Publicar enlaces temporales de YouTube</span>
+                                                <input type="checkbox" checked={editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true} onChange={e => setEditingPlatform({ ...editingPlatform, is_event_link: e.target.checked ? 1 : 0 })} />
+                                            </label>
+                                            {(editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true) ? (
+                                                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
+                                                    <label style={{ fontSize: 12, color: "var(--muted)" }}>Costo por enlace COP
+                                                        <input type="number" min="0" step="1" style={{ ...inputStyle, marginTop: 5 }} value={editingPlatform.event_link_unit_cost ?? 3000} onChange={e => setEditingPlatform({ ...editingPlatform, event_link_unit_cost: e.target.value })} />
+                                                    </label>
+                                                    <label style={{ fontSize: 12, color: "var(--muted)" }}>Costo mensual de enlaces COP
+                                                        <input type="number" min="0" step="1" style={{ ...inputStyle, marginTop: 5 }} value={editingPlatform.event_link_monthly_cost ?? 20000} onChange={e => setEditingPlatform({ ...editingPlatform, event_link_monthly_cost: e.target.value })} />
+                                                    </label>
+                                                </div>
+                                            ) : null}
+                                        </div>
                                         <div style={{ display: "flex", gap: 12, marginTop: 10 }}>
                                             <button type="button" onClick={() => setEditingPlatform(null)} style={{ flex: 1, height: 44, borderRadius: 12, background: "transparent", border: "1px solid var(--stroke)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }}>Cancelar</button>
                                             <button type="submit" disabled={saving} style={{ flex: 1, height: 44, borderRadius: 12, background: "var(--accent)", color: "#fff", fontWeight: 700, border: "none", cursor: "pointer", boxShadow: "0 4px 12px rgba(13,166,242,0.3)" }}>{saving ? "Guardando..." : "Guardar Cambios"}</button>

@@ -1,4 +1,10 @@
 require("dotenv").config({ override: true });
+// El proceso debe usar el calendario colombiano para cualquier llamada local
+// que no pueda recibir una zona explicita. MySQL sigue trabajando en UTC.
+process.env.TZ = "America/Bogota";
+if (process.env.APP_TIME_ZONE && process.env.APP_TIME_ZONE !== "America/Bogota") {
+    throw new Error("[config] APP_TIME_ZONE debe ser America/Bogota.");
+}
 const fs = require("fs");
 const path = require("path");
 const http = require("http");
@@ -9,6 +15,7 @@ const rateLimit = require("express-rate-limit");
 const { isCountableLoginAttemptResponse } = require("./utils/loginRateLimit");
 const cookieParser = require("cookie-parser");
 const sanitize = require("./middleware/sanitize");
+const { createOriginGuard } = require("./middleware/originGuard");
 const logger = require("./utils/logger");
 
 // ✅ Rutas
@@ -32,6 +39,7 @@ const adminUsers = require("./routes/admin.users");
 const userNotifications = require("./routes/user.notifications");
 const adminWallet = require("./routes/admin.wallet");
 const adminPlatforms = require("./routes/admin.platforms");
+const adminProviders = require("./routes/admin.providers");
 const adminOrders = require("./routes/admin.orders");
 const adminPrices = require("./routes/admin.prices");
 const adminDurations = require("./routes/admin.durations");
@@ -39,6 +47,8 @@ const adminLinks = require("./routes/admin.links");
 
 const adminAccountsRoutes = require("./routes/admin.accounts.routes");
 const adminInventoryRoutes = require("./routes/admin.inventory.routes");
+const adminInventoryAuditRoutes = require("./routes/admin.inventoryAudit.routes");
+const adminEventLinksRoutes = require("./routes/admin.eventLinks");
 
 const brandingRoutes = require("./routes/branding");
 const adminBrandingRoutes = require("./routes/admin.branding");
@@ -50,6 +60,7 @@ const adminAdvertisingRoutes = require("./routes/admin.advertising");
 const advertisingRoutes = require("./routes/advertising");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const notifaceRoutes = require("./routes/notiface");
+const telegramStockRoutes = require("./routes/telegramStock");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { runMigrations } = require("./migrations/runner");
@@ -182,6 +193,7 @@ const corsOptions = {
     allowedHeaders: ["Content-Type", "Authorization"],
 };
 
+app.use(createOriginGuard({ allowedOrigins, allowLocalDev: allowLocalDevOrigin }));
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 
@@ -196,7 +208,9 @@ app.use(
             useDefaults: true,
             directives: {
                 "default-src": ["'self'"],
-                "script-src": ["'self'", "'unsafe-inline'"],
+                "script-src": process.env.NODE_ENV === "production"
+                    ? ["'self'"]
+                    : ["'self'", "'unsafe-inline'"],
                 "style-src": ["'self'", "'unsafe-inline'"],
                 "img-src": ["'self'", "data:", "https:"],
                 "connect-src": ["'self'"],
@@ -212,6 +226,11 @@ app.use(
         },
     })
 );
+
+app.use((_req, res, next) => {
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+    next();
+});
 
 // Rate limit global: 120 req/min por IP
 const globalRateLimit = rateLimit({
@@ -377,8 +396,11 @@ app.use("/api", adminUsers);
 app.use("/api", userNotifications);
 app.use("/api", adminWallet);
 app.use("/api", adminPlatforms);
+app.use("/api", adminProviders);
 app.use("/api", adminAccountsRoutes);
 app.use("/api", adminInventoryRoutes);
+app.use("/api", adminInventoryAuditRoutes);
+app.use("/api", adminEventLinksRoutes);
 app.use("/api", adminOrders);
 app.use("/api", adminPrices);
 app.use("/api", adminDurations);
@@ -393,6 +415,7 @@ app.use("/api", advertisingRoutes);
 
 app.use("/api", manualTopupsRoutes);
 app.use("/api", notifaceRoutes);
+app.use("/api", telegramStockRoutes);
 
 app.use((req, res) => {
     return res.status(404).json({ ok: false, message: "Ruta no encontrada." });

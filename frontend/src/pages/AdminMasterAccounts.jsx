@@ -14,6 +14,7 @@ import {
 import { apiDelete, apiFetch, apiLogout, apiPatch, apiPost } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
+import { formatBogotaDateTime } from "../utils/datetime.js";
 import "../styles/dashboard.css";
 
 const inputStyle = {
@@ -46,14 +47,7 @@ function platformIsActive(platform) {
 }
 
 function formatDate(value) {
-    if (!value) return "-";
-    return new Date(value).toLocaleString("es-CO", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-    });
+    return formatBogotaDateTime(value, { hour: "numeric" });
 }
 
 export default function AdminMasterAccounts() {
@@ -149,7 +143,10 @@ export default function AdminMasterAccounts() {
             setError(response.data?.message || "No se pudo guardar la cuenta maestra.");
             return;
         }
-        setSuccess("Cuenta maestra guardada.");
+        const markedDown = Number(response.data?.markedDown || 0);
+        setSuccess(markedDown > 0
+            ? `Cuenta maestra guardada. ${markedDown} cuenta(s) disponible(s) pasaron a estado caída.`
+            : "Cuenta maestra guardada.");
         setForm((current) => ({ ...current, accountEmail: "", notes: "" }));
         await loadItems();
     }
@@ -162,7 +159,11 @@ export default function AdminMasterAccounts() {
             setError(response.data?.message || "No se pudo actualizar la cuenta.");
             return;
         }
-        setSuccess(`Cuenta marcada como ${statusLabel(nextStatus).toLowerCase()}.`);
+        const markedDown = Number(response.data?.markedDown || 0);
+        const propagationMessage = markedDown > 0
+            ? ` ${markedDown} cuenta(s) disponible(s) pasaron a estado caída.`
+            : "";
+        setSuccess(`Cuenta marcada como ${statusLabel(nextStatus).toLowerCase()}.${propagationMessage}`);
         await loadItems();
     }
 

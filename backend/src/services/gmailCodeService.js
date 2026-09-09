@@ -1,7 +1,16 @@
 // BACKEND: pagv2strbx/src/services/gmailCodeService.js
 const { simpleParser } = require("mailparser");
 const cheerio = require("cheerio");
-const { getImapConfig, safeToDate, getEnvBool, connectImapWithTlsFallback, isTlsCertificateError } = require("../utils/imapConfig");
+const {
+    getImapConfig,
+    safeToDate,
+    getEnvBool,
+    connectImapWithTlsFallback,
+    isTlsCertificateError,
+    isImapAuthenticationError,
+    isImapTimeoutError,
+    getImapAuthenticationMessage,
+} = require("../utils/imapConfig");
 const { extractFallbackCode } = require("../utils/codeExtraction");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
@@ -194,6 +203,20 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
                 ok: false,
                 status: "imap_tls_error",
                 message: `Error TLS en Gmail IMAP durante ${stage}.`,
+            };
+        }
+        if (isImapAuthenticationError(err)) {
+            return {
+                ok: false,
+                status: "imap_auth_error",
+                message: getImapAuthenticationMessage(),
+            };
+        }
+        if (isImapTimeoutError(err)) {
+            return {
+                ok: false,
+                status: "imap_timeout",
+                message: "El buzón de códigos no respondió a tiempo. Intenta nuevamente en unos segundos.",
             };
         }
         return {

@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("../db");
+const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
@@ -12,6 +13,7 @@ const {
     findAvailableAccountForPlatform,
     getCandidatePlatformsForPlatform,
 } = require("../services/platformFallbacks.service");
+const { excludeInactiveMasterAccountByEmailSql } = require("../services/expirationVisibility.service");
 const { buildAccountDeliveryMessage } = require("../utils/deliveryMessage");
 
 const router = express.Router();
@@ -25,7 +27,12 @@ const router = express.Router();
  * Solo cambia platform_account_id y por ende las credenciales mostradas.
  */
 
-async function getReplacementCandidates(conn, { platformId, currentAccountId, additionalPlatformIds = [] }) {
+async function getReplacementCandidates(conn, {
+    platformId,
+    currentAccountId,
+    currentAccountEmail = "",
+    additionalPlatformIds = [],
+}) {
     const candidatePlatforms = await getCandidatePlatformsForPlatform(
         conn,
         platformId,
@@ -36,6 +43,11 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
     const candidateByPlatformId = new Map(
         candidatePlatforms.map((candidate, index) => [candidate.platformId, { ...candidate, priority: index }])
     );
+    const currentEmail = String(currentAccountEmail || "").trim().toLowerCase();
+    const emailFilter = currentEmail
+        ? "AND LOWER(TRIM(COALESCE(pa.email, ''))) <> ?"
+        : "";
+    const emailParams = currentEmail ? [currentEmail] : [];
 
     const [rows] = await conn.query(
         `SELECT pa.id, pa.email, pa.password, pa.access_url, pa.pin, pa.two_factor_secret, pa.profile_number, pa.expires_at,
@@ -45,9 +57,11 @@ async function getReplacementCandidates(conn, { platformId, currentAccountId, ad
           WHERE pa.status = 'available'
             AND pa.id <> ?
             AND pa.platform_id IN (${candidatePlaceholders})
-            AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+            AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})
+            AND ${excludeInactiveMasterAccountByEmailSql({ accountAlias: "pa" })}
+            ${emailFilter}
           ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), pa.id ASC`,
-        [Number(currentAccountId || 0), ...candidatePlatformIds, ...candidatePlatformIds]
+        [Number(currentAccountId || 0), ...candidatePlatformIds, ...emailParams, ...candidatePlatformIds]
     );
 
     return rows.map((row) => {
@@ -131,6 +145,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
     const replacementCandidates = await getReplacementCandidates(conn, {
         platformId: r.platform_id,
         currentAccountId: r.platform_account_id,
+        currentAccountEmail: r.email,
         additionalPlatformIds: [r.delivered_platform_id, r.account_platform_id],
     });
 
@@ -150,6 +165,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         token,
         baseUrl,
         platformSlug: r.platform_slug,
+        platformId: r.platform_id,
     });
 
     return {
@@ -256,6 +272,8 @@ router.post(
             const resolvedAccount = await findAvailableAccountForPlatform(conn, sub.platform_id, {
                 accountId: replacementAccountId || null,
                 excludeAccountId: sub.platform_account_id,
+                excludeAccountEmail: sub.old_account_email,
+                excludeInactiveMasterAccounts: true,
                 additionalPlatformIds: [sub.delivered_platform_id, sub.account_platform_id],
             });
 
@@ -290,7 +308,8 @@ router.post(
                 `UPDATE subscriptions
             SET platform_account_id = ?,
                 delivered_platform_id = ?,
-                is_attended = 0
+                is_attended = 0,
+                expiration_hidden_at = NULL
           WHERE id = ?`,
                 [newAcc.id, resolvedAccount.deliveredPlatformId, subscriptionId]
             );
@@ -349,6 +368,7 @@ router.post(
                     token: info.token,
                     baseUrl,
                     platformSlug: info.platformSlug,
+                    platformId: info.platformId,
                 });
                 info.replaced = {
                     oldAccountId: sub.platform_account_id,

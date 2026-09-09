@@ -2,7 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
-const { GEMINI_5TB_COST_COP } = require("../utils/profitCosts");
+const { GEMINI_5TB_COST_COP, IPTV_COST_COP } = require("../utils/profitCosts");
 
 const router = express.Router();
 const DEFAULT_NET_PROFIT_TRACKING_START_AT = "2026-06-12 13:36:47";
@@ -54,6 +54,7 @@ function analyticsComparableCostSql({ orderAlias = "o", itemAlias = "oi", accoun
     return `(
         ${knownNoCostPlatformSql(platformAlias)}
         OR ${gemini5TbPlatformSql(platformAlias, orderAlias)}
+        OR ${iptvPlatformSql(platformAlias, orderAlias)}
         OR (${recordedCost} IS NOT NULL AND UPPER(${costCurrency}) = '${currency}')
     )`;
 }
@@ -76,11 +77,17 @@ function gemini5TbPlatformSql(platformAlias = "p", orderAlias = "o") {
     return `(${platformAlias}.type = 'correo' AND UPPER(${orderAlias}.currency) = 'COP' AND ${normalized} LIKE '%gemini%' AND (${normalized} LIKE '%5 tb%' OR ${normalized} LIKE '%almacenamiento%'))`;
 }
 
+function iptvPlatformSql(platformAlias = "p", orderAlias = "o") {
+    const normalized = normalizedPlatformSql(platformAlias);
+    return `(UPPER(${orderAlias}.currency) = 'COP' AND ${normalized} LIKE '%iptv%')`;
+}
+
 function analyticsCostSql({ orderAlias = "o", itemAlias = "oi", accountAlias = "pa", platformAlias = "p" } = {}) {
     const recordedCost = `COALESCE(NULLIF(${itemAlias}.cost_amount, 0), NULLIF(${accountAlias}.unit_cost, 0))`;
     return `CASE
         WHEN ${recordedCost} IS NOT NULL THEN ${recordedCost}
         WHEN ${gemini5TbPlatformSql(platformAlias, orderAlias)} THEN ${GEMINI_5TB_COST_COP}
+        WHEN ${iptvPlatformSql(platformAlias, orderAlias)} THEN ${IPTV_COST_COP}
         WHEN ${knownNoCostPlatformSql(platformAlias)} THEN 0
         ELSE 0
     END`;
@@ -90,6 +97,7 @@ function analyticsMissingCostSql({ orderAlias = "o", itemAlias = "oi", accountAl
     const recordedCost = `COALESCE(NULLIF(${itemAlias}.cost_amount, 0), NULLIF(${accountAlias}.unit_cost, 0))`;
     return `(${recordedCost} IS NULL
         AND NOT ${gemini5TbPlatformSql(platformAlias, orderAlias)}
+        AND NOT ${iptvPlatformSql(platformAlias, orderAlias)}
         AND NOT ${knownNoCostPlatformSql(platformAlias)})`;
 }
 
@@ -291,6 +299,180 @@ async function getPlatformSalesAdjustmentImpacts({ monthList, currency, isGlobal
         if (hasLinkedItem && !isInTrackedPeriod) continue;
 
         const platformId = Number(row.resolved_platform_id || 0) || null;
+        const key = platformId || "general";
+        const current = impacts.get(key) || {
+            platformId,
+            platformName: row.platform_name || "Ajustes generales",
+            salesCountDelta: 0,
+            revenueTotalAdjustment: 0,
+            trackedSalesCountDelta: 0,
+            trackedRevenueAdjustment: 0,
+            costReversalTotal: 0,
+            netProfitAdjustment: 0,
+            untrackedSalesCountDelta: 0,
+            untrackedRevenueAdjustment: 0,
+        };
+
+        const amount = Number(row.amount || 0);
+        const itemCountDelta = Number(row.item_count_delta || 0);
+        const isTracked = !hasLinkedItem || Number(row.source_item_tracked || 0) === 1;
+        const costCurrency = String(row.cost_reversal_currency || currency).toUpperCase();
+        const costReversal = isTracked && hasLinkedItem && costCurrency === currency
+            ? Math.max(0, Number(row.cost_reversal_amount || 0))
+            : 0;
+
+        current.revenueTotalAdjustment += amount;
+        if (hasLinkedItem) current.salesCountDelta += itemCountDelta;
+
+        if (isTracked) {
+            current.trackedRevenueAdjustment += amount;
+            current.costReversalTotal += costReversal;
+            current.netProfitAdjustment += amount + costReversal;
+            if (hasLinkedItem) current.trackedSalesCountDelta += itemCountDelta;
+        } else {
+            current.untrackedRevenueAdjustment += amount;
+            current.untrackedSalesCountDelta += itemCountDelta;
+        }
+        impacts.set(key, current);
+    }
+
+    return Array.from(impacts.values());
+}
+
+async function getDailySalesAdjustmentImpact({ date, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const comparableCostSql = analyticsComparableCostSql({
+        orderAlias: "o",
+        itemAlias: "oi",
+        accountAlias: "pa",
+        platformAlias: "p",
+        currency,
+    });
+    const sourceItemIsTrackedSql = `(
+        sa.order_item_id IS NOT NULL
+        AND o.id IS NOT NULL
+        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND ${comparableCostSql}
+    )`;
+    const sourceItemIsUntrackedSql = `(
+        sa.order_item_id IS NOT NULL
+        AND o.id IS NOT NULL
+        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND NOT ${comparableCostSql}
+    )`;
+    const genericAdjustmentSql = "(sa.order_item_id IS NULL OR o.id IS NULL)";
+    const matchingReversalCostSql = `(
+        sa.cost_reversal_amount IS NOT NULL
+        AND UPPER(COALESCE(NULLIF(sa.cost_reversal_currency, ''), sa.currency)) = ?
+    )`;
+
+    const [rows] = await pool.query(`
+        SELECT
+            COALESCE(SUM(sa.amount), 0) AS revenue_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${genericAdjustmentSql} THEN sa.amount
+                WHEN ${sourceItemIsTrackedSql} THEN sa.amount
+                ELSE 0
+            END), 0) AS tracked_revenue_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${genericAdjustmentSql} THEN sa.amount
+                WHEN ${sourceItemIsTrackedSql} THEN sa.amount + CASE WHEN ${matchingReversalCostSql} THEN sa.cost_reversal_amount ELSE 0 END
+                ELSE 0
+            END), 0) AS net_profit_adjustment,
+            COALESCE(SUM(CASE
+                WHEN ${sourceItemIsTrackedSql} AND ${matchingReversalCostSql} THEN sa.cost_reversal_amount
+                ELSE 0
+            END), 0) AS cost_reversal_total,
+            COALESCE(SUM(CASE WHEN ${sourceItemIsTrackedSql} THEN sa.item_count_delta ELSE 0 END), 0) AS tracked_sales_count_delta,
+            COALESCE(SUM(CASE WHEN ${sourceItemIsUntrackedSql} THEN sa.item_count_delta ELSE 0 END), 0) AS missing_cost_count_delta
+        FROM sales_adjustments sa
+        LEFT JOIN order_items oi ON oi.id = sa.order_item_id
+        LEFT JOIN orders o ON o.id = COALESCE(sa.order_id, oi.order_id)
+        LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
+        LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+        LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+        WHERE sa.adjustment_date = ?
+          AND UPPER(sa.currency) = ?
+          ${userFilter.sql}
+    `, [
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        currency,
+        NET_PROFIT_TRACKING_START_AT,
+        currency,
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        date,
+        currency,
+        ...userFilter.params,
+    ]);
+
+    const row = rows[0] || {};
+    return {
+        revenueAdjustment: Number(row.revenue_adjustment || 0),
+        trackedRevenueAdjustment: Number(row.tracked_revenue_adjustment || 0),
+        netProfitAdjustment: Number(row.net_profit_adjustment || 0),
+        costReversalTotal: Number(row.cost_reversal_total || 0),
+        trackedSalesCountDelta: Number(row.tracked_sales_count_delta || 0),
+        missingCostCountDelta: Number(row.missing_cost_count_delta || 0),
+    };
+}
+
+async function getDailyPlatformSalesAdjustmentImpacts({ date, currency, isGlobalAdmin, targetUserIds }) {
+    const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const comparableCostSql = analyticsComparableCostSql({
+        orderAlias: "o",
+        itemAlias: "oi",
+        accountAlias: "pa",
+        platformAlias: "p",
+        currency,
+    });
+
+    const [rows] = await pool.query(`
+        SELECT
+            sa.order_item_id,
+            sa.amount,
+            sa.cost_reversal_amount,
+            sa.cost_reversal_currency,
+            sa.item_count_delta,
+            COALESCE(p.id, sa.platform_id, oi.platform_id) AS platform_id,
+            COALESCE(p.name, 'Ajustes generales') AS platform_name,
+            CASE
+                WHEN sa.order_item_id IS NOT NULL
+                 AND o.id IS NOT NULL
+                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                THEN 1 ELSE 0
+            END AS source_item_in_tracking,
+            CASE
+                WHEN sa.order_item_id IS NOT NULL
+                 AND o.id IS NOT NULL
+                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                 AND ${comparableCostSql}
+                THEN 1 ELSE 0
+            END AS source_item_tracked
+        FROM sales_adjustments sa
+        LEFT JOIN order_items oi ON oi.id = sa.order_item_id
+        LEFT JOIN orders o ON o.id = COALESCE(sa.order_id, oi.order_id)
+        LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
+        LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+        LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+        WHERE sa.adjustment_date = ?
+          AND UPPER(sa.currency) = ?
+          ${userFilter.sql}
+    `, [
+        NET_PROFIT_TRACKING_START_AT,
+        NET_PROFIT_TRACKING_START_AT,
+        date,
+        currency,
+        ...userFilter.params,
+    ]);
+
+    const impacts = new Map();
+    for (const row of rows) {
+        const hasLinkedItem = Number(row.order_item_id || 0) > 0;
+        if (hasLinkedItem && Number(row.source_item_in_tracking || 0) !== 1) continue;
+
+        const platformId = Number(row.platform_id || 0) || null;
         const key = platformId || "general";
         const current = impacts.get(key) || {
             platformId,
@@ -1383,6 +1565,193 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
     } catch (err) {
         console.error("Error GET /admin/analytics/platform-profit:", err);
         res.status(err?.status || 500).json({ error: err?.status ? err.message : "Error interno del servidor" });
+    }
+});
+
+/**
+ * Rentabilidad de un solo dia para administracion.
+ * GET /admin/analytics/daily-profit?date=2026-07-29&currency=COP&global=true
+ *
+ * Esta consulta no usa los meses seleccionados en la vista mensual. La fecha
+ * se interpreta como calendario de Bogota y los ajustes del mismo dia se
+ * aplican sobre ingresos, costos, conteos y utilidad.
+ */
+router.get("/admin/analytics/daily-profit", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const targetCurrency = await resolveAnalyticsCurrency(req, { isAdmin: true });
+        const date = String(req.query.date || "").trim();
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+        if (!match) {
+            return res.status(400).json({ error: "Parametro date requerido con formato YYYY-MM-DD" });
+        }
+        const parsedDate = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        if (
+            parsedDate.getUTCFullYear() !== Number(match[1])
+            || parsedDate.getUTCMonth() !== Number(match[2]) - 1
+            || parsedDate.getUTCDate() !== Number(match[3])
+        ) {
+            return res.status(400).json({ error: "La fecha seleccionada no es valida" });
+        }
+
+        let targetUserIds = [];
+        let isGlobalAdmin = req.query.global === "true";
+        if (!isGlobalAdmin && req.query.userIds) {
+            targetUserIds = req.query.userIds
+                .split(",")
+                .map((id) => Number(id.trim()))
+                .filter((id) => Number.isInteger(id) && id > 0);
+        }
+        if (!isGlobalAdmin && targetUserIds.length === 0) isGlobalAdmin = true;
+
+        const userFilter = isGlobalAdmin
+            ? ""
+            : `AND o.user_id IN (${targetUserIds.map(() => "?").join(",")})`;
+        const comparableCostSql = analyticsComparableCostSql({ currency: targetCurrency });
+        const costSql = analyticsCostSql();
+
+        const [[rows], [platformRows], adjustment, platformAdjustmentImpacts] = await Promise.all([
+            pool.query(`
+                SELECT
+                    COUNT(oi.id) AS sales_count,
+                    COALESCE(SUM(oi.price), 0) AS revenue_total,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN 1 ELSE 0 END), 0) AS tracked_sales_count,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN oi.price ELSE 0 END), 0) AS tracked_revenue,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN ${costSql} ELSE 0 END), 0) AS cost_total,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN oi.price - ${costSql} ELSE 0 END), 0) AS net_profit,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN 0 ELSE 1 END), 0) AS missing_cost_count
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN platforms p ON p.id = oi.platform_id
+                LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+                LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+                WHERE o.created_at >= DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 5 HOUR)
+                  AND o.created_at < DATE_ADD(DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 1 DAY), INTERVAL 5 HOUR)
+                  AND UPPER(o.currency) = ?
+                  AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                  ${userFilter}
+            `, [date, date, targetCurrency, NET_PROFIT_TRACKING_START_AT, ...(!isGlobalAdmin ? targetUserIds : [])]),
+            pool.query(`
+                SELECT
+                    p.id AS platform_id,
+                    p.name AS platform_name,
+                    p.slug AS platform_slug,
+                    COUNT(oi.id) AS sales_count,
+                    COALESCE(SUM(oi.price), 0) AS revenue_total,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN 1 ELSE 0 END), 0) AS tracked_sales_count,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN oi.price ELSE 0 END), 0) AS tracked_revenue,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN ${costSql} ELSE 0 END), 0) AS cost_total,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN oi.price - ${costSql} ELSE 0 END), 0) AS net_profit,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN 0 ELSE 1 END), 0) AS untracked_sales_count,
+                    COALESCE(SUM(CASE WHEN ${comparableCostSql} THEN 0 ELSE oi.price END), 0) AS untracked_revenue
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                JOIN platforms p ON p.id = oi.platform_id
+                LEFT JOIN subscriptions s ON s.id = oi.subscription_id
+                LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
+                WHERE o.created_at >= DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 5 HOUR)
+                  AND o.created_at < DATE_ADD(DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 1 DAY), INTERVAL 5 HOUR)
+                  AND UPPER(o.currency) = ?
+                  AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                  ${userFilter}
+                GROUP BY p.id, p.name, p.slug
+                ORDER BY net_profit DESC, tracked_revenue DESC, revenue_total DESC, p.name ASC
+            `, [date, date, targetCurrency, NET_PROFIT_TRACKING_START_AT, ...(!isGlobalAdmin ? targetUserIds : [])]),
+            getDailySalesAdjustmentImpact({ date, currency: targetCurrency, isGlobalAdmin, targetUserIds }),
+            getDailyPlatformSalesAdjustmentImpacts({ date, currency: targetCurrency, isGlobalAdmin, targetUserIds }),
+        ]);
+
+        const row = rows[0] || {};
+        const salesCount = Math.max(0, Number(row.sales_count || 0) + Number(adjustment.trackedSalesCountDelta || 0) + Number(adjustment.missingCostCountDelta || 0));
+        const revenueTotal = Number(row.revenue_total || 0) + Number(adjustment.revenueAdjustment || 0);
+        const trackedSalesCount = Math.max(0, Number(row.tracked_sales_count || 0) + Number(adjustment.trackedSalesCountDelta || 0));
+        const trackedRevenue = Number(row.tracked_revenue || 0) + Number(adjustment.trackedRevenueAdjustment || 0);
+        const costTotal = Math.max(0, Number(row.cost_total || 0) - Number(adjustment.costReversalTotal || 0));
+        const netProfit = Number(row.net_profit || 0) + Number(adjustment.netProfitAdjustment || 0);
+        const missingCostCount = Math.max(0, Number(row.missing_cost_count || 0) + Number(adjustment.missingCostCountDelta || 0));
+
+        const platformsById = new Map(platformRows.map((platformRow) => {
+            const platformSalesCount = Number(platformRow.sales_count || 0);
+            const platformRevenueTotal = Number(platformRow.revenue_total || 0);
+            const platformTrackedSalesCount = Number(platformRow.tracked_sales_count || 0);
+            const platformTrackedRevenue = Number(platformRow.tracked_revenue || 0);
+            const platformCostTotal = Number(platformRow.cost_total || 0);
+            const platformNetProfit = Number(platformRow.net_profit || 0);
+            return [Number(platformRow.platform_id), {
+                platformId: Number(platformRow.platform_id),
+                platformName: platformRow.platform_name || "Sin plataforma",
+                platformSlug: platformRow.platform_slug || "",
+                salesCount: platformSalesCount,
+                revenueTotal: platformRevenueTotal,
+                trackedSalesCount: platformTrackedSalesCount,
+                trackedRevenue: platformTrackedRevenue,
+                costTotal: platformCostTotal,
+                netProfit: platformNetProfit,
+                untrackedSalesCount: Number(platformRow.untracked_sales_count || 0),
+                untrackedRevenue: Number(platformRow.untracked_revenue || 0),
+                marginPct: platformTrackedRevenue > 0
+                    ? Number(((platformNetProfit / platformTrackedRevenue) * 100).toFixed(2))
+                    : 0,
+            }];
+        }));
+
+        for (const impact of platformAdjustmentImpacts) {
+            const key = impact.platformId || "general";
+            const current = platformsById.get(key) || {
+                platformId: impact.platformId,
+                platformName: impact.platformName,
+                platformSlug: "",
+                salesCount: 0,
+                revenueTotal: 0,
+                trackedSalesCount: 0,
+                trackedRevenue: 0,
+                costTotal: 0,
+                netProfit: 0,
+                untrackedSalesCount: 0,
+                untrackedRevenue: 0,
+            };
+            current.salesCount = Math.max(0, current.salesCount + impact.salesCountDelta);
+            current.revenueTotal += impact.revenueTotalAdjustment;
+            current.trackedSalesCount = Math.max(0, current.trackedSalesCount + impact.trackedSalesCountDelta);
+            current.trackedRevenue += impact.trackedRevenueAdjustment;
+            current.costTotal = Math.max(0, current.costTotal - impact.costReversalTotal);
+            current.netProfit += impact.netProfitAdjustment;
+            current.untrackedSalesCount = Math.max(0, current.untrackedSalesCount + impact.untrackedSalesCountDelta);
+            current.untrackedRevenue += impact.untrackedRevenueAdjustment;
+            current.marginPct = current.trackedRevenue > 0
+                ? Number(((current.netProfit / current.trackedRevenue) * 100).toFixed(2))
+                : 0;
+            platformsById.set(key, current);
+        }
+
+        const platforms = Array.from(platformsById.values())
+            .filter((platform) => Math.abs(Number(platform.revenueTotal || 0)) > 0.004 || Number(platform.salesCount || 0) > 0)
+            .sort((a, b) => (
+                Number(b.netProfit || 0) - Number(a.netProfit || 0)
+                || Number(b.trackedRevenue || 0) - Number(a.trackedRevenue || 0)
+                || Number(b.revenueTotal || 0) - Number(a.revenueTotal || 0)
+                || String(a.platformName || "").localeCompare(String(b.platformName || ""))
+            ));
+
+        return res.json({
+            date,
+            currency: targetCurrency,
+            isGlobal: isGlobalAdmin,
+            salesCount,
+            revenueTotal,
+            trackedSalesCount,
+            trackedRevenue,
+            costTotal,
+            netProfit,
+            missingCostCount,
+            marginPct: trackedRevenue > 0 ? Number(((netProfit / trackedRevenue) * 100).toFixed(2)) : 0,
+            adjustmentTotal: Number(adjustment.revenueAdjustment || 0),
+            platforms,
+            includesSalesAdjustments: true,
+            netProfitTrackingStartAt: NET_PROFIT_TRACKING_START_AT,
+        });
+    } catch (err) {
+        console.error("Error GET /admin/analytics/daily-profit:", err);
+        return res.status(err?.status || 500).json({ error: err?.status ? err.message : "Error interno del servidor" });
     }
 });
 

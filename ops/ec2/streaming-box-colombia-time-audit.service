@@ -1,0 +1,11 @@
+[Unit]
+Description=Streaming Box Colombia time consistency audit
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/var/www/pageV3/backend
+ExecStart=/bin/bash -lc 'exec "$(command -v node)" scripts/audit-colombia-time.js'
+

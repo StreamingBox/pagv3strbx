@@ -10,6 +10,9 @@ const pool = require("../db");
 const driveService = require("../services/googleDriveService");
 const { isExplicitlyActive } = driveService;
 
+const DRIVE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const driveOAuthStates = new Map();
+
 function sanitizeFilename(name) {
     let ext = "";
     const dot = name.lastIndexOf(".");
@@ -92,6 +95,7 @@ const upload = multer({
 });
 
 function driveErrorMessage(err, fallback, context) {
+    if (err?.code === "GOOGLE_DRIVE_REAUTH_REQUIRED") return err.message;
     if (typeof driveService.formatDriveError === "function") {
         return driveService.formatDriveError(err, context);
     }
@@ -100,6 +104,8 @@ function driveErrorMessage(err, fallback, context) {
 
 function driveErrorStatus(err) {
     const code = Number(err?.code || err?.response?.status || 0);
+    if (err?.code === "GOOGLE_DRIVE_REAUTH_REQUIRED" || err?.code === "GOOGLE_DRIVE_REAUTH_NO_REFRESH_TOKEN") return 503;
+    if (typeof driveService.isDriveAuthError === "function" && driveService.isDriveAuthError(err)) return 503;
     if (code === 404) return 404;
     if (code === 403) return 403;
     if (code === 400) return 400;
@@ -218,6 +224,95 @@ async function notifyUsersAdvertisingUpload(folderName, count) {
         [message]
     );
 }
+
+function getPublicAppUrl() {
+    const candidate = String(process.env.PUBLIC_APP_URL || process.env.FRONTEND_URL || "https://strbx.com.co").trim();
+    try {
+        return new URL(candidate).origin;
+    } catch {
+        return "https://strbx.com.co";
+    }
+}
+
+function redirectDriveOAuthResult(res, params = {}) {
+    const target = new URL("/admin/advertising", getPublicAppUrl());
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) target.searchParams.set(key, String(value));
+    });
+    return res.redirect(target.toString());
+}
+
+function persistDriveRefreshToken(refreshToken) {
+    const token = String(refreshToken || "").trim();
+    if (!token) throw new Error("Google no devolvio un refresh token valido.");
+
+    const envPath = path.join(__dirname, "..", "..", ".env");
+    let contents = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : "";
+    const line = `GOOGLE_DRIVE_REFRESH_TOKEN=${token}`;
+    if (/^\s*GOOGLE_DRIVE_REFRESH_TOKEN=.*$/m.test(contents)) {
+        contents = contents.replace(/^\s*GOOGLE_DRIVE_REFRESH_TOKEN=.*$/m, line);
+    } else {
+        contents = `${contents.replace(/\s*$/, "")}\n${line}\n`;
+    }
+    const tempPath = `${envPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tempPath, contents, { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tempPath, envPath);
+    try { fs.chmodSync(envPath, 0o600); } catch {}
+    process.env.GOOGLE_DRIVE_REFRESH_TOKEN = token;
+}
+
+function cleanupDriveOAuthStates() {
+    const now = Date.now();
+    for (const [state, value] of driveOAuthStates.entries()) {
+        if (!value || value.expiresAt <= now) driveOAuthStates.delete(state);
+    }
+}
+
+// Callback publico: la autorizacion vuelve desde Google sin depender de la cookie admin.
+router.get("/drive/oauth/callback", async (req, res) => {
+    cleanupDriveOAuthStates();
+    const state = String(req.query?.state || "");
+    const stateRecord = driveOAuthStates.get(state);
+    driveOAuthStates.delete(state);
+
+    if (!stateRecord) {
+        return redirectDriveOAuthResult(res, {
+            drive: "error",
+            message: "La autorizacion de Google Drive expiro. Inicia la reconexion nuevamente.",
+        });
+    }
+    if (req.query?.error) {
+        return redirectDriveOAuthResult(res, {
+            drive: "error",
+            message: "La autorizacion de Google Drive fue cancelada.",
+        });
+    }
+
+    try {
+        const tokens = await driveService.exchangeGoogleDriveOAuthCode(String(req.query?.code || ""));
+        persistDriveRefreshToken(tokens.refresh_token);
+        return redirectDriveOAuthResult(res, { drive: "connected" });
+    } catch (err) {
+        console.error("[admin/advertising/drive/oauth/callback] Error renovando OAuth de Drive.");
+        return redirectDriveOAuthResult(res, {
+            drive: "error",
+            message: "No se pudo reconectar Google Drive. Autoriza nuevamente con la cuenta propietaria.",
+        });
+    }
+});
+
+router.get("/drive/oauth/start", requireAuth, requireRole("admin"), async (_req, res) => {
+    cleanupDriveOAuthStates();
+    const state = crypto.randomBytes(24).toString("hex");
+    driveOAuthStates.set(state, { expiresAt: Date.now() + DRIVE_OAUTH_STATE_TTL_MS });
+    try {
+        const url = driveService.getGoogleDriveOAuthUrl(state);
+        return res.json({ ok: true, data: { url } });
+    } catch (err) {
+        driveOAuthStates.delete(state);
+        return res.status(500).json({ ok: false, message: err.message || "No se pudo iniciar la autorizacion de Google Drive." });
+    }
+});
 
 router.use(requireAuth, requireRole("admin"));
 
@@ -442,7 +537,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
         });
     } catch (err) {
         console.error("[admin/advertising/images POST]", err.message);
-        res.status(500).json({ ok: false, message: driveErrorMessage(err, "Error subiendo imagenes.") });
+        res.status(driveErrorStatus(err)).json({ ok: false, message: driveErrorMessage(err, "Error subiendo imagenes.") });
     }
 });
 

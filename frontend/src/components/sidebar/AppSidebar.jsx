@@ -1,19 +1,26 @@
 import { useEffect, useState } from "react";
 
-export function isSidebarMobile() {
-    return typeof window !== "undefined" && window.innerWidth <= 900;
+const DEFAULT_SIDEBAR_DRAWER_BREAKPOINT = 900;
+
+export function isSidebarMobile(breakpoint = DEFAULT_SIDEBAR_DRAWER_BREAKPOINT) {
+    return typeof window !== "undefined" && window.innerWidth <= breakpoint;
 }
 
-export function useResponsiveSidebar({ defaultCollapsed = false, collapseOnMobile = true, expandOnDesktop = false } = {}) {
+export function useResponsiveSidebar({
+    defaultCollapsed = false,
+    collapseOnMobile = true,
+    expandOnDesktop = false,
+    breakpoint = DEFAULT_SIDEBAR_DRAWER_BREAKPOINT,
+} = {}) {
     const [collapsed, setCollapsed] = useState(() => {
-        if (collapseOnMobile && isSidebarMobile()) return true;
+        if (collapseOnMobile && isSidebarMobile(breakpoint)) return true;
         return defaultCollapsed;
     });
-    const [isMobile, setIsMobile] = useState(() => isSidebarMobile());
+    const [isMobile, setIsMobile] = useState(() => isSidebarMobile(breakpoint));
 
     useEffect(() => {
         const handleResize = () => {
-            const mobile = isSidebarMobile();
+            const mobile = isSidebarMobile(breakpoint);
             setIsMobile(mobile);
             if (mobile && collapseOnMobile) setCollapsed(true);
             if (!mobile && expandOnDesktop) setCollapsed(false);
@@ -21,7 +28,7 @@ export function useResponsiveSidebar({ defaultCollapsed = false, collapseOnMobil
         handleResize();
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
-    }, [collapseOnMobile, expandOnDesktop]);
+    }, [breakpoint, collapseOnMobile, expandOnDesktop]);
 
     return { collapsed, setCollapsed, isMobile };
 }

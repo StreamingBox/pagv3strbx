@@ -5,6 +5,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { apiDelete, apiGet, apiPatch } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
+import { formatBogotaDateTime } from "../utils/datetime.js";
 import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
@@ -177,16 +178,7 @@ const S = {
 };
 
 function formatDate(value) {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return String(value);
-    return date.toLocaleString("es-CO", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-    });
+    return formatBogotaDateTime(value);
 }
 
 function shortToken(token) {

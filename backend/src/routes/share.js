@@ -1,5 +1,6 @@
 const express = require("express");
 const rateLimit = require("express-rate-limit");
+const crypto = require("crypto");
 const pool = require("../db");
 const { cleanupExpiredCredentialLinks } = require("../utils/tokens");
 const {
@@ -25,6 +26,21 @@ function wantsJson(req) {
   if (q === "json") return true;
   const accept = String(req.get("Accept") || "");
   return accept.includes("application/json") && !accept.includes("text/html");
+}
+
+function addShareScriptNonce(res) {
+  const nonce = crypto.randomBytes(16).toString("base64");
+  const currentCsp = String(res.get("Content-Security-Policy") || "");
+  const nonceCsp = currentCsp.replace(
+    /script-src\s+([^;]+)/i,
+    (_match, sources) => `script-src ${sources} 'nonce-${nonce}'`
+  );
+
+  if (nonceCsp && nonceCsp !== currentCsp) {
+    res.set("Content-Security-Policy", nonceCsp);
+  }
+
+  return nonce;
 }
 
 function normalizeWhatsappNumber(value) {
@@ -212,6 +228,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
     const expEsc = escapeHtml(exp);
     const remainingEsc = escapeHtml(remaining === null ? "-" : remaining);
     const whatsappUrl = escapeHtml(rawWhatsappUrl);
+    const shareScriptNonce = addShareScriptNonce(res);
 
     const statusText = expired ? "Vencido" : "Activo";
     const statusClass = expired ? "danger" : "ok";
@@ -235,7 +252,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         <div class="row cred-row"><div class="label">Perfil:</div><div class="value" id="cred-profile">…</div></div>
         <div class="row cred-row"><div class="label">Pin:</div><div class="value" id="cred-pin">…</div></div>
         <div id="cred-url-row" class="row cred-row" style="display:none;"><div class="label">URL:</div><div class="value" id="cred-url">...</div></div>
-        <script>
+        <script nonce="${shareScriptNonce}">
           (function () {
             var q = location.search ? "&" : "?";
             var url = location.pathname + q + "format=json";

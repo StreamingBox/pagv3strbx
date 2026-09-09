@@ -6,8 +6,10 @@ import {
     FileText,
     Headphones,
     History,
+    Pencil,
     RefreshCcw,
     Repeat2,
+    RotateCcw,
     Save,
     Search,
     Wrench,
@@ -124,17 +126,22 @@ export default function AdminSupport() {
     const [templates, setTemplates] = useState([]);
     const [templateTitle, setTemplateTitle] = useState("");
     const [templateSaving, setTemplateSaving] = useState(false);
+    const [editingResponse, setEditingResponse] = useState(null);
+    const [editResolutionType, setEditResolutionType] = useState("repaired");
+    const [editResolutionSubtype, setEditResolutionSubtype] = useState(RESOLUTION_SUBTYPES.repaired[0].value);
+    const [editResolutionMessage, setEditResolutionMessage] = useState("");
+    const [reopenMessage, setReopenMessage] = useState("");
 
     const selected = useMemo(
         () => tickets.find((ticket) => ticket.id === selectedId) || tickets[0] || null,
         [selectedId, tickets]
     );
 
-    const loadTickets = useCallback(async () => {
+    const loadTickets = useCallback(async (statusOverride = filter) => {
         setLoading(true);
         setError("");
         try {
-            const params = new URLSearchParams({ status: filter });
+            const params = new URLSearchParams({ status: statusOverride });
             if (search.trim()) params.set("q", search.trim());
             const response = await apiFetch(`/admin/support-tickets?${params.toString()}`);
             if (response.ok) {
@@ -190,6 +197,15 @@ export default function AdminSupport() {
         setResolutionSubtype(RESOLUTION_SUBTYPES.repaired[0].value);
         setReplacementAccountId("");
         setSupportInfo(null);
+        setEditingResponse(null);
+        setEditResolutionType(selected?.resolutionType || "repaired");
+        setEditResolutionSubtype(
+            selected?.resolutionSubtype
+                || RESOLUTION_SUBTYPES[selected?.resolutionType || "repaired"]?.[0]?.value
+                || ""
+        );
+        setEditResolutionMessage(selected?.resolutionMessage || "");
+        setReopenMessage("");
         if (!selected?.subscriptionId || selected.status === "resolved") return;
 
         let cancelled = false;
@@ -205,7 +221,14 @@ export default function AdminSupport() {
         return () => {
             cancelled = true;
         };
-    }, [selected?.id, selected?.status, selected?.subscriptionId]);
+    }, [
+        selected?.id,
+        selected?.status,
+        selected?.subscriptionId,
+        selected?.resolutionType,
+        selected?.resolutionSubtype,
+        selected?.resolutionMessage,
+    ]);
 
     async function logout() {
         await apiLogout().catch(() => {});
@@ -278,6 +301,72 @@ export default function AdminSupport() {
         await loadTickets();
     }
 
+    async function reopenResolvedTicket() {
+        if (!selected || selected.status !== "resolved") return;
+        setActionLoading(true);
+        setError("");
+        setSuccess("");
+        let response;
+        try {
+            response = await apiFetch(`/admin/support-tickets/${selected.id}/reopen`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    message: reopenMessage.trim() || "Caso reabierto por administracion.",
+                }),
+                timeoutMs: 60000,
+            });
+        } catch (error) {
+            setError(error?.message || "No se pudo reabrir el caso.");
+            return;
+        } finally {
+            setActionLoading(false);
+        }
+        if (!response.ok) {
+            setError(response.data?.message || "No se pudo reabrir el caso.");
+            return;
+        }
+        setEditingResponse(null);
+        setSuccess("Caso reabierto y devuelto a pendientes.");
+        setFilter("pending");
+        await loadTickets("pending");
+    }
+
+    async function editResolvedResponse() {
+        if (!selected || selected.status !== "resolved") return;
+        const message = editResolutionMessage.trim();
+        if (message.length < 10) {
+            setError("La respuesta final debe tener al menos 10 caracteres.");
+            return;
+        }
+        setActionLoading(true);
+        setError("");
+        setSuccess("");
+        let response;
+        try {
+            response = await apiFetch(`/admin/support-tickets/${selected.id}/response`, {
+                method: "PATCH",
+                body: JSON.stringify({
+                    resolutionType: editResolutionType,
+                    resolutionSubtype: editResolutionSubtype,
+                    resolutionMessage: message,
+                }),
+                timeoutMs: 60000,
+            });
+        } catch (error) {
+            setError(error?.message || "No se pudo editar la respuesta.");
+            return;
+        } finally {
+            setActionLoading(false);
+        }
+        if (!response.ok) {
+            setError(response.data?.message || "No se pudo editar la respuesta.");
+            return;
+        }
+        setEditingResponse(null);
+        setSuccess("Respuesta actualizada y correo encolado para el usuario.");
+        await loadTickets("resolved");
+    }
+
     async function saveTemplate() {
         const title = templateTitle.trim();
         const body = resolutionMessage.trim();
@@ -328,6 +417,11 @@ export default function AdminSupport() {
         if (type === "replaced" && !resolutionMessage.trim()) {
             setResolutionMessage("Reemplazamos tu cuenta. A continuación encontrarás las nuevas credenciales y el enlace de acceso actualizado.");
         }
+    }
+
+    function selectEditResolutionType(type) {
+        setEditResolutionType(type);
+        setEditResolutionSubtype(RESOLUTION_SUBTYPES[type]?.[0]?.value || "");
     }
 
     const selectedDetail = ticketDetail?.ticket?.id === selected?.id ? ticketDetail : null;
@@ -502,7 +596,151 @@ export default function AdminSupport() {
                                                 </span>
                                             ) : null}
                                             <p style={{ whiteSpace: "pre-line" }}>{selected.resolutionMessage}</p>
+                                            {selected.managementExtensionDays > 0 ? (
+                                                <span>Se agrego 1 dia por superar 5 horas de gestion.</span>
+                                            ) : null}
                                             <span>Resuelto {formatDate(selected.resolvedAt)}</span>
+
+                                            {!editingResponse ? (
+                                                <div className="admin-support-resolved-actions">
+                                                    <button
+                                                        type="button"
+                                                        className="support-secondary-button"
+                                                        onClick={() => {
+                                                            setEditResolutionType(selected.resolutionType || "repaired");
+                                                            setEditResolutionSubtype(
+                                                                selected.resolutionSubtype
+                                                                    || RESOLUTION_SUBTYPES[selected.resolutionType || "repaired"]?.[0]?.value
+                                                                    || ""
+                                                            );
+                                                            setEditResolutionMessage(selected.resolutionMessage || "");
+                                                            setEditingResponse("edit");
+                                                            setError("");
+                                                            setSuccess("");
+                                                        }}
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <Pencil size={16} aria-hidden />
+                                                        Editar respuesta
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="support-secondary-button"
+                                                        onClick={() => {
+                                                            setReopenMessage("");
+                                                            setEditingResponse("reopen");
+                                                            setError("");
+                                                            setSuccess("");
+                                                        }}
+                                                        disabled={actionLoading}
+                                                    >
+                                                        <RotateCcw size={16} aria-hidden />
+                                                        Reabrir caso
+                                                    </button>
+                                                </div>
+                                            ) : null}
+
+                                            {editingResponse === "edit" ? (
+                                                <div className="admin-support-edit-form">
+                                                    <div className="admin-support-action-options">
+                                                        <button
+                                                            type="button"
+                                                            className={editResolutionType === "repaired" ? "is-active" : ""}
+                                                            onClick={() => selectEditResolutionType("repaired")}
+                                                        >
+                                                            <CheckCircle2 size={17} aria-hidden />
+                                                            Cuenta reparada
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={editResolutionType === "replaced" ? "is-active" : ""}
+                                                            onClick={() => selectEditResolutionType("replaced")}
+                                                        >
+                                                            <Repeat2 size={17} aria-hidden />
+                                                            Cuenta reemplazada
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className={editResolutionType === "other" ? "is-active" : ""}
+                                                            onClick={() => selectEditResolutionType("other")}
+                                                        >
+                                                            Otro cierre
+                                                        </button>
+                                                    </div>
+                                                    <label className="support-field">
+                                                        <span>Subtipificacion del cierre</span>
+                                                        <select
+                                                            value={editResolutionSubtype}
+                                                            onChange={(event) => setEditResolutionSubtype(event.target.value)}
+                                                        >
+                                                            {(RESOLUTION_SUBTYPES[editResolutionType] || []).map((item) => (
+                                                                <option key={item.value} value={item.value}>{item.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+                                                    <label className="support-field">
+                                                        <span>Respuesta final para el usuario</span>
+                                                        <textarea
+                                                            value={editResolutionMessage}
+                                                            onChange={(event) => setEditResolutionMessage(event.target.value)}
+                                                            maxLength={3000}
+                                                        />
+                                                        <small>{editResolutionMessage.length}/3000</small>
+                                                    </label>
+                                                    <div className="admin-support-edit-form__buttons">
+                                                        <button
+                                                            type="button"
+                                                            className="support-secondary-button"
+                                                            onClick={() => setEditingResponse(null)}
+                                                            disabled={actionLoading}
+                                                        >
+                                                            Cancelar
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="support-primary-button"
+                                                            onClick={editResolvedResponse}
+                                                            disabled={actionLoading}
+                                                        >
+                                                            <Save size={16} aria-hidden />
+                                                            {actionLoading ? "Guardando..." : "Guardar y reenviar"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : null}
+
+                                            {editingResponse === "reopen" ? (
+                                                <div className="admin-support-edit-form">
+                                                    <label className="support-field">
+                                                        <span>Nota de reapertura</span>
+                                                        <textarea
+                                                            value={reopenMessage}
+                                                            onChange={(event) => setReopenMessage(event.target.value)}
+                                                            maxLength={3000}
+                                                            placeholder="Explica por que se vuelve a revisar el caso..."
+                                                        />
+                                                    </label>
+                                                    <div className="admin-support-edit-form__buttons">
+                                                        <button
+                                                            type="button"
+                                                            className="support-secondary-button"
+                                                            onClick={() => setEditingResponse(null)}
+                                                            disabled={actionLoading}
+                                                        >
+                                                            Cancelar
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            className="support-primary-button"
+                                                            onClick={reopenResolvedTicket}
+                                                            disabled={actionLoading}
+                                                        >
+                                                            <RotateCcw size={16} aria-hidden />
+                                                            {actionLoading ? "Reabriendo..." : "Reabrir caso"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : null}
                                         </div>
                                     ) : (
                                         <div className="admin-support-actions">

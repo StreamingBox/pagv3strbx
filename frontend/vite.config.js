@@ -56,6 +56,8 @@ export default defineConfig({
     }),
   ],
   build: {
+    // Source maps expose the original source in production DevTools.
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

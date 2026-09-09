@@ -1,4 +1,5 @@
 const GEMINI_5TB_COST_COP = 7000;
+const IPTV_COST_COP = 2350;
 
 function normalizeProductName(value) {
     return String(value || "")
@@ -34,8 +35,13 @@ function isGemini5TbPlan(plan) {
         && (normalized.includes("5 tb") || normalized.includes("almacenamiento"));
 }
 
+function isIptvPlan(plan) {
+    return planCurrency(plan) === "COP" && normalizedPlanText(plan).includes("iptv");
+}
+
 function automaticUnitCostForPlan(plan) {
     if (isGemini5TbPlan(plan)) return GEMINI_5TB_COST_COP;
+    if (isIptvPlan(plan)) return IPTV_COST_COP;
     return 0;
 }
 
@@ -48,9 +54,11 @@ function automaticProfitForEntry({ plan, salePrice, unitCost }) {
 
 module.exports = {
     GEMINI_5TB_COST_COP,
+    IPTV_COST_COP,
     automaticProfitForEntry,
     automaticUnitCostForPlan,
     isGemini5TbPlan,
+    isIptvPlan,
     isNotionEmailPlan,
     normalizeProductName,
 };

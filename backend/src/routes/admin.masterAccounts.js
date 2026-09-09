@@ -2,7 +2,12 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
-const { mapMasterAccount, normalizeMasterEmail } = require("../services/masterAccounts.service");
+const { withTransaction } = require("../dbHelpers");
+const {
+    mapMasterAccount,
+    markAvailableAccountsDown,
+    normalizeMasterEmail,
+} = require("../services/masterAccounts.service");
 
 const router = express.Router();
 
@@ -99,16 +104,24 @@ router.post("/admin/master-accounts", requireAuth, requireRole("admin"), async (
             return res.status(404).json({ message: "La plataforma no existe." });
         }
 
-        await pool.query(
-            `INSERT INTO master_accounts (platform_id, account_email, status, notes, created_by_user_id)
-             VALUES (?, ?, ?, ?, ?)
-             ON DUPLICATE KEY UPDATE
-                status = VALUES(status),
-                notes = VALUES(notes),
-                updated_at = CURRENT_TIMESTAMP`,
-            [platformId, accountEmail, status, notes, req.user.id || null]
-        );
-        return res.status(201).json({ ok: true });
+        const result = await withTransaction(async (conn) => {
+            await conn.query(
+                `INSERT INTO master_accounts (platform_id, account_email, status, notes, created_by_user_id)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE
+                    status = VALUES(status),
+                    notes = VALUES(notes),
+                    updated_at = CURRENT_TIMESTAMP`,
+                [platformId, accountEmail, status, notes, req.user.id || null]
+            );
+
+            const markedDown = status === "inactive"
+                ? await markAvailableAccountsDown(conn, { platformId, accountEmail })
+                : 0;
+            return { markedDown };
+        });
+
+        return res.status(201).json({ ok: true, ...result });
     } catch (error) {
         console.error("[master-accounts] create error:", error);
         return res.status(500).json({ message: "No se pudo guardar la cuenta maestra." });
@@ -128,15 +141,41 @@ router.patch("/admin/master-accounts/:id", requireAuth, requireRole("admin"), as
     }
 
     try {
-        await pool.query(
-            `UPDATE master_accounts
-                SET status = COALESCE(?, status),
-                    notes = CASE WHEN ? THEN ? ELSE notes END
-              WHERE id = ?`,
-            [status, notes !== undefined ? 1 : 0, notes || null, id]
-        );
-        return res.json({ ok: true });
+        const result = await withTransaction(async (conn) => {
+            const [masterRows] = await conn.query(
+                `SELECT platform_id, account_email, status
+                   FROM master_accounts
+                  WHERE id = ?
+                  FOR UPDATE`,
+                [id]
+            );
+            if (!masterRows.length) {
+                const notFound = new Error("Cuenta maestra no encontrada.");
+                notFound.status = 404;
+                throw notFound;
+            }
+
+            const nextStatus = status === null ? masterRows[0].status : status;
+            await conn.query(
+                `UPDATE master_accounts
+                    SET status = COALESCE(?, status),
+                        notes = CASE WHEN ? THEN ? ELSE notes END
+                  WHERE id = ?`,
+                [status, notes !== undefined ? 1 : 0, notes || null, id]
+            );
+
+            const markedDown = nextStatus === "inactive"
+                ? await markAvailableAccountsDown(conn, {
+                    platformId: masterRows[0].platform_id,
+                    accountEmail: masterRows[0].account_email,
+                })
+                : 0;
+            return { markedDown };
+        });
+
+        return res.json({ ok: true, ...result });
     } catch (error) {
+        if (error.status === 404) return res.status(404).json({ message: error.message });
         console.error("[master-accounts] update error:", error);
         return res.status(500).json({ message: "No se pudo actualizar la cuenta maestra." });
     }

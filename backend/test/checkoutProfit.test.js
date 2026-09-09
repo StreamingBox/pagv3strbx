@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+    IPTV_COST_COP,
     automaticProfitForEntry,
     automaticUnitCostForPlan,
 } = require("../src/utils/profitCosts");
@@ -48,4 +49,17 @@ test("Gemini 5 TB has fixed COP cost without wallet profit", () => {
         salePrice: 17000,
         unitCost: 0,
     }), 0);
+});
+
+test("IPTV has a fixed COP cost for checkout and analytics fallback", () => {
+    const plan = {
+        platform_name: "IPTV",
+        platform_slug: "iptv",
+        type: "normal",
+        currency: "COP",
+    };
+
+    assert.equal(IPTV_COST_COP, 2350);
+    assert.equal(automaticUnitCostForPlan(plan), 2350);
+    assert.equal(automaticUnitCostForPlan({ ...plan, currency: "MXN" }), 0);
 });

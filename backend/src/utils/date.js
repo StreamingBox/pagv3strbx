@@ -12,7 +12,18 @@ function toSqlDateStart(dateOnly) {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const BOGOTA_TIME_ZONE = "America/Bogota";
+const BOGOTA_UTC_OFFSET = "-05:00";
 const BOGOTA_UTC_OFFSET_HOURS = 5;
+
+// Todas las fechas contractuales se comparan con el calendario de Bogota,
+// independientemente de la zona horaria del servidor o de MariaDB.
+const BOGOTA_TODAY_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
+
+function bogotaDateSql(expression) {
+    const value = String(expression || "").trim();
+    if (!value) throw new Error("Se requiere una expresion SQL para convertir a fecha de Bogota.");
+    return `DATE(CONVERT_TZ(${value}, '+00:00', '${BOGOTA_UTC_OFFSET}'))`;
+}
 
 function parseDateTime(value) {
     if (!value) return null;
@@ -132,9 +143,13 @@ function isDateTimeExpired(value, now = new Date()) {
 }
 
 module.exports = {
+    BOGOTA_TIME_ZONE,
+    BOGOTA_TODAY_SQL,
+    BOGOTA_UTC_OFFSET,
     addDaysBogotaDateOnly,
     addDaysExact,
     bogotaDateOnlyToUtcEndOfDay,
+    bogotaDateSql,
     currentBogotaDateOnly,
     daysRemainingStoredDateOnly,
     formatDateOnlyBogota,

@@ -30,6 +30,20 @@ function formatBogotaDate(value) {
     }).format(d);
 }
 
+function formatBogotaDateTime(value, options = {}) {
+    const d = parseApiDate(value);
+    if (!d) return "—";
+    return new Intl.DateTimeFormat("es-CO", {
+        timeZone: "America/Bogota",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...options,
+    }).format(d);
+}
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function currentBogotaDateOnly(now = new Date()) {
@@ -69,4 +83,12 @@ function formatDateOnlyDisplay(value, options = {}) {
     }).format(new Date(`${dateOnly}T00:00:00Z`));
 }
 
-export { currentBogotaDateOnly, daysUntilDateOnly, formatBogotaDate, formatDateOnlyDisplay, normalizeDateOnly, parseApiDate };
+export {
+    currentBogotaDateOnly,
+    daysUntilDateOnly,
+    formatBogotaDate,
+    formatBogotaDateTime,
+    formatDateOnlyDisplay,
+    normalizeDateOnly,
+    parseApiDate,
+};

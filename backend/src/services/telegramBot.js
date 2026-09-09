@@ -15,9 +15,17 @@
  */
 
 const axios = require("axios");
+const fs = require("fs");
+const FormData = require("form-data");
 const { EventEmitter } = require("events");
 const pool = require("../db");
 const logger = require("../utils/logger");
+const { getStockSummary } = require("./stockSummary.service");
+const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
+const {
+    takeSupportTicketFromTelegram,
+    resolveSupportTicketFromTelegram,
+} = require("./supportTelegram.service");
 const { createAccountOne } = require("./accounts.service");
 const {
     buildTopupProofUrl,
@@ -37,6 +45,7 @@ const AUTHORIZED = new Set(
 
 const buySessions = new Map();
 const stockSessions = new Map();
+const supportReplySessions = new Map();
 let bot = null;
 let botDisabledByConflict = false;
 
@@ -89,8 +98,36 @@ class TelegramBotClient extends EventEmitter {
         return this.request("sendPhoto", { chat_id: chatId, photo, ...options });
     }
 
+    async sendPhotoFile(chatId, filePath, options = {}) {
+        const form = new FormData();
+        form.append("chat_id", String(chatId));
+        form.append("photo", fs.createReadStream(filePath));
+        for (const [key, value] of Object.entries(options)) {
+            form.append(key, value && typeof value === "object" ? JSON.stringify(value) : String(value));
+        }
+        try {
+            const { data } = await this.http.post("/sendPhoto", form, {
+                headers: form.getHeaders(),
+            });
+            if (!data?.ok) throw new Error(data?.description || "Telegram sendPhoto failed");
+            return data.result;
+        } catch (err) {
+            const description = err?.response?.data?.description;
+            if (description) {
+                const wrapped = new Error(description);
+                wrapped.status = err.response.status;
+                throw wrapped;
+            }
+            throw err;
+        }
+    }
+
     editMessageText(text, options = {}) {
         return this.request("editMessageText", { text, ...options });
+    }
+
+    editMessageReplyMarkup(replyMarkup, options = {}) {
+        return this.request("editMessageReplyMarkup", { reply_markup: replyMarkup, ...options });
     }
 
     answerCallbackQuery(callbackQueryId, options = {}) {
@@ -462,27 +499,15 @@ async function cmdStart(msg) {
 
 /** /stock — cuentas disponibles agrupadas por plataforma */
 async function cmdStock(msg) {
-    const [rows] = await pool.query(`
-        SELECT
-            p.name AS platform,
-            COUNT(pa.id) AS disponibles,
-            (SELECT COUNT(*) FROM platform_accounts pa2 WHERE pa2.platform_id = p.id AND pa2.status != 'disabled') AS total
-        FROM platforms p
-        LEFT JOIN platform_accounts pa
-            ON pa.platform_id = p.id AND pa.status = 'available'
-        WHERE p.is_active = 1
-        GROUP BY p.id, p.name
-        HAVING disponibles > 0
-        ORDER BY disponibles DESC
-    `);
+    const rows = await getStockSummary();
 
     if (!rows.length) {
         return bot.sendMessage(msg.chat.id, "📦 No hay plataformas activas.");
     }
 
     const lines = rows.map(r => {
-        const emoji = r.disponibles === 0 ? "🔴" : r.disponibles <= 2 ? "🟡" : "🟢";
-        return `${emoji} *${escMd(r.platform)}*: ${r.disponibles} disponibles / ${r.total} total`;
+        const emoji = r.available === 0 ? "🔴" : r.available <= 2 ? "🟡" : "🟢";
+        return `${emoji} *${escMd(r.platform)}*: ${r.available} disponibles / ${r.total} total`;
     });
 
     await bot.sendMessage(msg.chat.id,
@@ -876,6 +901,27 @@ function setupCommands() {
 
     // Procesar respuestas del flujo interactivo o comandos desconocidos
     bot.on("message", guard(async (msg) => {
+        const pendingSupport = getSupportReplySession(msg.chat.id);
+        if (pendingSupport && msg.text && !msg.text.startsWith("/")) {
+            try {
+                const result = await resolveSupportTicketFromTelegram({
+                    ticketId: pendingSupport.ticketId,
+                    message: msg.text,
+                    from: msg.from,
+                });
+                const extension = result.managementExtension?.granted
+                    ? `\nSe agrego 1 dia por tiempo de gestion (${result.managementExtension.managementMinutes} min).`
+                    : "";
+                await bot.sendMessage(
+                    msg.chat.id,
+                    `Caso ${result.ticket.ticketCode} resuelto desde Telegram.${extension}\n\nSe envio el resultado al correo del cliente.`
+                );
+                clearSupportReplySession(msg.chat.id);
+            } catch (error) {
+                await bot.sendMessage(msg.chat.id, error?.message || "No se pudo responder el caso.");
+            }
+            return;
+        }
         if (!msg.text?.startsWith("/")) {
             await handleStockMessage(msg);
             await handleBuyMessage(msg);
@@ -1024,6 +1070,48 @@ function setupCommands() {
                     }
                     return;
                 }
+                const supportStartMatch = String(data || "").match(/^support_start_(\d+)$/);
+                if (supportStartMatch) {
+                    try {
+                        const ticket = await takeSupportTicketFromTelegram({
+                            ticketId: Number(supportStartMatch[1]),
+                            from: query.from,
+                        });
+                        await bot.answerCallbackQuery(query.id, {
+                            text: `Caso ${ticket.ticketCode} tomado.`,
+                        });
+                        if (query.message?.chat?.id && query.message?.message_id) {
+                            await bot.editMessageText(buildSupportTicketMessage(ticket, basePublicUrl()), {
+                                chat_id: query.message.chat.id,
+                                message_id: query.message.message_id,
+                                reply_markup: buildSupportTicketKeyboard(ticket.id, basePublicUrl(), { status: ticket.status }),
+                            }).catch(() => { });
+                        }
+                    } catch (error) {
+                        await bot.answerCallbackQuery(query.id, {
+                            text: (error?.message || "No se pudo tomar el caso.").slice(0, 180),
+                            show_alert: true,
+                        });
+                    }
+                    return;
+                }
+                const supportReplyMatch = String(data || "").match(/^support_reply_(\d+)$/);
+                if (supportReplyMatch) {
+                    supportReplySessions.set(Number(chatId), {
+                        ticketId: Number(supportReplyMatch[1]),
+                        expiresAt: Date.now() + 15 * 60 * 1000,
+                    });
+                    await bot.answerCallbackQuery(query.id, { text: "Escribe la respuesta del caso." });
+                    await bot.sendMessage(
+                        chatId,
+                        `Escribe ahora la respuesta para el caso #${supportReplyMatch[1]}.\n\nLa respuesta cerrara el caso como gestionado y se enviara por correo al cliente. Para reemplazar una cuenta usa el panel de soporte.`
+                    );
+                    return;
+                }
+                if (data === "support_noop") {
+                    await bot.answerCallbackQuery(query.id, { text: "El caso ya está en revisión." });
+                    return;
+                }
                 await handleBuyCallback(query);
             }
             bot.answerCallbackQuery(query.id).catch(() => { });
@@ -1058,6 +1146,57 @@ function setupCommands() {
     });
 
     logger.info("telegram_commands_registered", { authorizedChatCount: AUTHORIZED.size });
+}
+
+function getSupportReplySession(chatId) {
+    const key = Number(chatId);
+    const session = supportReplySessions.get(key);
+    if (!session) return null;
+    if (session.expiresAt <= Date.now()) {
+        supportReplySessions.delete(key);
+        return null;
+    }
+    return session;
+}
+
+function clearSupportReplySession(chatId) {
+    supportReplySessions.delete(Number(chatId));
+}
+
+function basePublicUrl() {
+    return String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
+}
+
+function buildSupportTicketKeyboard(ticketId, baseUrl = basePublicUrl(), { status = "open" } = {}) {
+    const takeAction = status === "in_progress"
+        ? { text: "✅ En revisión", callback_data: "support_noop" }
+        : { text: "🔧 Tomar caso", callback_data: `support_start_${ticketId}` };
+    return {
+        inline_keyboard: [
+            [takeAction],
+            [{ text: "💬 Responder y cerrar", callback_data: `support_reply_${ticketId}` }],
+            [{ text: "🔁 Reemplazar en panel", url: `${baseUrl}/admin/support` }],
+        ],
+    };
+}
+
+function buildSupportTicketMessage(ticket, baseUrl = basePublicUrl()) {
+    return [
+        "Nueva solicitud de soporte",
+        "",
+        `Caso: ${ticket.ticketCode || "-"}`,
+        `ID de cuenta: #${ticket.subscriptionId || "-"}`,
+        `Plataforma: ${ticket.platformName || "-"}`,
+        `Cliente: ${ticket.userName || ticket.userEmail || "-"}`,
+        `Correo: ${ticket.userEmail || "-"}`,
+        `Perfil: ${ticket.profileNumber ?? "-"} | Contraseña actual: ${ticket.accountPassword || "-"}`,
+        `Estado: ${ticket.status === "in_progress" ? "En revisión" : "Pendiente"}`,
+        "",
+        `Novedad: ${ticket.observation || "-"}`,
+        "",
+        "Acciones disponibles abajo.",
+        `Panel: ${baseUrl}/admin/support`,
+    ].join("\n");
 }
 
 /* ─── Notificación de venta ───────────────────────────────────── */
@@ -1198,23 +1337,41 @@ async function notifyOutOfStockPlatforms(platforms) {
     return sent.length;
 }
 
-async function notifySupportTicketCreated(ticket) {
+async function notifySupportTicketCreated(ticket, attachmentFile = null) {
     if (!bot || AUTHORIZED.size === 0 || !ticket) return 0;
-    const baseUrl = String(process.env.PUBLIC_BASE_URL || "https://strbx.com.co").replace(/\/+$/, "");
-    const message = [
-        "Nueva solicitud de soporte",
-        "",
-        `Caso: ${ticket.ticketCode || "-"}`,
-        `ID de cuenta: #${ticket.subscriptionId || "-"}`,
-        `Plataforma: ${ticket.platformName || "-"}`,
-        `Cliente: ${ticket.userName || ticket.userEmail || "-"}`,
-        `Correo: ${ticket.userEmail || "-"}`,
-        "",
-        `Novedad: ${ticket.observation || "-"}`,
-        "",
-        `Revisar: ${baseUrl}/admin/support`,
-    ].join("\n");
-    const sent = await notifyAuthorizedChats(message);
+    const baseUrl = basePublicUrl();
+    const replyMarkup = buildSupportTicketKeyboard(ticket.id, baseUrl);
+    const message = buildSupportTicketMessage(ticket, baseUrl);
+    const sent = await notifyAuthorizedChats(message, { reply_markup: replyMarkup });
+
+    if (attachmentFile && sent.length) {
+        let attachmentPath = null;
+        try {
+            attachmentPath = resolveSupportAttachment(attachmentFile);
+            await fs.promises.access(attachmentPath, fs.constants.R_OK);
+        } catch (error) {
+            logger.warn("telegram_support_attachment_unavailable", {
+                ticketId: ticket.id,
+                error: error?.message || String(error),
+            });
+        }
+
+        if (attachmentPath) {
+            for (const item of sent) {
+                try {
+                    await bot.sendPhotoFile(item.chatId, attachmentPath, {
+                        caption: `Evidencia del caso ${ticket.ticketCode || `#${ticket.id}`}`,
+                    });
+                } catch (error) {
+                    logger.warn("telegram_support_attachment_send_failed", {
+                        ticketId: ticket.id,
+                        chatId: item.chatId,
+                        error: error?.message || String(error),
+                    });
+                }
+            }
+        }
+    }
     return sent.length;
 }
 

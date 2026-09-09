@@ -95,16 +95,48 @@ function CredField({ label, value, icon, secret = false }) {
     );
 }
 
+function getSafeNetflixApprovalUrl(rawUrl) {
+    try {
+        const parsed = new URL(String(rawUrl || ""));
+        const host = parsed.hostname.toLowerCase();
+        const isNetflixHost = host === "netflix.com" || host === "www.netflix.com";
+        const action = String(parsed.searchParams.get("action") || "").trim().toLowerCase();
+        const isRejectAction = ["reject", "rejected", "deny", "denied", "cancel", "cancelled", "rechazar"].includes(action);
+        if (
+            parsed.protocol !== "https:"
+            || !isNetflixHost
+            || parsed.pathname.toLowerCase() !== "/ilum"
+            || !String(parsed.searchParams.get("code") || "").trim()
+            || isRejectAction
+        ) {
+            return "";
+        }
+        parsed.hash = "";
+        return parsed.toString();
+    } catch (_) {
+        return "";
+    }
+}
+
 /* ─── Status card ─── */
-function StatusCard({ d }) {
+function StatusCard({ d, onRetry }) {
     if (!d || d.ok !== false) return null;
     const st = String(d.status || "").toLowerCase();
     const hasLimitDetails = st === "blocked" && Number.isFinite(Number(d.limit)) && Number.isFinite(Number(d.deliveredCount));
     const limitUsageText = hasLimitDetails ? `${Number(d.deliveredCount)} de ${Number(d.limit)} solicitudes usadas` : "";
     const cfg = {
+        wrong_action: { icon: "!", title: "Accion de Netflix incorrecta", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
         expired: { icon: "⏱️", title: "Vencido", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
         blocked: { icon: "🚫", title: "Límite alcanzado", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" },
         no_account: { icon: "🧾", title: "Sin cuenta asignada", color: "var(--accent)", bg: "rgba(13,166,242,0.07)", border: "rgba(13,166,242,0.25)" },
+        provider_code_not_found: { icon: "📨", title: "Código aún no disponible", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        provider_timeout: { icon: "⏳", title: "Proveedor tardó demasiado", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        provider_unavailable: { icon: "🌐", title: "Proveedor no disponible", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        provider_auth_error: { icon: "🔐", title: "Proveedor rechazó la sesión", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        provider_layout_changed: { icon: "🧩", title: "Flujo del proveedor actualizado", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        imap_auth_error: { icon: "📬", title: "Buzón de códigos no disponible", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        imap_error: { icon: "📬", title: "Buzón de códigos no disponible", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        config_error: { icon: "⚙️", title: "Servicio no configurado", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
     }[st] || { icon: "⚠️", title: "Aviso", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" };
     return (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
@@ -124,6 +156,15 @@ function StatusCard({ d }) {
                         {d.resetRule || "El contador se reinicia cuando cambian las credenciales de la cuenta."}
                     </div>
                 </div>
+            ) : null}
+            {st === "wrong_action" && d.expectedAction && onRetry ? (
+                <button
+                    type="button"
+                    onClick={() => onRetry(d.expectedAction)}
+                    style={{ marginTop: 10, border: "1px solid rgba(13,166,242,0.4)", borderRadius: 8, padding: "8px 11px", background: "rgba(13,166,242,0.12)", color: "var(--accent)", fontFamily: "var(--font)", fontSize: 11, fontWeight: 800, cursor: "pointer" }}
+                >
+                    Usar {d.expectedAction === "code" ? "Inicio" : d.expectedAction === "temporary" ? "Temporal" : "Aprobar"}
+                </button>
             ) : null}
         </motion.div>
     );
@@ -185,6 +226,22 @@ export default function Codes() {
                     status: r.data?.status || "error",
                     message: r.data?.message || fallbackMessage,
                 });
+                return;
+            }
+            if (r.data?.type === "approval_link") {
+                // El clic del cliente en "Aprobar" es su confirmacion. Netflix
+                // entrega un enlace de un solo uso, asi que se navega directo en
+                // esta misma pestana y nunca se abre ni consume desde el servidor.
+                const approvalUrl = getSafeNetflixApprovalUrl(r.data.approvalUrl);
+                if (!approvalUrl) {
+                    setData({
+                        ok: false,
+                        status: "invalid_approval_link",
+                        message: "Netflix envio un enlace que no se pudo validar. Solicita uno nuevo.",
+                    });
+                    return;
+                }
+                window.location.assign(approvalUrl);
                 return;
             }
             setData(r.data);
@@ -374,6 +431,11 @@ export default function Codes() {
                                                         })}
                                                     </div>
                                                 ) : null}
+                                                {isNetflix ? (
+                                                    <span style={{ fontSize: 9, color: "var(--muted)", textAlign: "center", lineHeight: 1.35 }}>
+                                                        Inicio = codigo por correo | Temporal = acceso temporal
+                                                    </span>
+                                                ) : null}
                                                 {isLoading && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${p.accent}40`, borderTopColor: p.accent, display: "block", animation: "spin 0.7s linear infinite", position: "absolute", bottom: 12 }} />}
                                             </motion.div>
                                         );
@@ -407,7 +469,7 @@ export default function Codes() {
                             <AnimatePresence>
                                 {data?.ok === false && (
                                     <div ref={feedbackRef} style={{ scrollMarginTop: isPhone ? 92 : 24 }}>
-                                        <StatusCard d={data} />
+                                        <StatusCard d={data} onRetry={(nextAction) => requestCode(activePlatform, nextAction)} />
                                     </div>
                                 )}
                             </AnimatePresence>

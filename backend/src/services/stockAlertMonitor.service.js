@@ -1,4 +1,5 @@
 const pool = require("../db");
+const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
 const logger = require("../utils/logger");
 const { notifyOutOfStockPlatforms } = require("./telegramBot");
 const {
@@ -35,7 +36,7 @@ async function getPublishedPlatformStock() {
             WHERE status = 'available'
               AND (
                   expires_at IS NULL
-                  OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                  OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL}
               )
             GROUP BY platform_id
         ) direct_stock ON direct_stock.platform_id = p.id
@@ -51,7 +52,7 @@ async function getPublishedPlatformStock() {
                 WHERE status = 'available'
                   AND (
                       expires_at IS NULL
-                      OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                      OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL}
                   )
                 GROUP BY platform_id
             ) stock ON stock.platform_id = pf.fallback_platform_id

@@ -197,6 +197,24 @@
     border-radius: 8px;
     background: rgba(34, 211, 238, 0.04);
     cursor: pointer;
+    transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.support-upload:focus-visible,
+.support-upload--dragging {
+    border-color: #22d3ee;
+    outline: none;
+    background: rgba(34, 211, 238, 0.1);
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.1);
+}
+
+.support-upload--has-preview {
+    display: block;
+    padding: 0;
+}
+
+.support-upload--loading {
+    animation: support-upload-pulse 1.15s ease-in-out infinite;
 }
 
 .support-upload input {
@@ -204,6 +222,92 @@
     width: 1px;
     height: 1px;
     opacity: 0;
+}
+
+.support-upload__preview {
+    position: relative;
+    display: flex;
+    min-height: 300px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(6, 12, 30, 0.32);
+}
+
+.support-upload__preview > img {
+    transition: opacity 180ms ease;
+}
+
+.support-upload--loading .support-upload__preview > img {
+    opacity: 0.18;
+}
+
+.support-upload__loading {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    gap: 9px;
+    padding: 24px;
+    color: var(--text);
+    background: rgba(8, 15, 35, 0.76);
+    text-align: center;
+}
+
+.support-upload__loading > svg {
+    color: #22d3ee;
+    animation: support-upload-spin 900ms linear infinite;
+}
+
+.support-upload__loading small {
+    color: var(--muted);
+}
+
+.support-upload__loading-track {
+    display: block;
+    width: min(220px, 76%);
+    height: 5px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(34, 211, 238, 0.18);
+}
+
+.support-upload__loading-track > span {
+    display: block;
+    width: 42%;
+    height: 100%;
+    border-radius: inherit;
+    background: #22d3ee;
+    box-shadow: 0 0 14px rgba(34, 211, 238, 0.75);
+    animation: support-upload-progress 1.25s ease-in-out infinite;
+}
+
+@keyframes support-upload-pulse {
+    0%, 100% {
+        border-color: rgba(34, 211, 238, 0.45);
+        box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.04);
+    }
+    50% {
+        border-color: rgba(34, 211, 238, 0.95);
+        box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.12);
+    }
+}
+
+@keyframes support-upload-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes support-upload-progress {
+    0% {
+        transform: translateX(-140%);
+    }
+    50%, 100% {
+        transform: translateX(330%);
+    }
 }
 
 .support-upload img {
@@ -217,23 +321,104 @@
     align-items: center;
     flex-direction: column;
     gap: 8px;
+    padding: 24px;
     color: var(--text);
+    text-align: center;
 }
 
 .support-upload__empty svg {
+    width: 30px;
+    height: 30px;
+    margin-bottom: 4px;
     color: #22d3ee;
 }
 
-.support-upload__change {
+.support-upload__empty em {
+    color: var(--muted);
+    font-size: 11px;
+    font-style: normal;
+}
+
+.support-upload__drag-label {
     position: absolute;
-    right: 10px;
-    bottom: 10px;
-    padding: 7px 10px;
-    border-radius: 6px;
-    color: #fff;
-    background: rgba(8, 15, 35, 0.9);
+    inset: auto 14px 14px;
+    padding: 9px 12px;
+    border: 1px solid rgba(34, 211, 238, 0.55);
+    border-radius: 7px;
+    color: #cffafe;
+    background: rgba(8, 15, 35, 0.92);
     font-size: 12px;
     font-weight: 800;
+    text-align: center;
+}
+
+.support-upload__preview-bar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    color: #fff;
+    background: linear-gradient(transparent, rgba(4, 8, 20, 0.94));
+}
+
+.support-upload__preview-bar > span {
+    min-width: 0;
+    overflow: hidden;
+    color: #e2e8f0;
+    font-size: 11px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.support-upload__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 7px;
+}
+
+.support-upload__change,
+.support-upload__remove {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    color: #fff;
+    background: rgba(8, 15, 35, 0.88);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.support-upload__change {
+    padding: 0 10px;
+}
+
+.support-upload__remove {
+    width: 34px;
+    padding: 0;
+}
+
+.support-upload__change:hover,
+.support-upload__remove:hover {
+    border-color: #22d3ee;
+    color: #67e8f9;
+}
+
+.support-upload__change:disabled,
+.support-upload__remove:disabled {
+    cursor: wait;
+    opacity: 0.58;
 }
 
 .support-message {
@@ -255,6 +440,10 @@
     border-color: rgba(52, 211, 153, 0.35);
     color: #6ee7b7;
     background: rgba(6, 78, 59, 0.2);
+}
+
+.support-message--evidence {
+    grid-column: 2;
 }
 
 .support-form__actions {
@@ -811,6 +1000,40 @@
     padding: 18px 0 0;
 }
 
+.admin-support-resolved-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 9px;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+}
+
+.admin-support-resolved-actions button,
+.admin-support-edit-form__buttons button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
+
+.admin-support-edit-form {
+    display: grid;
+    gap: 13px;
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    border-radius: 8px;
+    background: rgba(8, 15, 35, 0.24);
+}
+
+.admin-support-edit-form__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 9px;
+}
+
 .admin-support-trace {
     margin-top: 20px;
     padding-top: 18px;
@@ -962,6 +1185,24 @@
         min-height: 210px;
     }
 
+    .support-upload__preview {
+        min-height: 210px;
+    }
+
+    .support-message--evidence {
+        grid-column: auto;
+    }
+
+    .support-upload__preview-bar {
+        align-items: flex-end;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .support-upload__preview-bar > span {
+        width: 100%;
+    }
+
     .support-form__actions,
     .support-primary-button {
         width: 100%;
@@ -1041,6 +1282,17 @@
     }
 
     .admin-support-actions .support-primary-button {
+        width: 100%;
+    }
+
+    .admin-support-resolved-actions,
+    .admin-support-edit-form__buttons {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .admin-support-resolved-actions button,
+    .admin-support-edit-form__buttons button {
         width: 100%;
     }
 }

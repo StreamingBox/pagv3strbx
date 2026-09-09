@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { DatabaseZap, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, DatabaseZap, RefreshCcw } from "lucide-react";
 import IconBadge from "./IconBadge.jsx";
 import { apiFetch } from "../../api/api.js";
 import "../../styles/special-effects.css";
@@ -77,11 +77,16 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
+                { icon: "🏭", tone: "orange", title: "Proveedores", hint: "Gestiona proveedores y sus cuentas.", path: "/admin/providers" },
+                { icon: <ClipboardCheck size={20} strokeWidth={2.4} aria-hidden />, tone: "violet", title: "Auditoria de perfiles", hint: "Valida perfiles por cuenta y exporta el resultado.", path: "/admin/inventory-audit" },
                 { icon: <DatabaseZap size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Cuentas Maestras", hint: "Cuentas caidas y reemplazo automatico.", path: "/admin/master-accounts" },
                 { icon: "🔗", tone: "teal", title: "Links", hint: "Enlaces de credenciales.", path: "/admin/links" },
                 { icon: "⏳", tone: "rose", title: "Vencimientos", hint: "Cuentas próximas a vencer.", path: "/admin/expirations" },
+                { icon: "🎟️", tone: "fuchsia", title: "Pedidos de Códigos", hint: "Solicitudes y estados de entrega.", path: "/admin/code-requests" },
                 { icon: <RefreshCcw size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Reinicio de Codigo", hint: "Reinicia intentos por pedido.", path: "/admin/code-reset" },
                 { icon: "📜", tone: "sky", title: "Logs de Códigos", hint: "Historial de pines generados.", path: "/admin/code-logs" },
+                { icon: "🔔", tone: "amber", title: "Alertas de Stock", hint: "Usuarios que pidieron aviso de disponibilidad.", path: "/admin/stock-notify" },
+                { icon: "📋", tone: "indigo", title: "Logs de Carga", hint: "Resultado de cargas masivas y manuales.", path: "/admin/upload-logs" },
             ],
         },
         {
@@ -93,6 +98,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "🎁", tone: "emerald", title: "Combos", hint: "Paquetes con precio propio.", path: "/admin/combos" },
                 { icon: "⏱️", tone: "fuchsia", title: "Duraciones", hint: "Mensualidades, trimestres, etc.", path: "/admin/durations" },
                 { icon: "📢", tone: "sky", title: "Publicidad", hint: "Imágenes y carpetas de Drive.", path: "/admin/advertising" },
+                { icon: "📡", tone: "cyan", title: "Partidos en vivo", hint: "Publica enlaces de YouTube por evento.", path: "/admin/event-links" },
             ],
         },
         {
@@ -100,6 +106,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "👤", tone: "violet", title: "Usuarios", hint: "Gestión de clientes/vendedores.", path: "/admin/users" },
                 { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
+                { icon: "🔁", tone: "orange", title: "Historial Reemplazos", hint: "Cambios de cuenta realizados.", path: "/admin/replacements" },
             ],
         },
     ];

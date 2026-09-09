@@ -109,6 +109,8 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
         const filename   = req.body?.filename || null;
         const totalRows  = (req.body?.rows || []).length;
         const duplicateCount = out.skippedDuplicateAssigned || 0;
+        const exactDuplicateCount = out.skippedDuplicateExact || 0;
+        const reusedExistingCount = out.reusedExistingCount || 0;
         const missingPlatformRows = out.missingPlatformRows || 0;
         const notes = [
             out.missingPlatforms?.length
@@ -116,6 +118,15 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
                 : "",
             duplicateCount
                 ? `Duplicadas asignadas vigentes: ${duplicateSummaryMessage(out.duplicateAssigned, 8)}`
+                : "",
+            exactDuplicateCount
+                ? `Credenciales duplicadas exactas: ${duplicateSummaryMessage(out.duplicateExact, 8)}`
+                : "",
+            reusedExistingCount
+                ? `Credenciales históricas reutilizadas: ${(out.reusedExisting || [])
+                    .slice(0, 8)
+                    .map((item) => `fila ${item.rowNumber} -> cuenta #${item.accountId}`)
+                    .join("; ")}${reusedExistingCount > 8 ? "..." : ""}`
                 : "",
             allowAssignedDuplicateScreens
                 ? "Carga forzada autorizada por el administrador para pantallas asignadas vigentes."
@@ -141,6 +152,17 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
                 return res.status(409).json({
                     message: `No se inserto ninguna fila porque ${duplicateCount} pantalla(s) ya estan asignadas y vigentes. ${duplicateSummaryMessage(out.duplicateAssigned)}`,
                     duplicateAssigned: out.duplicateAssigned,
+                    reusedExistingCount,
+                    reusedExisting: out.reusedExisting,
+                    warning_missing_platforms: out.missingPlatforms,
+                });
+            }
+            if (exactDuplicateCount > 0) {
+                return res.status(409).json({
+                    message: `No se inserto ninguna fila porque ${exactDuplicateCount} credencial(es) ya estaban cargadas. ${duplicateSummaryMessage(out.duplicateExact)}`,
+                    duplicateExact: out.duplicateExact,
+                    reusedExistingCount,
+                    reusedExisting: out.reusedExisting,
                     warning_missing_platforms: out.missingPlatforms,
                 });
             }
@@ -156,6 +178,10 @@ router.post("/admin/accounts/bulk", requireAuth, requireRole("admin"), async (re
             warning_missing_platforms: out.missingPlatforms,
             skipped_duplicate_assigned: duplicateCount,
             duplicateAssigned: out.duplicateAssigned,
+            skipped_duplicate_exact: exactDuplicateCount,
+            duplicateExact: out.duplicateExact,
+            reused_existing_count: reusedExistingCount,
+            reusedExisting: out.reusedExisting || [],
             forced_assigned_duplicates: allowAssignedDuplicateScreens,
         });
     } catch (e) {

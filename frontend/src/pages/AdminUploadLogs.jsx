@@ -7,6 +7,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 
 import { getApiBase } from "../config/apiBase.js";
+import { formatBogotaDateTime } from "../utils/datetime.js";
 
 const API_BASE = getApiBase();
 
@@ -35,10 +36,7 @@ function fmt(n) { return Number(n || 0).toLocaleString("es-CO"); }
 
 function fmtDate(str) {
     if (!str) return "—";
-    return new Date(str).toLocaleString("es-CO", {
-        year: "numeric", month: "short", day: "numeric",
-        hour: "2-digit", minute: "2-digit",
-    });
+    return formatBogotaDateTime(str, { month: "short" });
 }
 
 export default function AdminUploadLogs() {

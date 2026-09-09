@@ -10,6 +10,19 @@ const {
     getLastCodeReset,
 } = require("./codeQueries");
 const { reserveCodeRequest } = require("./codeRequestReservation.service");
+const {
+    STRBX_PROVIDER,
+    JEFF_PREMIUM_PROVIDER,
+    STORETOOLS_PROVIDER,
+    LIVEONIX_PROVIDER,
+    getJeffProviderConfigForProvider,
+    normalizeCodeProvider,
+} = require("../config/jeffProvider");
+const { fetchCodeFromJeffProvider } = require("./jeffProviderCodeService");
+const { getStoretoolsProviderConfigForProvider } = require("../config/storetoolsProvider");
+const { fetchCodeFromStoretoolsProvider } = require("./storetoolsProviderCodeService");
+const { getLiveonixProviderConfigForProvider } = require("../config/liveonixProvider");
+const { fetchCodeFromLiveonixProvider } = require("./liveonixProviderCodeService");
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const { isStoredDateOnlyExpired } = require("../utils/date");
@@ -143,7 +156,10 @@ async function enforceNetflixActionRules({ orderNumber, requestedSlug, fingerpri
     const approvalCount = await countDeliveredByFingerprint({
         ...base,
         requireEmptyCode: true,
-        messageLike: "OK:approve-confirmed%",
+        // La accion se registra cuando se entrega el enlace oficial. El navegador
+        // no puede leer la respuesta final de Netflix desde una peticion no-cors.
+        // Por eso "approve-link-delivered" tambien cuenta como una aprobacion.
+        messageLike: "OK:approve%",
     });
 
     if (normalizedAction === "code" && approvalCount >= 1) {
@@ -348,6 +364,66 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         }
     }
 
+    // El proveedor se decide por cuenta. STRBX/Gmail es el valor normal; los
+    // portales externos solo se activan para cuentas Netflix marcadas por el admin.
+    const accountCodeProvider = requestedSlug === "netflix"
+        ? normalizeCodeProvider(sub.accountCodeProvider)
+        : STRBX_PROVIDER;
+    const jeffProviderConfig = getJeffProviderConfigForProvider(accountCodeProvider, process.env, {
+        slug: requestedSlug,
+    });
+    const storetoolsProviderConfig = getStoretoolsProviderConfigForProvider(accountCodeProvider, process.env, {
+        slug: requestedSlug,
+    });
+    const liveonixProviderConfig = getLiveonixProviderConfigForProvider(accountCodeProvider, process.env, {
+        slug: requestedSlug,
+    });
+    if (
+        normalizedAction === "code"
+        && accountCodeProvider === JEFF_PREMIUM_PROVIDER
+        && !jeffProviderConfig.enabled
+    ) {
+        return {
+            http: 503,
+            body: {
+                ok: false,
+                status: "provider_config_error",
+                message: "El proveedor externo de códigos no está disponible en este momento. Intenta nuevamente más tarde.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform },
+        };
+    }
+    if (
+        normalizedAction === "code"
+        && accountCodeProvider === STORETOOLS_PROVIDER
+        && !storetoolsProviderConfig.enabled
+    ) {
+        return {
+            http: 503,
+            body: {
+                ok: false,
+                status: "provider_config_error",
+                message: "El proveedor externo de códigos no está disponible en este momento. Intenta nuevamente más tarde.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform },
+        };
+    }
+    if (
+        ["code", "temporary"].includes(normalizedAction)
+        && accountCodeProvider === LIVEONIX_PROVIDER
+        && !liveonixProviderConfig.enabled
+    ) {
+        return {
+            http: 503,
+            body: {
+                ok: false,
+                status: "provider_config_error",
+                message: "El proveedor externo de códigos no está disponible en este momento. Intenta nuevamente más tarde.",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform },
+        };
+    }
+
     const lastReset = await getLastCodeReset({
         orderId: orderNumber,
         platformSlugLower: requestedSlug,
@@ -384,11 +460,51 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
-    // 7) Extraer código de gmail o netflix flow
+    // 7) Extraer código del portal externo, Gmail o flujo especial de Netflix.
     let fetchingResult;
 
     try {
-        if (requestedSlug === "netflix") {
+        if (
+            normalizedAction === "code"
+            && accountCodeProvider === STORETOOLS_PROVIDER
+            && storetoolsProviderConfig.enabled
+        ) {
+            fetchingResult = await withTimeout(
+                fetchCodeFromStoretoolsProvider({
+                    email: soldAccountEmail,
+                    config: storetoolsProviderConfig,
+                }),
+                storetoolsProviderConfig.timeoutMs + 1000,
+                "Tiempo de espera agotado consultando el proveedor externo."
+            );
+        } else if (
+            ["code", "temporary"].includes(normalizedAction)
+            && accountCodeProvider === LIVEONIX_PROVIDER
+            && liveonixProviderConfig.enabled
+        ) {
+            fetchingResult = await withTimeout(
+                fetchCodeFromLiveonixProvider({
+                    email: soldAccountEmail,
+                    config: liveonixProviderConfig,
+                    action: normalizedAction,
+                }),
+                liveonixProviderConfig.timeoutMs + 1000,
+                "Tiempo de espera agotado consultando el proveedor externo."
+            );
+        } else if (
+            normalizedAction === "code"
+            && accountCodeProvider === JEFF_PREMIUM_PROVIDER
+            && jeffProviderConfig.enabled
+        ) {
+            fetchingResult = await withTimeout(
+                fetchCodeFromJeffProvider({
+                    email: soldAccountEmail,
+                    config: jeffProviderConfig,
+                }),
+                jeffProviderConfig.timeoutMs + 1000,
+                "Tiempo de espera agotado consultando el proveedor externo."
+            );
+        } else if (requestedSlug === "netflix") {
             fetchingResult = await withTimeout(
                 fetchNetflixFlow({
                     toEmail: soldAccountEmail,
@@ -429,11 +545,24 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     }
 
     if (!fetchingResult.ok) {
+        const fetchStatus = fetchingResult.status || "not_found";
+        const serviceUnavailableStatuses = new Set([
+            "config_error",
+            "provider_config_error",
+            "provider_auth_error",
+            "provider_timeout",
+            "provider_unavailable",
+            "provider_layout_changed",
+            "imap_auth_error",
+            "imap_error",
+            "imap_timeout",
+            "imap_tls_error",
+        ]);
         return {
-            http: 404,
+            http: serviceUnavailableStatuses.has(fetchStatus) ? 503 : 404,
             body: {
                 ok: false,
-                status: fetchingResult.status || "not_found",
+                status: fetchStatus,
                 message: fetchingResult.message || "No se encontró código",
             },
             meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
@@ -448,8 +577,12 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         type: fetchingResult.type || "code",
     };
 
-    if (fetchingResult.type === "approval") {
+    if (["approval", "approval_link"].includes(fetchingResult.type)) {
         responseBody.deviceName = fetchingResult.deviceName;
+        if (fetchingResult.type === "approval_link") {
+            responseBody.approvalUrl = fetchingResult.approvalUrl;
+            responseBody.message = "Abre Netflix para confirmar el dispositivo.";
+        }
     } else {
         responseBody.code = fetchingResult.code;
     }

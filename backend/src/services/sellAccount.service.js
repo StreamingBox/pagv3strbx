@@ -9,6 +9,7 @@ const {
 } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { automaticUnitCostForPlan } = require("../utils/profitCosts");
 const { enqueueNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 
@@ -152,8 +153,14 @@ async function sellAccountFromInventory(payload) {
         const subscriptionId = subIns.insertId;
 
         // 5.3 Crear Order Item
-        const unitCost = Number(account.unit_cost || 0);
-        const unitCostCurrency = normalizeCurrency(account.unit_cost_currency || "COP", "COP");
+        const recordedUnitCost = Number(account.unit_cost || 0);
+        const recordedUnitCostCurrency = normalizeCurrency(account.unit_cost_currency || "COP", "COP");
+        const unitCost = recordedUnitCost > 0
+            ? recordedUnitCost
+            : automaticUnitCostForPlan(plan);
+        const unitCostCurrency = recordedUnitCost > 0
+            ? recordedUnitCostCurrency
+            : normalizeCurrency(plan.currency, "COP");
         const comparableCost = unitCost <= 0 || sameCurrency(unitCostCurrency, plan.currency);
         await conn.query(
             "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

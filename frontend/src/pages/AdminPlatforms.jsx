@@ -188,7 +188,10 @@ export default function AdminPlatforms() {
                     && (editingPlatform.show_promo_last_units === 1 || editingPlatform.show_promo_last_units === true)
                     ? 1
                     : 0,
-                is_new_product: editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true
+                is_new_product: editingPlatform.is_new_product === 1 || editingPlatform.is_new_product === true,
+                is_event_link: editingPlatform.is_event_link === 1 || editingPlatform.is_event_link === true,
+                event_link_unit_cost: Number(editingPlatform.event_link_unit_cost || 3000),
+                event_link_monthly_cost: Number(editingPlatform.event_link_monthly_cost || 20000),
             });
             if (!r.ok) throw new Error(r.data?.message || "Error guardando plataforma.");
             setSuccessMsg("✅ Plataforma actualizada.");

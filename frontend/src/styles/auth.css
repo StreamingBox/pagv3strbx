@@ -567,7 +567,7 @@ select.select-inline:focus {
     align-items: stretch;
 }
 
-@media (min-width: 901px) {
+@media (min-width: 1181px) {
     .page-shell {
         height: auto;
         min-height: 100vh;
@@ -752,11 +752,16 @@ select.select-inline:focus {
 select {
     color: var(--text);
     background: var(--input-bg);
+    color-scheme: dark;
 }
 
-select option {
-    color: #0B1020;
-    background: #FFFFFF;
+:root:not([data-theme="light"]) select option {
+    color: #eef5ff;
+    background: #162141;
+}
+
+:root[data-theme="light"] select {
+    color-scheme: light;
 }
 
 :root[data-theme="light"] select option {
@@ -797,7 +802,7 @@ tr {
     gap: 12px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1180px) {
 
     /* En móvil el sidebar se convierte en un drawer lateral fijo */
     .page-inner {
@@ -807,6 +812,8 @@ tr {
         /* mantener horizontal para el drawer */
         padding: 14px;
         gap: 0;
+        min-width: 0;
+        overflow-x: clip;
     }
 
     .sidebar {
@@ -841,6 +848,7 @@ tr {
         padding: 12px;
         padding-top: 72px;
         margin-left: 0 !important;
+        overflow-x: clip;
         /* espacio para el botón hamburger */
     }
 

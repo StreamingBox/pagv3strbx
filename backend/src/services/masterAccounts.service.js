@@ -2,6 +2,30 @@ function normalizeMasterEmail(value) {
     return String(value || "").trim().toLowerCase();
 }
 
+/**
+ * Propagates a master-account failure only to inventory that is still free.
+ * Assigned/sold records must remain untouched for subscription traceability.
+ */
+async function markAvailableAccountsDown(conn, { platformId, accountEmail }) {
+    const normalizedEmail = normalizeMasterEmail(accountEmail);
+    const normalizedPlatformId = Number(platformId);
+    if (!Number.isInteger(normalizedPlatformId) || normalizedPlatformId <= 0 || !normalizedEmail) {
+        return 0;
+    }
+
+    const [result] = await conn.query(
+        `UPDATE platform_accounts
+            SET status = 'down',
+                updated_at = CURRENT_TIMESTAMP
+          WHERE platform_id = ?
+            AND status = 'available'
+            AND LOWER(TRIM(COALESCE(email, ''))) = ?`,
+        [normalizedPlatformId, normalizedEmail]
+    );
+
+    return Number(result?.affectedRows || 0);
+}
+
 function mapMasterAccount(row) {
     if (!row) return null;
     return {
@@ -46,4 +70,5 @@ module.exports = {
     normalizeMasterEmail,
     mapMasterAccount,
     findInactiveMasterForSubscription,
+    markAvailableAccountsDown,
 };

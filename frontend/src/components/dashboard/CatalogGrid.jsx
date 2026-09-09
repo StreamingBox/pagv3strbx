@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useMemo, useState } from "react";
 import { Flame, Info, ShoppingCart, Sparkles, X } from "lucide-react";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
@@ -63,6 +63,23 @@ function detailLines(value) {
         .split(/\r?\n/)
         .map(line => line.trim())
         .filter(Boolean);
+}
+
+function isEventLink(item) {
+    const value = item?.platformEventLink ?? item?.platform_event_link ?? item?.is_event_link;
+    return value === true || value === 1 || String(value || "").trim() === "1";
+}
+
+function eventEndLabel(value) {
+    if (!value) return "";
+    const raw = String(value);
+    const date = new Date(raw.includes("T") ? raw : `${raw.replace(" ", "T")}Z`);
+    if (Number.isNaN(date.getTime())) return "";
+    return new Intl.DateTimeFormat("es-CO", {
+        timeZone: "America/Bogota",
+        hour: "numeric",
+        minute: "2-digit",
+    }).format(date);
 }
 
 function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
@@ -174,6 +191,8 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                     && !outOfStock
                     && (item.platformPromoLastUnits === 1 || item.platformPromoLastUnits === true);
                 const promoBadgeText = item.is_renewable === 1 ? "Promoción" : "Promo";
+                const eventProduct = isEventLink(item);
+                const eventEndsAt = eventEndLabel(item.eventEndsAt);
 
                 return (
                     <MotionDiv
@@ -249,6 +268,11 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 )}
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>
+                            {eventProduct && !outOfStock ? (
+                                <span className="badge badge--promo" style={{ color: "#e5e7eb", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.28)" }}>
+                                    Partido en vivo{eventEndsAt ? ` hasta ${eventEndsAt}` : ""}
+                                </span>
+                            ) : null}
                             {isNewProduct ? (
                                 <span className="badge badge--new catalog-card__new-product">
                                     <Sparkles size={11} aria-hidden="true" />
@@ -281,6 +305,8 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                         ? (liteSite ? "Disponible" : "Stock: ∞")
                                         : outOfStock
                                             ? "Sin Stock"
+                                            : eventProduct
+                                                ? "Enlace disponible"
                                             : (liteSite ? "Disponible" : `Stock: ${Math.max(stock - inCartCount, 0)}`)
                                     }
                                 </span>

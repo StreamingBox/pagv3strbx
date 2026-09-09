@@ -4,7 +4,9 @@
 const pool = require("../db");
 const { escapeCsv } = require("../utils/csv");
 const {
+    BOGOTA_TODAY_SQL,
     bogotaDateOnlyToUtcEndOfDay,
+    bogotaDateSql,
     formatDateOnlyBogota,
     parseDateOnly,
     toSqlDateTime,
@@ -20,7 +22,7 @@ const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
-    "CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) END";
+    `CASE WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at) ELSE ${bogotaDateSql("pa.expires_at")} END`;
 
 const LATEST_REPLACEMENT_JOIN = `
 LEFT JOIN (
@@ -805,7 +807,7 @@ async function patchInventory(id, body = {}, options = {}) {
                    LEFT JOIN orders o ON o.id = oi.order_id
                   WHERE s.platform_account_id = ?
                     AND s.status = 'active'
-                    AND s.expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                    AND s.expires_at >= ${BOGOTA_TODAY_SQL}
                   ORDER BY s.expires_at DESC, s.id DESC
                   FOR UPDATE`,
                 [accountId]
@@ -862,7 +864,7 @@ async function patchInventory(id, body = {}, options = {}) {
                             status = 'cancelled'
                       WHERE platform_account_id = ?
                         AND status = 'active'
-                        AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`,
+                        AND expires_at >= ${BOGOTA_TODAY_SQL}`,
                     [accountId]
                 );
             } else {
@@ -917,7 +919,7 @@ async function patchInventory(id, body = {}, options = {}) {
                    FROM subscriptions
                   WHERE platform_account_id = ?
                     AND status = 'active'
-                    AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                    AND expires_at >= ${BOGOTA_TODAY_SQL}
                   ORDER BY expires_at DESC, id DESC
                   LIMIT 1
                   FOR UPDATE`,
@@ -984,7 +986,7 @@ async function patchInventory(id, body = {}, options = {}) {
                     `SELECT id FROM subscriptions
                       WHERE platform_account_id = ?
                         AND status = 'active'
-                        AND expires_at >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                        AND expires_at >= ${BOGOTA_TODAY_SQL}
                       LIMIT 1
                       FOR UPDATE`,
                     [accountId]

@@ -25,6 +25,7 @@ async function getSubscriptionWithAccount(orderId) {
         pa.email AS accountEmail,
         pa.password AS accountPassword,
         pa.pin AS accountPin,
+        pa.code_provider AS accountCodeProvider,
         pa.profile_number AS accountProfile,
         (
             SELECT o.order_code
@@ -134,7 +135,10 @@ async function getDeliveryCountersByFingerprint({ orderId, platformSlugLower, cr
                 THEN 1 ELSE 0 END) AS temporaryCodes,
             SUM(CASE
                 WHEN (delivered_code IS NULL OR delivered_code = '')
-                 AND message LIKE 'OK:approve-confirmed%'
+                 AND (
+                    action = 'approve'
+                    OR (action IS NULL AND message LIKE 'OK:approve%')
+                 )
                 THEN 1 ELSE 0 END) AS approvals
          FROM code_deliveries
          WHERE order_id = ?

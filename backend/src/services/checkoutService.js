@@ -21,6 +21,7 @@ const {
     automaticProfitForEntry,
     automaticUnitCostForPlan,
 } = require("../utils/profitCosts");
+const { eventLinkSnapshot, isEventLinkPlan } = require("../utils/eventLinks");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -48,7 +49,23 @@ function allocateComboPrices(comboPrice, comboItems) {
 }
 
 function requiresInventoryAccount(plan) {
-    return String(plan?.type || "").trim().toLowerCase() !== "correo";
+    return !isEventLinkPlan(plan)
+        && String(plan?.type || "").trim().toLowerCase() !== "correo";
+}
+
+async function findLiveEventLink(conn, platformId) {
+    const [rows] = await conn.query(
+        `SELECT id, title, url, ends_at, unit_cost, currency
+           FROM event_links
+          WHERE platform_id = ?
+            AND is_active = 1
+            AND ends_at > UTC_TIMESTAMP()
+          ORDER BY published_at DESC, id DESC
+          LIMIT 1
+          FOR UPDATE`,
+        [platformId]
+    );
+    return eventLinkSnapshot(rows[0]);
 }
 
 async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "reseller") {
@@ -68,6 +85,8 @@ async function loadIndividualPlans(conn, platformPriceIds, salesChannel = "resel
             p.name AS platform_name,
             p.slug AS platform_slug,
             p.type,
+            p.is_event_link,
+            p.event_link_unit_cost,
             p.show_device_rule,
             p.product_details
          FROM platform_prices pp
@@ -141,6 +160,8 @@ async function loadComboEntries(conn, comboRequests, currency, salesChannel = "r
             p.name AS platform_name,
             p.slug AS platform_slug,
             p.type,
+            p.is_event_link,
+            p.event_link_unit_cost,
             p.show_device_rule,
             p.product_details
          FROM combo_items ci
@@ -332,6 +353,14 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
         for (const entry of purchaseEntries) {
             const plan = entry.plan;
+            const eventLink = isEventLinkPlan(plan)
+                ? await findLiveEventLink(conn, plan.platform_id)
+                : null;
+            if (isEventLinkPlan(plan) && !eventLink) {
+                const err = new Error(`El enlace de ${plan.platform_name} ya no esta disponible. Actualiza el catalogo.`);
+                err.status = 409;
+                throw err;
+            }
             const needsAccount = requiresInventoryAccount(plan);
             const resolvedAccount = needsAccount
                 ? await findAvailableAccountForPlatform(conn, plan.platform_id)
@@ -347,21 +376,26 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
             // subscriptions.expires_at is the contractual calendar date in Colombia.
             // The account keeps a technical timestamp only for stock availability.
-            const expiresAt = addDaysBogotaDateOnly(Number(plan.days));
+            const expiresAt = eventLink?.expiresAt || addDaysBogotaDateOnly(Number(plan.days));
             const expiresAtSql = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expiresAt));
             const itemPrice = Number(entry.salePrice || 0);
 
             const [subIns] = await conn.query(
                 `INSERT INTO subscriptions
                     (user_id, platform_id, platform_price_id, duration_id, platform_account_id,
+                     event_link_id, event_link_url, event_link_title, event_link_ends_at,
                      delivered_platform_id, status, expires_at, price, currency)
-                 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
                 [
                     userId,
                     plan.platform_id,
                     plan.platform_price_id,
                     plan.duration_id,
                     account?.id || null,
+                    eventLink?.id || null,
+                    eventLink?.url || null,
+                    eventLink?.title || null,
+                    eventLink?.endsAtSql || null,
                     deliveredPlatformId,
                     expiresAt,
                     itemPrice,
@@ -386,8 +420,10 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             });
 
             const inventoryUnitCost = Number(account?.unit_cost || 0);
-            const unitCostCurrency = normalizeCurrency(account?.unit_cost_currency || "COP", "COP");
-            const unitCost = inventoryUnitCost > 0 ? inventoryUnitCost : automaticUnitCostForPlan(plan);
+            const unitCostCurrency = normalizeCurrency(eventLink?.currency || account?.unit_cost_currency || "COP", "COP");
+            const unitCost = eventLink
+                ? Number(eventLink.unitCost || 0)
+                : (inventoryUnitCost > 0 ? inventoryUnitCost : automaticUnitCostForPlan(plan));
             const comparableCost = unitCost <= 0 || sameCurrency(unitCostCurrency, currency);
             const itemProfit = comparableCost ? Number((itemPrice - unitCost).toFixed(2)) : null;
             if (comparableCost) {
@@ -408,6 +444,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 subscriptionId,
                 plan,
                 account,
+                eventLink,
                 expiresAt,
                 token,
                 purchasedPlatformId: plan.platform_id,
@@ -420,7 +457,11 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         }
 
         const newBalance = balance - total;
-        const manualProfitToAdd = !liteCheckout && recordProfit ? Number(profitAmount || 0) : 0;
+        // Preserve the optional manual-profit workflow, but keep it bounded by
+        // the server-calculated purchase total.
+        const manualProfitToAdd = !liteCheckout && recordProfit
+            ? Math.min(Number(profitAmount || 0), total)
+            : 0;
         const profitToAdd = Number((automaticProfitToAdd + manualProfitToAdd).toFixed(2));
 
         await conn.query(

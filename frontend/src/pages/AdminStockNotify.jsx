@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { apiFetch } from "../api/api";
 import { motion, AnimatePresence } from "framer-motion";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
+import { formatBogotaDateTime } from "../utils/datetime.js";
 import "../styles/special-effects.css";
 
 export default function AdminStockNotify() {
@@ -113,7 +114,7 @@ export default function AdminStockNotify() {
                                                 <td style={{ padding: "12px 16px", fontWeight: 600 }}>{a.platform_name}</td>
                                                 <td style={{ padding: "12px 16px", color: "var(--muted)" }}>{a.duration_name}</td>
                                                 <td style={{ padding: "12px 16px", color: "var(--muted)", fontSize: 12 }}>
-                                                    {new Date(a.created_at).toLocaleString("es-CO")}
+                                                    {formatBogotaDateTime(a.created_at)}
                                                 </td>
                                                 <td style={{ padding: "12px 16px" }}>
                                                     <button

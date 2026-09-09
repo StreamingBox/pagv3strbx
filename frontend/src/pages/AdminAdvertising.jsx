@@ -10,6 +10,7 @@ import {
     EyeOff,
     Folder,
     Image as ImageIcon,
+    KeyRound,
     Pencil,
     Plus,
     RefreshCw,
@@ -92,6 +93,7 @@ export default function AdminAdvertising() {
     const [confirmDelete, setConfirmDelete] = useState(null);
     const [successMsg, setSuccessMsg] = useState("");
     const [actionError, setActionError] = useState("");
+    const [reconnectingDrive, setReconnectingDrive] = useState(false);
     const [isNarrow, setIsNarrow] = useState(() =>
         typeof window !== "undefined" ? window.innerWidth <= 980 : false
     );
@@ -112,6 +114,7 @@ export default function AdminAdvertising() {
     const images = imagesQuery.data?.data || [];
     const imagePagination = imagesQuery.data?.pagination || { page: 1, limit: imageLimit, total: 0, totalPages: 1 };
     const error = actionError || foldersQuery.error?.message || imagesQuery.error?.message || "";
+    const driveReconnectRequired = /google drive|refresh token|credenciales.*drive|reconectar.*drive/i.test(String(error));
     const totalSize = images.reduce((sum, img) => sum + (Number(img.size) || 0), 0);
 
     useEffect(() => {
@@ -119,6 +122,21 @@ export default function AdminAdvertising() {
         onResize();
         window.addEventListener("resize", onResize);
         return () => window.removeEventListener("resize", onResize);
+    }, []);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const driveStatus = params.get("drive");
+        if (driveStatus === "connected") {
+            setActionError("");
+            showSuccess("Google Drive reconectado. Ya puedes volver a cargar las imagenes.", 5000);
+        } else if (driveStatus === "error") {
+            setActionError(params.get("message") || "No se pudo reconectar Google Drive.");
+        }
+        if (driveStatus) {
+            window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.hash}`);
+        }
+        setReconnectingDrive(false);
     }, []);
 
     function showSuccess(message, timeout = 3000) {
@@ -130,6 +148,21 @@ export default function AdminAdvertising() {
         await queryClient.invalidateQueries({ queryKey: ["admin-advertising", "folders"] });
         if (folderId) {
             await queryClient.invalidateQueries({ queryKey: ["admin-advertising", "images", folderId] });
+        }
+    }
+
+    async function reconnectGoogleDrive() {
+        setReconnectingDrive(true);
+        setActionError("");
+        try {
+            const response = await apiGet("/admin/advertising/drive/oauth/start");
+            if (!response.ok) throw new Error(response.data?.message || "No se pudo iniciar la reconexion de Google Drive.");
+            const url = response.data?.data?.url || response.data?.url;
+            if (!url) throw new Error("Google Drive no devolvio una URL de autorizacion.");
+            window.location.assign(url);
+        } catch (err) {
+            setReconnectingDrive(false);
+            setActionError(err?.message || "No se pudo iniciar la reconexion de Google Drive.");
         }
     }
 
@@ -393,15 +426,19 @@ export default function AdminAdvertising() {
                         title="Publicidad"
                         subtitle="Administra imagenes publicitarias en Google Drive. Organiza por carpetas y controla visibilidad."
                     >
-                        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <div style={{ background: "rgba(13,166,242,0.1)", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 10, padding: "6px 14px", display: "flex", alignItems: "center", gap: 8 }}>
                                 <Folder size={16} color="#38bdf8" />
                                 <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Carpetas</span>
                                 <span style={{ fontSize: 20, fontWeight: 900, color: "#0da6f2" }}>{folders.length}</span>
                             </div>
-                            <button className="btn-ghost" onClick={() => refreshAdvertisingQueries()} disabled={foldersQuery.isLoading} style={{ height: 36, padding: "0 14px", fontSize: 13, borderRadius: 10, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                            <button type="button" className="btn-ghost" onClick={() => refreshAdvertisingQueries()} disabled={foldersQuery.isLoading} style={{ height: 36, padding: "0 14px", fontSize: 13, borderRadius: 10, display: "inline-flex", alignItems: "center", gap: 7 }}>
                                 <RefreshCw size={14} />
                                 Refrescar
+                            </button>
+                            <button type="button" className="btn-ghost" onClick={reconnectGoogleDrive} disabled={reconnectingDrive} style={{ height: 36, padding: "0 14px", fontSize: 13, borderRadius: 10, display: "inline-flex", alignItems: "center", gap: 7, borderColor: "rgba(66,133,244,0.45)", color: "#8ab4f8" }}>
+                                <KeyRound size={14} />
+                                {reconnectingDrive ? "Abriendo autorizacion..." : "Reconectar Google Drive"}
                             </button>
                         </div>
                     </AdvertisingHeader>
@@ -409,9 +446,18 @@ export default function AdminAdvertising() {
                     <AnimatePresence>
                         {error ? (
                             <MotionDiv initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-                                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                                onClick={() => setActionError("")}>
-                                {error}
+                                style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", color: "#ef4444", borderRadius: 10, padding: "12px 16px", marginBottom: 16, fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+                                <span style={{ flex: "1 1 280px", minWidth: 0, lineHeight: 1.45 }}>{error}</span>
+                                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                                    {driveReconnectRequired ? (
+                                        <button type="button" onClick={reconnectGoogleDrive} disabled={reconnectingDrive}
+                                            style={{ border: "1px solid rgba(66,133,244,0.6)", background: "rgba(66,133,244,0.16)", color: "#8ab4f8", borderRadius: 8, minHeight: 34, padding: "0 12px", fontWeight: 800, cursor: reconnectingDrive ? "wait" : "pointer" }}>
+                                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><KeyRound size={14} />{reconnectingDrive ? "Abriendo..." : "Reconectar ahora"}</span>
+                                        </button>
+                                    ) : null}
+                                    <button type="button" onClick={() => setActionError("")} aria-label="Cerrar aviso"
+                                        style={{ border: 0, background: "transparent", color: "inherit", opacity: 0.8, fontSize: 18, lineHeight: 1, cursor: "pointer", padding: "2px 4px" }}>×</button>
+                                </div>
                             </MotionDiv>
                         ) : null}
                         {successMsg ? (

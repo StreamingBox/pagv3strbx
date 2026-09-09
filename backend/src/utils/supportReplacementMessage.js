@@ -14,6 +14,7 @@ function buildReplacementCredentialsMessage({
     token,
     baseUrl,
     platformSlug,
+    platformId,
 }) {
     return buildAccountDeliveryMessage({
         intro: "Tu cuenta ha sido reemplazada por:",
@@ -26,6 +27,7 @@ function buildReplacementCredentialsMessage({
         token,
         baseUrl,
         platformSlug,
+        platformId,
     });
 }
 

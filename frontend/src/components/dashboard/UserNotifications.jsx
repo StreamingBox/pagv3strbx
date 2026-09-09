@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiFetch } from "../../api/api";
+import { formatBogotaDateTime } from "../../utils/datetime.js";
 import "../../styles/user-notifications.css";
 
 const MotionDiv = motion.div;
@@ -113,7 +114,7 @@ export default function UserNotifications() {
                                         <div className="user-notif-content">
                                             <p className="user-notif-msg">{notif.message}</p>
                                             <span className="user-notif-time">
-                                                {new Date(notif.created_at).toLocaleString('es-CO')}
+                                                {formatBogotaDateTime(notif.created_at)}
                                             </span>
                                         </div>
                                     </div>

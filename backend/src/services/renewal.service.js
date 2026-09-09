@@ -9,6 +9,7 @@ const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { getRenewalEligibility } = require("../utils/renewals");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { automaticUnitCostForPlan } = require("../utils/profitCosts");
 
 async function renewSubscription({
     conn,
@@ -134,8 +135,14 @@ async function renewSubscription({
     const previousAccountId = Number(sub.platform_account_id || 0) || null;
     let finalAccountId = previousAccountId;
     let accountChanged = false;
-    let renewalUnitCost = Number(sub.account_unit_cost || 0);
-    let renewalUnitCostCurrency = normalizeCurrency(sub.account_unit_cost_currency || "COP", "COP");
+    const recordedRenewalUnitCost = Number(sub.account_unit_cost || 0);
+    const recordedRenewalUnitCostCurrency = normalizeCurrency(sub.account_unit_cost_currency || "COP", "COP");
+    let renewalUnitCost = recordedRenewalUnitCost > 0
+        ? recordedRenewalUnitCost
+        : automaticUnitCostForPlan(sub);
+    let renewalUnitCostCurrency = recordedRenewalUnitCost > 0
+        ? recordedRenewalUnitCostCurrency
+        : normalizeCurrency(sub.currency, "COP");
 
     if (allowAccountChange && newAccountId) {
         finalAccountId = Number(newAccountId);
@@ -175,8 +182,13 @@ async function renewSubscription({
             }
 
             accountChanged = true;
-            renewalUnitCost = Number(newAccount.unit_cost || 0);
-            renewalUnitCostCurrency = normalizeCurrency(newAccount.unit_cost_currency || "COP", "COP");
+            const newRecordedUnitCost = Number(newAccount.unit_cost || 0);
+            renewalUnitCost = newRecordedUnitCost > 0
+                ? newRecordedUnitCost
+                : automaticUnitCostForPlan(sub);
+            renewalUnitCostCurrency = newRecordedUnitCost > 0
+                ? normalizeCurrency(newAccount.unit_cost_currency || "COP", "COP")
+                : normalizeCurrency(sub.currency, "COP");
         }
     }
 
@@ -197,6 +209,7 @@ async function renewSubscription({
         "expires_at = ?",
         "status = 'active'",
         "is_attended = 0",
+        "expiration_hidden_at = NULL",
     ];
     const updateParams = [newExpiry];
 

@@ -19,6 +19,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
         req,
         orderNumber,
         platformSlug: String(platformSlug || "").trim().toLowerCase(),
+        action,
     });
 
     let result = null;
@@ -70,7 +71,7 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
             : "code";
 
         const deliveredMessage = normalizedAction === "approve"
-            ? "OK:approve-confirmed"
+            ? (result.body?.type === "approval_link" ? "OK:approve-link-delivered" : "OK:approve-confirmed")
             : `OK:${normalizedAction}`;
 
         await saveLog({
@@ -81,6 +82,9 @@ router.post("/:platformSlug/request", requireAuth, async (req, res) => {
         });
         await finishCodeRequestReservation(result.meta?.reservation, "completed");
 
+        if (result.body?.type === "approval_link") {
+            res.set("Cache-Control", "no-store");
+        }
         return res.json(result.body);
     } catch (err) {
         await saveLog({ status: "error", message: err.message || "Error interno" });

@@ -2,10 +2,12 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import InstallAppPrompt from "./components/app/InstallAppPrompt.jsx";
 import FullPageLoader from "./components/app/FullPageLoader.jsx";
+import AppErrorBoundary from "./components/app/AppErrorBoundary.jsx";
 
 import Auth from "./pages/Auth.jsx";
 import ForgotPassword from "./pages/ForgotPassword.jsx";
 import ResetPassword from "./pages/ResetPassword.jsx";
+import NotFound from "./pages/NotFound.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
 import ProtectedRoute from "./routes/ProtectedRoute.jsx";
@@ -17,11 +19,14 @@ const Admin = lazy(() => import("./pages/Admin.jsx"));
 const AdminUsers = lazy(() => import("./pages/AdminUsers.jsx"));
 const AdminTransactions = lazy(() => import("./pages/AdminTransactions.jsx"));
 const AdminPlatforms = lazy(() => import("./pages/AdminPlatforms.jsx"));
+const AdminProviders = lazy(() => import("./pages/AdminProviders.jsx"));
 const AdminAccounts = lazy(() => import("./pages/AdminAccounts.jsx"));
 const AdminOrders = lazy(() => import("./pages/AdminOrders.jsx"));
 const AdminPrices = lazy(() => import("./pages/AdminPrices.jsx"));
 const AdminCombos = lazy(() => import("./pages/AdminCombos.jsx"));
 const AdminInventory = lazy(() => import("./pages/AdminInventory.jsx"));
+const AdminInventoryAudit = lazy(() => import("./pages/AdminInventoryAudit.jsx"));
+const AdminEventLinks = lazy(() => import("./pages/AdminEventLinks.jsx"));
 const AdminLinks = lazy(() => import("./pages/AdminLinks.jsx"));
 const AdminDurations = lazy(() => import("./pages/AdminDurations.jsx"));
 const AdminAnalytics = lazy(() => import("./pages/AdminAnalytics.jsx"));
@@ -50,21 +55,6 @@ const UserAnalyticsPage = lazy(() => import("./pages/UserAnalyticsPage.jsx"));
 const UserExpirations = lazy(() => import("./pages/UserExpirations.jsx"));
 const Support = lazy(() => import("./pages/Support.jsx"));
 
-/* ==========================================
-   Redirección automática por rol
-========================================== */
-function RedirectByRole() {
-    const { user, authLoading } = useAuth();
-
-    if (authLoading) return <FullPageLoader label="Validando sesion..." />;
-
-    if (!user?.id) return <Navigate to="/" replace />;
-
-    const role = String(user?.role || "user").toLowerCase();
-    if (role === "admin") return <Navigate to="/admin" replace />;
-    return <Navigate to="/dashboard" replace />;
-}
-
 function HiddenOnLite({ children }) {
     if (isLiteSite()) return <Navigate to="/dashboard" replace />;
     return children;
@@ -80,12 +70,13 @@ export default function App() {
     return (
         <>
             {showInstallPrompt ? <InstallAppPrompt /> : null}
-            <Suspense
-                fallback={
-                    <FullPageLoader />
-                }
-            >
-                <Routes>
+            <AppErrorBoundary>
+                <Suspense
+                    fallback={
+                        <FullPageLoader />
+                    }
+                >
+                    <Routes>
                 {/* ================= Login / Register ================= */}
                 <Route path="/" element={<Auth />} />
                 <Route path="/register" element={<Auth />} />
@@ -230,6 +221,15 @@ export default function App() {
                 />
 
                 <Route
+                    path="/admin/providers"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminProviders />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
                     path="/admin/categories"
                     element={
                         <ProtectedRoute roles={["admin"]}>
@@ -315,6 +315,24 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminCodeLogs />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/inventory-audit"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminInventoryAudit />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/event-links"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminEventLinks />
                         </ProtectedRoute>
                     }
                 />
@@ -446,9 +464,10 @@ export default function App() {
                 <Route path="/s/:token" element={<CredentialRedirect />} />
 
                 {/* ================= Catch-all (SIEMPRE al final) ================= */}
-                <Route path="*" element={<RedirectByRole />} />
-                </Routes>
-            </Suspense>
+                <Route path="*" element={<NotFound />} />
+                    </Routes>
+                </Suspense>
+            </AppErrorBoundary>
         </>
     );
 }

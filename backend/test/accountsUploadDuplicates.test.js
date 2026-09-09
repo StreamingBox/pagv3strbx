@@ -3,7 +3,9 @@ const test = require("node:test");
 const {
     bulkInsertAccounts,
     duplicateSummaryLine,
+    findExactAccountDuplicate,
     findActiveAssignedScreenDuplicate,
+    findReusableAccountForReload,
     isScreenCostInput,
 } = require("../src/services/accounts.service");
 
@@ -66,12 +68,69 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
     assert.match(calls[0].sql, /AS effective_expires_date/);
     assert.match(calls[0].sql, /active_sub\.expires_at AS subscription_expires_at/);
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) = 'assigned'/);
+    assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) NOT IN \('inactive', 'disabled', 'down', 'expired', 'legacy_review'\)/);
     assert.match(calls[0].sql, /pa\.assigned_to_user_id IS NOT NULL/);
     assert.match(calls[0].sql, /active_sub\.id IS NOT NULL/);
     assert.match(calls[0].sql, /active_sub\.id IS NULL/);
     assert.match(calls[0].sql, /pa\.expires_at IS NOT NULL/);
-    assert.match(calls[0].sql, /DATE\(active_sub\.expires_at\) >= DATE\(DATE_SUB\(UTC_TIMESTAMP\(\), INTERVAL 5 HOUR\)\)/);
+    assert.match(calls[0].sql, /DATE\(active_sub\.expires_at\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
     assert.match(calls[0].sql, /CAST\(pa\.profile_number AS CHAR\) = \?/);
+});
+
+test("exact duplicate lookup ignores expired or down accounts", async () => {
+    const calls = [];
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            return [[]];
+        },
+    };
+
+    const row = await findExactAccountDuplicate(conn, {
+        pid: 12,
+        emailValue: "cuenta@example.com",
+        accountProf: "3",
+        password: "same-password",
+    });
+
+    assert.equal(row, null);
+    assert.deepEqual(calls[0].params, [12, "cuenta@example.com", "3", "same-password"]);
+    assert.match(calls[0].sql, /DATE\(active_sub\.expires_at\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
+    assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
+    assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) NOT IN \('inactive', 'disabled', 'down', 'expired', 'legacy_review'\)/);
+    assert.match(calls[0].sql, /pa\.expires_at IS NULL/);
+});
+
+test("historical credential can be reused only without an active subscription", async () => {
+    const calls = [];
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            return [[{
+                id: 6536,
+                platform_id: 9,
+                platform_name: "Crunchyroll",
+                email: "hajaoyg.joslynn@hotmail.com",
+                profile_number: "5",
+                status: "sold",
+                subscription_id: null,
+            }]];
+        },
+    };
+
+    const row = await findReusableAccountForReload(conn, {
+        pid: 9,
+        emailValue: "hajaoyg.joslynn@hotmail.com",
+        accountProf: "5",
+        password: "koko123###",
+    });
+
+    assert.equal(row.id, 6536);
+    assert.deepEqual(calls[0].params, [9, "hajaoyg.joslynn@hotmail.com", "5", "koko123###"]);
+    assert.match(calls[0].sql, /active_sub\.id IS NULL/);
+    assert.match(calls[0].sql, /LIMIT 1 FOR UPDATE/);
+    assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
+    assert.match(calls[0].sql, /DATE\(CONVERT_TZ\(active_sub\.expires_at, '\+00:00', '-05:00'\)\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
 });
 
 test("bulk upload can force assigned screen duplicates when admin confirms", async () => {
@@ -79,6 +138,9 @@ test("bulk upload can force assigned screen duplicates when admin confirms", asy
     const conn = {
         async query(sql, params) {
             queries.push({ sql, params });
+            if (sql.includes("has_replacement_history")) {
+                return [[]];
+            }
             if (/SELECT\s+pa\.id/.test(sql)) {
                 throw new Error("duplicate lookup should be skipped when forcing");
             }

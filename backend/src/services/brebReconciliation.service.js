@@ -80,7 +80,7 @@ function parseEsCoMoney(value) {
 
 function parseSpanishDateTime(raw) {
     const source = normalizeText(raw).toLowerCase();
-    const match = source.match(/(\d{1,2}) de ([a-záéíóú]+) de (\d{4}) a las (\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?)/i);
+    const match = source.match(/(\d{1,2}) de ([a-záéíóú]+) de (\d{4}) a la(?:s)? (\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?)/i);
     if (!match) return null;
 
     const months = {
@@ -145,7 +145,7 @@ function parseBrebEmail(parsed, attributes = {}) {
     }
 
     const haystack = buildMailHaystack(parsed);
-    const match = haystack.match(/Recibiste\s+\$?\s*([0-9.,]+)\s+de\s+(.+?)(?:\s*-\s*|\s+)el\s+(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}\s+a\s+las\s+\d{1,2}:\d{2}\s*[ap]\.?\s*m\.?)/i);
+    const match = haystack.match(/Recibiste\s+\$?\s*([0-9.,]+)\s+de\s+(.+?)(?:\s*-\s*|\s+)el\s+(\d{1,2}\s+de\s+[a-záéíóú]+\s+de\s+\d{4}\s+a\s+la(?:s)?\s+\d{1,2}:\d{2}\s*[ap]\.?\s*m\.?)/i);
     if (match) {
         return {
             uid: String(attributes?.uid || ""),
@@ -370,6 +370,71 @@ async function saveValidationResult(id, payload) {
     await pool.query(`UPDATE manual_topup_requests SET ${fields.join(", ")} WHERE id = ?`, [...values, id]);
 }
 
+// A manual-review alert is a one-time transition, not a message for every
+// mailbox poll. Keeping this conditional in SQL also avoids a race with a
+// human approval that happens while the mailbox is being checked.
+async function markManualReviewOnce(id, reason) {
+    const [transition] = await pool.query(
+        `UPDATE manual_topup_requests
+         SET auto_validation_status = 'manual_review',
+             auto_validation_note = ?,
+             last_auto_checked_at = UTC_TIMESTAMP()
+         WHERE id = ?
+           AND status = 'submitted'
+           AND (auto_validation_status IS NULL OR auto_validation_status <> 'manual_review')`,
+        [reason, id]
+    );
+
+    if (transition.affectedRows > 0) return true;
+
+    // A later poll may improve the diagnostic, but it must not create a new
+    // Telegram notification and must never alter a closed topup.
+    await pool.query(
+        `UPDATE manual_topup_requests
+         SET auto_validation_note = ?,
+             last_auto_checked_at = UTC_TIMESTAMP()
+         WHERE id = ?
+           AND status = 'submitted'
+           AND auto_validation_status = 'manual_review'`,
+        [reason, id]
+    );
+    return false;
+}
+
+async function enqueueManualReviewAlert(topup, { title, note } = {}) {
+    const topupId = Number(topup?.id);
+    if (!Number.isInteger(topupId) || topupId <= 0) return;
+
+    const { enqueueNotification } = require("./notificationOutbox.service");
+    await enqueueNotification(pool, {
+        channel: "telegram",
+        eventType: "manual_topup_review",
+        dedupeKey: `telegram-manual-review:${topupId}`,
+        payload: {
+            topupId,
+            title: title || "Recarga requiere validación manual",
+            note: note || "La recarga quedó pendiente de revisión manual.",
+        },
+    });
+}
+
+async function saveMatchedResultIfOpen(id, payload) {
+    const fields = [];
+    const values = [];
+    for (const [key, value] of Object.entries(payload || {})) {
+        fields.push(`${key} = ?`);
+        values.push(value);
+    }
+    fields.push("last_auto_checked_at = UTC_TIMESTAMP()");
+    const [result] = await pool.query(
+        `UPDATE manual_topup_requests
+         SET ${fields.join(", ")}
+         WHERE id = ? AND status = 'submitted'`,
+        [...values, id]
+    );
+    return result.affectedRows > 0;
+}
+
 async function findBestEmailForRequest(request) {
     const methodKey = String(request.methodKey || "").toLowerCase();
     const isBreb = methodKey === "breb";
@@ -437,14 +502,10 @@ async function attemptAutoReconcileManualTopup(id) {
     const autoAdminLabel = isBreb ? "Bre-B" : "Binance";
 
     if (!email) {
-        const shouldNotify = request.autoValidationStatus !== "manual_review" || String(request.autoValidationNote || "") !== String(reason || "");
-        await saveValidationResult(id, {
-            auto_validation_status: "manual_review",
-            auto_validation_note: reason,
-        });
+        const shouldNotify = await markManualReviewOnce(id, reason);
         const updated = await getManualTopupById(id);
-        if (shouldNotify) {
-            await notifyManualTopupAlert(updated, {
+        if (shouldNotify && String(updated?.status || "").toLowerCase() === "submitted") {
+            await enqueueManualReviewAlert(updated, {
                 title: manualTitle,
                 note: reason,
             });
@@ -454,7 +515,7 @@ async function attemptAutoReconcileManualTopup(id) {
 
     const safeSenderName = extractSenderName(email.senderNameRaw || email.senderName || "");
 
-    await saveValidationResult(id, {
+    const stillOpen = await saveMatchedResultIfOpen(id, {
         auto_validation_status: "matched",
         auto_validation_note: reason,
         matched_email_uid: email.uid || null,
@@ -463,13 +524,23 @@ async function attemptAutoReconcileManualTopup(id) {
         matched_email_amount: Number(email.amount || 0),
         matched_email_received_at: email.receivedAt || null,
     });
+    if (!stillOpen) return getManualTopupById(id);
 
-    const approved = await updateManualTopupStatus({
-        id,
-        status: "approved",
-        adminUserId: null,
+    let approved;
+    try {
+        approved = await updateManualTopupStatus({
+            id,
+            status: "approved",
+            adminUserId: null,
         adminNote: `Aprobada automáticamente por ${autoAdminLabel}. Remitente: ${safeSenderName || "No disponible"}. Hora: ${email.receivedAtRaw || ""}`.trim(),
-    });
+        });
+    } catch (err) {
+        // A human may resolve the topup while IMAP is still being read. In
+        // that case the worker stops quietly and does not send a stale alert.
+        const current = await getManualTopupById(id);
+        if (current && String(current.status || "").toLowerCase() !== "submitted") return current;
+        throw err;
+    }
 
     await saveValidationResult(id, {
         auto_validation_status: "auto_approved",
@@ -517,4 +588,10 @@ async function processPendingBrebTopups() {
 module.exports = {
     attemptAutoReconcileManualTopup,
     processPendingBrebTopups,
+    __testables: {
+        compareNames,
+        compareTimes,
+        parseBrebEmail,
+        parseSpanishDateTime,
+    },
 };

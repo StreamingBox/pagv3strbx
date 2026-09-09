@@ -1,5 +1,5 @@
 const pool = require("../db");
-const { toSqlDateStart } = require("../utils/date");
+const { BOGOTA_TODAY_SQL, bogotaDateSql, toSqlDateStart } = require("../utils/date");
 const {
     normalizeOptionalValue,
     normalizeProfileForAccount,
@@ -13,9 +13,27 @@ const {
 const { isIptvProduct } = require("../utils/productDeliveryProfile");
 const { normalizeAccessUrl } = require("../utils/accountAccess");
 const { enqueueNotification } = require("./notificationOutbox.service");
+const {
+    STRBX_PROVIDER,
+    normalizeCodeProvider,
+} = require("../config/jeffProvider");
 
 const PASSWORD_PROPAGATION_STATUSES = ["available", "assigned", "sold"];
 const PASSWORD_PROPAGATION_BLOCKED_STATUSES = ["inactive", "disabled", "down"];
+const DUPLICATE_IGNORED_STATUSES_SQL =
+    "LOWER(TRIM(COALESCE(pa.status, ''))) NOT IN ('inactive', 'disabled', 'down', 'expired', 'legacy_review')";
+
+function normalizeAccountCodeProvider(value, { platformName, platformSlug } = {}) {
+    const compactPlatform = String(platformSlug || platformName || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+
+    return compactPlatform.includes("netflix")
+        ? normalizeCodeProvider(value)
+        : STRBX_PROVIDER;
+}
 
 async function resolvePlatform(conn, { platformId, platformName }) {
     let pid = platformId ? Number(platformId) : null;
@@ -69,11 +87,11 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, accountProf, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
-     (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
+     (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, code_provider, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
         [
             identityId,
             pid,
@@ -83,6 +101,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
             accessUrl,
             pin,
             twoFactorSecret,
+            codeProvider || STRBX_PROVIDER,
             accountProf,
             exp,
             costModel?.parentCostTotal ?? null,
@@ -95,6 +114,71 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     await queueStockAvailabilityNotifications(conn, pid, pname);
     
     return ins.insertId;
+}
+
+async function reloadExistingAccount(conn, {
+    accountId,
+    identityId,
+    pid,
+    pname,
+    emailValue,
+    password,
+    accessUrl,
+    pin,
+    twoFactorSecret,
+    codeProvider,
+    accountProf,
+    exp,
+    costModel,
+}) {
+    const [result] = await conn.query(
+        `UPDATE platform_accounts
+            SET identity_id = ?,
+                platform_id = ?,
+                platform_name = ?,
+                email = ?,
+                password = ?,
+                access_url = ?,
+                pin = ?,
+                two_factor_secret = ?,
+                code_provider = ?,
+                profile_number = ?,
+                status = 'available',
+                expires_at = ?,
+                assigned_to_user_id = NULL,
+                assigned_at = NULL,
+                parent_account_cost_total = COALESCE(?, parent_account_cost_total),
+                parent_profiles_total = COALESCE(?, parent_profiles_total),
+                unit_cost = COALESCE(?, unit_cost),
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+        [
+            identityId,
+            pid,
+            pname || "",
+            emailValue,
+            password,
+            accessUrl,
+            pin,
+            twoFactorSecret,
+            codeProvider || STRBX_PROVIDER,
+            accountProf,
+            exp,
+            costModel?.parentCostTotal ?? null,
+            costModel?.parentProfilesTotal ?? null,
+            costModel?.unitCost ?? null,
+            accountId,
+        ]
+    );
+
+    if (result.affectedRows !== 1) {
+        const err = new Error("No se pudo reutilizar la cuenta historica.");
+        err.status = 409;
+        throw err;
+    }
+
+    await queueStockAvailabilityNotifications(conn, pid, pname);
+    return accountId;
 }
 
 function firstNonEmpty(...values) {
@@ -172,7 +256,7 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
             DATE_FORMAT(
                 CASE
                     WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at)
-                    ELSE DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR))
+                    ELSE ${bogotaDateSql("pa.expires_at")}
                 END,
                 '%Y-%m-%d'
             ) AS effective_expires_date,
@@ -192,10 +276,11 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
          WHERE pa.platform_id = ?
            AND LOWER(pa.email) = LOWER(?)
            AND ${profileSql}
+           AND ${DUPLICATE_IGNORED_STATUSES_SQL}
            AND (
                 (
                     active_sub.id IS NOT NULL
-                    AND DATE(active_sub.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                    AND DATE(active_sub.expires_at) >= ${BOGOTA_TODAY_SQL}
                 )
                 OR (
                     active_sub.id IS NULL
@@ -204,11 +289,144 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
                         OR pa.assigned_to_user_id IS NOT NULL
                     )
                     AND pa.expires_at IS NOT NULL
-                    AND DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                    AND ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
                 )
            )
          ORDER BY pa.id DESC
          LIMIT 1`,
+        params
+    );
+
+    return rows?.[0] || null;
+}
+
+async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, password }) {
+    const params = [pid, emailValue];
+    const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
+        ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
+        : "CAST(pa.profile_number AS CHAR) = ?";
+    if (profileSql.includes("?")) params.push(String(accountProf));
+    params.push(String(password ?? ""));
+
+    const [rows] = await conn.query(
+        `SELECT
+            pa.id,
+            pa.platform_id,
+            COALESCE(p.name, pa.platform_name) AS platform_name,
+            pa.email,
+            pa.profile_number,
+            pa.status,
+            pa.expires_at,
+            active_sub.expires_at AS subscription_expires_at,
+            DATE_FORMAT(
+                CASE
+                    WHEN active_sub.expires_at IS NOT NULL THEN DATE(active_sub.expires_at)
+                    ELSE ${bogotaDateSql("pa.expires_at")}
+                END,
+                '%Y-%m-%d'
+            ) AS effective_expires_date,
+            u.email AS assigned_user_email,
+            u.name AS assigned_user_name,
+            active_sub.id AS subscription_id,
+            o.id AS order_id,
+            o.order_code,
+            EXISTS(
+                SELECT 1
+                  FROM account_replacement_logs arl
+                 WHERE arl.old_account_id = pa.id OR arl.new_account_id = pa.id
+            ) AS has_replacement_history
+         FROM platform_accounts pa
+         LEFT JOIN platforms p ON p.id = pa.platform_id
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         LEFT JOIN subscriptions active_sub
+           ON active_sub.platform_account_id = pa.id
+          AND active_sub.status = 'active'
+         LEFT JOIN order_items oi ON oi.subscription_id = active_sub.id
+         LEFT JOIN orders o ON o.id = oi.order_id
+        WHERE pa.platform_id = ?
+          AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
+          AND ${profileSql}
+          AND BINARY COALESCE(pa.password, '') = BINARY ?
+          AND ${DUPLICATE_IGNORED_STATUSES_SQL}
+          AND (
+                (
+                    active_sub.id IS NOT NULL
+                    AND DATE(active_sub.expires_at) >= ${BOGOTA_TODAY_SQL}
+                )
+                OR (
+                    active_sub.id IS NULL
+                    AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
+                    AND (
+                        pa.expires_at IS NULL
+                        OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
+                    )
+                )
+          )
+        ORDER BY
+            CASE WHEN active_sub.id IS NOT NULL THEN 0
+                 WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned' THEN 1
+                 WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'available' THEN 2
+                 ELSE 3 END,
+            pa.id DESC
+        LIMIT 1` ,
+        params
+    );
+
+    return rows?.[0] || null;
+}
+
+async function findReusableAccountForReload(conn, { pid, emailValue, accountProf, password }) {
+    const params = [pid, emailValue];
+    const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
+        ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
+        : "CAST(pa.profile_number AS CHAR) = ?";
+    if (profileSql.includes("?")) params.push(String(accountProf));
+    params.push(String(password ?? ""));
+
+    const [rows] = await conn.query(
+        `SELECT
+            pa.id,
+            pa.platform_id,
+            COALESCE(p.name, pa.platform_name) AS platform_name,
+            pa.email,
+            pa.profile_number,
+            pa.status,
+            pa.expires_at,
+            u.email AS assigned_user_email,
+            u.name AS assigned_user_name,
+            active_sub.id AS subscription_id,
+            active_sub.expires_at AS subscription_expires_at,
+            o.id AS order_id,
+            o.order_code,
+            EXISTS(
+                SELECT 1
+                  FROM account_replacement_logs arl
+                 WHERE arl.old_account_id = pa.id OR arl.new_account_id = pa.id
+            ) AS has_replacement_history
+         FROM platform_accounts pa
+         LEFT JOIN platforms p ON p.id = pa.platform_id
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         LEFT JOIN subscriptions active_sub
+           ON active_sub.platform_account_id = pa.id
+          AND active_sub.status = 'active'
+          AND (
+                active_sub.expires_at IS NULL
+                OR ${bogotaDateSql("active_sub.expires_at")} >= ${BOGOTA_TODAY_SQL}
+          )
+         LEFT JOIN order_items oi ON oi.subscription_id = active_sub.id
+         LEFT JOIN orders o ON o.id = oi.order_id
+        WHERE pa.platform_id = ?
+          AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
+          AND ${profileSql}
+          AND BINARY COALESCE(pa.password, '') = BINARY ?
+          AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
+          AND active_sub.id IS NULL
+        ORDER BY
+            CASE WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned' THEN 0
+                 WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'available' THEN 1
+                 ELSE 2 END,
+            pa.id DESC
+        LIMIT 1 FOR UPDATE`,
         params
     );
 
@@ -330,8 +548,8 @@ async function propagatePassword(conn, { pid, emailValue, password, newId }) {
                AND s.status = 'active'
                AND (
                  platform_accounts.expires_at IS NULL
-                 OR DATE(DATE_SUB(platform_accounts.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
-                 OR DATE(s.expires_at) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))
+                 OR ${bogotaDateSql("platform_accounts.expires_at")} >= ${BOGOTA_TODAY_SQL}
+                 OR DATE(s.expires_at) >= ${BOGOTA_TODAY_SQL}
                )
          )
        )`,
@@ -380,10 +598,68 @@ async function createAccountOne(conn, body) {
     const costModel = validateCostModelInput(costInput);
 
     const { pid, pname, platformSlug } = await resolvePlatform(conn, { platformId, platformName });
+    const codeProvider = normalizeAccountCodeProvider(
+        body.codeProvider
+        ?? body.code_provider
+        ?? body.proveedorCodigo
+        ?? body.proveedor_codigo
+        ?? body.proveedor,
+        { platformName: pname, platformSlug }
+    );
     const accessUrl = normalizeAccessUrl(
         body.accessUrl ?? body.access_url ?? body.url ?? body.URL,
         { required: isIptvProduct({ platformName: pname, platformSlug }) }
     );
+
+    const reusable = await findReusableAccountForReload(conn, {
+        pid,
+        emailValue,
+        accountProf,
+        password,
+    });
+    if (reusable) {
+        const identityId = await upsertIdentity(conn, {
+            pid,
+            emailValue,
+            identityProf,
+            password,
+            pin: normalizeOptionalValue(pin),
+        });
+        const reusedId = await reloadExistingAccount(conn, {
+            accountId: reusable.id,
+            identityId,
+            pid,
+            pname,
+            emailValue,
+            password,
+            accessUrl,
+            pin: normalizeOptionalValue(pin),
+            twoFactorSecret,
+            codeProvider,
+            accountProf,
+            exp,
+            costModel,
+        });
+
+        await propagatePassword(conn, { pid, emailValue, password, newId: reusedId });
+        return { id: reusedId, platformId: pid, platformName: pname, reused: true };
+    }
+
+    const exactDuplicate = await findExactAccountDuplicate(conn, {
+        pid,
+        emailValue,
+        accountProf,
+        password,
+    });
+    if (exactDuplicate) {
+        const payload = buildDuplicatePayload(exactDuplicate);
+        const err = new Error(
+            `No se cargo la cuenta porque ya existe la misma credencial. ${duplicateSummaryLine(payload)}`
+        );
+        err.status = 409;
+        err.payload = { duplicateExact: [payload] };
+        throw err;
+    }
 
     if (isScreenCostInput(costInput)) {
         const duplicate = await findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf });
@@ -415,6 +691,7 @@ async function createAccountOne(conn, body) {
         accessUrl,
         pin: normalizeOptionalValue(pin),
         twoFactorSecret,
+        codeProvider,
         accountProf,
         exp,
         costModel,
@@ -486,6 +763,13 @@ function normalizeBulkRows(rows) {
                 ?? r["2FA"]
                 ?? r["2fa"]
             ),
+            codeProvider: firstNonEmpty(
+                r.codeProvider,
+                r.code_provider,
+                r.proveedorCodigo,
+                r.proveedor_codigo,
+                r.proveedor,
+            ),
             profileNumber,
             expiresAt: String(r.expiresAt || r.expires_at || r.expiracion || "").trim(),
             costMode: r.costMode ?? r.tipoCosto ?? r.tipo_costo ?? "",
@@ -519,6 +803,9 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     const missingPlatforms = new Set();
     let missingPlatformRows = 0;
     const duplicateAssigned = [];
+    const duplicateExact = [];
+    const reusedExisting = [];
+    const reloadedKeys = new Set();
     const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
     for (const [rowIndex, r] of candidates.entries()) {
@@ -531,6 +818,11 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             missingPlatformRows += 1;
             continue;
         }
+
+        const codeProvider = normalizeAccountCodeProvider(r.codeProvider, {
+            platformName: platform.name,
+            platformSlug: platform.slug,
+        });
 
         const identityProf = normalizeProfileForIdentity(r.profileNumber);
         const accountProf = normalizeProfileForAccount(r.profileNumber);
@@ -557,6 +849,73 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         } catch (err) {
             err.message = `Fila ${rowIndex + 2}: ${err.message}`;
             throw err;
+        }
+
+        const reloadKey = [
+            pid,
+            String(r.email).trim().toLowerCase(),
+            accountProf ?? "",
+            r.password,
+        ].join("|");
+        const reusable = reloadedKeys.has(reloadKey)
+            ? null
+            : await findReusableAccountForReload(conn, {
+                pid,
+                emailValue: r.email,
+                accountProf,
+                password: r.password,
+            });
+        if (reusable) {
+            const identityId = await upsertIdentity(conn, {
+                pid,
+                emailValue: r.email,
+                identityProf,
+                password: r.password,
+                pin: r.pin,
+            });
+            const reusedId = await reloadExistingAccount(conn, {
+                accountId: reusable.id,
+                identityId,
+                pid,
+                pname: platform.name,
+                emailValue: r.email,
+                password: r.password,
+                accessUrl,
+                pin: r.pin,
+                twoFactorSecret: r.twoFactorSecret,
+                codeProvider,
+                accountProf,
+                exp,
+                costModel,
+            });
+
+            await propagatePassword(conn, {
+                pid,
+                emailValue: r.email,
+                password: r.password,
+                newId: reusedId,
+            });
+            reloadedKeys.add(reloadKey);
+            reusedExisting.push({
+                rowNumber: r.rowNumber || rowIndex + 2,
+                accountId: reusedId,
+                platformName: platform.name,
+                email: r.email,
+                profileNumber: accountProf,
+            });
+            inserted += 1;
+            continue;
+        }
+
+        const exactDuplicate = await findExactAccountDuplicate(conn, {
+            pid,
+            emailValue: r.email,
+            accountProf,
+            password: r.password,
+        });
+        if (exactDuplicate) {
+            duplicateExact.push(buildDuplicatePayload(exactDuplicate, r.rowNumber || rowIndex + 2));
+            continue;
         }
 
         if (isScreenCostInput(costInput) && !allowAssignedDuplicateScreens) {
@@ -588,6 +947,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             accessUrl,
             pin: r.pin,
             twoFactorSecret: r.twoFactorSecret,
+            codeProvider,
             accountProf,
             exp,
             costModel,
@@ -602,6 +962,10 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         inserted,
         missingPlatforms: [...missingPlatforms].slice(0, 20),
         missingPlatformRows,
+        skippedDuplicateExact: duplicateExact.length,
+        duplicateExact,
+        reusedExistingCount: reusedExisting.length,
+        reusedExisting,
         skippedDuplicateAssigned: duplicateAssigned.length,
         duplicateAssigned,
         forcedAssignedDuplicates: allowAssignedDuplicateScreens,
@@ -613,6 +977,8 @@ module.exports = {
     bulkInsertAccounts,
     duplicateSummaryLine,
     duplicateSummaryMessage,
+    findExactAccountDuplicate,
     findActiveAssignedScreenDuplicate,
+    findReusableAccountForReload,
     isScreenCostInput,
 };

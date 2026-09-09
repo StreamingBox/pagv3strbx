@@ -26,7 +26,7 @@ function cookieOpts(req, maxAgeMs, path = "/") {
     return {
         httpOnly: true,
         secure: isProd,   // 🔥 SOLO secure en producción real
-        sameSite: "lax",
+        sameSite: isProd ? "strict" : "lax",
         path,
         maxAge: maxAgeMs,
     };
@@ -37,12 +37,12 @@ function cookieOpts(req, maxAgeMs, path = "/") {
  * Inserta refresh token en BD con defensa contra colisión de uq_refresh_token_hash.
  * Reintenta 1 vez si pasa ER_DUP_ENTRY.
  */
-async function insertRefreshTokenSafe(userId, role, db = pool) {
+async function insertRefreshTokenSafe(userId, role, authVersion = 0, db = pool) {
     const refreshDays = parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || "30", 10);
     const expiresAt = new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000);
 
     for (let attempt = 0; attempt < 2; attempt++) {
-        const refreshToken = signRefreshToken({ sub: userId, role });
+        const refreshToken = signRefreshToken({ sub: userId, role, authVersion: Number(authVersion) || 0 });
         const refreshHash = sha256(refreshToken);
 
         try {
@@ -139,7 +139,10 @@ router.post("/register", async (req, res) => {
             [emailClean]
         );
         if (existing.length) {
-            return res.status(409).json({ message: "Este email ya está registrado." });
+            return res.status(201).json({
+                ok: true,
+                message: "Solicitud recibida. Si los datos pueden registrarse, quedará pendiente de aprobación.",
+            });
         }
 
         const passwordHash = await bcrypt.hash(password, 12);
@@ -155,7 +158,7 @@ router.post("/register", async (req, res) => {
 
         return res.status(201).json({
             ok: true,
-            message: "Cuenta creada. Contacta al administrador para activarla.",
+            message: "Solicitud recibida. La cuenta quedó pendiente de aprobación.",
         });
     } catch (err) {
         console.error("REGISTER ERROR:", err.message);
@@ -261,7 +264,10 @@ router.post("/reset-password", async (req, res) => {
             const resetRow = rows[0];
             const passwordHash = await bcrypt.hash(password, 12);
 
-            await conn.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, resetRow.user_id]);
+            await conn.query(
+                "UPDATE users SET password_hash = ?, auth_version = auth_version + 1 WHERE id = ?",
+                [passwordHash, resetRow.user_id]
+            );
             await conn.query("UPDATE password_reset_tokens SET used_at = UTC_TIMESTAMP() WHERE id = ?", [resetRow.id]);
             await conn.query(
                 "UPDATE password_reset_tokens SET used_at = COALESCE(used_at, UTC_TIMESTAMP()) WHERE user_id = ? AND id <> ? AND used_at IS NULL",
@@ -297,7 +303,7 @@ router.post("/login", async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            "SELECT id, name, email, password_hash, role, status, currency, account_type FROM users WHERE email = ? LIMIT 1",
+            "SELECT id, name, email, password_hash, role, status, auth_version, currency, account_type FROM users WHERE email = ? LIMIT 1",
             [email.trim().toLowerCase()]
         );
 
@@ -311,10 +317,11 @@ router.post("/login", async (req, res) => {
         const ok = await bcrypt.compare(password, user.password_hash);
         if (!ok) return res.status(401).json({ message: "Credenciales inválidas." });
 
-        const accessToken = signAccessToken({ sub: user.id, role: user.role });
+        const authVersion = Number(user.auth_version || 0);
+        const accessToken = signAccessToken({ sub: user.id, role: user.role, authVersion });
 
         // ✅ Insert refresh token con defensa contra duplicados
-        const { refreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role);
+        const { refreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role, authVersion);
 
         await pool.query("UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE id = ?", [user.id]);
         await safelyRecordUserActivity(pool, req, user.id, { eventType: "login", recordEvent: true });
@@ -383,7 +390,7 @@ router.post("/refresh", async (req, res) => {
             }
 
             const [urows] = await conn.query(
-                "SELECT id, role, status, name, email, currency, account_type FROM users WHERE id = ? LIMIT 1",
+                "SELECT id, role, status, auth_version, name, email, currency, account_type FROM users WHERE id = ? LIMIT 1",
                 [rt.user_id]
             );
             if (!urows.length) {
@@ -396,8 +403,14 @@ router.post("/refresh", async (req, res) => {
             }
 
             await conn.query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?", [rt.id]);
-            const newAccessToken = signAccessToken({ sub: user.id, role: user.role });
-            const { refreshToken: newRefreshToken, refreshDays } = await insertRefreshTokenSafe(user.id, user.role, conn);
+            const authVersion = Number(user.auth_version || 0);
+            const newAccessToken = signAccessToken({ sub: user.id, role: user.role, authVersion });
+            const { refreshToken: newRefreshToken, refreshDays } = await insertRefreshTokenSafe(
+                user.id,
+                user.role,
+                authVersion,
+                conn
+            );
 
             return {
                 status: 200,

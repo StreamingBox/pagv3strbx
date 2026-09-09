@@ -1,6 +1,39 @@
 const { google } = require("googleapis");
 const fs = require("fs");
 
+const DRIVE_OAUTH_SCOPES = ["https://www.googleapis.com/auth/drive"];
+
+function getPublicOrigin() {
+    const candidate = String(
+        process.env.PUBLIC_BASE_URL ||
+        process.env.FRONTEND_URL ||
+        "https://strbx.com.co"
+    ).trim();
+
+    try {
+        return new URL(candidate).origin;
+    } catch {
+        return "https://strbx.com.co";
+    }
+}
+
+function getOAuthRedirectUri() {
+    const configured = String(process.env.GOOGLE_DRIVE_OAUTH_REDIRECT_URI || "").trim();
+    const candidate = configured || new URL(
+        "/api/admin/advertising/drive/oauth/callback",
+        `${getPublicOrigin()}/`
+    ).toString();
+
+    try {
+        const url = new URL(candidate);
+        url.hash = "";
+        url.pathname = url.pathname.replace(/\/+$/, "") || "/";
+        return url.toString();
+    } catch {
+        return candidate;
+    }
+}
+
 /**
  * Servicio de Google Drive.
  *
@@ -18,23 +51,58 @@ function getServiceAccountAuth() {
         return new google.auth.JWT({
             email,
             key,
-            scopes: ["https://www.googleapis.com/auth/drive"],
+            scopes: DRIVE_OAUTH_SCOPES,
         });
     }
     return null;
 }
 
-function getOAuthAuth() {
+function getOAuthClient() {
     const clientId = process.env.GOOGLE_DRIVE_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_DRIVE_CLIENT_SECRET;
-    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
 
-    if (clientId && clientSecret && refreshToken) {
-        const oauth = new google.auth.OAuth2(clientId, clientSecret);
+    if (!clientId || !clientSecret) return null;
+    return new google.auth.OAuth2(clientId, clientSecret, getOAuthRedirectUri());
+}
+
+function getOAuthAuth() {
+    const refreshToken = process.env.GOOGLE_DRIVE_REFRESH_TOKEN;
+    const oauth = getOAuthClient();
+
+    if (oauth && refreshToken) {
         oauth.setCredentials({ refresh_token: refreshToken });
         return oauth;
     }
     return null;
+}
+
+function getGoogleDriveOAuthUrl(state) {
+    const oauth = getOAuthClient();
+    if (!oauth) {
+        throw new Error("Google Drive OAuth requiere GOOGLE_DRIVE_CLIENT_ID y GOOGLE_DRIVE_CLIENT_SECRET.");
+    }
+    return oauth.generateAuthUrl({
+        access_type: "offline",
+        prompt: "consent",
+        scope: DRIVE_OAUTH_SCOPES,
+        state,
+    });
+}
+
+async function exchangeGoogleDriveOAuthCode(code) {
+    const oauth = getOAuthClient();
+    if (!oauth) {
+        throw new Error("Google Drive OAuth requiere GOOGLE_DRIVE_CLIENT_ID y GOOGLE_DRIVE_CLIENT_SECRET.");
+    }
+    if (!code) throw new Error("Google no devolvio el codigo de autorizacion.");
+
+    const { tokens } = await oauth.getToken(code);
+    if (!tokens?.refresh_token) {
+        const error = new Error("Google no devolvio un refresh token. Autoriza nuevamente con consentimiento.");
+        error.code = "GOOGLE_DRIVE_REAUTH_NO_REFRESH_TOKEN";
+        throw error;
+    }
+    return tokens;
 }
 
 function getAuth({ preferOAuth = false } = {}) {
@@ -66,19 +134,41 @@ function getDriveRequestDefaults() {
     };
 }
 
+function getDriveErrorText(error) {
+    const data = error?.response?.data || {};
+    const detail = data.error;
+    const detailMessage = typeof detail === "string"
+        ? detail
+        : detail?.message;
+    const detailReasons = Array.isArray(detail?.errors)
+        ? detail.errors.map((item) => item?.reason || item?.message).filter(Boolean).join(", ")
+        : "";
+
+    return [
+        error?.message,
+        data.error_description,
+        detailMessage,
+        detailReasons,
+    ].filter(Boolean).join(" | ");
+}
+
+function isDriveAuthError(error) {
+    const text = getDriveErrorText(error);
+    const endpoint = String(error?.config?.url || error?.response?.config?.url || "");
+    const tokenEndpoint = /oauth2\.googleapis\.com|googleapis\.com\/oauth2/i.test(endpoint);
+    return /invalid_grant|invalid[_ ]client|unauthorized_client|refresh token|invalid credentials|token has been (expired|revoked)/i.test(text) ||
+        (tokenEndpoint && /bad request/i.test(text));
+}
+
 function formatDriveError(error, context = "") {
     const details = error?.response?.data?.error;
     const reason = String(details?.errors?.[0]?.reason || "");
     const status = Number(error?.code || error?.response?.status || 500);
-    const message = String(
-        details?.message ||
-        error?.message ||
-        "Error desconocido de Google Drive."
-    );
+    const message = getDriveErrorText(error) || "Error desconocido de Google Drive.";
 
     const ctxPrefix = context ? `[${context}] ` : "";
 
-    if (/invalid_grant|invalid jwt|malformed/i.test(message)) {
+    if (isDriveAuthError(error) || /invalid jwt|malformed/i.test(message)) {
         return `${ctxPrefix}Las credenciales de Google Drive no son validas o el refresh token fue revocado.`;
     }
     if (status === 404 || /File not found|fileNotFound/i.test(message)) {
@@ -345,7 +435,8 @@ async function getFileStream(fileId) {
 async function uploadImages(folderId, files) {
     const results = [];
     const errors = [];
-    for (const file of files) {
+    for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
         try {
             const uploaded = await uploadImage(
                 folderId,
@@ -355,6 +446,16 @@ async function uploadImages(folderId, files) {
             );
             results.push(uploaded);
         } catch (err) {
+            if (isDriveAuthError(err)) {
+                for (const pending of files.slice(index + 1)) {
+                    try { fs.unlinkSync(pending.path); } catch {}
+                }
+                const authError = new Error("Google Drive necesita reconectar la cuenta propietaria. Pulsa «Reconectar Google Drive» en Publicidad y autoriza nuevamente el acceso.");
+                authError.code = "GOOGLE_DRIVE_REAUTH_REQUIRED";
+                authError.cause = err;
+                console.error("[GoogleDrive] Autenticacion OAuth rechazada durante una subida.");
+                throw authError;
+            }
             const errorMessage = formatDriveError(err, `subida ${file.originalname}`);
             console.error(`[GoogleDrive] Error subiendo ${file.originalname}:`, errorMessage);
             errors.push({ file: file.originalname, error: errorMessage });
@@ -387,4 +488,8 @@ module.exports = {
     getFileInfo,
     getFileStream,
     formatDriveError,
+    getOAuthRedirectUri,
+    getGoogleDriveOAuthUrl,
+    exchangeGoogleDriveOAuthCode,
+    isDriveAuthError,
 };

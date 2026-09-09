@@ -83,3 +83,27 @@ test("regular checkout still prioritizes direct stock before active fallbacks", 
     assert.equal(result.deliveredPlatformId, 10);
     assert.equal(result.usedFallback, false);
 });
+
+test("support replacement excludes accounts marked inactive in master accounts", async () => {
+    const conn = {
+        async query(sql, params) {
+            if (/FROM platform_fallbacks/.test(sql)) {
+                return [[]];
+            }
+
+            assert.match(sql, /FROM master_accounts ma/);
+            assert.match(sql, /LOWER\(TRIM\(COALESCE\(pa\.email/);
+            assert.deepEqual(params, [901, 0, 10, "failed@example.com"]);
+            return [[]];
+        },
+    };
+
+    const result = await findAvailableAccountForPlatform(conn, 10, {
+        accountId: 901,
+        excludeAccountId: 0,
+        excludeAccountEmail: "failed@example.com",
+        excludeInactiveMasterAccounts: true,
+    });
+
+    assert.equal(result, null);
+});

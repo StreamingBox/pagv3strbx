@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { BOGOTA_TODAY_SQL } = require("./date");
 
 // ✅ Token fuerte (base64url) y reintento si choca UNIQUE
 function randomToken(len = 10) {
@@ -12,7 +13,7 @@ async function cleanupExpiredCredentialLinks(connOrPool) {
            LEFT JOIN subscriptions s ON s.id = cl.subscription_id
            WHERE s.id IS NULL
               OR s.status <> 'active'
-              OR DATE(s.expires_at) < DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR))`
+              OR DATE(s.expires_at) < ${BOGOTA_TODAY_SQL}`
     );
     return Number(result?.affectedRows || 0);
 }

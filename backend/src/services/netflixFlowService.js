@@ -192,6 +192,35 @@ function extractApprovalDeviceName(text, html = "") {
     return "Tu Dispositivo";
 }
 
+
+function extractNetflixLoginOtp(content) {
+    const source = String(content || '');
+    const textOnly = cheerio.load('<body>' + source + '</body>')('body').text().replace(/\s+/g, ' ').trim();
+    const normalizedText = normalizeText(textOnly);
+    const normalizedSource = normalizeText(source.replace(/<[^>]+>/g, ' '));
+
+    // Primary: labeled patterns with flexible spacing (handles separate HTML elements)
+    // Trailing anchor is optional to handle codes at end of string
+    const patterns = [
+        /(?:ingresa este codigo para iniciar sesion|ingresa este codigo en tu dispositivo para iniciar sesion en netflix|tu codigo de inicio de sesion es)[^0-9]{0,200}?([0-9][\s.\-]*[0-9][\s.\-]*[0-9][\s.\-]*[0-9])(?:[^0-9]|$)/i,
+        /(?:codigo de inicio de sesion|sign.?in code)[^0-9]{0,200}?([0-9][\s.\-]*[0-9][\s.\-]*[0-9][\s.\-]*[0-9])(?:[^0-9]|$)/i,
+    ];
+
+    const blockYear = new Set(['2023', '2024', '2025', '2026', '2027', '2028']);
+    for (const haystack of [normalizedText, normalizedSource, textOnly, source]) {
+        for (const pattern of patterns) {
+            const match = haystack.match(pattern);
+            if (match && match[1]) {
+                const digits = String(match[1]).replace(/[^0-9]/g, '');
+                if (digits.length === 4 && !blockYear.has(digits)) {
+                    return digits;
+                }
+            }
+        }
+    }
+    return '';
+}
+
 function extractNetflixTemporaryCode(content) {
     const source = String(content || "");
     const textOnly = cheerio.load(`<body>${source}</body>`)("body").text().replace(/\s+/g, " ").trim();
@@ -872,18 +901,9 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
 
             // 2. FLUJO: CÓDIGO DE INICIO DE SESIÓN
             if (action === "code") {
-                const htmlText = cheerio.load(html)("body").text() || "";
-                const haystack = `${subject}\n${text}\n${htmlText}`;
-                const patterns = [
-                    /(?:codigo|c[oó]digo|code)[^0-9]{0,60}([0-9]{4,8})/i,
-                    /\b([0-9]{4,8})\b/,
-                ];
-
-                for (const pattern of patterns) {
-                    const match = haystack.match(pattern);
-                    if (match?.[1] && !["2023", "2024", "2025", "2026"].includes(match[1])) {
-                        return { ok: true, type: "code", code: match[1], emailDate: msgDate };
-                    }
+                const otpCode = extractNetflixLoginOtp(subject + "\n" + text + "\n" + html);
+                if (otpCode) {
+                    return { ok: true, type: "code", code: otpCode, emailDate: msgDate };
                 }
             }
 

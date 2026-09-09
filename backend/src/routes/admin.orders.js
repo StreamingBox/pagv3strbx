@@ -4,6 +4,10 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { renewSubscription } = require("../services/renewal.service");
 const { enqueueNotification } = require("../services/notificationOutbox.service");
+const {
+    excludeInactiveMasterAccountSql,
+    excludeManuallyHiddenExpirationSql,
+} = require("../services/expirationVisibility.service");
 
 const router = express.Router();
 
@@ -376,6 +380,7 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         let whereCols = [
             "s.status != 'cancelled'",
             notResoldLaterSql,
+            excludeInactiveMasterAccountSql(),
         ];
         let params = [];
 
@@ -423,6 +428,13 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
             params.push(Number(attended) === 1 ? 1 : 0);
         } else if (attended === undefined || attended === "0") {
             whereCols.push("COALESCE(s.is_attended, 0) = 0");
+        }
+
+        // A manual dismissal must remain hidden when the date reaches the
+        // expiration window. It is cleared only by an explicit renewal or
+        // replacement, which starts a new lifecycle for this subscription.
+        if (attended !== "1" && attended !== "all") {
+            whereCols.push(excludeManuallyHiddenExpirationSql());
         }
 
         // New: Filter by expiry status (vencidos, hoy)
@@ -528,7 +540,17 @@ router.post("/admin/orders/:id/attend", requireAuth, requireRole("admin"), async
             return res.status(400).json({ message: "ID de pedido inválido." });
         }
 
-        await pool.query("UPDATE subscriptions SET is_attended = ? WHERE id = ?", [is_attended ? 1 : 0, orderId]);
+        const attendedValue = is_attended ? 1 : 0;
+        await pool.query(
+            `UPDATE subscriptions
+                SET is_attended = ?,
+                    expiration_hidden_at = CASE
+                        WHEN ? = 1 THEN COALESCE(expiration_hidden_at, UTC_TIMESTAMP())
+                        ELSE NULL
+                    END
+              WHERE id = ?`,
+            [attendedValue, attendedValue, orderId]
+        );
         return res.json({ ok: true });
     } catch (err) {
         console.error("Error en POST /admin/orders/:id/attend:", err);
@@ -566,7 +588,8 @@ router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), asyn
 
         const [result] = await pool.query(
             `UPDATE subscriptions
-             SET is_attended = 1
+             SET is_attended = 1,
+                 expiration_hidden_at = COALESCE(expiration_hidden_at, UTC_TIMESTAMP())
              WHERE id IN (${placeholders})
                AND COALESCE(is_attended, 0) = 0`,
             uniqueIds
@@ -599,7 +622,9 @@ router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), as
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
              WHERE s.status != 'cancelled'
                AND COALESCE(s.is_attended, 0) = 0
+               AND s.expiration_hidden_at IS NULL
                AND ${effectiveExpiresDateSql} <= ${todayBogotaSql}
+               AND ${excludeInactiveMasterAccountSql()}
                AND NOT EXISTS (
                    SELECT 1
                    FROM order_items oi_later

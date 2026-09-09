@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Streaming Box Colombia time audit daily
+
+[Timer]
+OnCalendar=*-*-* 05:30:00 UTC
+Persistent=true
+Unit=streaming-box-colombia-time-audit.service
+
+[Install]
+WantedBy=timers.target
+

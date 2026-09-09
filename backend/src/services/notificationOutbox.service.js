@@ -44,9 +44,15 @@ async function buildOrderDeliveryPayload(orderId) {
         `SELECT
             s.id AS subscription_id,
             s.expires_at,
+            s.event_link_id,
+            s.event_link_url,
+            s.event_link_title,
+            s.event_link_ends_at,
+            p.id AS platform_id,
             p.name AS platform_name,
             p.slug AS platform_slug,
             p.type AS platform_type,
+            p.is_event_link AS platform_event_link,
             p.show_device_rule,
             pa.email AS account_email,
             pa.password AS account_password,
@@ -78,13 +84,22 @@ async function buildOrderDeliveryPayload(orderId) {
             subscriptionId: row.subscription_id,
             expiresAt: row.expires_at,
             token: row.token,
+            purchasedPlatformId: Number(row.platform_id),
             purchasedPlatformName: row.platform_name,
             plan: {
+                platform_id: Number(row.platform_id),
                 platform_name: row.platform_name,
                 platform_slug: row.platform_slug,
                 type: row.platform_type,
+                is_event_link: row.platform_event_link,
                 show_device_rule: row.show_device_rule,
             },
+            eventLink: row.event_link_url ? {
+                id: row.event_link_id,
+                title: row.event_link_title,
+                url: row.event_link_url,
+                endsAt: row.event_link_ends_at,
+            } : null,
             account: row.account_email ? {
                 email: row.account_email,
                 password: row.account_password,
@@ -104,6 +119,25 @@ async function dispatchNotification(item) {
         await notifySale(payload);
         return { ok: true, delivery: "telegram" };
     }
+    if (item.channel === "telegram" && item.event_type === "manual_topup_review") {
+        // Do not send a stale manual-review alert after an admin or the
+        // mailbox reconciler has already closed the top-up.
+        const { getManualTopupById } = require("./manualTopups.service");
+        const topup = await getManualTopupById(Number(payload.topupId));
+        const isOpenManualReview = topup
+            && String(topup.status || "").toLowerCase() === "submitted"
+            && String(topup.autoValidationStatus || "").toLowerCase() === "manual_review";
+        if (!isOpenManualReview) {
+            return { ok: true, delivery: "telegram_stale_skipped" };
+        }
+
+        const { notifyManualTopupAlert } = require("./telegramBot");
+        await notifyManualTopupAlert(topup, {
+            title: payload.title,
+            note: payload.note,
+        });
+        return { ok: true, delivery: "telegram" };
+    }
     if (item.channel === "telegram" && item.event_type === "renewal_sale") {
         const { notifyRenewalSale } = require("./telegramBot");
         await notifyRenewalSale(payload);
@@ -118,7 +152,7 @@ async function dispatchNotification(item) {
     if (item.event_type === "support_created") {
         if (item.channel === "telegram") {
             const { notifySupportTicketCreated } = require("./telegramBot");
-            await notifySupportTicketCreated(payload.ticket);
+            await notifySupportTicketCreated(payload.ticket, payload.attachmentFile);
             return { ok: true, delivery: "telegram" };
         }
         return sendSupportTicketCreatedEmails(payload);

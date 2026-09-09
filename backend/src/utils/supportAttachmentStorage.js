@@ -8,6 +8,28 @@ const EXTENSIONS = new Map([
     ["image/webp", ".webp"],
 ]);
 
+function hasAllowedImageSignature(mime, buffer) {
+    if (!Buffer.isBuffer(buffer)) return false;
+    const normalizedMime = String(mime || "").toLowerCase();
+
+    if (normalizedMime === "image/jpeg") {
+        return buffer.length >= 3
+            && buffer[0] === 0xff
+            && buffer[1] === 0xd8
+            && buffer[2] === 0xff;
+    }
+    if (normalizedMime === "image/png") {
+        return buffer.length >= 8
+            && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    }
+    if (normalizedMime === "image/webp") {
+        return buffer.length >= 12
+            && buffer.toString("ascii", 0, 4) === "RIFF"
+            && buffer.toString("ascii", 8, 12) === "WEBP";
+    }
+    return false;
+}
+
 function getSupportUploadDir() {
     const configured = String(process.env.SUPPORT_UPLOAD_DIR || "").trim();
     return configured
@@ -17,7 +39,7 @@ function getSupportUploadDir() {
 
 async function saveSupportAttachment(file) {
     const extension = EXTENSIONS.get(String(file?.mimetype || "").toLowerCase());
-    if (!extension || !Buffer.isBuffer(file?.buffer)) {
+    if (!extension || !hasAllowedImageSignature(file?.mimetype, file?.buffer)) {
         throw new Error("La evidencia debe ser una imagen JPG, PNG o WEBP.");
     }
 
@@ -47,6 +69,7 @@ async function removeSupportAttachment(storedName) {
 }
 
 module.exports = {
+    hasAllowedImageSignature,
     saveSupportAttachment,
     resolveSupportAttachment,
     removeSupportAttachment,

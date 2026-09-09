@@ -1,4 +1,4 @@
-const VERSION = "strbx-pwa-v13";
+const VERSION = "strbx-pwa-v19";
 const ASSET_CACHE = `${VERSION}-assets`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = ["/", "/offline.html", "/manifest.webmanifest", "/app-icon.svg", "/app-icon-maskable.svg", "/favicon.svg"];
@@ -27,6 +27,25 @@ self.addEventListener("fetch", (event) => {
     if (url.pathname.startsWith("/platform-logos/")) {
         event.respondWith(
             fetch(request, { cache: "no-store" })
+                .catch(async () =>
+                    (await caches.match(request)) ||
+                    new Response("", { status: 504, statusText: "Offline" })
+                )
+        );
+        return;
+    }
+    // Deploys replace Vite's hashed bundles. Prefer the network so a tab with an
+    // older shell does not keep a stale chunk and end up on a blank route.
+    if (url.pathname.startsWith("/assets/") || url.pathname.startsWith("/payments/") || url.pathname.startsWith("/downloads/")) {
+        event.respondWith(
+            fetch(request, { cache: "no-store" })
+                .then((response) => {
+                    if (response?.ok && response.type === "basic") {
+                        const copy = response.clone();
+                        caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
+                    }
+                    return response;
+                })
                 .catch(async () =>
                     (await caches.match(request)) ||
                     new Response("", { status: 504, statusText: "Offline" })

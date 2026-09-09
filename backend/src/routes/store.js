@@ -7,6 +7,10 @@ const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHisto
 const { renewSubscription } = require("../services/renewal.service");
 const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
+const {
+    excludeInactiveMasterAccountSql,
+    excludeManuallyHiddenExpirationSql,
+} = require("../services/expirationVisibility.service");
 
 const router = express.Router();
 
@@ -150,8 +154,10 @@ router.get("/orders/expiring", requireAuth, async (req, res) => {
             "s.user_id = ?",
             "s.status != 'cancelled'",
             notResoldLaterSql,
+            excludeInactiveMasterAccountSql(),
             `${effectiveExpiresDateSql} <= DATE_ADD(${todayBogotaSql}, INTERVAL 3 DAY)`,
-            "IFNULL(s.is_attended, 0) = 0"
+            "IFNULL(s.is_attended, 0) = 0",
+            excludeManuallyHiddenExpirationSql()
         ];
         let params = [userId];
 
@@ -230,8 +236,10 @@ router.get("/orders/expiring-count", requireAuth, async (req, res) => {
              WHERE s.user_id = ?
                AND s.status != 'cancelled'
                AND IFNULL(s.is_attended, 0) = 0
+               AND s.expiration_hidden_at IS NULL
                 AND DATE(s.expires_at)
                    <= DATE_ADD(DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00')), INTERVAL 3 DAY)
+               AND ${excludeInactiveMasterAccountSql()}
                AND NOT EXISTS (
                    SELECT 1
                    FROM order_items oi_later

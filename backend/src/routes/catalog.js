@@ -4,6 +4,7 @@ const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, currencyAliases } = require("../utils/currency");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
+const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
 
 const router = express.Router();
 
@@ -48,7 +49,10 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.promo_color AS platformPromoColor,
         p.show_promo_last_units AS platformPromoLastUnits,
         p.is_new_product AS platformNewProduct,
+        COALESCE(p.is_event_link, 0) AS platformEventLink,
         p.product_details AS productDetails,
+        el.title AS eventTitle,
+        el.ends_at AS eventEndsAt,
 
         c.id AS categoryId,
         c.name AS categoryName,
@@ -64,11 +68,15 @@ router.get("/catalog", requireAuth, async (req, res) => {
         pp.is_renewable,
 
         CASE
+          WHEN COALESCE(p.is_event_link, 0) = 1 THEN CASE WHEN el.id IS NULL THEN 0 ELSE 1 END
           WHEN COALESCE(s.stock, 0) > 0 THEN COALESCE(s.stock, 0)
           ELSE COALESCE(fs.fallback_stock, 0)
         END AS stock,
-        COALESCE(s.stock, 0) AS directStock,
-        COALESCE(fs.fallback_stock, 0) AS fallbackStock
+        CASE
+          WHEN COALESCE(p.is_event_link, 0) = 1 THEN CASE WHEN el.id IS NULL THEN 0 ELSE 1 END
+          ELSE COALESCE(s.stock, 0)
+        END AS directStock,
+        CASE WHEN COALESCE(p.is_event_link, 0) = 1 THEN 0 ELSE COALESCE(fs.fallback_stock, 0) END AS fallbackStock
       FROM platform_prices pp
       JOIN platforms p ON p.id = pp.platform_id
       JOIN durations d ON d.id = pp.duration_id
@@ -79,7 +87,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
           COUNT(*) AS stock
         FROM platform_accounts
         WHERE status = 'available'
-          AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+          AND (expires_at IS NULL OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL})
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
 
@@ -93,12 +101,22 @@ router.get("/catalog", requireAuth, async (req, res) => {
           SELECT platform_id, COUNT(*) AS stock
           FROM platform_accounts
           WHERE status = 'available'
-            AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+            AND (expires_at IS NULL OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL})
           GROUP BY platform_id
         ) stock ON stock.platform_id = pf.fallback_platform_id
         WHERE pf.is_active = 1
         GROUP BY pf.source_platform_id
       ) fs ON fs.platform_id = p.id
+
+      LEFT JOIN event_links el ON el.id = (
+        SELECT live.id
+          FROM event_links live
+         WHERE live.platform_id = p.id
+           AND live.is_active = 1
+           AND live.ends_at > UTC_TIMESTAMP()
+         ORDER BY live.published_at DESC, live.id DESC
+         LIMIT 1
+      )
 
       LEFT JOIN categories c ON c.id = p.category_id
 
@@ -174,7 +192,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
       JOIN durations d ON d.id = pp.duration_id
       LEFT JOIN (
         SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
-        WHERE status = 'available' AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+        WHERE status = 'available' AND (expires_at IS NULL OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL})
         GROUP BY platform_id
       ) s ON s.platform_id = p.id
       LEFT JOIN (
@@ -182,7 +200,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         FROM platform_fallbacks pf
         LEFT JOIN (
           SELECT platform_id, COUNT(*) AS stock FROM platform_accounts
-          WHERE status = 'available' AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+          WHERE status = 'available' AND (expires_at IS NULL OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL})
           GROUP BY platform_id
         ) stock ON stock.platform_id = pf.fallback_platform_id
         WHERE pf.is_active = 1

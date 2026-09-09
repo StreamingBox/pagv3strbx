@@ -79,6 +79,15 @@ function isIptvPlatform(platform) {
     return compact.includes("iptv");
 }
 
+function isNetflixPlatform(platform) {
+    const compact = String(platform?.slug || platform?.name || platform || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("netflix");
+}
+
 function summarizeExcelRows(rows, platforms = []) {
     const summary = {
         total: rows.length,
@@ -143,6 +152,20 @@ function formatDuplicateAssignedWarnings(items = [], limit = 8) {
         const assignedTo = item.assignedTo ? `, asignada a ${item.assignedTo}` : "";
         const expires = item.expiresAt ? `, expira ${String(item.expiresAt).slice(0, 10)}` : ", sin fecha de expiracion";
         return `Fila ${item.rowNumber || "-"}: ${item.platformName || "Plataforma"} ${item.email || ""} (${profile}) no se cargo; ya existe cuenta #${item.accountId}${assignedTo}, ${order}${expires}.`;
+    });
+    if (items.length > limit) {
+        list.push(`... y ${items.length - limit} duplicada(s) mas.`);
+    }
+    return list.join("\n");
+}
+
+function formatDuplicateExactWarnings(items = [], limit = 8) {
+    const list = items.slice(0, limit).map((item) => {
+        const profile = item.profileNumber === null || item.profileNumber === undefined || String(item.profileNumber).trim() === ""
+            ? "sin perfil"
+            : `perfil ${item.profileNumber}`;
+        const status = item.status ? `, estado ${item.status}` : "";
+        return `Fila ${item.rowNumber || "-"}: ${item.platformName || "Plataforma"} ${item.email || ""} (${profile}) no se cargo; ya existe la misma credencial en la cuenta #${item.accountId}${status}.`;
     });
     if (items.length > limit) {
         list.push(`... y ${items.length - limit} duplicada(s) mas.`);
@@ -258,6 +281,7 @@ export default function AdminAccounts() {
     const [password, setPassword] = useState("");
     const [accessUrl, setAccessUrl] = useState("");
     const [twoFactorSecret, setTwoFactorSecret] = useState("");
+    const [codeProvider, setCodeProvider] = useState("strbx");
     const [pin, setPin] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
     const [costMode, setCostMode] = useState("screen");
@@ -280,6 +304,7 @@ export default function AdminAccounts() {
     );
     const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
     const isIptv = isIptvPlatform(selectedPlatform);
+    const isNetflix = isNetflixPlatform(selectedPlatform);
     const hasCompactCredentials = isChatGPTPersonal || isIptv;
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
@@ -332,6 +357,7 @@ export default function AdminAccounts() {
                     password,
                     accessUrl: accessUrl || null,
                     twoFactorSecret: isChatGPTPersonal ? (twoFactorSecret || null) : null,
+                    codeProvider: isNetflix ? codeProvider : "strbx",
                     pin: pin || null,
                     profileNumber: profileNumber || null,
                     costMode,
@@ -345,6 +371,7 @@ export default function AdminAccounts() {
                 setPassword("");
                 setAccessUrl("");
                 setTwoFactorSecret("");
+                setCodeProvider("strbx");
                 setPin("");
                 setProfileNumber("");
                 setMotherCostTotal("");
@@ -458,6 +485,10 @@ export default function AdminAccounts() {
 
             const duplicateAssigned = Array.isArray(out.duplicateAssigned) ? out.duplicateAssigned : [];
             const duplicateCount = Number(out.skipped_duplicate_assigned || duplicateAssigned.length || 0);
+            const duplicateExact = Array.isArray(out.duplicateExact) ? out.duplicateExact : [];
+            const exactDuplicateCount = Number(out.skipped_duplicate_exact || duplicateExact.length || 0);
+            const reusedExisting = Array.isArray(out.reusedExisting) ? out.reusedExisting : [];
+            const reusedExistingCount = Number(out.reused_existing_count || out.reusedExistingCount || reusedExisting.length || 0);
             const warnings = [];
             let forcedOut = null;
             if (duplicateCount > 0) {
@@ -467,6 +498,11 @@ export default function AdminAccounts() {
                         `No se cargaron ${duplicateCount} pantalla(s) porque ya estaban asignadas y vigentes:\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`
                     );
                 }
+            }
+            if (exactDuplicateCount > 0) {
+                warnings.push(
+                    `No se cargaron ${exactDuplicateCount} fila(s) porque la misma credencial ya estaba registrada:\n${formatDuplicateExactWarnings(duplicateExact)}`
+                );
             }
             if (Array.isArray(out.warning_missing_platforms) && out.warning_missing_platforms.length) {
                 warnings.push(`Plataformas no encontradas: ${out.warning_missing_platforms.join(", ")}`);
@@ -479,10 +515,20 @@ export default function AdminAccounts() {
                     `Normales: ${baseInserted}. Forzadas por confirmacion: ${forcedInserted}.`,
                 ]
                 : [`Excel cargado. Insertadas: ${baseInserted}.`];
+            if (reusedExistingCount > 0) {
+                const reusedDetails = reusedExisting
+                    .slice(0, 8)
+                    .map((item) => `fila ${item.rowNumber} -> cuenta #${item.accountId}`)
+                    .join("; ");
+                successLines.push(
+                    `Históricas recuperadas: ${reusedExistingCount}.${reusedDetails ? ` ${reusedDetails}${reusedExistingCount > 8 ? "; ..." : ""}` : ""}`
+                );
+            }
             setExcelMsg([...successLines, ...warnings].join("\n\n"));
             setExcelPreview(null);
         } catch (err) {
             const duplicateAssigned = Array.isArray(err.data?.duplicateAssigned) ? err.data.duplicateAssigned : [];
+            const duplicateExact = Array.isArray(err.data?.duplicateExact) ? err.data.duplicateExact : [];
             if (duplicateAssigned.length) {
                 let forcedOut = null;
                 try {
@@ -500,6 +546,11 @@ export default function AdminAccounts() {
                 }
                 setExcelError(false);
                 setExcelMsg(`${err.message || "No se cargaron esas pantallas."}\n\n${formatDuplicateAssignedWarnings(duplicateAssigned)}`);
+                return;
+            }
+            if (duplicateExact.length) {
+                setExcelError(false);
+                setExcelMsg(`${err.message || "No se cargaron esas credenciales."}\n\n${formatDuplicateExactWarnings(duplicateExact)}`);
                 return;
             }
             setExcelError(true);
@@ -536,6 +587,7 @@ export default function AdminAccounts() {
         const headers = [
             "plataformaId",
             "plataforma",
+            "proveedorCodigo",
             "correo",
             "usuario",
             "contrasena",
@@ -552,6 +604,7 @@ export default function AdminAccounts() {
             {
                 plataformaId: 1,
                 plataforma: "Netflix",
+                proveedorCodigo: "STRBX",
                 correo: "cuenta.netflix@correo.com",
                 usuario: "",
                 contrasena: "Clave123",
@@ -567,6 +620,7 @@ export default function AdminAccounts() {
             {
                 plataformaId: 1,
                 plataforma: "Netflix",
+                proveedorCodigo: "Jeff Premium",
                 correo: "cuenta.netflix@correo.com",
                 usuario: "",
                 contrasena: "Clave123",
@@ -582,6 +636,7 @@ export default function AdminAccounts() {
             {
                 plataformaId: 2,
                 plataforma: "Prime Video",
+                proveedorCodigo: "",
                 correo: "prime@correo.com",
                 usuario: "",
                 contrasena: "Prime123",
@@ -597,6 +652,7 @@ export default function AdminAccounts() {
             {
                 plataformaId: "",
                 plataforma: "ChatGPT Cuenta Personal",
+                proveedorCodigo: "",
                 correo: "cuenta.chatgpt@correo.com",
                 usuario: "",
                 contrasena: "ClaveChatGPT",
@@ -612,6 +668,7 @@ export default function AdminAccounts() {
             {
                 plataformaId: "",
                 plataforma: "IPTV 3 MESES",
+                proveedorCodigo: "",
                 correo: "",
                 usuario: "PMVZ5mXZyh",
                 contrasena: "aNsftq3BV3",
@@ -629,7 +686,7 @@ export default function AdminAccounts() {
 
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
-            { wch: 13 }, { wch: 22 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
+            { wch: 13 }, { wch: 22 }, { wch: 20 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
             { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
@@ -647,6 +704,7 @@ export default function AdminAccounts() {
             ["La columna costoUnitarioCalculado es informativa; el sistema calcula nuevamente el valor al cargar."],
             ["Las cuentas sin costo se pueden cargar, pero no aportaran una utilidad neta exacta."],
             ["ChatGPT Cuenta Personal:", "2FA es opcional. Si la llenas, se entrega junto con correo y contraseña."],
+            ["Proveedor de codigos:", "Aplica a Netflix y Netflix Internacional. Usa STRBX para el buzón Gmail actual, Jeff Premium, StoreTools.co o LiveOnix según corresponda. Las demás plataformas usan STRBX."],
             [""],
             ["IPTV / IPTV 3 MESES:", "usuario, contrasena y url son obligatorios. Solo se entregan esos tres datos."],
             [""],
@@ -656,6 +714,48 @@ export default function AdminAccounts() {
         ];
         const wsInstructions = XLSX.utils.aoa_to_sheet(instructions);
         wsInstructions["!cols"] = [{ wch: 38 }, { wch: 28 }, { wch: 48 }, { wch: 32 }];
+
+        const proveedoresRows = [
+            {
+                "Proveedor": "STRBX.com.co",
+                "Valor en proveedorCodigo": "STRBX",
+                "Plataformas": "Todas (por defecto)",
+                "Flujo de códigos": "Buzón Gmail actual",
+                "Nota": "Deja la celda vacía o usa STRBX para este flujo.",
+            },
+            {
+                "Proveedor": "Jeff Premium",
+                "Valor en proveedorCodigo": "Jeff Premium",
+                "Plataformas": "Netflix y Netflix Internacional",
+                "Flujo de códigos": "Portal externo Jeff Premium",
+                "Nota": "Solo selecciona este valor si la cuenta pertenece a Jeff Premium.",
+            },
+            {
+                "Proveedor": "StoreTools.co",
+                "Valor en proveedorCodigo": "StoreTools.co",
+                "Plataformas": "Netflix y Netflix Internacional",
+                "Flujo de códigos": "Portal externo StoreTools.co",
+                "Nota": "Solo selecciona este valor si la cuenta pertenece a StoreTools.co.",
+            },
+            {
+                "Proveedor": "LiveOnix",
+                "Valor en proveedorCodigo": "LiveOnix",
+                "Plataformas": "Netflix y Netflix Internacional",
+                "Flujo de códigos": "Portal externo LiveOnix",
+                "Nota": "Solo selecciona este valor si la cuenta pertenece a LiveOnix.",
+            },
+            {
+                "Proveedor": "LiveOnix",
+                "Valor en proveedorCodigo": "LiveOnix",
+                "Plataformas": "Netflix y Netflix Internacional",
+                "Flujo de códigos": "Portal externo LiveOnix",
+                "Nota": "Solo selecciona este valor si la cuenta pertenece a LiveOnix.",
+            },
+        ];
+        const wsProveedores = XLSX.utils.json_to_sheet(proveedoresRows);
+        wsProveedores["!cols"] = [
+            { wch: 22 }, { wch: 26 }, { wch: 34 }, { wch: 34 }, { wch: 66 },
+        ];
 
         const plataformasRows = platforms.map(p => ({
             "ID": p.id,
@@ -667,6 +767,7 @@ export default function AdminAccounts() {
         XLSX.utils.book_append_sheet(wb, wsCuentas, "Cuentas");
         XLSX.utils.book_append_sheet(wb, wsExamples, "EJEMPLOS");
         XLSX.utils.book_append_sheet(wb, wsInstructions, "COMO USAR");
+        XLSX.utils.book_append_sheet(wb, wsProveedores, "Proveedores");
         XLSX.utils.book_append_sheet(wb, wsPlataformas, "Plataformas");
 
         XLSX.writeFile(wb, "Plantilla_Cuentas_y_Costos_StreamingBox.xlsx");
@@ -689,6 +790,10 @@ export default function AdminAccounts() {
     useEffect(() => {
         if (!isIptv) setAccessUrl("");
     }, [isIptv]);
+
+    useEffect(() => {
+        if (!isNetflix) setCodeProvider("strbx");
+    }, [isNetflix]);
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -945,6 +1050,28 @@ export default function AdminAccounts() {
                                     onChange={(e) => setPlatformName(e.target.value)}
                                 />
                             </div>
+
+                            {isNetflix && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        Proveedor de códigos
+                                    </label>
+                                    <select
+                                        style={inputStyle}
+                                        value={codeProvider}
+                                        onChange={(e) => setCodeProvider(e.target.value)}
+                                    >
+                                        <option value="strbx">STRBX.com.co (Gmail actual)</option>
+                                        <option value="jeff_premium">Jeff Premium (portal externo)</option>
+                                        <option value="storetools">StoreTools.co (portal externo)</option>
+                                        <option value="liveonix">LiveOnix (portal externo)</option>
+                                        <option value="liveonix">LiveOnix (portal externo)</option>
+                                    </select>
+                                    <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.35 }}>
+                                        Netflix y Netflix Internacional pueden usar este proveedor. El cliente nunca verá esta selección.
+                                    </div>
+                                </div>
+                            )}
 
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>

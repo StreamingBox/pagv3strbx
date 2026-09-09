@@ -4,6 +4,7 @@ import SalesChart from "./SalesChart";
 import DistributionChart from "./DistributionChart";
 import WeeklyChart from "./WeeklyChart";
 import PlatformProfitView from "./PlatformProfitView";
+import DailyProfitView from "./DailyProfitView";
 import { apiGet } from "../../api/api";
 import { MONTH_COLORS } from "./chartPalette.js";
 import useMediaQuery from "../../hooks/useMediaQuery.js";
@@ -827,8 +828,10 @@ function KpiCard({ label, total, orders, topPlatform, color, averageTicket, proj
 function UserAnalyticsContent({ admin }) {
     const now = new Date();
     const currentYear = now.getFullYear();
+    const initialBogotaDate = getBogotaToday(now);
+    const initialDailyDate = `${initialBogotaDate.year}-${String(initialBogotaDate.month).padStart(2, "0")}-${String(initialBogotaDate.day).padStart(2, "0")}`;
 
-    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support" | "platform"
+    const [viewMode, setViewMode] = useState("monthly"); // "monthly" | "weekly" | "support" | "platform" | "daily"
     const [year, setYear] = useState(currentYear);
     const [chartType, setChartType] = useState("area");
     const [currency, setCurrency] = useState("COP");
@@ -847,6 +850,9 @@ function UserAnalyticsContent({ admin }) {
     const [loadingData, setLoadingData] = useState(false);
     const [platformProfit, setPlatformProfit] = useState(null);
     const [loadingPlatformProfit, setLoadingPlatformProfit] = useState(false);
+    const [dailyDate, setDailyDate] = useState(initialDailyDate);
+    const [dailyProfit, setDailyProfit] = useState(null);
+    const [loadingDailyProfit, setLoadingDailyProfit] = useState(false);
     const [error, setError] = useState("");
     const isMobile = useMediaQuery("(max-width: 640px)");
     const isNarrow = useMediaQuery("(max-width: 430px)");
@@ -927,7 +933,7 @@ function UserAnalyticsContent({ admin }) {
     }, [filteredMonths, loadingMonths, selectedKeys.length]);
 
     const loadMultiData = useCallback(async () => {
-        if (viewMode === "platform") {
+        if (viewMode === "platform" || viewMode === "daily") {
             setLoadingData(false);
             return;
         }
@@ -968,6 +974,40 @@ function UserAnalyticsContent({ admin }) {
     }, [selectedKeys, admin, selectedUserIds, users, currency, viewMode]);
 
     useEffect(() => { loadMultiData(); }, [loadMultiData]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!admin || viewMode !== "daily") {
+            setDailyProfit(null);
+            setLoadingDailyProfit(false);
+            return () => { cancelled = true; };
+        }
+
+        setLoadingDailyProfit(true);
+        setError("");
+        const query = new URLSearchParams({ date: dailyDate, currency });
+        if (selectedUserIds.length === 0) query.set("global", "true");
+        if (selectedUserIds.length > 0) query.set("userIds", selectedUserIds.join(","));
+
+        apiGet(`/admin/analytics/daily-profit?${query.toString()}`)
+            .then((res) => {
+                const data = assertApiOk(res, "No se pudo cargar la ganancia del dia.");
+                if (!cancelled) setDailyProfit(data);
+            })
+            .catch((err) => {
+                if (!cancelled) {
+                    setDailyProfit(null);
+                    setError(err.message || "No se pudo cargar la ganancia del dia.");
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingDailyProfit(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [admin, viewMode, dailyDate, selectedUserIds, currency]);
 
     useEffect(() => {
         let cancelled = false;
@@ -1058,7 +1098,11 @@ function UserAnalyticsContent({ admin }) {
         monthsData.find(m => m.netProfitTrackingStartAt)?.netProfitTrackingStartAt
     );
     const supportMonths = admin ? monthsData.filter((month) => month.supportStats) : [];
-    const activeDataLoading = viewMode === "platform" ? loadingPlatformProfit : loadingData;
+    const activeDataLoading = viewMode === "platform"
+        ? loadingPlatformProfit
+        : viewMode === "daily"
+            ? loadingDailyProfit
+            : loadingData;
 
     return (
         <motion.div style={{ marginTop: isMobile ? 0 : 16, width: "100%", minWidth: 0 }} initial="hidden" animate="show" variants={containerVariants}>
@@ -1094,7 +1138,9 @@ function UserAnalyticsContent({ admin }) {
                                             ? "Novedades de soporte, cierres, pendientes e impacto por periodo"
                                             : viewMode === "platform"
                                                 ? "Rentabilidad por plataforma con costos registrados y margen real"
-                                                : "Selecciona hasta 6 meses para comparar"}
+                                                : viewMode === "daily"
+                                                    ? "Resultado de una fecha independiente del analisis mensual"
+                                                    : "Selecciona hasta 6 meses para comparar"}
                         </p>
                     </div>
 
@@ -1163,7 +1209,7 @@ function UserAnalyticsContent({ admin }) {
                         />
 
                         {/* Year picker */}
-                        {availableYears.length > 0 && (
+                        {viewMode !== "daily" && availableYears.length > 0 && (
                             <PillSelect
                                 value={year}
                                 onChange={e => { setYear(Number(e.target.value)); setSelectedKeys([]); }}
@@ -1195,6 +1241,7 @@ function UserAnalyticsContent({ admin }) {
                                 { key: "weekly", icon: "📊", label: "Semanal" },
                                 ...(admin ? [{ key: "support", icon: "🎧", label: "Soportes" }] : []),
                                 ...(admin ? [{ key: "platform", icon: "📈", label: "Plataformas" }] : []),
+                                ...(admin ? [{ key: "daily", icon: "💰", label: "Ganancias por día" }] : []),
                             ].map(tab => (
                                 <button
                                     key={tab.key}
@@ -1224,7 +1271,7 @@ function UserAnalyticsContent({ admin }) {
                 </div>
 
                 {/* Selector de meses */}
-                <div style={{
+                {viewMode !== "daily" && <div style={{
                     background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 14,
                     padding: isMobile ? "10px" : "12px 16px",
                     minWidth: 0,
@@ -1267,7 +1314,7 @@ function UserAnalyticsContent({ admin }) {
                             })}
                         </div>
                     )}
-                </div>
+                </div>}
             </motion.div>
 
             {/* Error */}
@@ -1282,7 +1329,7 @@ function UserAnalyticsContent({ admin }) {
             {/* Removed redundant insight chips row */}
 
             {/* Loader */}
-            {(activeDataLoading || loadingMonths) && (
+            {(activeDataLoading || (viewMode !== "daily" && loadingMonths)) && (
                 <motion.div variants={itemVariants} style={{
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     padding: "60px 20px", gap: 14, color: "var(--muted)",
@@ -1294,6 +1341,16 @@ function UserAnalyticsContent({ admin }) {
             )}
 
             {/* ─── Vista Semanal ─── */}
+            {admin && viewMode === "daily" && (
+                <DailyProfitView
+                    data={dailyProfit}
+                    date={dailyDate}
+                    onDateChange={setDailyDate}
+                    isMobile={isMobile}
+                    loading={loadingDailyProfit}
+                />
+            )}
+
             {viewMode === "weekly" && !loadingMonths && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
                     <WeeklyChart
@@ -1538,7 +1595,7 @@ function UserAnalyticsContent({ admin }) {
             )}
 
             {/* Sin meses seleccionados */}
-            {selectedKeys.length === 0 && !loadingMonths && (
+            {viewMode !== "daily" && selectedKeys.length === 0 && !loadingMonths && (
                 <motion.div variants={itemVariants} style={{
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                     textAlign: "center", padding: "70px 20px", color: "var(--muted)",

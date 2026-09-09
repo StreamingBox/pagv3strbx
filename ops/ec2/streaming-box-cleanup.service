@@ -1,0 +1,7 @@
+[Unit]
+Description=Streaming Box daily EC2 cleanup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/streaming-box-daily-cleanup

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { DatabaseZap, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, DatabaseZap, Radio, RefreshCcw } from "lucide-react";
 import ThemeToggle from "../ThemeToggle.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import useTheme from "../../hooks/useTheme";
@@ -29,6 +29,7 @@ const NAV_GROUPS = [
         links: [
             { path: "/admin/accounts", label: "Inventario de Cuentas", icon: "🔐" },
             { path: "/admin/inventory", label: "Inventario General", icon: "📦" },
+            { path: "/admin/providers", label: "Proveedores", icon: "🏭" },
             { path: "/admin/master-accounts", label: "Cuentas Maestras", icon: <DatabaseZap size={18} strokeWidth={2.4} aria-hidden /> },
             { path: "/admin/links", label: "Links", icon: "🔗" },
             { path: "/admin/expirations", label: "Vencimientos", icon: "⏳" },
@@ -41,10 +42,17 @@ const NAV_GROUPS = [
         ],
     },
     {
+        title: "Auditoria",
+        links: [
+            { path: "/admin/inventory-audit", label: "Auditoria de Perfiles", icon: <ClipboardCheck size={18} strokeWidth={2.4} aria-hidden /> },
+        ],
+    },
+    {
         title: "Catalogo & Oferta",
         links: [
             { path: "/admin/categories", label: "Categorias", icon: "📁" },
             { path: "/admin/platforms", label: "Plataformas", icon: "📺" },
+            { path: "/admin/event-links", label: "Partidos en vivo", icon: <Radio size={18} strokeWidth={2.4} aria-hidden /> },
             { path: "/admin/prices", label: "Planes y Precios", icon: "💳" },
             { path: "/admin/combos", label: "Combos", icon: "C" },
             { path: "/admin/durations", label: "Duraciones", icon: "⏱️" },
@@ -70,6 +78,7 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
         defaultCollapsed: false,
         collapseOnMobile: true,
         expandOnDesktop: true,
+        breakpoint: 1180,
     });
     const [isHovered, setIsHovered] = useState(false);
     const [stockCount, setStockCount] = useState(0);

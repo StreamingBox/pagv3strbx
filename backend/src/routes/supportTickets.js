@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
+const rateLimit = require("express-rate-limit");
 
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
@@ -9,11 +10,16 @@ const {
     saveSupportAttachment,
     resolveSupportAttachment,
     removeSupportAttachment,
+    hasAllowedImageSignature,
 } = require("../utils/supportAttachmentStorage");
 const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
 const { assertActiveSupportSubscription } = require("../services/supportSubscriptionEligibility.service");
 const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
+const {
+    getManagementMinutes,
+    grantManagementExtension,
+} = require("../services/supportManagement.service");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const {
     appendReplacementCredentialsMessage,
@@ -23,6 +29,7 @@ const {
 const router = express.Router();
 const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRANSIENT_DB_ERRORS = new Set(["ECONNRESET", "ETIMEDOUT", "PROTOCOL_CONNECTION_LOST", "ECONNREFUSED"]);
+const SUPPORT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
 
 const RESOLUTION_SUBTYPE_LABELS = {
     password_updated: "Clave actualizada",
@@ -46,8 +53,11 @@ const SUPPORT_EVENT_LABELS = {
     resolved: "Caso resuelto",
     replaced: "Cuenta reemplazada",
     reopened: "Caso reabierto",
+    admin_reopened: "Reabierto por administracion",
+    response_edited: "Respuesta editada",
     auto_replaced: "Reemplazo automatico",
     auto_no_stock: "Sin stock automatico",
+    management_extension: "Dia adicional por demora",
 };
 
 function normalizeResolutionSubtype(value) {
@@ -110,7 +120,13 @@ function getReopenUntil(value) {
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 6 * 1024 * 1024 },
+    limits: {
+        fileSize: SUPPORT_UPLOAD_MAX_BYTES,
+        files: 1,
+        fields: 8,
+        fieldSize: 16 * 1024,
+        parts: 10,
+    },
     fileFilter(_req, file, callback) {
         const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
         if (!allowed.has(String(file?.mimetype || "").toLowerCase())) {
@@ -122,7 +138,14 @@ const upload = multer({
 
 function uploadEvidence(req, res, next) {
     upload.single("evidence")(req, res, (error) => {
-        if (!error) return next();
+        if (!error) {
+            if (req.file && !hasAllowedImageSignature(req.file.mimetype, req.file.buffer)) {
+                return res.status(400).json({
+                    message: "La evidencia no coincide con una imagen JPG, PNG o WEBP valida.",
+                });
+            }
+            return next();
+        }
         const tooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
         return res.status(tooLarge ? 413 : 400).json({
             message: tooLarge
@@ -131,6 +154,14 @@ function uploadEvidence(req, res, next) {
         });
     });
 }
+
+const supportUploadRateLimit = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { ok: false, message: "Demasiadas evidencias enviadas. Intenta nuevamente mas tarde." },
+});
 
 function createTicketCode() {
     const date = new Date().toISOString().slice(2, 10).replace(/-/g, "");
@@ -180,6 +211,7 @@ function mapTicket(row) {
         resolvedAt: row.resolved_at || null,
         reopenUntil,
         canReopen,
+        managementExtensionDays: Number(row.management_extension_days || 0),
     };
 }
 
@@ -218,7 +250,25 @@ async function getTicketById(conn, ticketId, { userId = null, forUpdate = false 
     return mapTicket(rows[0]);
 }
 
-async function queueCreatedNotifications(conn, ticket, { masterAccount = null, noStock = false, eventKey = "created" } = {}) {
+async function queueCreatedNotifications(conn, ticket, {
+    masterAccount = null,
+    noStock = false,
+    eventKey = "created",
+    attachmentFile = null,
+} = {}) {
+    // Keep the current password confined to the private Telegram notification.
+    // The regular support API and customer email must never receive it.
+    let telegramTicket = ticket;
+    if (ticket.accountId) {
+        const [[account]] = await conn.query(
+            "SELECT password FROM platform_accounts WHERE id = ? LIMIT 1",
+            [ticket.accountId]
+        );
+        telegramTicket = {
+            ...ticket,
+            accountPassword: account?.password || "",
+        };
+    }
     await enqueueNotification(conn, {
         channel: "email",
         eventType: "support_created",
@@ -229,7 +279,7 @@ async function queueCreatedNotifications(conn, ticket, { masterAccount = null, n
         channel: "telegram",
         eventType: "support_created",
         dedupeKey: `support-${eventKey}-telegram:${ticket.id}`,
-        payload: { ticket },
+        payload: { ticket: telegramTicket, attachmentFile },
     });
     if (noStock) {
         await enqueueNotification(conn, {
@@ -241,11 +291,14 @@ async function queueCreatedNotifications(conn, ticket, { masterAccount = null, n
     }
 }
 
-async function queueResolvedNotification(conn, ticket) {
+async function queueResolvedNotification(conn, ticket, { eventKey = "resolved" } = {}) {
+    const dedupeKey = eventKey === "resolved"
+        ? `support-resolved:${ticket.id}`
+        : `support-resolved:${ticket.id}:${eventKey}`;
     await enqueueNotification(conn, {
         channel: "email",
         eventType: "support_resolved",
-        dedupeKey: `support-resolved:${ticket.id}`,
+        dedupeKey,
         payload: { ticket, customerName: ticket.userName },
     });
 }
@@ -277,6 +330,7 @@ async function buildReplacementResolutionMessage(conn, {
     const credentials = buildReplacementCredentialsMessage({
         orderCode: ticket.orderCode || (ticket.orderId ? `#${ticket.orderId}` : "-"),
         subscriptionId: ticket.subscriptionId,
+        platformId: ticket.platformId,
         platformName: ticket.platformName,
         platformSlug: ticket.platformSlug,
         account: replacement?.newAccount,
@@ -484,7 +538,11 @@ function getSupportMetrics(ticket, events) {
         firstResponseAt: startAt,
         resolvedAt: closeAt,
         waitMinutes: minutesBetween(ticket.createdAt, startAt),
-        managementMinutes: minutesBetween(startAt || ticket.createdAt, closeAt || now),
+        managementMinutes: getManagementMinutes({
+            createdAt: ticket.createdAt,
+            firstInProgressAt: startAt,
+            closedAt: closeAt || now,
+        }),
         totalMinutes: minutesBetween(ticket.createdAt, closeAt || now),
         isRunning: ticket.status !== "resolved",
     };
@@ -500,6 +558,11 @@ async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
             subscriptionId,
             replacementAccountId: null,
             adminUserId: null,
+        });
+        const managementExtension = await grantManagementExtension(conn, {
+            ticketId,
+            subscriptionId,
+            closedAt: new Date(),
         });
         const baseResolutionMessage = [
             "Detectamos que la cuenta reportada estaba marcada como inactiva en soporte.",
@@ -536,7 +599,7 @@ async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
              VALUES (?, NULL, 'auto_replaced', ?)`,
             [ticketId, resolutionMessage]
         );
-        return { matched: true, resolved: true, masterAccount, replacement };
+        return { matched: true, resolved: true, masterAccount, replacement, managementExtension };
     } catch (error) {
         if (error?.code !== "NO_STOCK") throw error;
         const message = "Cuenta maestra inactiva detectada, pero no hay stock disponible para reemplazo automatico.";
@@ -549,7 +612,7 @@ async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
     }
 }
 
-router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) => {
+router.post("/support/tickets", requireAuth, supportUploadRateLimit, uploadEvidence, async (req, res) => {
     const userId = Number(req.user.id);
     const subscriptionId = Number(req.body?.subscriptionId);
     const observation = String(req.body?.observation || "").trim();
@@ -665,6 +728,7 @@ router.post("/support/tickets", requireAuth, uploadEvidence, async (req, res) =>
             await queueCreatedNotifications(conn, ticket, {
                 masterAccount: autoResult.masterAccount || null,
                 noStock: !!autoResult.noStock,
+                attachmentFile: storedFile,
             });
         }
         await conn.commit();
@@ -731,10 +795,19 @@ router.patch("/support/tickets/:id/reopen", requireAuth, async (req, res) => {
             [ticketId, req.user.id, message]
         );
         const reopened = await getTicketById(conn, ticketId, { userId: Number(req.user.id) });
+        const [[attachment]] = await conn.query(
+            "SELECT attachment_file FROM support_tickets WHERE id = ? LIMIT 1",
+            [ticketId]
+        );
         await queueCreatedNotifications(conn, {
             ...reopened,
             observation: `Caso reabierto: ${message}`,
-        }, { eventKey: "reopened" });
+        }, {
+            eventKey: "reopened",
+            // Reuse the evidence already stored with the original case so a
+            // reopened notification keeps the same context in Telegram.
+            attachmentFile: attachment?.attachment_file || null,
+        });
         await conn.commit();
 
         res.json({ ok: true, ticket: reopened });
@@ -799,10 +872,19 @@ router.get("/support/tickets/:id/attachment", requireAuth, async (req, res) => {
         if (!rows.length) return res.status(404).json({ message: "Evidencia no encontrada." });
         const ticket = rows[0];
         res.setHeader("Cache-Control", "private, no-store");
-        res.setHeader("Content-Type", ticket.attachment_mime);
+        const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
+        const contentType = allowedMimeTypes.has(String(ticket.attachment_mime || "").toLowerCase())
+            ? String(ticket.attachment_mime).toLowerCase()
+            : "application/octet-stream";
+        const fileName = String(ticket.attachment_name || "evidencia")
+            .replace(/[^a-zA-Z0-9._ -]/g, "_")
+            .slice(0, 120) || "evidencia";
+        res.setHeader("Content-Type", contentType);
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
         res.setHeader(
             "Content-Disposition",
-            `inline; filename="${String(ticket.attachment_name || "evidencia").replace(/["\r\n]/g, "")}"`
+            `${contentType === "application/octet-stream" ? "attachment" : "inline"}; filename="${fileName}"`
         );
         return res.sendFile(resolveSupportAttachment(ticket.attachment_file));
     } catch (error) {
@@ -1095,7 +1177,7 @@ router.post(
         const conn = await pool.getConnection();
         try {
             await conn.beginTransaction();
-            const current = await getTicketById(conn, ticketId, { forUpdate: true });
+            let current = await getTicketById(conn, ticketId, { forUpdate: true });
             if (!current) {
                 await conn.rollback();
                 return res.status(404).json({ message: "Caso no encontrado." });
@@ -1113,6 +1195,16 @@ router.post(
                     replacementAccountId,
                     adminUserId: req.user.id,
                 });
+            }
+
+            const managementExtension = await grantManagementExtension(conn, {
+                ticketId,
+                subscriptionId: current.subscriptionId,
+                closedAt: new Date(),
+            });
+            current = await getTicketById(conn, ticketId, { forUpdate: true });
+
+            if (resolutionType === "replaced") {
                 resolutionMessage = await buildReplacementResolutionMessage(conn, {
                     ticket: current,
                     replacement,
@@ -1156,13 +1248,152 @@ router.post(
             await queueResolvedNotification(conn, ticket);
             await conn.commit();
 
-            return res.json({ ok: true, ticket, mail: { ok: true, delivery: "queued" } });
+            return res.json({
+                ok: true,
+                ticket,
+                managementExtension,
+                mail: { ok: true, delivery: "queued" },
+            });
         } catch (error) {
             await conn.rollback().catch(() => {});
             console.error("[support] Resolve ticket error:", error);
             return res.status(error?.status || 500).json({
                 code: error?.code || undefined,
                 message: error?.status ? error.message : "No se pudo cerrar el caso.",
+            });
+        } finally {
+            conn.release();
+        }
+    }
+);
+
+router.patch(
+    "/admin/support-tickets/:id/reopen",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+        const ticketId = Number(req.params.id);
+        const message = String(req.body?.message || "Caso reabierto por administracion.").trim();
+
+        if (!Number.isFinite(ticketId) || ticketId <= 0) {
+            return res.status(400).json({ message: "Caso invalido." });
+        }
+        if (message.length > 3000) {
+            return res.status(400).json({ message: "La nota de reapertura no puede superar 3000 caracteres." });
+        }
+
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const current = await getTicketById(conn, ticketId, { forUpdate: true });
+            if (!current) {
+                await conn.rollback();
+                return res.status(404).json({ message: "Caso no encontrado." });
+            }
+            if (current.status !== "resolved") {
+                await conn.rollback();
+                return res.status(409).json({ message: "Solo se pueden reabrir casos resueltos." });
+            }
+
+            await conn.query(
+                `UPDATE support_tickets
+                    SET status = 'open',
+                        resolution_type = NULL,
+                        resolution_subtype = NULL,
+                        resolution_message = NULL,
+                        resolved_by_user_id = NULL,
+                        resolved_at = NULL
+                  WHERE id = ?`,
+                [ticketId]
+            );
+            const [eventResult] = await conn.query(
+                `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
+                 VALUES (?, ?, 'admin_reopened', ?)`,
+                [ticketId, req.user.id, message]
+            );
+            const ticket = await getTicketById(conn, ticketId);
+            await conn.commit();
+
+            return res.json({
+                ok: true,
+                ticket,
+                eventId: Number(eventResult.insertId),
+            });
+        } catch (error) {
+            await conn.rollback().catch(() => {});
+            console.error("[support] Admin reopen ticket error:", error);
+            return res.status(500).json({ message: "No se pudo reabrir el caso." });
+        } finally {
+            conn.release();
+        }
+    }
+);
+
+router.patch(
+    "/admin/support-tickets/:id/response",
+    requireAuth,
+    requireRole("admin"),
+    async (req, res) => {
+        const ticketId = Number(req.params.id);
+        const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
+        const resolutionSubtype = normalizeResolutionSubtype(req.body?.resolutionSubtype);
+        const resolutionMessage = String(req.body?.resolutionMessage || "").trim();
+
+        if (!Number.isFinite(ticketId) || ticketId <= 0) {
+            return res.status(400).json({ message: "Caso invalido." });
+        }
+        if (!["repaired", "replaced", "other"].includes(resolutionType)) {
+            return res.status(400).json({ message: "Selecciona el tipo de cierre de la respuesta." });
+        }
+        if (resolutionMessage.length < 10 || resolutionMessage.length > 3000) {
+            return res.status(400).json({
+                message: "La respuesta final debe tener entre 10 y 3000 caracteres.",
+            });
+        }
+
+        const conn = await pool.getConnection();
+        try {
+            await conn.beginTransaction();
+            const current = await getTicketById(conn, ticketId, { forUpdate: true });
+            if (!current) {
+                await conn.rollback();
+                return res.status(404).json({ message: "Caso no encontrado." });
+            }
+            if (current.status !== "resolved") {
+                await conn.rollback();
+                return res.status(409).json({ message: "Solo se puede editar la respuesta de un caso resuelto." });
+            }
+
+            await conn.query(
+                `UPDATE support_tickets
+                    SET resolution_type = ?,
+                        resolution_subtype = ?,
+                        resolution_message = ?,
+                        resolved_by_user_id = ?
+                  WHERE id = ?`,
+                [resolutionType, resolutionSubtype, resolutionMessage, req.user.id, ticketId]
+            );
+            const [eventResult] = await conn.query(
+                `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
+                 VALUES (?, ?, 'response_edited', ?)`,
+                [ticketId, req.user.id, resolutionMessage]
+            );
+            const ticket = await getTicketById(conn, ticketId);
+            await queueResolvedNotification(conn, ticket, {
+                eventKey: `edited-${Number(eventResult.insertId)}`,
+            });
+            await conn.commit();
+
+            return res.json({
+                ok: true,
+                ticket,
+                mail: { ok: true, delivery: "queued" },
+            });
+        } catch (error) {
+            await conn.rollback().catch(() => {});
+            console.error("[support] Admin edit response error:", error);
+            return res.status(error?.status || 500).json({
+                message: error?.status ? error.message : "No se pudo editar la respuesta.",
             });
         } finally {
             conn.release();

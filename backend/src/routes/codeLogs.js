@@ -65,6 +65,7 @@ router.get("/admin/code-logs", requireAuth, requireRole("admin"), async (req, re
         cd.id,
         cd.order_id,
         cd.platform_slug,
+        cd.action,
         cd.order_email,
         cd.delivered_code,
         cd.status,

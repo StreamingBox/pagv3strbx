@@ -1,6 +1,58 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
+const axios = require("axios");
 const { __test } = require("../src/services/netflixFlowService");
+
+test("Netflix approval only succeeds after the final confirmation page", async () => {
+    const originalAdapter = axios.defaults.adapter;
+    axios.defaults.adapter = async (config) => ({
+        data: "<h1>Todo listo</h1><p>Ya puedes disfrutar de Netflix en tu JVC - Smart TV.</p>",
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+        request: { res: { responseUrl: "https://www.netflix.com/ilum?code=abc123" } },
+    });
+
+    try {
+        const result = await __test.scrapeApproveLink(
+            "https://www.netflix.com/ilum?code=abc123",
+            "JVC - Smart TV"
+        );
+
+        assert.deepEqual(result, {
+            ok: true,
+            type: "approval",
+            deviceName: "JVC - Smart TV",
+        });
+    } finally {
+        axios.defaults.adapter = originalAdapter;
+    }
+});
+
+test("Netflix approval does not report success for an unconfirmed page", async () => {
+    const originalAdapter = axios.defaults.adapter;
+    axios.defaults.adapter = async (config) => ({
+        data: '<div id="appMountPoint"></div>',
+        status: 200,
+        statusText: "OK",
+        headers: {},
+        config,
+        request: { res: { responseUrl: "https://www.netflix.com/ilum?code=abc123" } },
+    });
+
+    try {
+        const result = await __test.scrapeApproveLink(
+            "https://www.netflix.com/ilum?code=abc123",
+            "JVC - Smart TV"
+        );
+
+        assert.equal(result.ok, false);
+        assert.equal(result.status, "not_confirmed");
+    } finally {
+        axios.defaults.adapter = originalAdapter;
+    }
+});
 
 test("Netflix approval parser detects pending approval pages", () => {
     const html = `
@@ -30,6 +82,23 @@ test("Netflix approval parser recognizes confirmed approval text", () => {
 
     assert.equal(__test.pageLooksApproved(html), true);
     assert.equal(__test.pageNeedsApproval(html), false);
+});
+
+test("Netflix approval parser does not expire a fresh page because of generic help text", () => {
+    const html = `
+        <h1>Aprueba la nueva solicitud de inicio de sesión</h1>
+        <p>Si no reconoces la solicitud, ignora este email o solicita uno nuevo.</p>
+        <a href="https://www.netflix.com/ilum?code=abc123">Aprobar</a>
+    `;
+
+    assert.equal(__test.pageLooksExpired(html), false);
+    assert.equal(__test.pageNeedsApproval(html), true);
+});
+
+test("Netflix approval parser still detects an explicitly expired approval link", () => {
+    const html = "<p>El enlace de aprobación de Netflix ya no es válido.</p>";
+
+    assert.equal(__test.pageLooksExpired(html), true);
 });
 
 test("Netflix approval parser recognizes the current all-set approval page", () => {
@@ -93,6 +162,32 @@ test("Netflix approval parser accepts the current ilum approval link format", ()
     assert.equal(__test.isNetflixDirectApprovalUrl("https://www.netflix.com/ilum?code=6sHzU5Kj"), true);
 });
 
+test("Netflix approval parser never selects a reject ilum link", () => {
+    const html = `
+        <a href="https://www.netflix.com/ilum?code=reject123&action=reject">Rechazar</a>
+        <a href="https://www.netflix.com/ilum?code=approve123">Aprobar</a>
+    `;
+
+    assert.equal(
+        __test.findNetflixButtonLink(html, ["aprobar", "approve"], ["netflix.com/ilum", "/ilum"]),
+        "https://www.netflix.com/ilum?code=approve123"
+    );
+    assert.equal(
+        __test.getSafeNetflixApprovalUrl("https://www.netflix.com/ilum?code=reject123&action=reject"),
+        ""
+    );
+});
+
+test("Netflix approval action only accepts an exact secure Netflix ilum URL", () => {
+    const valid = "https://www.netflix.com/ilum?code=abc123";
+
+    assert.equal(__test.getSafeNetflixApprovalUrl(valid), valid);
+    assert.equal(__test.getSafeNetflixApprovalUrl("http://www.netflix.com/ilum?code=abc123"), "");
+    assert.equal(__test.getSafeNetflixApprovalUrl("https://www.netflix.com.evil.example/ilum?code=abc123"), "");
+    assert.equal(__test.getSafeNetflixApprovalUrl("https://www.netflix.com/account/approve?code=abc123"), "");
+    assert.equal(__test.getSafeNetflixApprovalUrl("https://www.netflix.com/ilum"), "");
+});
+
 test("Netflix approval parser extracts the device name before the date line", () => {
     const text = [
         "Hola, Profile One:",
@@ -104,4 +199,29 @@ test("Netflix approval parser extracts the device name before the date line", ()
     ].join("\n");
 
     assert.equal(__test.extractApprovalDeviceName(text), "JVC - Smart TV");
+});
+
+test("Netflix flow detects when a login-code email is requested as temporary access", () => {
+    assert.equal(
+        __test.detectNetflixActionMismatch("Netflix: Tu codigo de inicio de sesion", "temporary"),
+        "code"
+    );
+});
+
+test("Netflix flow detects when an approval email is requested as a login code", () => {
+    assert.equal(
+        __test.detectNetflixActionMismatch("Netflix: Nueva solicitud de inicio de sesion", "code"),
+        "approve"
+    );
+});
+
+test("Netflix flow keeps approval emails classified as approval when requested", () => {
+    assert.equal(
+        __test.detectNetflixActionMismatch("Netflix: Nueva solicitud de inicio de sesion", "approve"),
+        ""
+    );
+    assert.equal(
+        __test.detectNetflixSubjectAction("Netflix: Nueva solicitud de inicio de sesion"),
+        "approve"
+    );
 });

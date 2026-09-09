@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Camera, CheckCircle2, Clock3, Headphones, ImagePlus, Send, Wrench } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Camera, CheckCircle2, Clock3, Headphones, ImagePlus, LoaderCircle, RefreshCw, Send, Trash2, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { apiFetch, buildApiUrl } from "../api/api.js";
@@ -22,6 +22,8 @@ const RESULT = {
 };
 
 const PAGE_SIZE = 5;
+const MAX_EVIDENCE_BYTES = 6 * 1024 * 1024;
+const ALLOWED_EVIDENCE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 function formatDate(value) {
     if (!value) return "-";
@@ -30,6 +32,11 @@ function formatDate(value) {
         timeStyle: "short",
         timeZone: "America/Bogota",
     }).format(new Date(value));
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function Support() {
@@ -47,8 +54,12 @@ export default function Support() {
     const [loadingMore, setLoadingMore] = useState(false);
     const [sending, setSending] = useState(false);
     const [reopeningId, setReopeningId] = useState(null);
+    const [evidenceError, setEvidenceError] = useState("");
+    const [isEvidenceLoading, setIsEvidenceLoading] = useState(false);
+    const [isDraggingEvidence, setIsDraggingEvidence] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const evidenceInputRef = useRef(null);
 
     const loadTickets = useCallback(async ({ offset = 0, append = false } = {}) => {
         if (append) setLoadingMore(true);
@@ -81,14 +92,79 @@ export default function Support() {
     useEffect(() => {
         if (!evidence) {
             setPreview("");
+            setIsEvidenceLoading(false);
             return undefined;
         }
-        const url = URL.createObjectURL(evidence);
-        setPreview(url);
-        return () => URL.revokeObjectURL(url);
+        const reader = new FileReader();
+        let active = true;
+        reader.onload = () => {
+            if (active) setPreview(String(reader.result || ""));
+        };
+        reader.onerror = () => {
+            if (!active) return;
+            setPreview("");
+            setIsEvidenceLoading(false);
+            setEvidenceError("No se pudo preparar la imagen para la vista previa.");
+            setEvidence(null);
+            if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+        };
+        reader.readAsDataURL(evidence);
+        return () => {
+            active = false;
+            reader.abort();
+        };
     }, [evidence]);
 
     const openCount = useMemo(() => openTicketsCount, [openTicketsCount]);
+
+    function selectEvidence(file) {
+        if (!file) return;
+        const type = String(file.type || "").toLowerCase();
+        if (!ALLOWED_EVIDENCE_TYPES.has(type)) {
+            setEvidence(null);
+            setIsEvidenceLoading(false);
+            setEvidenceError("La evidencia debe ser una imagen JPG, PNG o WEBP.");
+            if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+            return;
+        }
+        if (file.size > MAX_EVIDENCE_BYTES) {
+            setEvidence(null);
+            setIsEvidenceLoading(false);
+            setEvidenceError("La imagen supera el límite de 6 MB.");
+            if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+            return;
+        }
+        setEvidenceError("");
+        setError("");
+        setIsEvidenceLoading(true);
+        setEvidence(file);
+    }
+
+    function removeEvidence(event) {
+        event.stopPropagation();
+        setEvidence(null);
+        setIsEvidenceLoading(false);
+        setEvidenceError("");
+        if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+    }
+
+    function openEvidencePicker(event) {
+        event.stopPropagation();
+        evidenceInputRef.current?.click();
+    }
+
+    function handleEvidenceKeyDown(event) {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            evidenceInputRef.current?.click();
+        }
+    }
+
+    function handleEvidenceDrop(event) {
+        event.preventDefault();
+        setIsDraggingEvidence(false);
+        if (!sending) selectEvidence(event.dataTransfer.files?.[0]);
+    }
 
     async function submitTicket(event) {
         event.preventDefault();
@@ -104,7 +180,11 @@ export default function Support() {
             return;
         }
         if (!evidence) {
-            setError("Adjunta una foto donde se vea el error.");
+            setError(evidenceError || "Adjunta una foto donde se vea el error.");
+            return;
+        }
+        if (isEvidenceLoading) {
+            setError("Espera a que la imagen termine de cargar antes de enviarla.");
             return;
         }
 
@@ -134,6 +214,9 @@ export default function Support() {
         setSubscriptionId("");
         setObservation("");
         setEvidence(null);
+        setIsEvidenceLoading(false);
+        setEvidenceError("");
+        if (evidenceInputRef.current) evidenceInputRef.current.value = "";
         await loadTickets();
     }
 
@@ -232,30 +315,100 @@ export default function Support() {
                                 <small>{observation.length}/2000</small>
                             </label>
 
-                            <label className="support-upload support-field--evidence">
+                            <div
+                                className={`support-upload support-field--evidence${isDraggingEvidence ? " support-upload--dragging" : ""}${preview ? " support-upload--has-preview" : ""}${isEvidenceLoading ? " support-upload--loading" : ""}`}
+                                role="button"
+                                tabIndex={sending ? -1 : 0}
+                                aria-label={preview ? "Cambiar foto de evidencia" : "Adjuntar foto del error"}
+                                onClick={openEvidencePicker}
+                                onKeyDown={handleEvidenceKeyDown}
+                                onDragEnter={(event) => {
+                                    event.preventDefault();
+                                    if (!sending) setIsDraggingEvidence(true);
+                                }}
+                                onDragOver={(event) => event.preventDefault()}
+                                onDragLeave={(event) => {
+                                    if (!event.relatedTarget || !event.currentTarget.contains(event.relatedTarget)) {
+                                        setIsDraggingEvidence(false);
+                                    }
+                                }}
+                                onDrop={handleEvidenceDrop}
+                            >
                                 <input
+                                    ref={evidenceInputRef}
                                     type="file"
                                     accept="image/jpeg,image/png,image/webp"
-                                    onChange={(event) => setEvidence(event.target.files?.[0] || null)}
+                                    onChange={(event) => selectEvidence(event.target.files?.[0])}
+                                    onClick={(event) => event.stopPropagation()}
                                     disabled={sending}
                                 />
-                                {preview ? (
-                                    <img src={preview} alt="Vista previa de la evidencia" />
+                                {preview || isEvidenceLoading ? (
+                                    <div className="support-upload__preview">
+                                        {preview ? (
+                                            <img
+                                                src={preview}
+                                                alt="Vista previa de la evidencia"
+                                                onLoad={() => window.setTimeout(() => setIsEvidenceLoading(false), 520)}
+                                                onError={() => {
+                                                    setIsEvidenceLoading(false);
+                                                    setEvidenceError("No se pudo cargar la vista previa de la imagen.");
+                                                    setEvidence(null);
+                                                    if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+                                                }}
+                                            />
+                                        ) : null}
+                                        {isEvidenceLoading ? (
+                                            <div className="support-upload__loading" aria-live="polite">
+                                                <LoaderCircle size={28} aria-hidden />
+                                                <strong>Cargando imagen...</strong>
+                                                <span className="support-upload__loading-track" aria-hidden>
+                                                    <span />
+                                                </span>
+                                                <small>Espera un momento</small>
+                                            </div>
+                                        ) : null}
+                                        {preview ? (
+                                            <div className="support-upload__preview-bar">
+                                                <span title={evidence?.name || "Imagen seleccionada"}>
+                                                    {evidence?.name || "Imagen seleccionada"}{evidence ? ` · ${formatFileSize(evidence.size)}` : ""}
+                                                </span>
+                                                <div className="support-upload__actions">
+                                                    <button type="button" className="support-upload__change" onClick={openEvidencePicker} disabled={sending}>
+                                                        <RefreshCw size={15} aria-hidden />
+                                                        Cambiar
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="support-upload__remove"
+                                                        onClick={removeEvidence}
+                                                        disabled={sending}
+                                                        title="Quitar evidencia"
+                                                        aria-label="Quitar evidencia"
+                                                    >
+                                                        <Trash2 size={16} aria-hidden />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
                                 ) : (
                                     <span className="support-upload__empty">
                                         <ImagePlus aria-hidden />
                                         <strong>Adjuntar foto del error</strong>
                                         <small>JPG, PNG o WEBP. Máximo 6 MB.</small>
+                                        <em>Arrastra la imagen aquí o haz clic para buscarla</em>
                                     </span>
                                 )}
-                                {preview ? <span className="support-upload__change">Cambiar imagen</span> : null}
-                            </label>
+                                {isDraggingEvidence ? <span className="support-upload__drag-label">Suelta la imagen para adjuntarla</span> : null}
+                            </div>
+
+                            {evidenceError ? <div className="support-message support-message--error support-message--evidence">{evidenceError}</div> : null}
 
                             {error ? <div className="support-message support-message--error">{error}</div> : null}
                             {success ? <div className="support-message support-message--success">{success}</div> : null}
 
                             <div className="support-form__actions">
-                                <button type="submit" className="support-primary-button" disabled={sending}>
+                                <button type="submit" className="support-primary-button" disabled={sending || isEvidenceLoading}>
                                     <Send size={18} aria-hidden />
                                     {sending ? "Enviando..." : "Enviar solicitud"}
                                 </button>
@@ -303,6 +456,9 @@ export default function Support() {
                                             <div className="support-resolution">
                                                 <strong>{RESULT[ticket.resolutionType] || "Caso resuelto"}</strong>
                                                 <p style={{ whiteSpace: "pre-line" }}>{ticket.resolutionMessage}</p>
+                                                {ticket.managementExtensionDays > 0 ? (
+                                                    <span>Se agrego 1 dia por superar 5 horas de gestion.</span>
+                                                ) : null}
                                                 <span>{formatDate(ticket.resolvedAt)}</span>
                                                 {ticket.canReopen ? (
                                                     <button

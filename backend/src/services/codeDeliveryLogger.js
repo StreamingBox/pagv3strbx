@@ -1,6 +1,11 @@
 const pool = require("../db");
 
-function createCodeLogger({ req, orderNumber, platformSlug }) {
+function normalizeCodeAction(action) {
+    const normalized = String(action || "code").trim().toLowerCase();
+    return ["temporary", "approve"].includes(normalized) ? normalized : "code";
+}
+
+function createCodeLogger({ req, orderNumber, platformSlug, action }) {
     const requestedByUserId = req.user?.id || null;
     const role = req.user?.role || "user";
     const isAdmin = String(role).toLowerCase() === "admin";
@@ -12,6 +17,7 @@ function createCodeLogger({ req, orderNumber, platformSlug }) {
         requested_by_user_id: requestedByUserId,
         order_id: Number(orderNumber),
         platform_slug: String(platformSlug || ""),
+        action: normalizeCodeAction(action),
         order_email: "",
         requester_ip: String(requesterIp || ""),
         user_agent: userAgent,

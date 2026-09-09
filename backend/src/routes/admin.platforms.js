@@ -134,7 +134,8 @@ router.delete("/admin/platform-fallbacks/:id", requireAuth, requireRole("admin")
 router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, res) => {
     const {
         name, slug, category_id, type,
-        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
+        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details,
+        is_event_link, event_link_unit_cost, event_link_monthly_cost
     } = req.body || {};
 
     if (!name || !slug) {
@@ -146,16 +147,24 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
     const showPromoLastUnits = promoEnabled && show_promo_last_units ? 1 : 0;
     const isNewProduct = is_new_product ? 1 : 0;
     const showDeviceRule = show_device_rule === undefined ? 1 : (show_device_rule ? 1 : 0);
+    const isEventLink = is_event_link ? 1 : 0;
+    const eventLinkUnitCost = Number.isFinite(Number(event_link_unit_cost)) && Number(event_link_unit_cost) >= 0
+        ? Number(Number(event_link_unit_cost).toFixed(2))
+        : 3000;
+    const eventLinkMonthlyCost = Number.isFinite(Number(event_link_monthly_cost)) && Number(event_link_monthly_cost) >= 0
+        ? Number(Number(event_link_monthly_cost).toFixed(2))
+        : 20000;
 
     let r;
     try {
         [r] = await pool.query(
             `INSERT INTO platforms (
                 name, slug, category_id, type, is_active, allowed_currencies,
-                is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
+                is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details,
+                is_event_link, event_link_unit_cost, event_link_monthly_cost
              )
-             VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?)`,
-            [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showPromoLastUnits, isNewProduct, showDeviceRule, normalizeProductDetails(product_details)]
+             VALUES (?, ?, ?, ?, 1, 'COP,MXN,USD', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [name, slug, category_id ?? null, type ?? 'normal', promoEnabled, promoColor, showPromoLastUnits, isNewProduct, showDeviceRule, normalizeProductDetails(product_details), isEventLink, eventLinkUnitCost, eventLinkMonthlyCost]
         );
     } catch (error) {
         if (isDuplicateEntry(error)) {
@@ -177,7 +186,10 @@ router.post("/admin/platforms", requireAuth, requireRole("admin"), async (req, r
         show_promo_last_units: showPromoLastUnits,
         is_new_product: isNewProduct,
         show_device_rule: showDeviceRule,
-        product_details: normalizeProductDetails(product_details)
+        product_details: normalizeProductDetails(product_details),
+        is_event_link: isEventLink,
+        event_link_unit_cost: eventLinkUnitCost,
+        event_link_monthly_cost: eventLinkMonthlyCost
     });
 });
 
@@ -187,7 +199,8 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
 
     const {
         name, slug, is_active, category_id, type, allowed_currencies,
-        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details
+        is_promo, promo_color, show_promo_last_units, is_new_product, show_device_rule, product_details,
+        is_event_link, event_link_unit_cost, event_link_monthly_cost
     } = req.body || {};
 
     let allowedCurrenciesCSV = undefined;
@@ -224,6 +237,17 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
     const showDeviceRule = show_device_rule !== undefined ? (show_device_rule ? 1 : 0) : null;
     const hasProductDetails = Object.prototype.hasOwnProperty.call(req.body || {}, "product_details");
     const productDetails = hasProductDetails ? normalizeProductDetails(product_details) : null;
+    const hasEventLinkFlag = Object.prototype.hasOwnProperty.call(req.body || {}, "is_event_link");
+    const eventLinkFlag = hasEventLinkFlag ? (is_event_link ? 1 : 0) : null;
+    const hasEventLinkUnitCost = Object.prototype.hasOwnProperty.call(req.body || {}, "event_link_unit_cost");
+    const hasEventLinkMonthlyCost = Object.prototype.hasOwnProperty.call(req.body || {}, "event_link_monthly_cost");
+    const eventLinkUnitCost = hasEventLinkUnitCost ? Number(event_link_unit_cost) : null;
+    const eventLinkMonthlyCost = hasEventLinkMonthlyCost ? Number(event_link_monthly_cost) : null;
+
+    if ((hasEventLinkUnitCost && (!Number.isFinite(eventLinkUnitCost) || eventLinkUnitCost < 0))
+        || (hasEventLinkMonthlyCost && (!Number.isFinite(eventLinkMonthlyCost) || eventLinkMonthlyCost < 0))) {
+        return res.status(400).json({ message: "Los costos por evento deben ser valores COP iguales o mayores a cero." });
+    }
 
     try {
         await pool.query(
@@ -242,6 +266,9 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
              END,
              is_new_product = COALESCE(?, is_new_product),
              show_device_rule = COALESCE(?, show_device_rule),
+             is_event_link = COALESCE(?, is_event_link),
+             event_link_unit_cost = CASE WHEN ? = 1 THEN ? ELSE event_link_unit_cost END,
+             event_link_monthly_cost = CASE WHEN ? = 1 THEN ? ELSE event_link_monthly_cost END,
              product_details = CASE WHEN ? = 1 THEN ? ELSE product_details END,
              promo_color = CASE
                 WHEN ? = 0 THEN NULL
@@ -262,6 +289,11 @@ router.patch("/admin/platforms/:id", requireAuth, requireRole("admin"), async (r
                 promoLastUnitsFlag,
                 newProductFlag,
                 showDeviceRule,
+                eventLinkFlag,
+                hasEventLinkUnitCost ? 1 : 0,
+                hasEventLinkUnitCost ? Number(eventLinkUnitCost.toFixed(2)) : null,
+                hasEventLinkMonthlyCost ? 1 : 0,
+                hasEventLinkMonthlyCost ? Number(eventLinkMonthlyCost.toFixed(2)) : null,
                 hasProductDetails ? 1 : 0,
                 productDetails,
                 promoFlag,

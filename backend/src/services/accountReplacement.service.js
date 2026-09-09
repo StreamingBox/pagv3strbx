@@ -49,6 +49,8 @@ async function replaceSubscriptionAccount({
     const resolvedAccount = await findAvailableAccountForPlatform(conn, subscription.platform_id, {
         accountId: replacementAccountId || null,
         excludeAccountId: subscription.platform_account_id,
+        excludeAccountEmail: subscription.old_account_email,
+        excludeInactiveMasterAccounts: true,
         additionalPlatformIds: [
             subscription.delivered_platform_id,
             subscription.account_platform_id,
@@ -77,7 +79,8 @@ async function replaceSubscriptionAccount({
     );
     await conn.query(
         `UPDATE subscriptions
-            SET platform_account_id = ?, delivered_platform_id = ?, is_attended = 0
+            SET platform_account_id = ?, delivered_platform_id = ?,
+                is_attended = 0, expiration_hidden_at = NULL
           WHERE id = ?`,
         [newAccount.id, resolvedAccount.deliveredPlatformId, subscriptionId]
     );

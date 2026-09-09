@@ -1,3 +1,6 @@
+const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
+const { excludeInactiveMasterAccountByEmailSql } = require("./expirationVisibility.service");
+
 async function getPlatformFallbacks(conn, sourcePlatformId = null) {
     const params = [];
     const where = [];
@@ -26,7 +29,7 @@ async function getPlatformFallbacks(conn, sourcePlatformId = null) {
             SELECT platform_id, COUNT(*) AS stock
             FROM platform_accounts
             WHERE status = 'available'
-              AND (expires_at IS NULL OR DATE(DATE_SUB(expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+              AND (expires_at IS NULL OR ${bogotaDateSql("expires_at")} >= ${BOGOTA_TODAY_SQL})
             GROUP BY platform_id
          ) stock ON stock.platform_id = pf.fallback_platform_id
          ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
@@ -77,6 +80,8 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     const requestedPlatformId = Number(platformId);
     const excludeAccountId = Number(options.excludeAccountId || 0);
     const specificAccountId = Number(options.accountId || 0);
+    const excludeAccountEmail = String(options.excludeAccountEmail || "").trim().toLowerCase();
+    const excludeInactiveMasterAccounts = options.excludeInactiveMasterAccounts === true;
 
     if (!Number.isInteger(requestedPlatformId) || requestedPlatformId <= 0) {
         const err = new Error("platformId invalido.");
@@ -91,6 +96,18 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     );
     const candidatePlatformIds = candidatePlatforms.map((candidate) => candidate.platformId);
     const candidatePlaceholders = candidatePlatformIds.map(() => "?").join(",");
+    const replacementFilters = [];
+    const replacementParams = [];
+    if (excludeInactiveMasterAccounts) {
+        replacementFilters.push(excludeInactiveMasterAccountByEmailSql({ accountAlias: "pa" }));
+    }
+    if (excludeAccountEmail) {
+        replacementFilters.push("LOWER(TRIM(COALESCE(pa.email, ''))) <> ?");
+        replacementParams.push(excludeAccountEmail);
+    }
+    const replacementFilterSql = replacementFilters.length
+        ? ` AND ${replacementFilters.join(" AND ")}`
+        : "";
 
     if (specificAccountId > 0) {
         const [specificRows] = await conn.query(
@@ -102,10 +119,11 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
                AND pa.status = 'available'
                AND pa.id <> ?
                AND pa.platform_id IN (${candidatePlaceholders})
-               AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+               AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})
+               ${replacementFilterSql}
              LIMIT 1
              FOR UPDATE`,
-            [specificAccountId, excludeAccountId || 0, ...candidatePlatformIds]
+            [specificAccountId, excludeAccountId || 0, ...candidatePlatformIds, ...replacementParams]
         );
 
         return specificRows[0]
@@ -126,11 +144,12 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
          WHERE pa.status = 'available'
            AND pa.id <> ?
            AND pa.platform_id IN (${candidatePlaceholders})
-           AND (pa.expires_at IS NULL OR DATE(DATE_SUB(pa.expires_at, INTERVAL 5 HOUR)) >= DATE(DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 HOUR)))
+           AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})
+           ${replacementFilterSql}
          ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), RAND(), pa.id ASC
          LIMIT 1
          FOR UPDATE`,
-        [excludeAccountId || 0, ...candidatePlatformIds, ...candidatePlatformIds]
+        [excludeAccountId || 0, ...candidatePlatformIds, ...candidatePlatformIds, ...replacementParams]
     );
 
     return rows[0]

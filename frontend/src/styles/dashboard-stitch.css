@@ -456,6 +456,16 @@
     color: #9a3412;
 }
 
+:root[data-theme="light"] .catalog-card__price-drop-title strong {
+    color: #7c2d12;
+    background: #fed7aa;
+    border: 1px solid #fb923c;
+    border-radius: 999px;
+    padding: 2px 5px;
+    font-weight: 950;
+    text-shadow: none;
+}
+
 :root[data-theme="light"] .catalog-card__price-drop-before {
     color: #7c2d12;
 }

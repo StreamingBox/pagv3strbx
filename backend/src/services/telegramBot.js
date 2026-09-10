@@ -195,6 +195,42 @@ function money(n) {
 function escMd(text) {
     return String(text || "").replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
 }
+
+function signedMoney(value) {
+    const amount = Number(value || 0);
+    const formatted = money(Math.abs(amount));
+    return amount < 0 ? `-${formatted}` : formatted;
+}
+
+function buildSaleNotificationMessage({
+    seller,
+    platforms,
+    total,
+    currency,
+    newBalance,
+    orderCode,
+    costTotal,
+    profitTotal,
+    costComplete,
+}) {
+    const sign = currency === "COP" ? "" : `${currency} `;
+    const costLabel = costTotal == null
+        ? "No registrado"
+        : `${sign}${signedMoney(costTotal)}${costComplete ? "" : " (incompleto)"}`;
+    const profitLabel = costComplete ? `${sign}${signedMoney(profitTotal)}` : "Pendiente";
+
+    return (
+        `🎯 *Nueva Venta*\n━━━━━━━━━━━━━\n` +
+        `👤 Vendedor: *${escMd(seller)}*\n` +
+        `📺 Plataforma: *${escMd((platforms || []).join(", "))}*\n` +
+        `💰 Total vendido: *${escMd(sign + money(total))}*\n` +
+        `🧾 Costo de cuenta: *${escMd(costLabel)}*\n` +
+        `📈 Ganancia: *${escMd(profitLabel)}*\n` +
+        `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
+        `🔑 Orden: \`${escMd(orderCode)}\``
+    );
+}
+
 function isAuthorized(chatId) {
     if (AUTHORIZED.size === 0) return true; // si no hay lista, abierto (dev)
     return AUTHORIZED.has(Number(chatId));
@@ -1201,25 +1237,78 @@ function buildSupportTicketMessage(ticket, baseUrl = basePublicUrl()) {
 
 /* ─── Notificación de venta ───────────────────────────────────── */
 
+async function loadSaleCostSummary(orderId) {
+    const id = Number(orderId);
+    if (!Number.isInteger(id) || id <= 0) return null;
+
+    const [[row]] = await pool.query(
+        `SELECT
+            o.total AS sale_total,
+            o.currency,
+            COUNT(oi.id) AS item_count,
+            SUM(CASE
+                WHEN oi.cost_amount > 0
+                 AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(o.currency)
+                THEN 1 ELSE 0
+            END) AS cost_item_count,
+            SUM(CASE
+                WHEN oi.cost_amount > 0
+                 AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(o.currency)
+                THEN oi.cost_amount ELSE 0
+            END) AS cost_total,
+            SUM(CASE
+                WHEN oi.cost_amount > 0
+                 AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(o.currency)
+                THEN oi.price - oi.cost_amount ELSE 0
+            END) AS profit_total
+           FROM orders o
+           JOIN order_items oi ON oi.order_id = o.id
+          WHERE o.id = ?
+          GROUP BY o.id, o.total, o.currency`,
+        [id]
+    );
+
+    if (!row) return null;
+    const itemCount = Number(row.item_count || 0);
+    const costItemCount = Number(row.cost_item_count || 0);
+    return {
+        total: Number(row.sale_total || 0),
+        currency: row.currency || "COP",
+        costTotal: costItemCount > 0 ? Number(row.cost_total || 0) : null,
+        profitTotal: Number(row.profit_total || 0),
+        costComplete: itemCount > 0 && costItemCount === itemCount,
+    };
+}
+
 /**
  * Envía notificación de nueva venta a todos los chats autorizados.
- * @param {{ seller: string, platforms: string[], total: number, currency: string,
- *            discount: number, profit: number, newBalance: number,
- *            orderCode: string }} data
+ * El costo y la ganancia se leen desde order_items para usar el valor real
+ * registrado al cargar la cuenta vendida.
  */
-async function notifySale({ seller, platforms, total, currency, discount, profit, newBalance, orderCode }) {
+async function notifySale({ orderId, seller, platforms, total, currency, profit, newBalance, orderCode }) {
     if (!bot || AUTHORIZED.size === 0) return;
 
-    const sign = currency === "COP" ? "" : `${currency} `;
-    const msg =
-        `🎯 *Nueva Venta*\n━━━━━━━━━━━━━\n` +
-        `👤 Vendedor: *${escMd(seller)}*\n` +
-        `📺 Plataforma: *${escMd(platforms.join(", "))}*\n` +
-        `💰 Total: *${escMd(sign + money(total))}*\n` +
-        `⬇️ Descuento: *${escMd(sign + money(discount))}*\n` +
-        `💵 Ganancia: *${escMd(sign + money(profit))}*\n` +
-        `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
-        `🔑 Orden: \`${escMd(orderCode)}\``;
+    let summary = null;
+    try {
+        summary = await loadSaleCostSummary(orderId);
+    } catch (error) {
+        logger.warn("telegram_sale_cost_summary_failed", {
+            orderId,
+            error: error?.message || String(error),
+        });
+    }
+
+    const msg = buildSaleNotificationMessage({
+        seller,
+        platforms,
+        total: summary?.total ?? total,
+        currency: summary?.currency || currency,
+        newBalance,
+        orderCode,
+        costTotal: summary?.costTotal ?? null,
+        profitTotal: summary?.profitTotal ?? profit,
+        costComplete: summary?.costComplete ?? false,
+    });
 
     await notifyAuthorizedChats(msg, { parse_mode: "MarkdownV2" });
 }
@@ -1445,6 +1534,7 @@ function initBot() {
 module.exports = {
     initBot,
     notifySale,
+    buildSaleNotificationMessage,
     notifyRenewalSale,
     notifyManualTopupSubmitted,
     notifyManualTopupStatusChanged,

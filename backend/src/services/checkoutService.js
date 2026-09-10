@@ -519,6 +519,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             eventType: "sale",
             dedupeKey: `telegram-sale:${orderId}`,
             payload: {
+                orderId,
                 seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
                 platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
                 total,

@@ -64,6 +64,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         d.days,
 
         CASE WHEN ? = 1 THEN pp.lite_price_cop ELSE pp.price END AS price,
+        CASE WHEN ? = 1 THEN pp.previous_lite_price_cop ELSE pp.previous_price END AS previousPrice,
         CASE WHEN ? = 1 THEN 'COP' ELSE pp.currency END AS currency,
         pp.is_renewable,
 
@@ -147,7 +148,7 @@ router.get("/catalog", requireAuth, async (req, res) => {
         p.name ASC,
         d.days ASC
       `,
-      [liteFlag, liteFlag, liteFlag, liteFlag, ...aliases, ...aliases]
+      [liteFlag, liteFlag, liteFlag, liteFlag, liteFlag, ...aliases, ...aliases]
     );
 
     res.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
@@ -182,6 +183,7 @@ router.get("/debug-catalog", requireAuth, requireRole("admin"), async (req, res)
         d.id AS durationId,
         d.name AS durationName,
         pp.price,
+        pp.previous_price AS previousPrice,
         pp.currency,
         pp.is_renewable,
         CASE WHEN COALESCE(s.stock, 0) > 0 THEN COALESCE(s.stock, 0) ELSE COALESCE(fs.fallback_stock, 0) END AS stock,

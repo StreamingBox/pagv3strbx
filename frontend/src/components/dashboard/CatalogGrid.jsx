@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
-import { Flame, Info, ShoppingCart, Sparkles, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Flame, Info, ShoppingCart, Sparkles, TrendingDown, X } from "lucide-react";
+import { animate } from "animejs";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
@@ -80,6 +81,52 @@ function eventEndLabel(value) {
         hour: "numeric",
         minute: "2-digit",
     }).format(date);
+}
+
+function PriceDropBadge({ previousPrice, currency, percent }) {
+    const badgeRef = useRef(null);
+
+    useEffect(() => {
+        const node = badgeRef.current;
+        if (!node || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return undefined;
+
+        node.style.opacity = "0";
+        const entrance = animate(node, {
+            opacity: [0, 1],
+            scale: [0.92, 1],
+            translateY: [-8, 0],
+            duration: 650,
+            ease: "out(4)",
+        });
+        const pulse = animate(node, {
+            scale: [1, 1.025],
+            translateY: [0, -2],
+            duration: 1400,
+            ease: "inOut(2)",
+            delay: 900,
+            loop: true,
+            alternate: true,
+            loopDelay: 500,
+        });
+
+        return () => {
+            entrance.revert();
+            pulse.revert();
+        };
+    }, []);
+
+    return (
+        <div ref={badgeRef} className="catalog-card__price-drop" aria-label={`Precio rebajado ${percent} por ciento`}>
+            <div className="catalog-card__price-drop-title">
+                <TrendingDown size={13} aria-hidden="true" />
+                <span>¡BAJAMOS EL PRECIO!</span>
+                <strong>-{percent}%</strong>
+            </div>
+            <div className="catalog-card__price-drop-before">
+                Antes: <s>${previousPrice.toLocaleString("es-CO")} {displayCurrency(currency, "COP")}</s>
+            </div>
+        </div>
+    );
 }
 
 function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
@@ -187,6 +234,12 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const promoRing = hexToRgba(promoColor, 0.62);
                 const promoGlow = hexToRgba(promoColor, 0.28);
                 const promoGlowStrong = hexToRgba(promoColor, 0.44);
+                const currentPrice = Number(item.price || 0);
+                const previousPrice = Number(item.previousPrice ?? item.previous_price ?? 0);
+                const priceWasReduced = previousPrice > currentPrice && currentPrice >= 0;
+                const priceDropPercent = priceWasReduced
+                    ? Math.max(1, Math.round(((previousPrice - currentPrice) / previousPrice) * 100))
+                    : 0;
                 const showPromoLastUnits = isPromo
                     && !outOfStock
                     && (item.platformPromoLastUnits === 1 || item.platformPromoLastUnits === true);
@@ -197,7 +250,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 return (
                     <MotionDiv
                         key={item.platformPriceId}
-                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}${isPromo ? " catalog-card--promo" : ""}${isNewProduct ? " catalog-card--new" : ""}`}
+                        className={`catalog-card${outOfStock ? " catalog-card--out" : ""}${isPromo ? " catalog-card--promo" : ""}${isNewProduct ? " catalog-card--new" : ""}${priceWasReduced ? " catalog-card--price-drop" : ""}`}
                         style={isPromo ? {
                             "--promo-color": promoColor,
                             "--promo-ring": promoRing,
@@ -268,6 +321,13 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                 )}
                             </div>
                             <div className="catalog-card__duration">{item.durationName || "Por defecto"}</div>
+                            {priceWasReduced ? (
+                                <PriceDropBadge
+                                    previousPrice={previousPrice}
+                                    currency={item.currency}
+                                    percent={priceDropPercent}
+                                />
+                            ) : null}
                             {eventProduct && !outOfStock ? (
                                 <span className="badge badge--promo" style={{ color: "#e5e7eb", background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.28)" }}>
                                     Partido en vivo{eventEndsAt ? ` hasta ${eventEndsAt}` : ""}
@@ -318,7 +378,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                             <div className="catalog-card__price">
                                 <span className="catalog-card__price-symbol">$</span>
                                 <span className="catalog-card__price-amount">
-                                    {Number(item.price || 0).toLocaleString("es-CO")}
+                                    {currentPrice.toLocaleString("es-CO")}
                                 </span>
                                 <span className="catalog-card__price-currency">
                                     {displayCurrency(item.currency, "COP")}

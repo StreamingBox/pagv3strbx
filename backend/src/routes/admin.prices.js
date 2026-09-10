@@ -22,8 +22,10 @@ router.get("/admin/prices", requireAuth, requireRole("admin"), async (req, res) 
         d.name AS duration_name,
         d.days,
         pp.price,
+        pp.previous_price,
         pp.currency,
         pp.lite_price_cop,
+        pp.previous_lite_price_cop,
         pp.show_in_lite,
         pp.is_active,
         pp.created_at,
@@ -212,6 +214,11 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
           INSERT INTO platform_prices (platform_id, duration_id, price, currency, is_active, is_renewable)
           VALUES (?, ?, ?, ?, 1, ?)
           ON DUPLICATE KEY UPDATE
+            previous_price = CASE
+              WHEN VALUES(price) < price THEN price
+              WHEN VALUES(price) > price THEN NULL
+              ELSE previous_price
+            END,
             price = VALUES(price),
             is_active = 1,
             is_renewable = VALUES(is_renewable),
@@ -228,7 +235,12 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
             (platform_id, duration_id, price, currency, is_active, is_renewable, lite_price_cop, show_in_lite)
           VALUES (?, ?, ?, 'COP', 0, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
-            lite_price_cop = COALESCE(?, lite_price_cop),
+            previous_lite_price_cop = CASE
+              WHEN ? = 1 AND VALUES(lite_price_cop) < lite_price_cop THEN lite_price_cop
+              WHEN ? = 1 AND VALUES(lite_price_cop) > lite_price_cop THEN NULL
+              ELSE previous_lite_price_cop
+            END,
+            lite_price_cop = CASE WHEN ? = 1 THEN VALUES(lite_price_cop) ELSE lite_price_cop END,
             show_in_lite = COALESCE(?, show_in_lite),
             is_renewable = VALUES(is_renewable),
             updated_at = NOW()
@@ -240,7 +252,9 @@ router.post("/admin/prices/multi", requireAuth, requireRole("admin"), async (req
                     renewable,
                     hasLitePrice ? litePrice : null,
                     hasLiteVisibility ? liteVisible : 0,
-                    hasLitePrice ? litePrice : null,
+                    hasLitePrice ? 1 : 0,
+                    hasLitePrice ? 1 : 0,
+                    hasLitePrice ? 1 : 0,
                     hasLiteVisibility ? liteVisible : null,
                 ]
             );
@@ -286,18 +300,35 @@ router.patch("/admin/prices/:id", requireAuth, requireRole("admin"), async (req,
 
         await pool.query(
             `UPDATE platform_prices
-       SET price        = COALESCE(?, price),
+       SET previous_price = CASE
+             WHEN ? IS NULL THEN previous_price
+             WHEN ? < price THEN price
+             WHEN ? > price THEN NULL
+             ELSE previous_price
+           END,
+           price        = COALESCE(?, price),
+           previous_lite_price_cop = CASE
+             WHEN ? IS NULL THEN previous_lite_price_cop
+             WHEN ? < lite_price_cop THEN lite_price_cop
+             WHEN ? > lite_price_cop THEN NULL
+             ELSE previous_lite_price_cop
+           END,
+           lite_price_cop = COALESCE(?, lite_price_cop),
            is_active    = COALESCE(?, is_active),
            is_renewable = COALESCE(?, is_renewable),
-           lite_price_cop = COALESCE(?, lite_price_cop),
            show_in_lite = COALESCE(?, show_in_lite),
            updated_at   = NOW()
        WHERE id = ?`,
             [
                 price ?? null,
+                price ?? null,
+                price ?? null,
+                price ?? null,
+                lite_price_cop ?? null,
+                lite_price_cop ?? null,
+                lite_price_cop ?? null,
                 is_active ?? null,
                 is_renewable ?? null,
-                lite_price_cop ?? null,
                 show_in_lite === undefined ? null : (show_in_lite ? 1 : 0),
                 id,
             ]

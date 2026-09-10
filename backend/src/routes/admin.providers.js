@@ -415,6 +415,23 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
     }
 });
 
+router.delete("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Cuenta de proveedor inválida." });
+
+    try {
+        const [result] = await pool.query("DELETE FROM provider_accounts WHERE id = ?", [id]);
+        if (!result.affectedRows) return res.status(404).json({ message: "Cuenta de proveedor no encontrada." });
+        return res.json({ ok: true, deletedId: id });
+    } catch (error) {
+        if (String(error?.code || "").startsWith("ER_ROW_IS_REFERENCED")) {
+            return res.status(409).json({ message: "No se puede eliminar esta cuenta porque tiene información relacionada." });
+        }
+        console.error("[admin/provider-accounts] delete error", error);
+        return res.status(500).json({ message: "No se pudo eliminar la cuenta del proveedor." });
+    }
+});
+
 module.exports = router;
 module.exports.__testing = {
     accountPayload,

@@ -3,7 +3,7 @@ import { animate } from "animejs/animation";
 import { createScope } from "animejs/scope";
 import { stagger } from "animejs/utils";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, ChevronDown, Crown, Factory, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
+import { CalendarClock, ChevronDown, Crown, Factory, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -196,6 +196,7 @@ export default function AdminProviders() {
     const [savingProvider, setSavingProvider] = useState(false);
     const [savingAccount, setSavingAccount] = useState(false);
     const [renewingAccountId, setRenewingAccountId] = useState(null);
+    const [deletingAccountId, setDeletingAccountId] = useState(null);
     const [editingProviderId, setEditingProviderId] = useState(null);
     const [editingAccountId, setEditingAccountId] = useState(null);
     const [error, setError] = useState("");
@@ -371,6 +372,24 @@ export default function AdminProviders() {
             await load();
         } catch (requestError) {
             setError(requestError?.message || "No se pudo actualizar la cuenta.");
+        }
+    }
+
+    async function deleteAccount(account) {
+        const confirmed = window.confirm(`¿Eliminar definitivamente la cuenta #${account.id} (${account.accountEmail})? Esta acción no se puede deshacer.`);
+        if (!confirmed) return;
+
+        setDeletingAccountId(account.id);
+        setError("");
+        try {
+            await apiFetch(`/admin/provider-accounts/${account.id}`, { method: "DELETE" });
+            if (editingAccountId === account.id) cancelEditAccount();
+            showMessage(`Cuenta #${account.id} eliminada correctamente.`);
+            await load();
+        } catch (requestError) {
+            setError(requestError?.message || "No se pudo eliminar la cuenta del proveedor.");
+        } finally {
+            setDeletingAccountId(null);
         }
     }
 
@@ -747,7 +766,7 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
                                             <td style={{ padding: "13px 11px", color: active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{active ? "Activo" : "Inactivo"}</td>
-                                            <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button></div></td>
+                                            <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button><button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id} title="Eliminar cuenta duplicada" aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12 }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
                                         </tr>;
                                     })}
                                     {!visibleAccounts.length && <tr><td colSpan="9" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}

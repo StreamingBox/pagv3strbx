@@ -72,10 +72,13 @@ function pageLooksExpired(content) {
     const normalized = normalizeText(content);
     return [
         "este enlace ya no es valido",
+        "ya no es valido",
+        "enlace de aprobacion de netflix ya no es valido",
+        "el enlace ha caducado",
+        "este enlace ha caducado",
         "this link is no longer valid",
         "link has expired",
         "this link has expired",
-        "solicita uno nuevo",
     ].some((needle) => normalized.includes(needle));
 }
 
@@ -317,24 +320,12 @@ async function scrapeTemporalCode(link, depth = 0, visited = new Set()) {
 }
 
 function subjectMatchesAction(subject, action) {
-    const s = normalizeText(subject);
     const normalizedAction = String(action || "code").toLowerCase();
+    return detectNetflixSubjectAction(subject) === normalizedAction;
+}
 
-    if (normalizedAction === "temporary") {
-        return s.includes("codigo de acceso temporal")
-            || s.includes("codigo temporal")
-            || s.includes("acceso temporal")
-            || s.includes("temporary access code")
-            || s.includes("temporary code")
-            || s.includes("temporary access");
-    }
-
-    if (normalizedAction === "approve") {
-        return s.includes("solicitud de inicio de sesion")
-            || s.includes("aprueba la nueva solicitud")
-            || s.includes("approve")
-            || s.includes("request");
-    }
+function detectNetflixSubjectAction(subject) {
+    const s = normalizeText(subject);
 
     if (
         s.includes("codigo de acceso temporal")
@@ -344,20 +335,43 @@ function subjectMatchesAction(subject, action) {
         || s.includes("temporary code")
         || s.includes("temporary access")
     ) {
-        return false;
+        return "temporary";
     }
 
-    return s.includes("codigo")
+    if (
+        s.includes("solicitud de inicio de sesion")
+        || s.includes("aprueba la nueva solicitud")
+        || s.includes("approve")
+        || s.includes("request")
+    ) {
+        return "approve";
+    }
+
+    if (
+        s.includes("codigo")
         || s.includes("iniciar sesion")
         || s.includes("login")
         || s.includes("sign in")
-        || s.includes("code");
+        || s.includes("code")
+    ) {
+        return "code";
+    }
+
+    return "";
+}
+
+function detectNetflixActionMismatch(subject, action) {
+    const requestedAction = String(action || "code").toLowerCase();
+    const subjectAction = detectNetflixSubjectAction(subject);
+    if (!subjectAction || subjectAction === requestedAction) return "";
+    return subjectAction;
 }
 
 function findNetflixButtonLink(html, textNeedles = [], hrefNeedles = []) {
     const $ = cheerio.load(String(html || ""));
     const links = $("a").toArray();
     for (const el of links) {
+        if (isRejectControl($, el)) continue;
         const label = normalizeText($(el).text());
         const href = String($(el).attr("href") || "");
         const labelMatch = textNeedles.some((needle) => label.includes(normalizeText(needle)));
@@ -394,8 +408,23 @@ function buildAbsoluteUrl(rawUrl, baseUrl) {
 }
 
 function isNetflixDirectApprovalUrl(url) {
-    const normalized = String(url || "").toLowerCase();
-    return normalized.includes("netflix.com/ilum") || normalized.includes("/ilum?code");
+    return Boolean(getSafeNetflixApprovalUrl(url));
+}
+
+function getSafeNetflixApprovalUrl(rawUrl) {
+    try {
+        const url = new URL(String(rawUrl || "").trim());
+        const hostname = url.hostname.toLowerCase();
+        const isNetflixHost = hostname === "netflix.com" || hostname === "www.netflix.com";
+        const hasCode = url.searchParams.get("code");
+        const action = String(url.searchParams.get("action") || "").toLowerCase();
+        if (url.protocol !== "https:" || !isNetflixHost || url.pathname !== "/ilum" || !hasCode || action === "reject") {
+            return "";
+        }
+        return url.toString();
+    } catch (_) {
+        return "";
+    }
 }
 
 function mergeCookieHeader(currentCookieHeader, setCookieHeader) {
@@ -983,11 +1012,17 @@ module.exports = {
         buildApprovalFormSubmission,
         buildAbsoluteUrl,
         isNetflixDirectApprovalUrl,
+        getSafeNetflixApprovalUrl,
         findNetflixTextActionLink,
+        findNetflixButtonLink,
         findApprovalActionLink,
         extractApprovalDeviceName,
+        scrapeApproveLink,
         pageLooksApproved,
+        pageLooksExpired,
         pageNeedsApproval,
         pageLooksInvalidApproval,
+        detectNetflixActionMismatch,
+        detectNetflixSubjectAction,
     },
 };

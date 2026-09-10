@@ -996,6 +996,99 @@
     box-sizing: border-box;
 }
 
+.admin-support-response-images {
+    display: grid;
+    gap: 9px;
+}
+
+.admin-support-image-picker {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 3px 9px;
+    min-height: 54px;
+    padding: 10px 12px;
+    border: 1px dashed rgba(34, 211, 238, 0.45);
+    border-radius: 8px;
+    color: var(--text);
+    background: rgba(34, 211, 238, 0.045);
+    cursor: pointer;
+}
+
+.admin-support-image-picker:hover {
+    border-color: #22d3ee;
+    background: rgba(34, 211, 238, 0.09);
+}
+
+.admin-support-image-picker > svg {
+    grid-row: 1 / span 2;
+    color: #22d3ee;
+}
+
+.admin-support-image-picker span {
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.admin-support-image-picker small {
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.admin-support-image-picker input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.admin-support-response-images__list {
+    display: grid;
+    gap: 6px;
+}
+
+.admin-support-response-image {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding: 7px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 7px;
+    background: rgba(8, 15, 35, 0.28);
+    font-size: 12px;
+}
+
+.admin-support-response-image > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-support-response-image button {
+    display: inline-grid;
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: var(--muted);
+    background: transparent;
+    cursor: pointer;
+}
+
+.admin-support-response-image button:hover {
+    color: #fff;
+    border-color: rgba(248, 113, 113, 0.6);
+    background: rgba(248, 113, 113, 0.12);
+}
+
 .admin-support-resolution {
     padding: 18px 0 0;
 }

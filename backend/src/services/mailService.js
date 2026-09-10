@@ -1,5 +1,8 @@
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+const fs = require("fs/promises");
+const pool = require("../db");
+const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
 const {
     buildDeliveryMessage,
     salesContactPhone,
@@ -698,6 +701,61 @@ function buildSupportCreatedEmail({ ticket, customerName, forAdmin = false }) {
     return { subject, text, html };
 }
 
+async function loadSupportResponseInlineImages(ticketId, responseEventId) {
+    const normalizedTicketId = Number(ticketId);
+    const normalizedEventId = Number(responseEventId);
+    if (
+        !Number.isInteger(normalizedTicketId)
+        || normalizedTicketId <= 0
+        || !Number.isInteger(normalizedEventId)
+        || normalizedEventId <= 0
+    ) return [];
+
+    const params = [normalizedTicketId, normalizedEventId];
+
+    const [rows] = await pool.query(
+        `SELECT id, file_name, file_path, file_mime
+           FROM support_response_attachments
+          WHERE ticket_id = ?
+            AND event_id = ?
+          ORDER BY sort_order ASC, id ASC`,
+        params
+    );
+
+    const images = [];
+    for (const row of rows || []) {
+        try {
+            const filePath = resolveSupportAttachment(row.file_path);
+            await fs.access(filePath);
+            images.push({
+                id: Number(row.id),
+                fileName: String(row.file_name || "imagen"),
+                filePath,
+                mime: String(row.file_mime || "image/png").toLowerCase(),
+                cid: `support-response-${Number(row.id)}@strbx.com.co`,
+            });
+        } catch (error) {
+            console.warn("[mail] Imagen inline de soporte no disponible:", error?.message || error);
+        }
+    }
+    return images;
+}
+
+function buildSupportInlineImagesHtml(images) {
+    if (!images.length) return "";
+    const imageRows = images.map((image) => `
+        <div style="margin:0 0 14px;text-align:center">
+            <img src="cid:${escapeHtml(image.cid)}" alt="${escapeHtml(image.fileName)}" style="display:block;width:100%;max-width:640px;height:auto;margin:0 auto;border:1px solid #d8e1f0;border-radius:12px" />
+        </div>
+    `).join("");
+    return `
+        <div style="border:1px solid #d8e1f0;border-radius:14px;background:#f8fbff;padding:16px 16px 2px;margin:0 0 20px">
+            <div style="font-size:14px;font-weight:700;color:#0f172a;margin:0 0 12px">Imágenes de la gestión</div>
+            ${imageRows}
+        </div>
+    `;
+}
+
 async function sendSupportTicketCreatedEmails({ ticket, customerName }) {
     const config = getSupportMailConfig();
     if (!config) {
@@ -736,7 +794,7 @@ async function sendSupportTicketCreatedEmails({ ticket, customerName }) {
     return { ok: true, delivery: "email" };
 }
 
-async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
+async function sendSupportTicketResolvedEmail({ ticket, customerName, responseEventId = null }) {
     const config = getSupportMailConfig();
     if (!config) {
         console.warn(`[mail] No hay SMTP configurado para soporte. Cierre ${ticket.ticketCode} no enviado.`);
@@ -767,6 +825,7 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
     const visibleDetails = isReplacementResolution
         ? details.filter((item) => item.label !== "Respuesta de soporte")
         : details;
+    const inlineImages = await loadSupportResponseInlineImages(ticket.id, responseEventId);
     const subject = `${process.env.APP_NAME || "Streaming Box"} | ${resultLabel} ${ticket.ticketCode}`;
     const text = [
         `Hola ${customerName || "cliente"},`,
@@ -780,14 +839,16 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
                 ticket.resolutionMessage,
             ]
             : details.map((item) => `${item.label}: ${item.value}`)),
-    ].join("\n");
+    ].join("\n") + (inlineImages.length
+        ? `\n\nSe incluyeron ${inlineImages.length} imagen(es) dentro de este correo.`
+        : "");
     const html = buildSupportEmailFrame({
         title: resultLabel,
         subtitle: "Tu solicitud de soporte fue atendida.",
         greetingName: customerName,
         body: "Revisamos la novedad reportada. A continuacion encuentras el resultado de la gestion realizada.",
         details: visibleDetails,
-        messageHtml: isReplacementResolution ? buildPlainMessageBox(ticket.resolutionMessage) : "",
+        messageHtml: `${isReplacementResolution ? buildPlainMessageBox(ticket.resolutionMessage) : ""}${buildSupportInlineImagesHtml(inlineImages)}`,
         footer: `Si la novedad continua, responde este correo o crea un nuevo caso. Correo de soporte: ${inbox}`,
     });
 
@@ -799,6 +860,13 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName }) {
             subject,
             text,
             html,
+            attachments: inlineImages.map((image) => ({
+                filename: image.fileName,
+                path: image.filePath,
+                contentType: image.mime,
+                cid: image.cid,
+                contentDisposition: "inline",
+            })),
         });
         return { ok: true, delivery: "email" };
     } catch (error) {

@@ -6,6 +6,7 @@ import {
     FileText,
     Headphones,
     History,
+    ImagePlus,
     Pencil,
     RefreshCcw,
     Repeat2,
@@ -13,6 +14,7 @@ import {
     Save,
     Search,
     Wrench,
+    X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -105,6 +107,67 @@ function TraceBlock({ title, items, empty, render }) {
     );
 }
 
+const RESPONSE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const RESPONSE_IMAGE_MAX_FILES = 5;
+const RESPONSE_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
+
+function ResponseImagePicker({ files, onChange, onError }) {
+    function handleChange(event) {
+        const selectedFiles = Array.from(event.target.files || []);
+        event.target.value = "";
+        if (!selectedFiles.length) return;
+
+        const invalid = selectedFiles.find((file) => (
+            !RESPONSE_IMAGE_TYPES.has(file.type.toLowerCase()) || file.size > RESPONSE_IMAGE_MAX_BYTES
+        ));
+        if (invalid) {
+            onError("Las imágenes deben ser JPG, PNG o WEBP y pesar máximo 6 MB cada una.");
+            return;
+        }
+
+        const nextFiles = [...files, ...selectedFiles].filter((file, index, list) => (
+            list.findIndex((candidate) => (
+                candidate.name === file.name
+                && candidate.size === file.size
+                && candidate.lastModified === file.lastModified
+            )) === index
+        ));
+        if (nextFiles.length > RESPONSE_IMAGE_MAX_FILES) {
+            onError(`Puedes enviar hasta ${RESPONSE_IMAGE_MAX_FILES} imágenes por respuesta.`);
+            return;
+        }
+        onError("");
+        onChange(nextFiles);
+    }
+
+    return (
+        <div className="admin-support-response-images">
+            <label className="admin-support-image-picker">
+                <ImagePlus size={18} aria-hidden />
+                <span>Agregar imágenes dentro del correo</span>
+                <small>JPG, PNG o WEBP · hasta 5 imágenes · 6 MB cada una</small>
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={handleChange} />
+            </label>
+            {files.length ? (
+                <div className="admin-support-response-images__list">
+                    {files.map((file, index) => (
+                        <div className="admin-support-response-image" key={`${file.name}-${file.lastModified}-${index}`}>
+                            <span title={file.name}>{file.name}</span>
+                            <button
+                                type="button"
+                                aria-label={`Quitar ${file.name}`}
+                                onClick={() => onChange(files.filter((_, fileIndex) => fileIndex !== index))}
+                            >
+                                <X size={15} aria-hidden />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 export default function AdminSupport() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
@@ -119,6 +182,7 @@ export default function AdminSupport() {
     const [resolutionType, setResolutionType] = useState("repaired");
     const [resolutionSubtype, setResolutionSubtype] = useState(RESOLUTION_SUBTYPES.repaired[0].value);
     const [resolutionMessage, setResolutionMessage] = useState("");
+    const [resolutionImages, setResolutionImages] = useState([]);
     const [supportInfo, setSupportInfo] = useState(null);
     const [replacementAccountId, setReplacementAccountId] = useState("");
     const [ticketDetail, setTicketDetail] = useState(null);
@@ -130,6 +194,7 @@ export default function AdminSupport() {
     const [editResolutionType, setEditResolutionType] = useState("repaired");
     const [editResolutionSubtype, setEditResolutionSubtype] = useState(RESOLUTION_SUBTYPES.repaired[0].value);
     const [editResolutionMessage, setEditResolutionMessage] = useState("");
+    const [editResolutionImages, setEditResolutionImages] = useState([]);
     const [reopenMessage, setReopenMessage] = useState("");
 
     const selected = useMemo(
@@ -193,6 +258,7 @@ export default function AdminSupport() {
 
     useEffect(() => {
         setResolutionMessage("");
+        setResolutionImages([]);
         setResolutionType("repaired");
         setResolutionSubtype(RESOLUTION_SUBTYPES.repaired[0].value);
         setReplacementAccountId("");
@@ -205,6 +271,7 @@ export default function AdminSupport() {
                 || ""
         );
         setEditResolutionMessage(selected?.resolutionMessage || "");
+        setEditResolutionImages([]);
         setReopenMessage("");
         if (!selected?.subscriptionId || selected.status === "resolved") return;
 
@@ -270,18 +337,20 @@ export default function AdminSupport() {
         setActionLoading(true);
         setError("");
         setSuccess("");
+        const formData = new FormData();
+        formData.append("resolutionType", resolutionType);
+        formData.append("resolutionSubtype", resolutionSubtype);
+        formData.append("resolutionMessage", resolutionMessage.trim());
+        if (resolutionType === "replaced") {
+            formData.append("replacementAccountId", replacementAccountId || "");
+        }
+        resolutionImages.forEach((file) => formData.append("responseImages", file, file.name));
+
         let response;
         try {
             response = await apiFetch(`/admin/support-tickets/${selected.id}/resolve`, {
                 method: "POST",
-                body: JSON.stringify({
-                    resolutionType,
-                    resolutionSubtype,
-                    resolutionMessage: resolutionMessage.trim(),
-                    replacementAccountId: resolutionType === "replaced"
-                        ? (replacementAccountId || null)
-                        : null,
-                }),
+                body: formData,
                 timeoutMs: 60000,
             });
         } finally {
@@ -298,6 +367,7 @@ export default function AdminSupport() {
                 ? "Caso resuelto y correo enviado al usuario."
                 : "Caso resuelto. El correo al usuario se enviara en segundo plano."
         );
+        setResolutionImages([]);
         await loadTickets();
     }
 
@@ -341,15 +411,17 @@ export default function AdminSupport() {
         setActionLoading(true);
         setError("");
         setSuccess("");
+        const formData = new FormData();
+        formData.append("resolutionType", editResolutionType);
+        formData.append("resolutionSubtype", editResolutionSubtype);
+        formData.append("resolutionMessage", message);
+        editResolutionImages.forEach((file) => formData.append("responseImages", file, file.name));
+
         let response;
         try {
             response = await apiFetch(`/admin/support-tickets/${selected.id}/response`, {
                 method: "PATCH",
-                body: JSON.stringify({
-                    resolutionType: editResolutionType,
-                    resolutionSubtype: editResolutionSubtype,
-                    resolutionMessage: message,
-                }),
+                body: formData,
                 timeoutMs: 60000,
             });
         } catch (error) {
@@ -363,6 +435,7 @@ export default function AdminSupport() {
             return;
         }
         setEditingResponse(null);
+        setEditResolutionImages([]);
         setSuccess("Respuesta actualizada y correo encolado para el usuario.");
         await loadTickets("resolved");
     }
@@ -687,6 +760,11 @@ export default function AdminSupport() {
                                                         />
                                                         <small>{editResolutionMessage.length}/3000</small>
                                                     </label>
+                                                    <ResponseImagePicker
+                                                        files={editResolutionImages}
+                                                        onChange={setEditResolutionImages}
+                                                        onError={setError}
+                                                    />
                                                     <div className="admin-support-edit-form__buttons">
                                                         <button
                                                             type="button"
@@ -875,6 +953,12 @@ export default function AdminSupport() {
                                                     {resolutionMessage.length}/3000
                                                 </small>
                                             </label>
+
+                                            <ResponseImagePicker
+                                                files={resolutionImages}
+                                                onChange={setResolutionImages}
+                                                onError={setError}
+                                            />
 
                                             <button
                                                 type="button"

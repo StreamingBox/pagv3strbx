@@ -30,6 +30,9 @@ const router = express.Router();
 const REOPEN_WINDOW_MS = 24 * 60 * 60 * 1000;
 const TRANSIENT_DB_ERRORS = new Set(["ECONNRESET", "ETIMEDOUT", "PROTOCOL_CONNECTION_LOST", "ECONNREFUSED"]);
 const SUPPORT_UPLOAD_MAX_BYTES = 6 * 1024 * 1024;
+const SUPPORT_RESPONSE_MAX_FILES = 5;
+const SUPPORT_RESPONSE_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+const SUPPORT_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const RESOLUTION_SUBTYPE_LABELS = {
     password_updated: "Clave actualizada",
@@ -128,8 +131,7 @@ const upload = multer({
         parts: 10,
     },
     fileFilter(_req, file, callback) {
-        const allowed = new Set(["image/jpeg", "image/png", "image/webp"]);
-        if (!allowed.has(String(file?.mimetype || "").toLowerCase())) {
+        if (!SUPPORT_IMAGE_MIME_TYPES.has(String(file?.mimetype || "").toLowerCase())) {
             return callback(new Error("La evidencia debe ser una imagen JPG, PNG o WEBP."));
         }
         callback(null, true);
@@ -152,6 +154,49 @@ function uploadEvidence(req, res, next) {
                 ? "La imagen supera el limite de 6 MB."
                 : (error?.message || "No se pudo leer la imagen."),
         });
+    });
+}
+
+const responseImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: SUPPORT_UPLOAD_MAX_BYTES,
+        files: SUPPORT_RESPONSE_MAX_FILES,
+        fields: 8,
+        fieldSize: 16 * 1024,
+        parts: 16,
+    },
+    fileFilter(_req, file, callback) {
+        if (!SUPPORT_IMAGE_MIME_TYPES.has(String(file?.mimetype || "").toLowerCase())) {
+            return callback(new Error("Las imágenes deben ser JPG, PNG o WEBP."));
+        }
+        callback(null, true);
+    },
+});
+
+function uploadResponseImages(req, res, next) {
+    responseImageUpload.array("responseImages", SUPPORT_RESPONSE_MAX_FILES)(req, res, (error) => {
+        if (error) {
+            const tooLarge = error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
+            const tooMany = error instanceof multer.MulterError && error.code === "LIMIT_FILE_COUNT";
+            return res.status(tooLarge ? 413 : 400).json({
+                message: tooLarge
+                    ? "Cada imagen de respuesta puede pesar hasta 6 MB."
+                    : tooMany
+                        ? `Puedes enviar hasta ${SUPPORT_RESPONSE_MAX_FILES} imágenes por respuesta.`
+                        : (error?.message || "No se pudieron leer las imágenes."),
+            });
+        }
+
+        const files = Array.isArray(req.files) ? req.files : [];
+        const totalBytes = files.reduce((total, file) => total + Number(file?.size || 0), 0);
+        if (totalBytes > SUPPORT_RESPONSE_MAX_TOTAL_BYTES) {
+            return res.status(413).json({ message: "Las imágenes de la respuesta no pueden superar 20 MB en total." });
+        }
+        if (files.some((file) => !hasAllowedImageSignature(file.mimetype, file.buffer))) {
+            return res.status(400).json({ message: "Una de las imágenes no coincide con su formato real." });
+        }
+        return next();
     });
 }
 
@@ -291,7 +336,40 @@ async function queueCreatedNotifications(conn, ticket, {
     }
 }
 
-async function queueResolvedNotification(conn, ticket, { eventKey = "resolved" } = {}) {
+async function saveResponseAttachments(conn, { ticketId, eventId, files = [] }) {
+    const storedFiles = [];
+    try {
+        for (let index = 0; index < files.length; index += 1) {
+            const file = files[index];
+            const storedFile = await saveSupportAttachment(file);
+            storedFiles.push(storedFile);
+            await conn.query(
+                `INSERT INTO support_response_attachments
+                    (ticket_id, event_id, file_name, file_path, file_mime, file_size, sort_order)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    Number(ticketId),
+                    Number(eventId) || null,
+                    String(file.originalname || "imagen").slice(0, 255),
+                    storedFile,
+                    String(file.mimetype || "").toLowerCase(),
+                    Number(file.size || 0),
+                    index,
+                ]
+            );
+        }
+        return storedFiles;
+    } catch (error) {
+        await Promise.all(storedFiles.map((file) => removeSupportAttachment(file).catch(() => {})));
+        throw error;
+    }
+}
+
+async function queueResolvedNotification(
+    conn,
+    ticket,
+    { eventKey = "resolved", responseEventId = null } = {}
+) {
     const dedupeKey = eventKey === "resolved"
         ? `support-resolved:${ticket.id}`
         : `support-resolved:${ticket.id}:${eventKey}`;
@@ -299,7 +377,7 @@ async function queueResolvedNotification(conn, ticket, { eventKey = "resolved" }
         channel: "email",
         eventType: "support_resolved",
         dedupeKey,
-        payload: { ticket, customerName: ticket.userName },
+        payload: { ticket, customerName: ticket.userName, responseEventId },
     });
 }
 
@@ -1143,6 +1221,7 @@ router.post(
     "/admin/support-tickets/:id/resolve",
     requireAuth,
     requireRole("admin"),
+    uploadResponseImages,
     async (req, res) => {
         const ticketId = Number(req.params.id);
         const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
@@ -1175,6 +1254,7 @@ router.post(
         }
 
         const conn = await pool.getConnection();
+        let storedResponseFiles = [];
         try {
             await conn.beginTransaction();
             let current = await getTicketById(conn, ticketId, { forUpdate: true });
@@ -1234,7 +1314,7 @@ router.post(
                     ticketId,
                 ]
             );
-            await conn.query(
+            const [eventResult] = await conn.query(
                 `INSERT INTO support_ticket_events (ticket_id, actor_user_id, event_type, message)
                  VALUES (?, ?, ?, ?)`,
                 [
@@ -1244,9 +1324,17 @@ router.post(
                     resolutionMessage,
                 ]
             );
+            storedResponseFiles = await saveResponseAttachments(conn, {
+                ticketId,
+                eventId: eventResult.insertId,
+                files: req.files,
+            });
             const ticket = await getTicketById(conn, ticketId);
-            await queueResolvedNotification(conn, ticket);
+            await queueResolvedNotification(conn, ticket, {
+                responseEventId: eventResult.insertId,
+            });
             await conn.commit();
+            storedResponseFiles = [];
 
             return res.json({
                 ok: true,
@@ -1256,6 +1344,7 @@ router.post(
             });
         } catch (error) {
             await conn.rollback().catch(() => {});
+            await Promise.all(storedResponseFiles.map((file) => removeSupportAttachment(file).catch(() => {})));
             console.error("[support] Resolve ticket error:", error);
             return res.status(error?.status || 500).json({
                 code: error?.code || undefined,
@@ -1333,6 +1422,7 @@ router.patch(
     "/admin/support-tickets/:id/response",
     requireAuth,
     requireRole("admin"),
+    uploadResponseImages,
     async (req, res) => {
         const ticketId = Number(req.params.id);
         const resolutionType = String(req.body?.resolutionType || "").trim().toLowerCase();
@@ -1352,6 +1442,7 @@ router.patch(
         }
 
         const conn = await pool.getConnection();
+        let storedResponseFiles = [];
         try {
             await conn.beginTransaction();
             const current = await getTicketById(conn, ticketId, { forUpdate: true });
@@ -1378,11 +1469,18 @@ router.patch(
                  VALUES (?, ?, 'response_edited', ?)`,
                 [ticketId, req.user.id, resolutionMessage]
             );
+            storedResponseFiles = await saveResponseAttachments(conn, {
+                ticketId,
+                eventId: eventResult.insertId,
+                files: req.files,
+            });
             const ticket = await getTicketById(conn, ticketId);
             await queueResolvedNotification(conn, ticket, {
                 eventKey: `edited-${Number(eventResult.insertId)}`,
+                responseEventId: eventResult.insertId,
             });
             await conn.commit();
+            storedResponseFiles = [];
 
             return res.json({
                 ok: true,
@@ -1391,6 +1489,7 @@ router.patch(
             });
         } catch (error) {
             await conn.rollback().catch(() => {});
+            await Promise.all(storedResponseFiles.map((file) => removeSupportAttachment(file).catch(() => {})));
             console.error("[support] Admin edit response error:", error);
             return res.status(error?.status || 500).json({
                 message: error?.status ? error.message : "No se pudo editar la respuesta.",

@@ -1,7 +1,42 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { buildSaleNotificationMessage } = require("../src/services/telegramBot");
+const {
+    buildDailySalesMessage,
+    buildSaleNotificationMessage,
+} = require("../src/services/telegramBot");
+
+test("el resumen diario conserva la hora calendario de Colombia y segmenta la moneda", () => {
+    const message = buildDailySalesMessage([
+        {
+            currency: "COP",
+            sale_count: 2,
+            item_count: 3,
+            total_sales: 16000,
+            cost_total: 7000,
+            provider_profit: 1500,
+            own_profit: 9000,
+            missing_cost_items: 0,
+        },
+        {
+            currency: "USD",
+            sale_count: 1,
+            item_count: 1,
+            total_sales: 20,
+            cost_total: 8,
+            provider_profit: 2,
+            own_profit: 12,
+            missing_cost_items: 0,
+        },
+    ], "2026-09-10");
+
+    assert.match(message, /10\/09\/2026/);
+    assert.match(message, /Ventas: \*3\*/);
+    assert.match(message, /Ganancia proveedor/);
+    assert.match(message, /Ganancia propia/);
+    assert.match(message, /COP/);
+    assert.match(message, /USD/);
+});
 
 test("la alerta de Telegram muestra costo cargado y ganancia real", () => {
     const message = buildSaleNotificationMessage({

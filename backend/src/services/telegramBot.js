@@ -10,6 +10,7 @@
  *   /start        → Bienvenida
  *   /stock        → Cuentas disponibles por plataforma
  *   /ventas [n]   → Últimas n ventas (default 10)
+ *   /ventas_dia   → Resumen de ventas del día en Colombia
  *   /saldo [@user] → Saldo de tus propios fondos o de un usuario
  *   /comprar <platform_slug> <duracion_días> @usuario → Registrar compra a un usuario
  */
@@ -20,6 +21,11 @@ const FormData = require("form-data");
 const { EventEmitter } = require("events");
 const pool = require("../db");
 const logger = require("../utils/logger");
+const {
+    BOGOTA_TODAY_SQL,
+    BOGOTA_UTC_OFFSET,
+    currentBogotaDateOnly,
+} = require("../utils/date");
 const { getStockSummary } = require("./stockSummary.service");
 const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
 const {
@@ -202,6 +208,17 @@ function signedMoney(value) {
     return amount < 0 ? `-${formatted}` : formatted;
 }
 
+function currencyMoney(value, currency) {
+    const normalizedCurrency = String(currency || "COP").trim().toUpperCase();
+    const prefix = normalizedCurrency === "COP" ? "" : `${normalizedCurrency} `;
+    return `${prefix}${signedMoney(value)}`;
+}
+
+function formatBogotaDayLabel(dateOnly) {
+    const [year, month, day] = String(dateOnly || "").split("-");
+    return year && month && day ? `${day}/${month}/${year}` : String(dateOnly || "-");
+}
+
 function buildSaleNotificationMessage({
     seller,
     platforms,
@@ -233,6 +250,40 @@ function buildSaleNotificationMessage({
         `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
         `🔑 Orden: \`${escMd(orderCode)}\``
     );
+}
+
+function buildDailySalesMessage(rows, dateOnly = currentBogotaDateOnly()) {
+    const items = Array.isArray(rows) ? rows : [];
+    const dayLabel = formatBogotaDayLabel(dateOnly);
+    if (!items.length) {
+        return `📅 *Resumen de ventas de hoy*\n🗓️ ${escMd(dayLabel)}\n\nNo hay ventas registradas hoy en Colombia\.`;
+    }
+
+    const totalSales = items.reduce((sum, row) => sum + Number(row.sale_count || 0), 0);
+    const lines = items.map((row) => {
+        const currency = String(row.currency || "COP").trim().toUpperCase();
+        const missingCostItems = Number(row.missing_cost_items || 0);
+        const ownProfit = currencyMoney(row.own_profit, currency);
+        const ownProfitLabel = missingCostItems > 0 ? `${ownProfit} (parcial)` : ownProfit;
+        return [
+            `💱 *${escMd(currency)}*`,
+            `🛒 Ventas: *${escMd(row.sale_count)}* · Pantallas: *${escMd(row.item_count)}*`,
+            `💰 Total vendido: *${escMd(currencyMoney(row.total_sales, currency))}*`,
+            `🧾 Costo cuentas: *${escMd(currencyMoney(row.cost_total, currency))}*`,
+            `🤝 Ganancia proveedor: *${escMd(currencyMoney(row.provider_profit, currency))}*`,
+            `📈 Ganancia propia: *${escMd(ownProfitLabel)}*`,
+            missingCostItems > 0
+                ? `⚠️ Sin costo registrado: *${escMd(missingCostItems)}* pantalla(s)`
+                : "",
+        ].filter(Boolean).join("\n");
+    });
+
+    return [
+        "📅 *Resumen de ventas de hoy*",
+        `🗓️ ${escMd(dayLabel)} · Ventas: *${escMd(totalSales)}*`,
+        "",
+        lines.join("\n\n"),
+    ].join("\n");
 }
 
 function isAuthorized(chatId) {
@@ -523,6 +574,9 @@ async function cmdStart(msg) {
                     { text: "📊 Últimas Ventas", callback_data: "cmd_ventas" }
                 ],
                 [
+                    { text: "📅 Ventas de hoy", callback_data: "cmd_ventas_dia" }
+                ],
+                [
                     { text: "💳 Consultar mi saldo", callback_data: "cmd_saldo" },
                     { text: "➕ Agregar Stock", callback_data: "cmd_addstock" }
                 ]
@@ -602,6 +656,61 @@ async function cmdVentas(msg, match) {
         `📊 *Últimas ${n} ventas*\n━━━━━━━━━━━━━\n\n${lines.join("\n\n")}`,
         { parse_mode: "MarkdownV2" }
     );
+}
+
+/** /ventas_dia — resumen del día calendario en Colombia */
+async function cmdVentasDia(msg) {
+    const dayStartUtcSql = `CONVERT_TZ(CONCAT(${BOGOTA_TODAY_SQL}, ' 00:00:00'), '${BOGOTA_UTC_OFFSET}', '+00:00')`;
+    const nextDayStartUtcSql = `DATE_ADD(${dayStartUtcSql}, INTERVAL 1 DAY)`;
+    const [rows] = await pool.query(`
+        SELECT
+            daily.currency,
+            COUNT(*) AS sale_count,
+            SUM(daily.item_count) AS item_count,
+            SUM(daily.sale_total) AS total_sales,
+            SUM(daily.cost_total) AS cost_total,
+            SUM(daily.provider_profit) AS provider_profit,
+            SUM(daily.own_profit) AS own_profit,
+            SUM(daily.missing_cost_items) AS missing_cost_items
+        FROM (
+            SELECT
+                o.id,
+                UPPER(COALESCE(NULLIF(o.currency, ''), 'COP')) AS currency,
+                o.total AS sale_total,
+                COUNT(oi.id) AS item_count,
+                COALESCE(SUM(CASE
+                    WHEN oi.cost_amount > 0
+                     AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(COALESCE(NULLIF(o.currency, ''), 'COP'))
+                    THEN oi.cost_amount ELSE 0
+                END), 0) AS cost_total,
+                COALESCE(SUM(CASE
+                    WHEN oi.cost_amount > 0
+                     AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(COALESCE(NULLIF(o.currency, ''), 'COP'))
+                    THEN oi.price - oi.cost_amount ELSE 0
+                END), 0) AS own_profit,
+                SUM(CASE
+                    WHEN oi.cost_amount > 0
+                     AND UPPER(COALESCE(NULLIF(oi.cost_currency, ''), o.currency)) = UPPER(COALESCE(NULLIF(o.currency, ''), 'COP'))
+                    THEN 0 ELSE 1
+                END) AS missing_cost_items,
+                COALESCE((
+                    SELECT SUM(wt.amount)
+                      FROM wallet_transactions wt
+                     WHERE wt.reference_type = 'order'
+                       AND wt.reference_id = o.id
+                       AND wt.type = 'profit'
+                ), 0) AS provider_profit
+            FROM orders o
+            JOIN order_items oi ON oi.order_id = o.id
+            WHERE o.created_at >= ${dayStartUtcSql}
+              AND o.created_at < ${nextDayStartUtcSql}
+            GROUP BY o.id, o.currency, o.total
+        ) AS daily
+        GROUP BY daily.currency
+        ORDER BY daily.currency ASC
+    `);
+
+    await bot.sendMessage(msg.chat.id, buildDailySalesMessage(rows), { parse_mode: "MarkdownV2" });
 }
 
 /** /saldo [@username | userId] */
@@ -929,12 +1038,15 @@ function setupCommands() {
         { command: "addstock", description: "Agregar stock manual" },
         { command: "stock", description: "Ver stock disponible" },
         { command: "ventas", description: "Últimas ventas" },
+        { command: "ventas_dia", description: "Resumen de ventas de hoy" },
         { command: "saldo", description: "Consultar un saldo" }
     ]).catch(err => console.error("[TelegramBot] Error setting commands:", err));
 
     bot.onText(/^\/start$/i, guard(cmdStart));
     bot.onText(/^\/stock$/i, guard(cmdStock));
     bot.onText(/^\/ventas(?:\s+(\d+))?$/i, guard(cmdVentas));
+    bot.onText(/^\/ventas(?:\s+(?:hoy|dia))$/i, guard(cmdVentasDia));
+    bot.onText(/^\/(?:ventas_dia|ventas_hoy)$/i, guard(cmdVentasDia));
     bot.onText(/^\/saldo(?:\s+(.+))?$/i, guard(cmdSaldo));
     bot.onText(/^\/comprar/i, guard(cmdComprarStart));
     bot.onText(/^\/addstock/i, guard(cmdAddStockStart));
@@ -966,7 +1078,7 @@ function setupCommands() {
             await handleStockMessage(msg);
             await handleBuyMessage(msg);
         } else {
-            const knownCmds = ["/start", "/stock", "/ventas", "/saldo", "/comprar", "/addstock"];
+            const knownCmds = ["/start", "/stock", "/ventas", "/ventas_dia", "/ventas_hoy", "/saldo", "/comprar", "/addstock"];
             const cmd = msg.text.split(" ")[0].split("@")[0].toLowerCase().trim();
             if (!knownCmds.includes(cmd)) {
                 bot.sendMessage(msg.chat.id, `❓ Comando desconocido. Usa /start para ver los disponibles.`).catch(() => { });
@@ -986,6 +1098,8 @@ function setupCommands() {
                 await cmdStock(mockMsg);
             } else if (data === "cmd_ventas") {
                 await cmdVentas(mockMsg, [null, "10"]);
+            } else if (data === "cmd_ventas_dia") {
+                await cmdVentasDia(mockMsg);
             } else if (data === "cmd_saldo") {
                 await cmdSaldo(mockMsg, []);
             } else if (data === "cmd_comprar") {
@@ -1540,6 +1654,7 @@ function initBot() {
 module.exports = {
     initBot,
     notifySale,
+    buildDailySalesMessage,
     buildSaleNotificationMessage,
     notifyRenewalSale,
     notifyManualTopupSubmitted,

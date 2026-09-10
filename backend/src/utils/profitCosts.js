@@ -1,4 +1,4 @@
-const GEMINI_5TB_COST_COP = 7000;
+const GEMINI_5TB_COST_COP = 4000;
 const IPTV_COST_COP = 2350;
 
 function normalizeProductName(value) {

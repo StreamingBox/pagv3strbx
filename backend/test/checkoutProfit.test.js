@@ -43,7 +43,7 @@ test("Gemini 5 TB has fixed COP cost without wallet profit", () => {
         currency: "COP",
     };
 
-    assert.equal(automaticUnitCostForPlan(plan), 7000);
+    assert.equal(automaticUnitCostForPlan(plan), 4000);
     assert.equal(automaticProfitForEntry({
         plan,
         salePrice: 17000,

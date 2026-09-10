@@ -207,6 +207,8 @@ function buildSaleNotificationMessage({
     platforms,
     total,
     currency,
+    discount,
+    providerProfit,
     newBalance,
     orderCode,
     costTotal,
@@ -223,9 +225,11 @@ function buildSaleNotificationMessage({
         `🎯 *Nueva Venta*\n━━━━━━━━━━━━━\n` +
         `👤 Vendedor: *${escMd(seller)}*\n` +
         `📺 Plataforma: *${escMd((platforms || []).join(", "))}*\n` +
-        `💰 Total vendido: *${escMd(sign + money(total))}*\n` +
+        `💰 Total: *${escMd(sign + money(total))}*\n` +
+        `⬇️ Descuento: *${escMd(sign + money(discount))}*\n` +
+        `🤝 Ganancia proveedor: *${escMd(sign + signedMoney(providerProfit))}*\n` +
         `🧾 Costo de cuenta: *${escMd(costLabel)}*\n` +
-        `📈 Ganancia: *${escMd(profitLabel)}*\n` +
+        `📈 Ganancia propia: *${escMd(profitLabel)}*\n` +
         `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
         `🔑 Orden: \`${escMd(orderCode)}\``
     );
@@ -1285,7 +1289,7 @@ async function loadSaleCostSummary(orderId) {
  * El costo y la ganancia se leen desde order_items para usar el valor real
  * registrado al cargar la cuenta vendida.
  */
-async function notifySale({ orderId, seller, platforms, total, currency, profit, newBalance, orderCode }) {
+async function notifySale({ orderId, seller, platforms, total, currency, discount, profit, newBalance, orderCode }) {
     if (!bot || AUTHORIZED.size === 0) return;
 
     let summary = null;
@@ -1303,6 +1307,8 @@ async function notifySale({ orderId, seller, platforms, total, currency, profit,
         platforms,
         total: summary?.total ?? total,
         currency: summary?.currency || currency,
+        discount,
+        providerProfit: profit,
         newBalance,
         orderCode,
         costTotal: summary?.costTotal ?? null,

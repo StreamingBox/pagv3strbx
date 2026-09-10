@@ -9,6 +9,8 @@ test("la alerta de Telegram muestra costo cargado y ganancia real", () => {
         platforms: ["CapCut Pro"],
         total: 8000,
         currency: "COP",
+        discount: 8000,
+        providerProfit: 0,
         newBalance: 12000,
         orderCode: "ORD-TEST",
         costTotal: 3500,
@@ -16,12 +18,13 @@ test("la alerta de Telegram muestra costo cargado y ganancia real", () => {
         costComplete: true,
     });
 
-    assert.match(message, /Total vendido/);
+    assert.match(message, /Total/);
+    assert.match(message, /Descuento/);
+    assert.match(message, /Ganancia proveedor/);
     assert.match(message, /Costo de cuenta/);
     assert.match(message, /3\\\.500/);
-    assert.match(message, /Ganancia/);
+    assert.match(message, /Ganancia propia/);
     assert.match(message, /4\\\.500/);
-    assert.doesNotMatch(message, /Descuento/);
 });
 
 test("la alerta avisa cuando falta costo de alguna cuenta", () => {
@@ -30,6 +33,8 @@ test("la alerta avisa cuando falta costo de alguna cuenta", () => {
         platforms: ["Netflix", "Spotify"],
         total: 16000,
         currency: "COP",
+        discount: 16000,
+        providerProfit: 2500,
         newBalance: 0,
         orderCode: "ORD-TEST-2",
         costTotal: 4000,
@@ -39,5 +44,6 @@ test("la alerta avisa cuando falta costo de alguna cuenta", () => {
 
     assert.match(message, /Costo de cuenta/);
     assert.match(message, /incompleto/);
-    assert.match(message, /Ganancia.*Pendiente/);
+    assert.match(message, /Ganancia propia.*Pendiente/);
+    assert.match(message, /Ganancia proveedor/);
 });

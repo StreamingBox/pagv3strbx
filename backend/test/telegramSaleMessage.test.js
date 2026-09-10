@@ -60,6 +60,10 @@ test("la alerta de Telegram muestra costo cargado y ganancia real", () => {
     assert.match(message, /3\\\.500/);
     assert.match(message, /Ganancia propia/);
     assert.match(message, /4\\\.500/);
+    assert.match(message, /DETALLE DE LA VENTA/);
+    assert.match(message, /COSTOS Y GANANCIAS/);
+    assert.match(message, /SALDO Y TRAZABILIDAD/);
+    assert.match(message, /Descuento:[^\n]+\n\n📊/);
 });
 
 test("la alerta avisa cuando falta costo de alguna cuenta", () => {

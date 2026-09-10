@@ -238,18 +238,25 @@ function buildSaleNotificationMessage({
         : `${sign}${signedMoney(costTotal)}${costComplete ? "" : " (incompleto)"}`;
     const profitLabel = costComplete ? `${sign}${signedMoney(profitTotal)}` : "Pendiente";
 
-    return (
-        `🎯 *Nueva Venta*\n━━━━━━━━━━━━━\n` +
-        `👤 Vendedor: *${escMd(seller)}*\n` +
-        `📺 Plataforma: *${escMd((platforms || []).join(", "))}*\n` +
-        `💰 Total: *${escMd(sign + money(total))}*\n` +
-        `⬇️ Descuento: *${escMd(sign + money(discount))}*\n` +
-        `🤝 Ganancia proveedor: *${escMd(sign + signedMoney(providerProfit))}*\n` +
-        `🧾 Costo de cuenta: *${escMd(costLabel)}*\n` +
-        `📈 Ganancia propia: *${escMd(profitLabel)}*\n` +
-        `💳 Saldo restante: *${escMd(sign + money(newBalance))}*\n` +
-        `🔑 Orden: \`${escMd(orderCode)}\``
-    );
+    return [
+        "🎯 *NUEVA VENTA*",
+        "━━━━━━━━━━━━━━",
+        "",
+        "🛒 *DETALLE DE LA VENTA*",
+        `👤 Vendedor: *${escMd(seller)}*`,
+        `📺 Plataforma: *${escMd((platforms || []).join(", "))}*`,
+        `💰 Total: *${escMd(sign + money(total))}*`,
+        `⬇️ Descuento: *${escMd(sign + money(discount))}*`,
+        "",
+        "📊 *COSTOS Y GANANCIAS*",
+        `🤝 Ganancia proveedor: *${escMd(sign + signedMoney(providerProfit))}*`,
+        `🧾 Costo de cuenta: *${escMd(costLabel)}*`,
+        `📈 Ganancia propia: *${escMd(profitLabel)}*`,
+        "",
+        "💳 *SALDO Y TRAZABILIDAD*",
+        `💳 Saldo restante: *${escMd(sign + money(newBalance))}*`,
+        `🔑 Orden: \`${escMd(orderCode)}\``,
+    ].join("\n");
 }
 
 function buildDailySalesMessage(rows, dateOnly = currentBogotaDateOnly()) {

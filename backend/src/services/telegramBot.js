@@ -280,7 +280,7 @@ function buildDailySalesMessage(rows, dateOnly = currentBogotaDateOnly()) {
             `🤝 Ganancia proveedor: *${escMd(currencyMoney(row.provider_profit, currency))}*`,
             `📈 Ganancia propia: *${escMd(ownProfitLabel)}*`,
             missingCostItems > 0
-                ? `⚠️ Sin costo registrado: *${escMd(missingCostItems)}* pantalla(s)`
+                ? `⚠️ Sin costo registrado: *${escMd(missingCostItems)}* ${escMd("pantalla(s)")}`
                 : "",
         ].filter(Boolean).join("\n");
     });

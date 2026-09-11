@@ -38,6 +38,24 @@ test("el resumen diario conserva la hora calendario de Colombia y segmenta la mo
     assert.match(message, /USD/);
 });
 
+test("el resumen diario escapa el aviso cuando falta el costo de una pantalla", () => {
+    const message = buildDailySalesMessage([
+        {
+            currency: "COP",
+            sale_count: 1,
+            item_count: 1,
+            total_sales: 10000,
+            cost_total: 0,
+            provider_profit: 0,
+            own_profit: 0,
+            missing_cost_items: 1,
+        },
+    ], "2026-09-10");
+
+    assert.match(message, /Sin costo registrado/);
+    assert.match(message, /pantalla\\\(s\\\)/);
+});
+
 test("la alerta de Telegram muestra costo cargado y ganancia real", () => {
     const message = buildSaleNotificationMessage({
         seller: "Jennifer",

@@ -385,7 +385,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         slug: requestedSlug,
     });
     if (
-        normalizedAction === "code"
+        ["code", "temporary"].includes(normalizedAction)
         && accountCodeProvider === JEFF_PREMIUM_PROVIDER
         && !jeffProviderConfig.enabled
     ) {
@@ -503,7 +503,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 "Tiempo de espera agotado consultando el proveedor externo."
             );
         } else if (
-            normalizedAction === "code"
+            ["code", "temporary"].includes(normalizedAction)
             && accountCodeProvider === JEFF_PREMIUM_PROVIDER
             && jeffProviderConfig.enabled
         ) {
@@ -511,6 +511,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 fetchCodeFromJeffProvider({
                     email: soldAccountEmail,
                     config: jeffProviderConfig,
+                    action: normalizedAction,
                 }),
                 jeffProviderConfig.timeoutMs + 1000,
                 "Tiempo de espera agotado consultando el proveedor externo."

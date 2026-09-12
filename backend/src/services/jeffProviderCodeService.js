@@ -6,6 +6,7 @@ const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const CODE_CONTEXT = /(?:code|codigo|c[oó]digo|pin|otp|clave|verification|verificaci[oó]n)/i;
 const CODE_VALUE = /(?:^|[^0-9])((?:[0-9][\s.\-]?){3,7}[0-9])(?:$|[^0-9])/g;
 const EXPLICIT_CODE_CONTEXT = /(?:ingresa|introduce|enter|usa|use|utiliza)\s+(?:este|el|this|the)?\s*(?:c[oó]digo|code|pin)[^0-9]{0,120}((?:[0-9][\s.\-]?){3,7}[0-9])(?:$|[^0-9])/i;
+const TEMPORARY_SUBJECT = /tu\s+c[oó]digo\s+de\s+acceso\s+temporal\s+de\s+netflix\b/i;
 
 function safeText(value) {
     return String(value || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
@@ -160,6 +161,129 @@ function extractJeffProviderCode(html) {
     return extractCodeFromText(bodyText, false);
 }
 
+function safeNetflixTemporaryUrl(value, baseUrl) {
+    try {
+        const url = new URL(String(value || "").trim(), baseUrl);
+        const hostname = url.hostname.toLowerCase();
+        const isNetflixHost = hostname === "netflix.com" || hostname === "www.netflix.com";
+        const path = url.pathname.toLowerCase();
+        if (
+            url.protocol !== "https:"
+            || !isNetflixHost
+            || !(path === "/account/travel" || path.startsWith("/account/travel/"))
+        ) {
+            return "";
+        }
+        return url.toString();
+    } catch {
+        return "";
+    }
+}
+
+function extractJeffTemporaryAction(html, currentUrl) {
+    const $ = cheerio.load(String(html || ""));
+    let selected = null;
+
+    $("a[href], button, input[type='submit'], input[type='button']").each((_, element) => {
+        if (selected) return;
+        const text = [
+            $(element).text(),
+            $(element).attr("value"),
+            $(element).attr("aria-label"),
+            $(element).attr("title"),
+            $(element).attr("data-uia"),
+        ].filter(Boolean).join(" ");
+        if (!/obtener\s+c[oó]digo\b/i.test(text)) return;
+
+        const href = safeNetflixTemporaryUrl($(element).attr("href"), currentUrl);
+        if (href) selected = { method: "GET", url: href };
+    });
+
+    return selected;
+}
+
+function findJeffTemporaryMessageLinks(html, currentUrl) {
+    const $ = cheerio.load(String(html || ""));
+    const candidates = [];
+
+    $("a[href]").each((index, element) => {
+        const href = absoluteUrl($(element).attr("href"), currentUrl);
+        if (!href) return;
+        const label = safeText([
+            $(element).text(),
+            $(element).attr("aria-label"),
+            $(element).attr("title"),
+            $(element).attr("data-uia"),
+            href,
+        ].filter(Boolean).join(" "));
+        if (/obtener\s+c[oó]digo\b/i.test(label)) return;
+
+        let container = $(element).parent();
+        let subjectContainer = null;
+        for (let depth = 0; depth < 8 && container.length; depth += 1) {
+            if (TEMPORARY_SUBJECT.test(safeText(container.text()))) {
+                subjectContainer = container;
+                break;
+            }
+            container = container.parent();
+        }
+        if (!subjectContainer) return;
+
+        const preferred = /(ver|abrir|leer|mensaje|correo|email|view|read|eye)/i.test(label) ? 0 : 1;
+        candidates.push({ method: "GET", url: href, index, preferred });
+    });
+
+    return candidates
+        .sort((a, b) => a.preferred - b.preferred || a.index - b.index)
+        .filter((candidate, index, list) => list.findIndex((item) => item.url === candidate.url) === index);
+}
+
+function extractJeffTemporaryCode(html) {
+    const $ = cheerio.load(String(html || ""));
+    const text = safeText($("body").text() || $.text());
+    if (!/(acceso\s+temporal|ver\s+netflix\s+en\s+tu\s+dispositivo|dispositivo\s+solicitante)/i.test(text)) return "";
+    const code = extractJeffProviderCode(String(html || ""));
+    return /^\d{4}$/.test(code) ? code : "";
+}
+
+async function fetchNetflixTemporaryPage({ url, timeoutMs, referer }) {
+    let currentUrl = safeNetflixTemporaryUrl(url, url);
+    if (!currentUrl) throw new Error("El enlace temporal de Netflix no es válido.");
+
+    for (let redirects = 0; redirects <= 5; redirects += 1) {
+        let response;
+        try {
+            response = await axios.request({
+                method: "GET",
+                url: currentUrl,
+                headers: {
+                    "User-Agent": USER_AGENT,
+                    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
+                    ...(referer ? { Referer: referer } : {}),
+                },
+                timeout: timeoutMs,
+                maxRedirects: 0,
+                validateStatus: (status) => status >= 200 && status < 400,
+            });
+        } catch (error) {
+            const wrapped = new Error(isProviderTimeout(error)
+                ? "El enlace temporal de Netflix tardó demasiado en responder."
+                : "No fue posible abrir el enlace temporal de Netflix.");
+            wrapped.code = isProviderTimeout(error) ? "provider_timeout" : "provider_unavailable";
+            wrapped.causeCode = error?.code || null;
+            throw wrapped;
+        }
+
+        if (!REDIRECT_STATUSES.has(response.status)) return { response, url: currentUrl };
+        const nextUrl = safeNetflixTemporaryUrl(response.headers?.location, currentUrl);
+        if (!nextUrl) throw new Error("Netflix devolvió una redirección no permitida.");
+        currentUrl = nextUrl;
+    }
+
+    throw new Error("Netflix devolvió demasiadas redirecciones.");
+}
+
 async function requestWithCookies({ method, url, data, jar, timeoutMs, referer }) {
     let currentUrl = url;
     let currentMethod = method;
@@ -234,7 +358,7 @@ function providerError(status, message) {
     return { ok: false, status, message };
 }
 
-async function fetchCodeFromJeffProvider({ email, config }) {
+async function fetchCodeFromJeffProvider({ email, config, action = "code" }) {
     if (!config?.enabled) return providerError("provider_config_error", "El proveedor externo no está configurado para esta plataforma.");
 
     const loginUrl = providerEndpoint(config.loginPath, config.baseUrl);
@@ -249,15 +373,15 @@ async function fetchCodeFromJeffProvider({ email, config }) {
         const loginForm = findLoginForm($login);
         if (!loginForm) return providerError("provider_layout_changed", "No se encontró el formulario de acceso del proveedor.");
 
-        const action = absoluteUrl($login(loginForm.form).attr("action") || loginUrl, loginUrl);
-        if (!action) return providerError("provider_layout_changed", "El formulario de acceso del proveedor cambió.");
+        const loginAction = absoluteUrl($login(loginForm.form).attr("action") || loginUrl, loginUrl);
+        if (!loginAction) return providerError("provider_layout_changed", "El formulario de acceso del proveedor cambió.");
         const values = formFields($login, loginForm.form);
         values[loginForm.identity] = config.username;
         values[loginForm.password] = config.password;
         stage = "login_submit";
         const loggedIn = await requestWithCookies({
             method: "POST",
-            url: action,
+            url: loginAction,
             data: new URLSearchParams(values).toString(),
             jar,
             timeoutMs: config.timeoutMs,
@@ -314,6 +438,47 @@ async function fetchCodeFromJeffProvider({ email, config }) {
             return providerError("provider_layout_changed", "No se encontró el buscador de correos del proveedor.");
         }
 
+        const normalizedAction = String(action || "code").trim().toLowerCase();
+        if (normalizedAction === "temporary") {
+            const resultUrl = result.url || inbox.url || inboxUrl;
+            const directAction = extractJeffTemporaryAction(result.response.data, resultUrl);
+            const messageLinks = directAction ? [] : findJeffTemporaryMessageLinks(result.response.data, resultUrl);
+            const candidates = directAction ? [{ method: "GET", url: directAction.url }] : messageLinks;
+
+            if (!candidates.length) {
+                return providerError("provider_code_not_found", "No se encontró el correo temporal reciente para ese correo.");
+            }
+
+            for (const candidate of candidates) {
+                let temporaryAction = directAction;
+                let messageUrl = resultUrl;
+                if (!temporaryAction) {
+                    stage = "temporary_message_page";
+                    const message = await requestWithCookies({
+                        method: candidate.method,
+                        url: candidate.url,
+                        jar,
+                        timeoutMs: config.timeoutMs,
+                        referer: resultUrl,
+                    });
+                    messageUrl = message.url || candidate.url;
+                    temporaryAction = extractJeffTemporaryAction(message.response.data, messageUrl);
+                }
+                if (!temporaryAction) continue;
+
+                stage = "temporary_code_page";
+                const codePage = await fetchNetflixTemporaryPage({
+                    url: temporaryAction.url,
+                    timeoutMs: config.timeoutMs,
+                    referer: messageUrl,
+                });
+                const code = extractJeffTemporaryCode(codePage.response.data);
+                if (code) return { ok: true, type: "code", code, source: "jeff_provider" };
+            }
+
+            return providerError("provider_code_not_found", "No se encontró el código temporal de 4 dígitos.");
+        }
+
         const code = extractJeffProviderCode(result.response.data);
         if (!code) return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo en el proveedor.");
         return { ok: true, type: "code", code, source: "jeff_provider" };
@@ -334,4 +499,10 @@ async function fetchCodeFromJeffProvider({ email, config }) {
 module.exports = {
     extractJeffProviderCode,
     fetchCodeFromJeffProvider,
+    __test: {
+        extractJeffTemporaryAction,
+        extractJeffTemporaryCode,
+        findJeffTemporaryMessageLinks,
+        safeNetflixTemporaryUrl,
+    },
 };

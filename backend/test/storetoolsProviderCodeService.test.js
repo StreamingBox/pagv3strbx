@@ -45,6 +45,36 @@ test("elige el último correo de inicio de Netflix y extrae cuatro dígitos", ()
     assert.equal(selected.code, "8245");
 });
 
+test("elige el último correo temporal de Netflix y encuentra el enlace Obtener código", () => {
+    const selected = storetoolsTest.selectLatestStoretoolsTemporaryEmail([
+        {
+            fecha: "11-Sep-2026 18:40:00",
+            asunto: "Tu código de acceso temporal de Netflix",
+            mensaje: "<a href=\"https://www.netflix.com/account/travel/verify?nf_token=old\">Obtener código</a>",
+        },
+        {
+            fecha: "11-Sep-2026 18:52:26",
+            asunto: "Tu código de acceso temporal de Netflix",
+            mensaje: "<a href=\"https://www.netflix.com/account/travel/verify?nf_token=new\">Obtener código</a>",
+        },
+        {
+            fecha: "11-Sep-2026 18:53:00",
+            asunto: "Netflix: Tu código de inicio de sesión",
+            mensaje: "Código 8245",
+        },
+    ]);
+
+    assert.equal(selected.row.fecha, "11-Sep-2026 18:52:26");
+    assert.deepEqual(
+        storetoolsTest.extractStoretoolsTemporaryAction(selected.row.mensaje),
+        { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=new" },
+    );
+    assert.equal(
+        storetoolsTest.safeNetflixTemporaryUrl("https://www.netflix.com.evil.test/account/travel/verify?nf_token=x"),
+        "",
+    );
+});
+
 test("inicia sesión en StoreTools, consulta Netflix y conserva la cookie", async () => {
     const originalRequest = axios.request;
     const calls = [];
@@ -116,6 +146,82 @@ test("inicia sesión en StoreTools, consulta Netflix y conserva la cookie", asyn
         assert.equal(calls.length, 3);
         assert.equal(calls[0].url, "https://storetools.co/consultar");
         assert.match(calls[2].headers.Cookie, /PHPSESSID=test-session/);
+    } finally {
+        axios.request = originalRequest;
+    }
+});
+
+test("StoreTools abre Obtener código y extrae los cuatro dígitos temporales", async () => {
+    const originalRequest = axios.request;
+    const calls = [];
+    axios.request = async (options) => {
+        calls.push(options);
+        if (options.method === "GET" && options.url.endsWith("/consultar")) {
+            return {
+                status: 200,
+                headers: { "set-cookie": ["PHPSESSID=temp-session; Path=/; HttpOnly"] },
+                data: "<html>StoreTools</html>",
+            };
+        }
+        if (options.method === "POST" && options.url.endsWith("/validarID.php")) {
+            return { status: 200, headers: {}, data: { respuesta: "exito" } };
+        }
+        if (options.method === "POST" && options.url.endsWith("/get_email.php")) {
+            return {
+                status: 200,
+                headers: {},
+                data: {
+                    respuesta: "exito",
+                    resultadoCorreos: [{
+                        fecha: "11-Sep-2026 18:52:26",
+                        asunto: "Tu código de acceso temporal de Netflix",
+                        mensaje: "<a href=\"https://www.netflix.com/account/travel/verify?nf_token=temp-token\">Obtener código</a>",
+                    }],
+                },
+            };
+        }
+        if (options.method === "GET" && options.url.startsWith("https://www.netflix.com/account/travel/verify")) {
+            assert.match(options.headers.Referer, /storetools\.co/);
+            return {
+                status: 200,
+                headers: {},
+                data: `
+                    <h1>Usa este código para ver Netflix en tu dispositivo</h1>
+                    <p>Ingresa este código en el dispositivo solicitante para obtener acceso temporal.</p>
+                    <strong>3856</strong>
+                    <p>Este código vence después de 15 minutos.</p>
+                `,
+            };
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.url}`);
+    };
+
+    try {
+        const result = await fetchCodeFromStoretoolsProvider({
+            email: "cliente@ejemplo.com",
+            action: "temporary",
+            config: {
+                enabled: true,
+                baseUrl: "https://storetools.co",
+                userId: "user-id",
+                timeoutMs: 5000,
+                pagePath: "/consultar",
+                loginPath: "/funciones/validarID.php",
+                queryPath: "/funciones/get_email.php",
+                platform: "netflix",
+                platformId: "1",
+                language: "es",
+            },
+        });
+
+        assert.deepEqual(result, {
+            ok: true,
+            type: "code",
+            code: "3856",
+            source: "storetools_provider",
+        });
+        assert.equal(calls.length, 4);
+        assert.match(calls[3].url, /nf_token=temp-token/);
     } finally {
         axios.request = originalRequest;
     }

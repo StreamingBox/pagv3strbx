@@ -400,7 +400,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
     if (
-        normalizedAction === "code"
+        ["code", "temporary"].includes(normalizedAction)
         && accountCodeProvider === STORETOOLS_PROVIDER
         && !storetoolsProviderConfig.enabled
     ) {
@@ -475,7 +475,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
 
     try {
         if (
-            normalizedAction === "code"
+            ["code", "temporary"].includes(normalizedAction)
             && accountCodeProvider === STORETOOLS_PROVIDER
             && storetoolsProviderConfig.enabled
         ) {
@@ -483,6 +483,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 fetchCodeFromStoretoolsProvider({
                     email: soldAccountEmail,
                     config: storetoolsProviderConfig,
+                    action: normalizedAction,
                 }),
                 storetoolsProviderConfig.timeoutMs + 1000,
                 "Tiempo de espera agotado consultando el proveedor externo."

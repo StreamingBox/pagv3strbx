@@ -182,16 +182,24 @@ export default function AdminInventory() {
         return Array.isArray(r.data) ? r.data : [];
     }
 
-    async function loadInventory(pageNum = page, currentLimit = limit) {
+    async function loadInventory(pageNum = page, currentLimit = limit, filterOverrides = {}) {
         setLoading(true);
         setError("");
         try {
+            const filters = {
+                platformId,
+                status,
+                q,
+                assignedTo,
+                profileNumber,
+                ...filterOverrides,
+            };
             const params = new URLSearchParams();
-            if (platformId) params.set("platformId", platformId);
-            if (status) params.set("status", status);
-            if (q) params.set("q", q);
-            if (assignedTo) params.set("assignedTo", assignedTo);
-            if (profileNumber.trim()) params.set("profileNumber", profileNumber.trim());
+            if (filters.platformId) params.set("platformId", filters.platformId);
+            if (filters.status) params.set("status", filters.status);
+            if (filters.q.trim()) params.set("q", filters.q.trim());
+            if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
+            if (filters.profileNumber.trim()) params.set("profileNumber", filters.profileNumber.trim());
             params.set("page", pageNum);
             params.set("limit", currentLimit);
 
@@ -208,6 +216,22 @@ export default function AdminInventory() {
         } finally {
             setLoading(false);
         }
+    }
+
+    function clearFilters() {
+        const emptyFilters = {
+            platformId: "",
+            status: "",
+            q: "",
+            assignedTo: "",
+            profileNumber: "",
+        };
+        setPlatformId(emptyFilters.platformId);
+        setStatus(emptyFilters.status);
+        setQ(emptyFilters.q);
+        setAssignedTo(emptyFilters.assignedTo);
+        setProfileNumber(emptyFilters.profileNumber);
+        loadInventory(1, limit, emptyFilters);
     }
 
     async function refreshAll() {
@@ -570,7 +594,7 @@ export default function AdminInventory() {
                                         style={{ ...inputStyle, paddingLeft: 38 }}
                                         value={q}
                                         onChange={e => setQ(e.target.value)}
-                                        placeholder="Buscar email..."
+                                        placeholder="Cuenta, plataforma o ID..."
                                     />
                                 </div>
                             </div>
@@ -603,9 +627,14 @@ export default function AdminInventory() {
                                         </div>
                                     )}
                                 </div>
-                                <button type="submit" disabled={loading} style={{ height: 44, padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", flex: "1 1 auto", minWidth: 200 }}>
-                                    Filtrar Inventario
-                                </button>
+                                 <div style={{ display: "flex", gap: 10, flex: "1 1 auto", minWidth: 280 }}>
+                                     <button type="button" onClick={clearFilters} disabled={loading} className="btn-ghost" style={{ height: 44, padding: "0 18px", borderRadius: 12, flex: "0 0 auto" }}>
+                                         Limpiar
+                                     </button>
+                                     <button type="submit" disabled={loading} style={{ height: 44, padding: "0 28px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: "0 4px 16px rgba(13,166,242,0.3)", flex: "1 1 auto", minWidth: 200 }}>
+                                         Filtrar Inventario
+                                     </button>
+                                 </div>
                             </div>
                         </form>
                     </motion.div>

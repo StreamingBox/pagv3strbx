@@ -322,7 +322,7 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber,
             pa.email LIKE ? OR
             pa.platform_name LIKE ? OR
             p.name LIKE ? OR
-            u.email LIKE ? OR
+            CAST(pa.id AS CHAR) LIKE ? OR
             CAST(active_sub.id AS CHAR) LIKE ? OR
             CAST(latest_replacement.subscription_id AS CHAR) LIKE ? OR
             CAST(latest_replacement.order_id AS CHAR) LIKE ? OR
@@ -1172,4 +1172,7 @@ module.exports = {
     getInventoryAccountDetail,
     exportInventoryCsv,
     patchInventory,
+    __test: {
+        buildInventoryWhere,
+    },
 };

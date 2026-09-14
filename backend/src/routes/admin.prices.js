@@ -92,7 +92,12 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
                 MAX(CASE WHEN pp.currency='MXN' THEN pp.price END)     AS price_mxn,
                 MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.price END)     AS price_usd,
 
+                MAX(CASE WHEN pp.currency='COP' THEN pp.previous_price END) AS previous_price_cop,
+                MAX(CASE WHEN pp.currency='MXN' THEN pp.previous_price END) AS previous_price_mxn,
+                MAX(CASE WHEN pp.currency IN ('USD','USDT') THEN pp.previous_price END) AS previous_price_usd,
+
                 MAX(CASE WHEN pp.currency='COP' THEN pp.lite_price_cop END) AS lite_price_cop,
+                MAX(CASE WHEN pp.currency='COP' THEN pp.previous_lite_price_cop END) AS previous_lite_price_cop,
                 MAX(CASE WHEN pp.currency='COP' THEN pp.show_in_lite END) AS show_in_lite,
 
                 MAX(CASE WHEN pp.currency='COP' THEN pp.is_active END) AS active_cop,

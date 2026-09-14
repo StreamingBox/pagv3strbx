@@ -6,19 +6,32 @@ const fmtCOP = (n) => new Intl.NumberFormat("es-CO").format(Number(n || 0));
 const fmtPlain = (n) => { const v = Number(n); return Number.isFinite(v) && v > 0 ? String(v) : "—"; };
 const hasPreviousPrice = (current, previous) => Number(previous) > Number(current) && Number(current) >= 0;
 
-function PriceCell({ current, previous, format, muted = false }) {
-    const reduced = hasPreviousPrice(current, previous);
+function PreviousPriceHint({ current, previous, format }) {
+    if (!hasPreviousPrice(current, previous)) return null;
 
     return (
-        <div style={{ display: "grid", gap: 3, minWidth: reduced ? 92 : "auto" }}>
+        <span style={{ color: "#f97316", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
+            Antes: <s style={{ color: "var(--muted)", textDecorationColor: "#f97316" }}>{format(previous)}</s>
+        </span>
+    );
+}
+
+function PriceCell({ current, previous, format, muted = false }) {
+    return (
+        <div style={{ display: "grid", gap: 3, minWidth: hasPreviousPrice(current, previous) ? 92 : "auto" }}>
             <span style={{ color: muted ? "var(--muted)" : "var(--text)", fontWeight: muted ? 500 : 700 }}>
                 {format(current)}
             </span>
-            {reduced ? (
-                <span style={{ color: "#f97316", fontSize: 10, fontWeight: 700, whiteSpace: "nowrap" }}>
-                    Antes: <s style={{ color: "var(--muted)", textDecorationColor: "#f97316" }}>{format(previous)}</s>
-                </span>
-            ) : null}
+            <PreviousPriceHint current={current} previous={previous} format={format} />
+        </div>
+    );
+}
+
+function EditablePrice({ value, onChange, previous, format }) {
+    return (
+        <div style={{ display: "grid", gap: 3 }}>
+            <input style={numInput} type="number" value={value} onChange={onChange} />
+            <PreviousPriceHint current={value} previous={previous} format={format} />
         </div>
     );
 }
@@ -86,21 +99,21 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
 
             {/* COP */}
             <td style={{ padding: "12px 16px", fontVariantNumeric: "tabular-nums" }}>
-                {editing ? <input style={numInput} type="number" value={cop} onChange={e => setCop(e.target.value)} /> : (
+                {editing ? <EditablePrice value={cop} onChange={e => setCop(e.target.value)} previous={r.previous_price_cop} format={fmtCOP} /> : (
                     <PriceCell current={r.price_cop || 0} previous={r.previous_price_cop} format={fmtCOP} />
                 )}
             </td>
 
             {/* MXN */}
             <td style={{ padding: "12px 16px", color: "var(--muted)" }}>
-                {editing ? <input style={numInput} type="number" value={mxn} onChange={e => setMxn(e.target.value)} /> : (
+                {editing ? <EditablePrice value={mxn} onChange={e => setMxn(e.target.value)} previous={r.previous_price_mxn} format={fmtPlain} /> : (
                     <PriceCell current={r.price_mxn} previous={r.previous_price_mxn} format={fmtPlain} muted />
                 )}
             </td>
 
             {/* USD */}
             <td style={{ padding: "12px 16px", color: "var(--muted)" }}>
-                {editing ? <input style={numInput} type="number" value={usd} onChange={e => setUsd(e.target.value)} /> : (
+                {editing ? <EditablePrice value={usd} onChange={e => setUsd(e.target.value)} previous={r.previous_price_usd} format={fmtPlain} /> : (
                     <PriceCell current={r.price_usd} previous={r.previous_price_usd} format={fmtPlain} muted />
                 )}
             </td>
@@ -109,7 +122,10 @@ export default function PriceRow({ r, idx, saving, onToggleAll, onSaveMulti }) {
             <td style={{ padding: "12px 16px", color: "var(--text)", fontWeight: 800 }}>
                 {editing ? (
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                        <input style={numInput} type="number" value={liteCop} onChange={e => setLiteCop(e.target.value)} />
+                        <div style={{ display: "grid", gap: 3 }}>
+                            <input style={numInput} type="number" value={liteCop} onChange={e => setLiteCop(e.target.value)} />
+                            <PreviousPriceHint current={liteCop} previous={r.previous_lite_price_cop} format={fmtCOP} />
+                        </div>
                         <label style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--muted)", fontSize: 11 }}>
                             <input type="checkbox" checked={showInLite} onChange={e => setShowInLite(e.target.checked)} />
                             Ver

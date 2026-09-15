@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     CheckCircle2,
+    Copy,
     Clock3,
+    Eye,
+    EyeOff,
     ExternalLink,
     FileText,
     Headphones,
@@ -107,6 +110,131 @@ function TraceBlock({ title, items, empty, render }) {
     );
 }
 
+function CurrentAccountCard({ info, loading }) {
+    const [passwordVisible, setPasswordVisible] = useState(false);
+    const [copiedField, setCopiedField] = useState("");
+    const account = info?.account;
+
+    if (loading) {
+        return (
+            <section className="admin-support-account-card" aria-label="Datos actuales de la cuenta">
+                <div className="admin-support-account-card__heading">
+                    <div>
+                        <span>Cuenta actual</span>
+                        <h3>Cargando datos actuales...</h3>
+                    </div>
+                </div>
+            </section>
+        );
+    }
+
+    if (!account) return null;
+
+    async function copyField(field, value) {
+        const text = String(value || "").trim();
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopiedField(field);
+            window.setTimeout(() => setCopiedField((current) => current === field ? "" : current), 1400);
+        } catch {
+            setCopiedField("");
+        }
+    }
+
+    const fields = [
+        { key: "email", label: "Correo", value: account.email },
+        { key: "profile", label: "Perfil", value: account.profile_number ?? "-" },
+        { key: "pin", label: "PIN", value: account.pin || "-" },
+        { key: "twoFactor", label: "2FA / secreto", value: account.two_factor_secret || "-" },
+        { key: "status", label: "Estado", value: info.accountStatus || "-" },
+        { key: "accountExpiry", label: "Vencimiento de cuenta", value: formatDate(info.accountExpiresAt) },
+    ];
+
+    return (
+        <section className="admin-support-account-card" aria-label="Datos actuales de la cuenta">
+            <div className="admin-support-account-card__heading">
+                <div>
+                    <span>Datos actuales</span>
+                    <h3>Cuenta asignada #{info.accountId || "-"}</h3>
+                </div>
+                <strong>{info.platformName || "Cuenta"}</strong>
+            </div>
+            <div className="admin-support-account-card__grid">
+                {fields.map((field) => (
+                    <div className="admin-support-account-card__field" key={field.key}>
+                        <span>{field.label}</span>
+                        <div className="admin-support-account-card__value">
+                            <strong title={String(field.value)}>{field.value}</strong>
+                            {field.value !== "-" ? (
+                                <button
+                                    type="button"
+                                    aria-label={`Copiar ${field.label}`}
+                                    title={`Copiar ${field.label}`}
+                                    onClick={() => void copyField(field.key, field.value)}
+                                >
+                                    {copiedField === field.key ? "✓" : <Copy size={14} aria-hidden />}
+                                </button>
+                            ) : null}
+                        </div>
+                    </div>
+                ))}
+                <div className="admin-support-account-card__field admin-support-account-card__field--password">
+                    <span>Contraseña</span>
+                    <div className="admin-support-account-card__value">
+                        <strong title={account.password || "Sin contraseña"}>
+                            {account.password
+                                ? (passwordVisible ? account.password : "••••••••")
+                                : "Sin contraseña"}
+                        </strong>
+                        {account.password ? (
+                            <>
+                                <button
+                                    type="button"
+                                    aria-label={passwordVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
+                                    title={passwordVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
+                                    onClick={() => setPasswordVisible((current) => !current)}
+                                >
+                                    {passwordVisible ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
+                                </button>
+                                <button
+                                    type="button"
+                                    aria-label="Copiar contraseña"
+                                    title="Copiar contraseña"
+                                    onClick={() => void copyField("password", account.password)}
+                                >
+                                    {copiedField === "password" ? "✓" : <Copy size={14} aria-hidden />}
+                                </button>
+                            </>
+                        ) : null}
+                    </div>
+                </div>
+                <div className="admin-support-account-card__field admin-support-account-card__field--wide">
+                    <span>Enlace de acceso</span>
+                    <div className="admin-support-account-card__value">
+                        {account.access_url ? (
+                            <a href={account.access_url} target="_blank" rel="noreferrer" title={account.access_url}>
+                                {account.access_url}
+                            </a>
+                        ) : <strong>-</strong>}
+                        {account.access_url ? (
+                            <button
+                                type="button"
+                                aria-label="Copiar enlace de acceso"
+                                title="Copiar enlace de acceso"
+                                onClick={() => void copyField("accessUrl", account.access_url)}
+                            >
+                                {copiedField === "accessUrl" ? "✓" : <Copy size={14} aria-hidden />}
+                            </button>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+            <small>Estos son los datos de la cuenta que está asignada actualmente a la venta.</small>
+        </section>
+    );
+}
+
 const RESPONSE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const RESPONSE_IMAGE_MAX_FILES = 5;
 const RESPONSE_IMAGE_MAX_BYTES = 6 * 1024 * 1024;
@@ -184,6 +312,7 @@ export default function AdminSupport() {
     const [resolutionMessage, setResolutionMessage] = useState("");
     const [resolutionImages, setResolutionImages] = useState([]);
     const [supportInfo, setSupportInfo] = useState(null);
+    const [supportInfoLoading, setSupportInfoLoading] = useState(false);
     const [replacementAccountId, setReplacementAccountId] = useState("");
     const [ticketDetail, setTicketDetail] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
@@ -263,6 +392,7 @@ export default function AdminSupport() {
         setResolutionSubtype(RESOLUTION_SUBTYPES.repaired[0].value);
         setReplacementAccountId("");
         setSupportInfo(null);
+        setSupportInfoLoading(false);
         setEditingResponse(null);
         setEditResolutionType(selected?.resolutionType || "repaired");
         setEditResolutionSubtype(
@@ -273,9 +403,10 @@ export default function AdminSupport() {
         setEditResolutionMessage(selected?.resolutionMessage || "");
         setEditResolutionImages([]);
         setReopenMessage("");
-        if (!selected?.subscriptionId || selected.status === "resolved") return;
+        if (!selected?.subscriptionId) return;
 
         let cancelled = false;
+        setSupportInfoLoading(true);
         void apiFetch(`/admin/support/subscription/${selected.subscriptionId}`).then((response) => {
             if (cancelled || !response.ok) return;
             setSupportInfo(response.data);
@@ -284,6 +415,8 @@ export default function AdminSupport() {
                     ? String(response.data.suggestedReplacementId)
                     : ""
             );
+        }).finally(() => {
+            if (!cancelled) setSupportInfoLoading(false);
         });
         return () => {
             cancelled = true;
@@ -620,6 +753,12 @@ export default function AdminSupport() {
                                          <div><span>Perfil</span><strong>{selected.profileNumber ?? "-"}</strong></div>
                                          <div><span>Fecha</span><strong>{formatDate(selected.createdAt)}</strong></div>
                                      </div>
+
+                                     <CurrentAccountCard
+                                         key={supportInfo?.accountId || `loading-${selected.id}`}
+                                         info={supportInfo}
+                                         loading={supportInfoLoading}
+                                     />
 
                                      <div className="admin-support-metrics">
                                          <div>

@@ -854,6 +854,111 @@
     white-space: nowrap;
 }
 
+.admin-support-account-card {
+    margin: 0 0 16px;
+    padding: 15px;
+    border: 1px solid rgba(34, 211, 238, 0.28);
+    border-radius: 8px;
+    background: rgba(34, 211, 238, 0.055);
+}
+
+.admin-support-account-card__heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.admin-support-account-card__heading span,
+.admin-support-account-card__field > span {
+    display: block;
+    color: #67e8f9;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.admin-support-account-card__heading h3 {
+    margin: 4px 0 0;
+    color: var(--text);
+    font-size: 14px;
+}
+
+.admin-support-account-card__heading > strong {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.admin-support-account-card__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.admin-support-account-card__field {
+    min-width: 0;
+    padding: 10px 11px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: rgba(6, 12, 30, 0.3);
+}
+
+.admin-support-account-card__field--wide {
+    grid-column: 1 / -1;
+}
+
+.admin-support-account-card__field > span {
+    margin-bottom: 5px;
+    color: var(--muted);
+}
+
+.admin-support-account-card__value {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+}
+
+.admin-support-account-card__value strong,
+.admin-support-account-card__value a {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-support-account-card__value a {
+    color: #67e8f9;
+    text-decoration: underline;
+}
+
+.admin-support-account-card__value button {
+    display: inline-flex;
+    width: 27px;
+    height: 27px;
+    flex: 0 0 27px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: #67e8f9;
+    background: rgba(34, 211, 238, 0.08);
+    cursor: pointer;
+}
+
+.admin-support-account-card > small {
+    display: block;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 10px;
+}
+
 .admin-support-metrics {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1355,6 +1460,14 @@
 
     .admin-support-facts {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-support-account-card__grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-support-account-card__field--wide {
+        grid-column: 1 / -1;
     }
 
     .admin-support-metrics,

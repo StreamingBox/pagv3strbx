@@ -107,6 +107,7 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
         a.pin,
         a.two_factor_secret,
         a.profile_number,
+        a.status AS account_status,
         a.platform_id AS account_platform_id,
         a.expires_at AS account_expires_at
      FROM subscriptions s
@@ -183,8 +184,11 @@ async function getSubscriptionSupportInfo(conn, subscriptionId) {
             password: r.password,
             access_url: r.access_url,
             pin: r.pin,
+            two_factor_secret: r.two_factor_secret,
             profile_number: r.profile_number,
         },
+        accountStatus: r.account_status || "",
+        accountExpiresAt: r.account_expires_at || null,
         replacementCandidates,
         suggestedReplacementId: replacementCandidates?.[0]?.id || null,
         token,

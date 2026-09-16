@@ -24,6 +24,13 @@ test("TV setup delegates the login code to the existing Inicio counter", () => {
     assert.match(routeSource, /message: "OK:code-tv-setup"/);
 });
 
+test("TV setup retries briefly while Netflix's email is still arriving", () => {
+    assert.match(routeSource, /const LOGIN_CODE_MAX_ATTEMPTS = 6/);
+    assert.match(routeSource, /const LOGIN_CODE_RETRY_DELAY_MS = 2500/);
+    assert.match(routeSource, /requestLoginCodeOnce\(req, orderNumber\)/);
+    assert.match(routeSource, /RETRYABLE_LOGIN_CODE_STATUSES/);
+});
+
 test("TV setup run accepts the formatted code returned by validation", () => {
     assert.match(routeSource, /if \(!\/\^\\d\{4\}-\\d\{4\}\$\/\.test\(tvCode\) \|\| !subscriptionId\)/);
 });

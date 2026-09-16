@@ -11,6 +11,16 @@ const { isStoredDateOnlyExpired } = require("../utils/date");
 
 const router = express.Router();
 const activeRuns = new Set();
+const LOGIN_CODE_MAX_ATTEMPTS = 6;
+const LOGIN_CODE_RETRY_DELAY_MS = 2500;
+const RETRYABLE_LOGIN_CODE_STATUSES = new Set([
+    "mailbox_empty",
+    "sender_mismatch",
+    "netflix_flow_miss",
+    "expired",
+    "regex_mismatch",
+    "not_found",
+]);
 
 function normalizeTvCode(value) {
     const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
@@ -93,7 +103,7 @@ async function loadValidatedSubscription({ req, tvCode, subscriptionId }) {
     return { subscription, body: buildValidatedData(subscription, tvCode) };
 }
 
-async function requestLoginCodeForSetup(req, orderNumber) {
+async function requestLoginCodeOnce(req, orderNumber) {
     const { saveLog } = createCodeLogger({
         req,
         orderNumber,
@@ -163,6 +173,24 @@ async function requestLoginCodeForSetup(req, orderNumber) {
         console.error("[tv-setup] login code error", error);
         return { ok: false, status: "login_code_unavailable", message: "No se pudo consultar el código de Inicio." };
     }
+}
+
+async function requestLoginCodeForSetup(req, orderNumber) {
+    let latest = null;
+
+    // Gmail/IMAP puede tardar unos segundos en reflejar el correo que Netflix
+    // acaba de enviar. Reintentamos solo ante ausencia de correo o de código.
+    for (let attempt = 1; attempt <= LOGIN_CODE_MAX_ATTEMPTS; attempt += 1) {
+        latest = await requestLoginCodeOnce(req, orderNumber);
+        if (latest?.ok || !RETRYABLE_LOGIN_CODE_STATUSES.has(latest?.status)) return latest;
+        if (attempt < LOGIN_CODE_MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, LOGIN_CODE_RETRY_DELAY_MS));
+    }
+
+    return latest || {
+        ok: false,
+        status: "login_code_unavailable",
+        message: "No se pudo consultar el código de Inicio.",
+    };
 }
 
 function automationHttpStatus(status) {

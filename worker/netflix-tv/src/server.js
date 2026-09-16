@@ -6,6 +6,7 @@ const { chromium } = require("playwright");
 
 const NETFLIX_TV_URL = "https://www.netflix.com/tv2";
 const PORT = Number(process.env.TV_SETUP_WORKER_PORT || 4100);
+const HOST = String(process.env.TV_SETUP_WORKER_HOST || "127.0.0.1").trim();
 const SESSION_TTL_MS = Number(process.env.TV_SETUP_WORKER_SESSION_TTL_MS || 90000);
 const activeSessions = new Map();
 
@@ -322,8 +323,8 @@ app.post("/run/cancel", async (req, res) => {
 });
 
 if (require.main === module) {
-    app.listen(PORT, "0.0.0.0", () => {
-        console.log(`[netflix-tv-worker] listening on ${PORT}`);
+    app.listen(PORT, HOST, () => {
+        console.log(`[netflix-tv-worker] listening on ${HOST}:${PORT}`);
     });
 }
 

@@ -217,13 +217,14 @@ async function findVisibleInput(page, selectors) {
 }
 
 async function findVisibleTextAction(page, labels) {
+    const normalizedLabels = labels.map(normalizeText);
     const candidates = page.locator("a,button");
     const count = await candidates.count();
     for (let index = 0; index < count; index += 1) {
         const candidate = candidates.nth(index);
         if (!await candidate.isVisible().catch(() => false)) continue;
         const text = normalizeText(await candidate.innerText().catch(() => ""));
-        if (labels.some((label) => text.includes(label))) return candidate;
+        if (normalizedLabels.some((label) => label && text.includes(label))) return candidate;
     }
     return null;
 }
@@ -280,6 +281,15 @@ async function submitAccountEmail(page, accountEmail, accountPassword) {
         await emailInput.press("Tab");
         await page.waitForTimeout(250);
         await waitForNavigationAfter(page, () => continueButton.click());
+        const emailStillVisible = await emailInput.isVisible().catch(() => false);
+        const passwordStillVisible = Boolean(await findVisibleInput(page, [
+            "input[name='password']",
+            "input[type='password']",
+        ]));
+        if (emailStillVisible && passwordStillVisible) {
+            logStage("account_email_enter_fallback", { path: safePath(page.url()) });
+            await waitForNavigationAfter(page, () => emailInput.press("Enter"));
+        }
     } finally {
         page.off("request", requestListener);
         page.off("response", responseListener);
@@ -310,7 +320,11 @@ async function submitAccountEmail(page, accountEmail, accountPassword) {
         path: safePath(page.url()),
         hasLoginCodePrompt: /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText),
         hasResendText: /(?:solicita el reenvio|reenviar codigo|resend code)/i.test(normalizedText),
-        hasEmailInput: Boolean(await findVisibleInput(page, ["input[name='userLoginId']"])),
+        hasEmailInput: Boolean(await findVisibleInput(page, [
+            "input[name='userLoginId']",
+            "input[type='email']",
+            "input[autocomplete='email']",
+        ])),
         hasPasswordInput: Boolean(await findVisibleInput(page, ["input[name='password']"])),
         hasConnectedNotice: normalizedText.includes("tu tv ahora esta conectada"),
         hasValidationError: /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText),
@@ -318,7 +332,11 @@ async function submitAccountEmail(page, accountEmail, accountPassword) {
         visibleInputs: await visibleInputSummary(page),
     });
     const hasLoginCodePrompt = /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText);
-    const hasEmailInput = Boolean(await findVisibleInput(page, ["input[name='userLoginId']"]));
+    const hasEmailInput = Boolean(await findVisibleInput(page, [
+        "input[name='userLoginId']",
+        "input[type='email']",
+        "input[autocomplete='email']",
+    ]));
     const hasPasswordInput = Boolean(await findVisibleInput(page, ["input[name='password']"]));
     const hasValidationError = /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText);
     if (!hasLoginCodePrompt && hasEmailInput && hasPasswordInput && !hasValidationError) {

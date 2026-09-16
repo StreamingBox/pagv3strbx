@@ -23,6 +23,9 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /emailInput\.press\("Backspace"\)/);
     assert.match(source, /emailInput\.press\("Tab"\)/);
     assert.match(source, /continueButton\.click\(\)/);
+    assert.match(source, /account_email_enter_fallback/);
+    assert.match(source, /emailInput\.press\("Enter"\)/);
+    assert.match(source, /const normalizedLabels = labels\.map\(normalizeText\)/);
     assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
     assert.match(source, /responseSummaries: responseSummaries/);

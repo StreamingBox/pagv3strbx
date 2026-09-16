@@ -75,6 +75,30 @@ function ErrorNotice({ message }) {
     );
 }
 
+function buildTvSetupErrorMessage(data, fallback) {
+    const status = String(data?.status || "").trim().toLowerCase();
+    const messages = {
+        invalid_tv_code: "Netflix rechazó el código del TV. Revisa los 8 dígitos que aparecen en pantalla.",
+        subscription_missing: "El pedido indicado no existe o ya no está disponible.",
+        unauthorized: "El pedido no pertenece al usuario que inició esta sesión.",
+        platform_mismatch: "El pedido no corresponde a una cuenta de Netflix.",
+        no_account: "El pedido es válido, pero todavía no tiene una cuenta asignada.",
+        subscription_inactive: "El pedido de Netflix no está activo o ya venció.",
+        email_input_missing: "Netflix no mostró el campo del correo. El correo no alcanzó a escribirse.",
+        continue_button_missing: "El correo se cargó, pero Netflix no mostró el botón para continuar.",
+        login_code_input_missing: "Netflix no mostró la pantalla para ingresar el código de Inicio.",
+        expired: "Netflix sí recibió el correo y abrió la pantalla de código, pero no llegó un correo de Inicio reciente al buzón configurado.",
+        netflix_flow_miss: "Netflix sí avanzó, pero no se encontró un correo de Inicio válido para este pedido.",
+        mailbox_empty: "El buzón del proveedor no tiene un correo de Inicio reciente.",
+        sender_mismatch: "Llegó un correo, pero no proviene del remitente esperado de Netflix.",
+        regex_mismatch: "Llegó un correo de Netflix, pero no contiene un código de Inicio de 4 dígitos.",
+        imap_auth_error: "El buzón de códigos no pudo autenticarse. Revisa la configuración del proveedor.",
+        imap_error: "No fue posible consultar el buzón de códigos del proveedor.",
+        automation_timeout: "Netflix tardó demasiado en responder. La pantalla del navegador no se pudo confirmar.",
+    };
+    return messages[status] || data?.message || fallback;
+}
+
 function CopyField({ label, value, icon: Icon, helper }) {
     const [copied, setCopied] = useState(false);
 
@@ -102,8 +126,10 @@ function CopyField({ label, value, icon: Icon, helper }) {
 
 export default function TvSetup() {
     const navigate = useNavigate();
-    const { user } = useAuth();
+const { user } = useAuth();
     const logout = useAppLogout();
+
+    const TV_SETUP_REQUEST_TIMEOUT_MS = 90000;
 
     const [tvCode, setTvCode] = useState("");
     const [orderNumber, setOrderNumber] = useState("");
@@ -128,9 +154,9 @@ export default function TvSetup() {
             const response = await apiPost("/tv-setup/run", {
                 tvCode: payload.tvCode,
                 orderNumber: payload.orderNumber,
-            });
+            }, { timeoutMs: TV_SETUP_REQUEST_TIMEOUT_MS });
             if (!response.ok) {
-                throw new Error(response.data?.message || "No fue posible completar la conexión automática.");
+                throw new Error(buildTvSetupErrorMessage(response.data, "No fue posible completar la conexión automática."));
             }
             setValidated((current) => ({ ...current, ...response.data }));
             setCompleted(true);
@@ -157,7 +183,7 @@ export default function TvSetup() {
                 orderNumber: orderNumber.trim(),
             });
             if (!response.ok) {
-                throw new Error(response.data?.message || "No fue posible validar el pedido.");
+                throw new Error(buildTvSetupErrorMessage(response.data, "No fue posible validar el pedido."));
             }
             setValidated(response.data);
             await runAutomation(response.data, true);

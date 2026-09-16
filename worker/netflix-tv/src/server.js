@@ -86,6 +86,13 @@ function detectPageFailure(text) {
     if (normalized.includes("no pudimos verificar") || normalized.includes("something went wrong")) {
         return result("netflix_flow_error", "Netflix no permitió continuar con la conexión del TV.");
     }
+    if (normalized.includes("contrasena incorrecta")
+        || normalized.includes("contrasena es incorrecta")
+        || normalized.includes("correo o contrasena incorrectos")
+        || normalized.includes("incorrect password")
+        || normalized.includes("email or password incorrect")) {
+        return result("account_password_rejected", "Netflix rechazó la contraseña almacenada para esta cuenta.");
+    }
     if (normalized.includes("codigo incorrecto") || normalized.includes("codigo no valido")) {
         return result("login_code_rejected", "Netflix rechazó el código de Inicio recibido por correo.");
     }

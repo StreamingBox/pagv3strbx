@@ -34,6 +34,7 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /submitAccountPassword/);
     assert.match(source, /account_password_filled/);
     assert.match(source, /password_flow_not_advanced/);
+    assert.equal(__test.detectPageFailure("La contraseña es incorrecta.")?.status, "account_password_rejected");
     assert.match(source, /email_flow_not_advanced/);
 });
 

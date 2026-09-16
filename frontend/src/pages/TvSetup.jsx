@@ -94,6 +94,7 @@ function buildTvSetupErrorMessage(data, fallback) {
         password_input_missing: "Netflix pidió la contraseña, pero no mostró el campo para ingresarla.",
         password_submit_missing: "Netflix pidió la contraseña, pero no mostró el botón para continuar.",
         password_flow_not_advanced: "Netflix no confirmó la conexión después de ingresar la contraseña.",
+        account_password_rejected: "Netflix rechazó la contraseña almacenada para esta cuenta. Actualiza la cuenta e inténtalo nuevamente.",
         login_code_input_missing: "Netflix no mostró la pantalla para ingresar el código de Inicio.",
         login_code_screen_missing: "Netflix no confirmó la pantalla para ingresar el código de Inicio.",
         resend_unavailable: "Netflix no ofreció la opción para reenviar el código de Inicio.",

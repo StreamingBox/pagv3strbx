@@ -19,6 +19,7 @@ test("TV setup validates an eight-digit code and an active Netflix subscription"
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);
     assert.match(routeSource, /accountEmail: subscription\.accountEmail/);
     assert.match(routeSource, /accountPassword: loaded\.subscription\.accountPassword/);
+    assert.match(routeSource, /account_password_rejected/);
 });
 
 test("TV setup delegates the login code to the existing Inicio counter", () => {

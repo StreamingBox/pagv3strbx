@@ -20,3 +20,9 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
 });
+
+test("worker exposes the resend step used by Netflix when the PIN is not received", () => {
+    assert.match(source, /async function resendLoginCode\(page\)/);
+    assert.match(source, /solicita el reenvio/);
+    assert.match(source, /status: "login_code_resent"/);
+});

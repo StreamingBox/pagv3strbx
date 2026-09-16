@@ -147,6 +147,18 @@ async function findVisibleInput(page, selectors) {
     return null;
 }
 
+async function findVisibleTextAction(page, labels) {
+    const candidates = page.locator("a,button");
+    const count = await candidates.count();
+    for (let index = 0; index < count; index += 1) {
+        const candidate = candidates.nth(index);
+        if (!await candidate.isVisible().catch(() => false)) continue;
+        const text = normalizeText(await candidate.innerText().catch(() => ""));
+        if (labels.some((label) => text.includes(label))) return candidate;
+    }
+    return null;
+}
+
 async function submitAccountEmail(page, accountEmail) {
     const normalizedEmail = String(accountEmail || "").trim().toLowerCase();
     const emailInput = await findVisibleInput(page, [
@@ -216,6 +228,43 @@ async function waitForLoginCodeScreen(page) {
         return /code.*email|codigo.*correo|codigo.*email|enviamos.*correo|sent.*email/i.test(text)
             || inputs.filter((input) => input.maxLength === 1).length >= 4;
     }, { timeout: 12000 }).catch(() => {});
+}
+
+async function resendLoginCode(page) {
+    const resend = await findVisibleTextAction(page, [
+        "solicita el reenvio",
+        "reenviar codigo",
+        "resend code",
+    ]);
+    if (!resend) {
+        logStage("login_code_resend_missing", { path: safePath(page.url()) });
+        return result("resend_unavailable", "Netflix no mostró la opción para reenviar el código de Inicio.");
+    }
+
+    const nonGetRequests = [];
+    const requestListener = (request) => {
+        if (request.method() === "GET") return;
+        const path = safeNetflixPath(request.url());
+        if (path) nonGetRequests.push(`${request.method()} ${path}`);
+    };
+    page.on("request", requestListener);
+    try {
+        await waitForNavigationAfter(page, () => resend.click());
+    } finally {
+        page.off("request", requestListener);
+    }
+    await waitForLoginCodeScreen(page);
+    const failure = detectPageFailure(await bodyText(page));
+    if (failure) {
+        logStage("login_code_resend_rejected", { status: failure.status });
+        return failure;
+    }
+    logStage("login_code_resent", {
+        path: safePath(page.url()),
+        nonGetRequestCount: nonGetRequests.length,
+        requestPaths: [...new Set(nonGetRequests)].slice(0, 6),
+    });
+    return { ok: true, status: "login_code_resent" };
 }
 
 async function visibleCodeInputs(page) {
@@ -391,6 +440,14 @@ app.post("/run/start", async (req, res) => {
     return res.status(flow.ok ? 200 : 400).json(flow);
 });
 
+app.post("/run/resend", async (req, res) => {
+    const sessionId = String(req.body?.sessionId || "").trim();
+    const session = activeSessions.get(sessionId);
+    if (!session) return res.status(400).json(result("session_missing", "La sesión de Netflix venció. Inicia el proceso nuevamente."));
+    const flow = await resendLoginCode(session.page);
+    return res.status(flow.ok ? 200 : 400).json(flow);
+});
+
 app.post("/run/complete", async (req, res) => {
     const flow = await completeRun(req.body || {});
     return res.status(flow.ok ? 200 : 400).json(flow);
@@ -409,5 +466,5 @@ if (require.main === module) {
 
 module.exports = {
     app,
-    __test: { detectPageFailure, isSuccessText, normalizeDigits },
+    __test: { detectPageFailure, isSuccessText, normalizeDigits, resendLoginCode },
 };

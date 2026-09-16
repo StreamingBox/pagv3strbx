@@ -87,6 +87,7 @@ function buildTvSetupErrorMessage(data, fallback) {
         email_input_missing: "Netflix no mostró el campo del correo. El correo no alcanzó a escribirse.",
         continue_button_missing: "El correo se cargó, pero Netflix no mostró el botón para continuar.",
         login_code_input_missing: "Netflix no mostró la pantalla para ingresar el código de Inicio.",
+        resend_unavailable: "Netflix no ofreció la opción para reenviar el código de Inicio.",
         expired: "Netflix sí recibió el correo y abrió la pantalla de código, pero no llegó un correo de Inicio reciente al buzón configurado.",
         netflix_flow_miss: "Netflix sí avanzó, pero no se encontró un correo de Inicio válido para este pedido.",
         mailbox_empty: "El buzón del proveedor no tiene un correo de Inicio reciente.",

@@ -2,6 +2,14 @@ const axios = require("axios");
 
 const NETFLIX_TV_URL = "https://www.netflix.com/tv2";
 const DEFAULT_TIMEOUT_MS = 25000;
+const RESENDABLE_LOGIN_CODE_STATUSES = new Set([
+    "mailbox_empty",
+    "sender_mismatch",
+    "netflix_flow_miss",
+    "expired",
+    "regex_mismatch",
+    "not_found",
+]);
 
 function normalizeDigits(value) {
     return String(value || "").replace(/\D/g, "");
@@ -52,6 +60,14 @@ async function cancelWorkerSession(baseUrl, sessionId) {
     }).catch(() => {});
 }
 
+async function resendWorkerLoginCode(baseUrl, sessionId) {
+    const response = await axios.post(`${baseUrl}/run/resend`, { sessionId }, {
+        headers: workerHeaders(),
+        timeout: DEFAULT_TIMEOUT_MS,
+    });
+    return response.data || {};
+}
+
 async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
     const normalizedTvCode = normalizeTvCode(tvCode);
     const email = String(accountEmail || "").trim();
@@ -78,7 +94,15 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
         sessionId = String(start.sessionId || "").trim();
         if (!sessionId) return result("worker_protocol_error", "El servicio de automatización no devolvió una sesión válida.");
 
-        const loginCodeResult = await requestLoginCode();
+        let loginCodeResult = await requestLoginCode();
+        if (!loginCodeResult?.ok && RESENDABLE_LOGIN_CODE_STATUSES.has(loginCodeResult?.status)) {
+            const resend = await resendWorkerLoginCode(baseUrl, sessionId).catch((error) => ({
+                ok: false,
+                status: "resend_unavailable",
+                message: error?.message || "No fue posible solicitar el reenvío del código.",
+            }));
+            if (resend.ok) loginCodeResult = await requestLoginCode();
+        }
         if (!loginCodeResult?.ok || !loginCodeResult.code) {
             await cancelWorkerSession(baseUrl, sessionId);
             return result(
@@ -113,5 +137,5 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
 module.exports = {
     NETFLIX_TV_URL,
     runNetflixTvSetup,
-    __test: { normalizeTvCode, mapWorkerError, workerBaseUrl },
+    __test: { normalizeTvCode, mapWorkerError, workerBaseUrl, RESENDABLE_LOGIN_CODE_STATUSES },
 };

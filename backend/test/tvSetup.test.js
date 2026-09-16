@@ -42,11 +42,15 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(automationSource, /\/run\/start/);
     assert.match(automationSource, /\/run\/complete/);
     assert.match(automationSource, /requestLoginCode/);
+    assert.match(automationSource, /\/run\/resend/);
+    assert.match(automationSource, /RESENDABLE_LOGIN_CODE_STATUSES/);
     assert.doesNotMatch(automationSource, /require\(["']playwright["']\)/);
     assert.match(workerSource, /https:\/\/www\.netflix\.com\/tv2/);
     assert.match(workerSource, /witcher-code-form/);
     assert.match(workerSource, /input\[type='email'\]/);
     assert.match(workerSource, /captcha_required/);
+    assert.match(workerSource, /solicita el reenvio/);
+    assert.match(workerSource, /app\.post\("\/run\/resend"/);
 });
 
 test("TV setup client maps worker errors without leaking credentials", () => {

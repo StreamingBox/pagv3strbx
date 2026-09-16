@@ -13,6 +13,7 @@ test("TV setup validates an eight-digit code and an active Netflix subscription"
     assert.match(routeSource, /replace\(\/\\D\/g, ""\)/);
     assert.match(routeSource, /tv_code_submit_disabled/);
     assert.match(routeSource, /email_flow_not_advanced/);
+    assert.match(routeSource, /password_required/);
     assert.match(routeSource, /toCodeSlug\(subscription\.platformSlug\) !== "netflix"/);
     assert.match(routeSource, /subscription\.status.*active/);
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);

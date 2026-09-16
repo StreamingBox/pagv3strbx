@@ -73,7 +73,14 @@ function detectPageFailure(text) {
     if (/(captcha required|complete the captcha|completa el captcha|verify you are human|verifica que eres humano|i'?m not a robot|no soy un robot)/i.test(normalized)) {
         return result("captcha_required", "Netflix solicitó una verificación manual. No se puede omitir esa protección automáticamente.");
     }
-    if (normalized.includes("ese codigo no es correcto") || normalized.includes("that code wasnt right")) {
+    if (normalized.includes("ese codigo no es correcto")
+        || normalized.includes("ese codigo no es valido")
+        || normalized.includes("el codigo no es valido")
+        || normalized.includes("el codigo ha caducado")
+        || normalized.includes("codigo expirado")
+        || normalized.includes("that code wasnt right")
+        || normalized.includes("this code is invalid")
+        || normalized.includes("code expired")) {
         return result("invalid_tv_code", "Netflix rechazó el código del TV. Verifica los 8 dígitos e inténtalo nuevamente.");
     }
     if (normalized.includes("no pudimos verificar") || normalized.includes("something went wrong")) {
@@ -97,6 +104,38 @@ function isSuccessText(text) {
 
 async function bodyText(page) {
     return String(await page.locator("body").innerText().catch(() => ""));
+}
+
+async function visibleControlSummary(page) {
+    return page.locator("a,button").evaluateAll((elements) => elements
+        .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && !element.disabled;
+        })
+        .slice(0, 20)
+        .map((element) => ({
+            tag: element.tagName.toLowerCase(),
+            text: String(element.innerText || element.textContent || "").replace(/\s+/g, " ").trim().slice(0, 80),
+            dataUia: element.getAttribute("data-uia") || "",
+            type: element.getAttribute("type") || "",
+        }))
+        .filter((control) => control.text || control.dataUia));
+}
+
+async function visibleInputSummary(page) {
+    return page.locator("input").evaluateAll((elements) => elements
+        .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0 && !element.disabled && element.type !== "hidden";
+        })
+        .slice(0, 12)
+        .map((element) => ({
+            type: element.type || "",
+            name: element.name || "",
+            autocomplete: element.autocomplete || "",
+            dataUia: element.getAttribute("data-uia") || "",
+            maxLength: element.maxLength || 0,
+        })));
 }
 
 async function waitForNavigationAfter(page, action) {
@@ -125,13 +164,16 @@ async function submitTvCode(page, tvCode) {
         await field.pressSequentially(tvCode[index]);
     }
     logStage("tv_code_typed", { inputCount: fieldCount });
+    await page.waitForTimeout(350);
     const submit = await findVisibleInput(page, [
         "button[data-uia*='continue' i]",
         "button[type='submit']",
         "input[type='submit']",
     ]);
     if (!submit) {
-        logStage("tv_code_continue_missing", { path: safePath(page.url()) });
+        const failure = detectPageFailure(await bodyText(page));
+        logStage("tv_code_continue_missing", { path: safePath(page.url()), detectedFailure: failure?.status });
+        if (failure) return failure;
         return result("tv_code_submit_missing", "Netflix no mostró el botón para continuar con el código del TV.");
     }
     await page.waitForTimeout(300);
@@ -261,29 +303,53 @@ async function submitAccountEmail(page, accountEmail) {
         path: safePath(page.url()),
         hasLoginCodePrompt: /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText),
         hasResendText: /(?:solicita el reenvio|reenviar codigo|resend code)/i.test(normalizedText),
-        hasEmailInput: await page.locator("input[name='userLoginId']").count() > 0,
-        hasPasswordInput: await page.locator("input[name='password']").count() > 0,
+        hasEmailInput: Boolean(await findVisibleInput(page, ["input[name='userLoginId']"])),
+        hasPasswordInput: Boolean(await findVisibleInput(page, ["input[name='password']"])),
         hasConnectedNotice: normalizedText.includes("tu tv ahora esta conectada"),
         hasValidationError: /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText),
+        visibleControls: await visibleControlSummary(page),
+        visibleInputs: await visibleInputSummary(page),
     });
     const hasLoginCodePrompt = /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText);
-    const hasEmailInput = await page.locator("input[name='userLoginId']").count() > 0;
-    const hasPasswordInput = await page.locator("input[name='password']").count() > 0;
+    const hasEmailInput = Boolean(await findVisibleInput(page, ["input[name='userLoginId']"]));
+    const hasPasswordInput = Boolean(await findVisibleInput(page, ["input[name='password']"]));
     const hasValidationError = /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText);
     if (!hasLoginCodePrompt && hasEmailInput && hasPasswordInput && !hasValidationError) {
-        const retryButton = await findVisibleInput(page, [
-            "button[data-uia*='continue' i]",
-            "button[type='submit']",
-            "input[type='submit']",
+        let loginCodeAction = await findVisibleTextAction(page, [
+            "usar un codigo de inicio",
+            "usar codigo de inicio",
+            "iniciar sesion con un codigo",
+            "enviar enlace de inicio",
+            "use a sign-in code",
+            "use login code",
         ]);
-        if (retryButton && await retryButton.isEnabled().catch(() => false)) {
-            logStage("account_email_retry", { path: safePath(page.url()) });
-            await waitForNavigationAfter(page, () => retryButton.click());
+        if (!loginCodeAction) {
+            const helpAction = await findVisibleTextAction(page, ["obtener ayuda", "get help"]);
+            if (helpAction) {
+                logStage("account_email_help_opened", { path: safePath(page.url()) });
+                await helpAction.click();
+                await page.waitForTimeout(350);
+                loginCodeAction = await findVisibleTextAction(page, [
+                    "usar un codigo de inicio",
+                    "usar codigo de inicio",
+                    "iniciar sesion con un codigo",
+                    "enviar enlace de inicio",
+                    "use a sign-in code",
+                    "use login code",
+                ]);
+            }
+        }
+        if (loginCodeAction) {
+            logStage("account_email_code_action", { path: safePath(page.url()) });
+            await waitForNavigationAfter(page, () => loginCodeAction.click());
             if (!await waitForLoginCodeScreen(page, 8000)) {
                 logStage("email_flow_not_advanced", { path: safePath(page.url()) });
                 return result("email_flow_not_advanced", "Netflix recibió el correo, pero no avanzó a la pantalla del código de Inicio.");
             }
+            return null;
         }
+        logStage("password_required", { path: safePath(page.url()) });
+        return result("password_required", "Netflix mostró el formulario de contraseña y no ofreció el código de Inicio para esta cuenta.");
     }
     const failure = detectPageFailure(text);
     if (failure) {

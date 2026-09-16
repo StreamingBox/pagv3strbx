@@ -8,6 +8,7 @@ const source = fs.readFileSync(require.resolve("../src/server"), "utf8");
 test("worker detects Netflix success without treating the informational reCAPTCHA footer as a challenge", () => {
     assert.equal(__test.detectPageFailure("Esta página está protegida por Google reCAPTCHA para comprobar que no eres un robot."), null);
     assert.equal(__test.detectPageFailure("Verifica que eres humano para continuar.")?.status, "captcha_required");
+    assert.equal(__test.detectPageFailure("El código no es válido.")?.status, "invalid_tv_code");
     assert.equal(__test.isSuccessText("¡Tu TV está lista para ver Netflix!"), true);
 });
 
@@ -26,7 +27,10 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
     assert.match(source, /responseSummaries: responseSummaries/);
     assert.match(source, /hasLoginCodePrompt/);
-    assert.match(source, /account_email_retry/);
+    assert.match(source, /findVisibleTextAction\(page, \[/);
+    assert.match(source, /account_email_code_action/);
+    assert.match(source, /account_email_help_opened/);
+    assert.match(source, /password_required/);
     assert.match(source, /email_flow_not_advanced/);
 });
 
@@ -45,6 +49,7 @@ test("worker enters the TV code through the visible Netflix PIN fields", () => {
     assert.match(source, /input\[type='tel'\]/);
     assert.match(source, /field\.pressSequentially\(tvCode\[index\]\)/);
     assert.match(source, /tv_code_submit_disabled/);
+    assert.match(source, /detectedFailure: failure\?\.status/);
 });
 
 test("worker enters the Netflix login code through keyboard events", () => {

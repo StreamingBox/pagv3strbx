@@ -194,7 +194,7 @@ async function requestLoginCodeForSetup(req, orderNumber) {
 }
 
 function automationHttpStatus(status) {
-    if (["invalid_tv_code", "tv_code_input_missing", "tv_code_submit_missing", "tv_code_submit_disabled", "account_email_missing", "email_input_missing", "continue_button_missing", "email_flow_not_advanced", "login_code_input_missing", "invalid_login_code", "login_code_rejected"].includes(status)) return 400;
+    if (["invalid_tv_code", "tv_code_input_missing", "tv_code_submit_missing", "tv_code_submit_disabled", "account_email_missing", "email_input_missing", "continue_button_missing", "email_flow_not_advanced", "password_required", "login_code_input_missing", "invalid_login_code", "login_code_rejected"].includes(status)) return 400;
     if (["browser_unavailable", "login_code_unavailable", "provider_config_error", "imap_error", "imap_auth_error"].includes(status)) return 503;
     if (status === "automation_timeout") return 504;
     if (status === "captcha_required") return 422;

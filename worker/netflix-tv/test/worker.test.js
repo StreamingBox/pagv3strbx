@@ -33,7 +33,11 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /findVisibleTextAction\(page, \[/);
     assert.match(source, /account_email_code_action/);
     assert.match(source, /account_email_help_opened/);
+    assert.match(source, /account_email_help_already_open/);
+    assert.match(source, /alreadyExpanded/);
+    assert.match(source, /if \(!alreadyExpanded\) await helpAction\.click\(\)/);
     assert.match(source, /password_required/);
+    assert.match(source, /if \(!hasLoginCodePrompt && hasPasswordInput && !hasValidationError\)/);
     assert.match(source, /submitAccountPassword/);
     assert.match(source, /account_password_filled/);
     assert.match(source, /password_flow_not_advanced/);

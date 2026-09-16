@@ -339,7 +339,7 @@ async function submitAccountEmail(page, accountEmail, accountPassword) {
     ]));
     const hasPasswordInput = Boolean(await findVisibleInput(page, ["input[name='password']"]));
     const hasValidationError = /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText);
-    if (!hasLoginCodePrompt && hasEmailInput && hasPasswordInput && !hasValidationError) {
+    if (!hasLoginCodePrompt && hasPasswordInput && !hasValidationError) {
         let loginCodeAction = await findVisibleTextAction(page, [
             "usar un codigo de inicio",
             "usar codigo de inicio",
@@ -351,8 +351,11 @@ async function submitAccountEmail(page, accountEmail, accountPassword) {
         if (!loginCodeAction) {
             const helpAction = await findVisibleTextAction(page, ["obtener ayuda", "get help"]);
             if (helpAction) {
-                logStage("account_email_help_opened", { path: safePath(page.url()) });
-                await helpAction.click();
+                const dataUia = String(await helpAction.getAttribute("data-uia").catch(() => ""));
+                const ariaExpanded = String(await helpAction.getAttribute("aria-expanded").catch(() => ""));
+                const alreadyExpanded = ariaExpanded.toLowerCase() === "true" || /expanded/i.test(dataUia);
+                logStage(alreadyExpanded ? "account_email_help_already_open" : "account_email_help_opened", { path: safePath(page.url()) });
+                if (!alreadyExpanded) await helpAction.click();
                 await page.waitForTimeout(350);
                 loginCodeAction = await findVisibleTextAction(page, [
                     "usar un codigo de inicio",

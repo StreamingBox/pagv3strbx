@@ -112,14 +112,34 @@ async function submitTvCode(page, tvCode) {
     await page.goto(NETFLIX_TV_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
     await page.waitForSelector("form[data-uia='witcher-code-form']", { state: "visible", timeout: 12000 });
     logStage("tv_page_loaded");
-    await waitForNavigationAfter(page, () => page.locator("form[data-uia='witcher-code-form']").evaluate((form, code) => {
-        const codeInput = form.querySelector("input[name='code']");
-        const rendezvousInput = form.querySelector("input[name='tvLoginRendezvousCode']");
-        if (!codeInput || !rendezvousInput) throw new Error("Netflix cambió el formulario del código TV.");
-        codeInput.value = code;
-        rendezvousInput.value = code;
-        form.submit();
-    }, tvCode));
+    const form = page.locator("form[data-uia='witcher-code-form']");
+    const fields = form.locator("input[type='tel']");
+    const fieldCount = await fields.count();
+    if (fieldCount < tvCode.length) {
+        logStage("tv_code_inputs_missing", { inputCount: fieldCount });
+        return result("tv_code_input_missing", "Netflix no mostró los 8 campos para ingresar el código del TV.");
+    }
+    for (let index = 0; index < tvCode.length; index += 1) {
+        const field = fields.nth(index);
+        await field.click();
+        await field.pressSequentially(tvCode[index]);
+    }
+    logStage("tv_code_typed", { inputCount: fieldCount });
+    const submit = await findVisibleInput(page, [
+        "button[data-uia*='continue' i]",
+        "button[type='submit']",
+        "input[type='submit']",
+    ]);
+    if (!submit) {
+        logStage("tv_code_continue_missing", { path: safePath(page.url()) });
+        return result("tv_code_submit_missing", "Netflix no mostró el botón para continuar con el código del TV.");
+    }
+    await page.waitForTimeout(300);
+    if (!await submit.isEnabled().catch(() => false)) {
+        logStage("tv_code_continue_disabled", { inputCount: fieldCount });
+        return result("tv_code_submit_disabled", "Netflix no habilitó el botón. Verifica que el código del TV tenga 8 dígitos.");
+    }
+    await waitForNavigationAfter(page, () => submit.click());
     logStage("tv_code_submitted");
     const text = await bodyText(page);
     const failure = detectPageFailure(text);
@@ -172,7 +192,10 @@ async function submitAccountEmail(page, accountEmail) {
         logStage("account_email_input_missing", { path: safePath(page.url()) });
         return result("email_input_missing", "Netflix no mostró el campo para ingresar el correo de la cuenta.");
     }
-    await emailInput.fill(normalizedEmail);
+    await emailInput.click();
+    await emailInput.press("ControlOrMeta+A");
+    await emailInput.press("Backspace");
+    await emailInput.pressSequentially(normalizedEmail, { delay: 25 });
     const filledEmail = String(await emailInput.inputValue().catch(() => "")).trim().toLowerCase();
     logStage("account_email_filled", {
         domain: safeEmailDomain(normalizedEmail),
@@ -196,6 +219,9 @@ async function submitAccountEmail(page, accountEmail) {
     };
     page.on("request", requestListener);
     try {
+        await page.waitForTimeout(250);
+        await emailInput.press("Tab");
+        await page.waitForTimeout(250);
         await waitForNavigationAfter(page, () => continueButton.click());
     } finally {
         page.off("request", requestListener);
@@ -219,15 +245,18 @@ async function submitAccountEmail(page, accountEmail) {
 }
 
 async function waitForLoginCodeScreen(page) {
-    await page.waitForFunction(() => {
-        const text = String(document.body?.innerText || "").toLowerCase();
+    return page.waitForFunction(() => {
+        const text = String(document.body?.innerText || "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase();
         const inputs = Array.from(document.querySelectorAll("input")).filter((input) => {
             const rect = input.getBoundingClientRect();
             return rect.width > 0 && rect.height > 0 && input.type !== "hidden" && !input.disabled;
         });
         return /code.*email|codigo.*correo|codigo.*email|enviamos.*correo|sent.*email/i.test(text)
             || inputs.filter((input) => input.maxLength === 1).length >= 4;
-    }, { timeout: 12000 }).catch(() => {});
+    }, { timeout: 12000 }).then(() => true).catch(() => false);
 }
 
 async function resendLoginCode(page) {
@@ -297,26 +326,21 @@ async function fillLoginCode(page, loginCode) {
     const code = normalizeDigits(loginCode).slice(0, 4);
     if (code.length !== 4) return result("invalid_login_code", "El código de Inicio recibido no tiene 4 dígitos.");
     if (inputs.length < 1) return result("login_code_input_missing", "Netflix no mostró el campo para ingresar el código de Inicio.");
-    await page.evaluate(({ code, inputIndexes }) => {
-        const elements = Array.from(document.querySelectorAll("input"));
-        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-        inputIndexes.slice(0, 4).forEach((index, position) => {
-            const element = elements[index];
-            if (!element) return;
-            const value = inputIndexes.length === 1 ? code : code[position];
-            setter?.call(element, value);
-            element.dispatchEvent(new Event("input", { bubbles: true }));
-            element.dispatchEvent(new Event("change", { bubbles: true }));
-        });
-    }, { code, inputIndexes: inputs.map((input) => input.index) });
-    const submit = await findVisibleInput(page, [
-        "button[data-uia*='continue' i]",
-        "button[data-uia*='submit' i]",
-        "button[type='submit']",
-        "input[type='submit']",
-    ]);
-    if (submit && await submit.isEnabled().catch(() => false)) await waitForNavigationAfter(page, () => submit.click());
-    else await page.waitForTimeout(900);
+    const allInputs = page.locator("input");
+    const separateFields = inputs.filter((input) => input.maxLength === 1).slice(0, 4);
+    if (separateFields.length >= 4) {
+        for (let position = 0; position < 4; position += 1) {
+            const field = allInputs.nth(separateFields[position].index);
+            await field.click();
+            await field.pressSequentially(code[position]);
+        }
+    } else {
+        const field = allInputs.nth(inputs[0].index);
+        await field.click();
+        await field.pressSequentially(code, { delay: 50 });
+    }
+    logStage("login_code_typed", { inputCount: separateFields.length >= 4 ? 4 : 1 });
+    await page.waitForTimeout(900);
     return null;
 }
 
@@ -369,12 +393,21 @@ async function startRun({ tvCode, accountEmail }) {
             await browser.close().catch(() => {});
             return emailStep;
         }
-        await waitForLoginCodeScreen(page);
+        const loginCodeScreenDetected = await waitForLoginCodeScreen(page);
         const loginInputs = await visibleCodeInputs(page);
+        const loginText = normalizeText(await bodyText(page));
         logStage("login_code_screen_checked", {
             inputCount: loginInputs.length,
             path: safePath(page.url()),
+            detected: loginCodeScreenDetected,
+            hasCodePrompt: /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(loginText),
+            hasResendText: /(?:solicita el reenvio|reenviar codigo|resend code)/i.test(loginText),
         });
+        if (!loginCodeScreenDetected) {
+            const failure = detectPageFailure(loginText);
+            await browser.close().catch(() => {});
+            return failure || result("login_code_screen_missing", "Netflix no confirmó la pantalla para ingresar el código de Inicio.");
+        }
         if (loginInputs.length < 1) {
             const failure = detectPageFailure(await bodyText(page));
             await browser.close().catch(() => {});

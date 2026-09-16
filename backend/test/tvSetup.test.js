@@ -11,6 +11,7 @@ const { __test: automationTest } = require("../src/services/netflixTvSetupServic
 test("TV setup validates an eight-digit code and an active Netflix subscription", () => {
     assert.match(routeSource, /router\.post\("\/tv-setup\/validate"/);
     assert.match(routeSource, /replace\(\/\\D\/g, ""\)/);
+    assert.match(routeSource, /tv_code_submit_disabled/);
     assert.match(routeSource, /toCodeSlug\(subscription\.platformSlug\) !== "netflix"/);
     assert.match(routeSource, /subscription\.status.*active/);
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);
@@ -47,10 +48,13 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.doesNotMatch(automationSource, /require\(["']playwright["']\)/);
     assert.match(workerSource, /https:\/\/www\.netflix\.com\/tv2/);
     assert.match(workerSource, /witcher-code-form/);
+    assert.match(workerSource, /tv_code_submit_disabled/);
     assert.match(workerSource, /input\[type='email'\]/);
     assert.match(workerSource, /captcha_required/);
     assert.match(workerSource, /solicita el reenvio/);
     assert.match(workerSource, /app\.post\("\/run\/resend"/);
+    assert.match(workerSource, /loginCodeScreenDetected/);
+    assert.match(workerSource, /hasCodePrompt/);
 });
 
 test("TV setup client maps worker errors without leaking credentials", () => {

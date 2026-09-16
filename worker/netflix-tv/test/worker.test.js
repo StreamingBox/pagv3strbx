@@ -17,6 +17,11 @@ test("worker normalizes the TV code to digits", () => {
 
 test("worker verifies the filled email and records the Netflix submit request safely", () => {
     assert.match(source, /matches: filledEmail === normalizedEmail/);
+    assert.match(source, /emailInput\.pressSequentially\(normalizedEmail,/);
+    assert.match(source, /emailInput\.press\("ControlOrMeta\+A"\)/);
+    assert.match(source, /emailInput\.press\("Backspace"\)/);
+    assert.match(source, /emailInput\.press\("Tab"\)/);
+    assert.match(source, /continueButton\.click\(\)/);
     assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
 });
@@ -25,4 +30,20 @@ test("worker exposes the resend step used by Netflix when the PIN is not receive
     assert.match(source, /async function resendLoginCode\(page\)/);
     assert.match(source, /solicita el reenvio/);
     assert.match(source, /status: "login_code_resent"/);
+});
+
+test("worker normalizes accented Spanish text before detecting the PIN screen", () => {
+    assert.match(source, /normalize\("NFD"\)/);
+    assert.match(source, /login_code_screen_missing/);
+});
+
+test("worker enters the TV code through the visible Netflix PIN fields", () => {
+    assert.match(source, /input\[type='tel'\]/);
+    assert.match(source, /field\.pressSequentially\(tvCode\[index\]\)/);
+    assert.match(source, /tv_code_submit_disabled/);
+});
+
+test("worker enters the Netflix login code through keyboard events", () => {
+    assert.match(source, /field\.pressSequentially\(code\[position\]\)/);
+    assert.match(source, /field\.pressSequentially\(code, \{ delay: 50 \}\)/);
 });

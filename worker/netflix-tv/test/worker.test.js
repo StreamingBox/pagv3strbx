@@ -31,6 +31,9 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /account_email_code_action/);
     assert.match(source, /account_email_help_opened/);
     assert.match(source, /password_required/);
+    assert.match(source, /submitAccountPassword/);
+    assert.match(source, /account_password_filled/);
+    assert.match(source, /password_flow_not_advanced/);
     assert.match(source, /email_flow_not_advanced/);
 });
 

@@ -221,7 +221,7 @@ async function findVisibleTextAction(page, labels) {
     return null;
 }
 
-async function submitAccountEmail(page, accountEmail) {
+async function submitAccountEmail(page, accountEmail, accountPassword) {
     const normalizedEmail = String(accountEmail || "").trim().toLowerCase();
     const emailInput = await findVisibleInput(page, [
         "input[type='email']",
@@ -348,6 +348,7 @@ async function submitAccountEmail(page, accountEmail) {
             }
             return null;
         }
+        if (String(accountPassword || "")) return submitAccountPassword(page, accountPassword);
         logStage("password_required", { path: safePath(page.url()) });
         return result("password_required", "Netflix mostró el formulario de contraseña y no ofreció el código de Inicio para esta cuenta.");
     }
@@ -376,6 +377,52 @@ async function waitForLoginCodeScreen(page, timeout = 12000) {
         return /code.*email|codigo.*correo|codigo.*email|enviamos.*correo|sent.*email/i.test(text)
             || inputs.filter((input) => input.maxLength === 1).length >= 4;
     }, { timeout }).then(() => true).catch(() => false);
+}
+
+async function submitAccountPassword(page, accountPassword) {
+    const password = String(accountPassword || "");
+    const passwordInput = await findVisibleInput(page, [
+        "input[name='password']",
+        "input[type='password']",
+    ]);
+    if (!passwordInput) {
+        logStage("account_password_input_missing", { path: safePath(page.url()) });
+        return result("password_input_missing", "Netflix pidió la contraseña, pero no mostró el campo para ingresarla.");
+    }
+    await passwordInput.click();
+    await passwordInput.press("ControlOrMeta+A");
+    await passwordInput.press("Backspace");
+    await passwordInput.pressSequentially(password, { delay: 25 });
+    const filledPassword = String(await passwordInput.inputValue().catch(() => ""));
+    logStage("account_password_filled", {
+        matches: filledPassword === password,
+        valueLength: filledPassword.length,
+    });
+    const submit = await findVisibleInput(page, [
+        "button[data-uia*='login' i]",
+        "button[data-uia*='continue' i]",
+        "button[type='submit']",
+        "input[type='submit']",
+    ]);
+    if (!submit) {
+        logStage("account_password_submit_missing", { path: safePath(page.url()) });
+        return result("password_submit_missing", "Netflix no mostró el botón para continuar con la contraseña.");
+    }
+    await waitForNavigationAfter(page, () => submit.click());
+    logStage("account_password_submitted", { path: safePath(page.url()) });
+    const text = await bodyText(page);
+    const failure = detectPageFailure(text);
+    if (failure) return failure;
+    if (isSuccessText(text)) {
+        logStage("tv_setup_completed", { path: safePath(page.url()) });
+        return { ok: true, status: "completed", finalUrl: page.url() };
+    }
+    if (await waitForLoginCodeScreen(page)) return null;
+    const finalText = await bodyText(page);
+    const finalFailure = detectPageFailure(finalText);
+    if (finalFailure) return finalFailure;
+    logStage("password_flow_not_advanced", { path: safePath(page.url()) });
+    return result("password_flow_not_advanced", "Netflix no confirmó la conexión después de ingresar la contraseña.");
 }
 
 async function resendLoginCode(page) {
@@ -518,7 +565,7 @@ async function launchBrowser() {
     return chromium.launch(launchOptions);
 }
 
-async function startRun({ tvCode, accountEmail }) {
+async function startRun({ tvCode, accountEmail, accountPassword }) {
     const normalizedTvCode = normalizeDigits(tvCode);
     const email = String(accountEmail || "").trim();
     if (!/^\d{8}$/.test(normalizedTvCode)) return result("invalid_tv_code", "El código del TV debe tener 8 dígitos.");
@@ -539,7 +586,7 @@ async function startRun({ tvCode, accountEmail }) {
         page.setDefaultTimeout(12000);
         const codeStep = await submitTvCode(page, normalizedTvCode);
         if (codeStep) return codeStep;
-        const emailStep = await submitAccountEmail(page, email);
+        const emailStep = await submitAccountEmail(page, email, accountPassword);
         if (emailStep) return emailStep;
         const loginCodeScreenDetected = await waitForLoginCodeScreen(page);
         const loginInputs = await visibleCodeInputs(page);

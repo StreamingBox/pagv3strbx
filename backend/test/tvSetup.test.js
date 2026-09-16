@@ -18,6 +18,7 @@ test("TV setup validates an eight-digit code and an active Netflix subscription"
     assert.match(routeSource, /subscription\.status.*active/);
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);
     assert.match(routeSource, /accountEmail: subscription\.accountEmail/);
+    assert.match(routeSource, /accountPassword: loaded\.subscription\.accountPassword/);
 });
 
 test("TV setup delegates the login code to the existing Inicio counter", () => {
@@ -45,6 +46,7 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(automationSource, /\/run\/start/);
     assert.match(automationSource, /\/run\/complete/);
     assert.match(automationSource, /requestLoginCode/);
+    assert.match(automationSource, /accountPassword/);
     assert.match(automationSource, /\/run\/resend/);
     assert.match(automationSource, /RESENDABLE_LOGIN_CODE_STATUSES/);
     assert.doesNotMatch(automationSource, /require\(["']playwright["']\)/);

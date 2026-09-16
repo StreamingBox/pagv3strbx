@@ -68,9 +68,10 @@ async function resendWorkerLoginCode(baseUrl, sessionId) {
     return response.data || {};
 }
 
-async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
+async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, requestLoginCode }) {
     const normalizedTvCode = normalizeTvCode(tvCode);
     const email = String(accountEmail || "").trim();
+    const password = String(accountPassword || "");
     const baseUrl = workerBaseUrl();
 
     if (!normalizedTvCode) return result("invalid_tv_code", "El código del TV debe tener 8 dígitos.");
@@ -85,12 +86,14 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
         const startResponse = await axios.post(`${baseUrl}/run/start`, {
             tvCode: normalizedTvCode,
             accountEmail: email,
+            accountPassword: password,
         }, {
             headers: workerHeaders(),
             timeout: DEFAULT_TIMEOUT_MS,
         });
         const start = startResponse.data || {};
         if (!start.ok) return result(start.status || "automation_error", start.message || "No se pudo iniciar la conexión con Netflix.");
+        if (start.status === "completed") return { ok: true, status: "completed", finalUrl: start.finalUrl || null };
         sessionId = String(start.sessionId || "").trim();
         if (!sessionId) return result("worker_protocol_error", "El servicio de automatización no devolvió una sesión válida.");
 

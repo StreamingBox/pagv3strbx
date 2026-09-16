@@ -1,16 +1,12 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
-    ArrowLeft,
     ArrowRight,
     Check,
     CheckCircle2,
-    ClipboardCheck,
     Copy,
-    ExternalLink,
     KeyRound,
     Mail,
-    MonitorPlay,
     RefreshCw,
     ShieldCheck,
     Tv,
@@ -22,8 +18,6 @@ import useAppLogout from "../hooks/useAppLogout.js";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import { formatTvCode, onlyDigits } from "../utils/tvSetup.js";
 import "../styles/tv-setup.css";
-
-const NETFLIX_TV_URL = "https://www.netflix.com/tv2";
 
 function formatExpiry(value) {
     const raw = String(value || "").trim();
@@ -47,8 +41,8 @@ async function copyText(value) {
 function StepIndicator({ step }) {
     const steps = [
         { number: 1, label: "Validar pedido" },
-        { number: 2, label: "Conectar TV" },
-        { number: 3, label: "Confirmar acceso" },
+        { number: 2, label: "Automatizar Netflix" },
+        { number: 3, label: "TV conectado" },
     ];
 
     return (
@@ -115,14 +109,38 @@ export default function TvSetup() {
     const [orderNumber, setOrderNumber] = useState("");
     const [step, setStep] = useState(1);
     const [validated, setValidated] = useState(null);
-    const [loginCode, setLoginCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [netflixOpened, setNetflixOpened] = useState(false);
+    const [automationAttempted, setAutomationAttempted] = useState(false);
     const [completed, setCompleted] = useState(false);
 
     const normalizedTvCode = useMemo(() => formatTvCode(tvCode), [tvCode]);
     const canValidate = /^\d{4}-\d{4}$/.test(normalizedTvCode) && onlyDigits(orderNumber, 20).length > 0 && !loading;
+
+    async function runAutomation(payload, force = false) {
+        if (!payload?.orderNumber || (loading && !force)) return;
+        setLoading(true);
+        setError("");
+        setAutomationAttempted(true);
+        setStep(2);
+
+        try {
+            const response = await apiPost("/tv-setup/run", {
+                tvCode: payload.tvCode,
+                orderNumber: payload.orderNumber,
+            });
+            if (!response.ok) {
+                throw new Error(response.data?.message || "No fue posible completar la conexión automática.");
+            }
+            setValidated((current) => ({ ...current, ...response.data }));
+            setCompleted(true);
+            setStep(3);
+        } catch (requestError) {
+            setError(requestError?.message || "No fue posible completar la conexión automática.");
+        } finally {
+            setLoading(false);
+        }
+    }
 
     async function validateOrder(event) {
         event?.preventDefault();
@@ -130,8 +148,8 @@ export default function TvSetup() {
         setLoading(true);
         setError("");
         setValidated(null);
-        setLoginCode("");
         setCompleted(false);
+        setAutomationAttempted(false);
 
         try {
             const response = await apiPost("/tv-setup/validate", {
@@ -142,8 +160,7 @@ export default function TvSetup() {
                 throw new Error(response.data?.message || "No fue posible validar el pedido.");
             }
             setValidated(response.data);
-            setNetflixOpened(false);
-            setStep(2);
+            await runAutomation(response.data, true);
         } catch (requestError) {
             setError(requestError?.message || "No fue posible validar el pedido.");
         } finally {
@@ -151,48 +168,12 @@ export default function TvSetup() {
         }
     }
 
-    async function openNetflix() {
-        await copyText(normalizedTvCode);
-        window.open(NETFLIX_TV_URL, "_blank", "noopener,noreferrer");
-        setNetflixOpened(true);
-    }
-
-    async function requestLoginCode() {
-        if (!validated?.orderNumber || loading) return;
-        setLoading(true);
-        setError("");
-
-        try {
-            const response = await apiPost("/codes/netflix/request", {
-                orderNumber: validated.orderNumber,
-                action: "code",
-            });
-            if (!response.ok) {
-                throw new Error(response.data?.message || "No se pudo consultar el código de inicio.");
-            }
-            if (!response.data?.code) {
-                throw new Error("Netflix no devolvió un código de inicio válido.");
-            }
-            setLoginCode(String(response.data.code));
-        } catch (requestError) {
-            setError(requestError?.message || "No se pudo consultar el código de inicio.");
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    function confirmSetup() {
-        if (!loginCode) return;
-        setCompleted(true);
-    }
-
     function resetFlow() {
         setTvCode("");
         setOrderNumber("");
         setStep(1);
         setValidated(null);
-        setLoginCode("");
-        setNetflixOpened(false);
+        setAutomationAttempted(false);
         setCompleted(false);
         setError("");
     }
@@ -241,7 +222,7 @@ export default function TvSetup() {
                             <div className="tv-setup-success__icon"><CheckCircle2 size={34} strokeWidth={2.2} aria-hidden="true" /></div>
                             <span className="tv-setup-eyebrow">Proceso completado</span>
                             <h2>¡Tu TV está lista para ver Netflix!</h2>
-                            <p>El código fue confirmado. Puedes volver a Netflix en tu televisor para comenzar a disfrutar.</p>
+                            <p>Netflix confirmó la conexión automáticamente. Ya puedes volver a la aplicación en tu televisor.</p>
                             <div className="tv-setup-success__meta">
                                 <span>Pedido #{validated?.orderNumber}</span>
                                 <span>{validated?.accountEmail}</span>
@@ -295,7 +276,7 @@ export default function TvSetup() {
                                     </div>
 
                                     <button type="submit" className="tv-setup-primary-button" disabled={!canValidate}>
-                                        {loading ? "Validando..." : "Validar pedido"}
+                                        {loading ? "Validando..." : "Validar y conectar TV"}
                                         {!loading ? <ArrowRight size={18} aria-hidden="true" /> : null}
                                     </button>
                                 </form>
@@ -306,8 +287,8 @@ export default function TvSetup() {
                                     <div className="tv-setup-panel__heading">
                                         <div className="tv-setup-panel__number">2</div>
                                         <div>
-                                            <h2>Conecta tu televisor</h2>
-                                            <p>Abre Netflix TV2 e ingresa el código que tienes en pantalla.</p>
+                                            <h2>Conectando tu TV</h2>
+                                            <p>El sistema está ejecutando el proceso completo en Netflix.</p>
                                         </div>
                                     </div>
 
@@ -319,79 +300,30 @@ export default function TvSetup() {
                                         </button>
                                     </div>
 
-                                    <div className="tv-setup-instructions">
-                                        <div><span>1</span><p>Abre Netflix TV2 en una pestaña nueva.</p></div>
-                                        <div><span>2</span><p>Digita <strong>{validated.tvCode}</strong> y pulsa “Ingresa el código para continuar”.</p></div>
-                                        <div><span>3</span><p>Cuando Netflix pida el correo, usa el correo de la cuenta que aparece abajo.</p></div>
-                                    </div>
-
-                                    <CopyField label="Correo de la cuenta" value={validated.accountEmail} icon={Mail} helper={`Perfil ${validated.profile ?? "-"} · Vence ${formatExpiry(validated.expiresAt)}`} />
-
-                                    <div className="tv-setup-actions">
-                                        <button type="button" className="tv-setup-primary-button" onClick={() => void openNetflix()}>
-                                            <ExternalLink size={18} aria-hidden="true" />
-                                            {netflixOpened ? "Abrir Netflix TV2 de nuevo" : "Abrir Netflix TV2"}
-                                        </button>
-                                        <button type="button" className="tv-setup-secondary-button" onClick={() => { setError(""); setStep(3); }}>
-                                            Ya ingresé el código
-                                            <ArrowRight size={17} aria-hidden="true" />
-                                        </button>
-                                    </div>
-                                </motion.div>
-                            ) : null}
-
-                            {step === 3 && validated ? (
-                                <motion.div className="tv-setup-panel" initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }}>
-                                    <div className="tv-setup-panel__heading">
-                                        <div className="tv-setup-panel__number">3</div>
+                                    <div className="tv-setup-automation-state" aria-live="polite">
+                                        <div className={`tv-setup-automation-state__icon${loading ? " is-loading" : ""}`}>
+                                            {loading ? <RefreshCw size={20} aria-hidden="true" /> : <ShieldCheck size={20} aria-hidden="true" />}
+                                        </div>
                                         <div>
-                                            <h2>Confirma el acceso</h2>
-                                            <p>Consulta el código de Inicio para terminar la conexión del televisor.</p>
+                                            <strong>{loading ? "Conectando automáticamente..." : "No se completó la conexión"}</strong>
+                                            <p>{loading ? "TV2, correo, código de Inicio y confirmación se ejecutan en el servidor." : "Puedes reintentar el proceso sin volver a digitar los datos."}</p>
                                         </div>
                                     </div>
 
                                     <div className="tv-setup-summary">
-                                        <CopyField label="Pedido validado" value={`#${validated.orderNumber}`} icon={ClipboardCheck} />
-                                        <CopyField label="Correo usado en Netflix" value={validated.accountEmail} icon={Mail} />
+                                        <CopyField label="Correo de la cuenta" value={validated.accountEmail} icon={Mail} helper={`Perfil ${validated.profile ?? "-"} · Vence ${formatExpiry(validated.expiresAt)}`} />
+                                        <div className="tv-setup-counter-note">
+                                            <KeyRound size={18} aria-hidden="true" />
+                                            <p>El código de Inicio usa el mismo contador y proveedor configurado en Códigos.</p>
+                                        </div>
                                     </div>
 
-                                    <div className="tv-setup-counter-note">
-                                        <KeyRound size={18} aria-hidden="true" />
-                                        <p>Esta consulta usa el mismo contador del botón <strong>Inicio</strong> en Códigos.</p>
-                                    </div>
-
-                                    {!loginCode ? (
-                                        <button type="button" className="tv-setup-primary-button" onClick={() => void requestLoginCode()} disabled={loading}>
-                                            {loading ? "Consultando código..." : "Consultar código de Inicio"}
-                                            {!loading ? <KeyRound size={18} aria-hidden="true" /> : null}
+                                    {!loading && automationAttempted ? (
+                                        <button type="button" className="tv-setup-primary-button" onClick={() => void runAutomation(validated)}>
+                                            <RefreshCw size={18} aria-hidden="true" />
+                                            Reintentar conexión automática
                                         </button>
-                                    ) : (
-                                        <>
-                                            <div className="tv-setup-login-code">
-                                                <div>
-                                                    <span>Código de Inicio</span>
-                                                    <strong>{loginCode}</strong>
-                                                </div>
-                                                <button type="button" className="tv-setup-icon-button" onClick={() => void copyText(loginCode)} aria-label="Copiar código de Inicio" title="Copiar código de Inicio">
-                                                    <Copy size={18} aria-hidden="true" />
-                                                </button>
-                                            </div>
-                                            <div className="tv-setup-final-note">
-                                                <MonitorPlay size={18} aria-hidden="true" />
-                                                <p>Ingresa este código en Netflix. Confirma solo cuando aparezca “¡Tu TV está lista para ver Netflix!”.</p>
-                                            </div>
-                                            <div className="tv-setup-actions">
-                                                <button type="button" className="tv-setup-secondary-button" onClick={() => setStep(2)}>
-                                                    <ArrowLeft size={17} aria-hidden="true" />
-                                                    Volver
-                                                </button>
-                                                <button type="button" className="tv-setup-primary-button" onClick={confirmSetup}>
-                                                    <CheckCircle2 size={18} aria-hidden="true" />
-                                                    Confirmar TV configurado
-                                                </button>
-                                            </div>
-                                        </>
-                                    )}
+                                    ) : null}
                                 </motion.div>
                             ) : null}
                         </motion.section>

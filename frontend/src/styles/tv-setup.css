@@ -276,6 +276,49 @@
     color: var(--text);
 }
 
+.tv-setup-automation-state {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin: 18px 0;
+    padding: 15px;
+    border: 1px solid rgba(34, 211, 238, .28);
+    border-radius: 10px;
+    color: var(--text);
+    background: rgba(34, 211, 238, .08);
+}
+
+.tv-setup-automation-state__icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    border-radius: 9px;
+    color: #67e8f9;
+    background: rgba(34, 211, 238, .13);
+}
+
+.tv-setup-automation-state__icon.is-loading svg {
+    animation: tv-setup-spin .9s linear infinite;
+}
+
+.tv-setup-automation-state strong {
+    display: block;
+    font-size: 13px;
+}
+
+.tv-setup-automation-state p {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+@keyframes tv-setup-spin {
+    to { transform: rotate(360deg); }
+}
+
 .tv-setup-primary-button,
 .tv-setup-secondary-button {
     display: inline-flex;

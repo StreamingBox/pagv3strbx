@@ -36,8 +36,7 @@
     "mailparser": "^3.9.17",
     "multer": "^2.1.0",
     "mysql2": "^3.16.3",
-    "nodemailer": "^9.0.1",
-    "playwright": "^1.63.0"
+    "nodemailer": "^9.0.1"
   },
   "overrides": {
     "body-parser": "^2.3.0",

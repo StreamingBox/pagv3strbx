@@ -47,6 +47,7 @@ const AdminAdvertising = lazy(() => import("./pages/AdminAdvertising.jsx"));
 const Advertising = lazy(() => import("./pages/Advertising.jsx"));
 const AdminTopups = lazy(() => import("./pages/AdminTopups.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
+const TvSetup = lazy(() => import("./pages/TvSetup.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
 const Renewals = lazy(() => import("./pages/Renewals.jsx"));
 const Topups = lazy(() => import("./pages/Topups.jsx"));
@@ -216,6 +217,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminPlatforms />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/tv-setup"
+                    element={
+                        <ProtectedRoute roles={["admin", "user"]}>
+                            <TvSetup />
                         </ProtectedRoute>
                     }
                 />

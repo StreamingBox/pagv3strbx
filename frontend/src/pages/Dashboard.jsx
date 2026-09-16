@@ -316,6 +316,7 @@ export default function Dashboard() {
                     onGoWallet={() => navigate("/topups")}
                     onGoAnalytics={() => navigate("/analytics")}
                     onGoCodes={() => navigate("/codes")}
+                    onGoTvSetup={() => navigate("/tv-setup")}
                     onGoCodeLogs={() => navigate("/admin/code-logs")}
                     onGoAdmin={() => navigate("/admin")}
                     onGoExpirations={() => navigate("/expirations")}

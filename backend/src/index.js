@@ -20,6 +20,7 @@ const logger = require("./utils/logger");
 
 // ✅ Rutas
 const codesRoutes = require("./routes/codes");
+const tvSetupRoutes = require("./routes/tvSetup");
 const codeLogsRoutes = require("./routes/codeLogs");
 const adminCodeResetsRoutes = require("./routes/admin.codeResets");
 const adminSupport = require("./routes/admin.support");
@@ -353,6 +354,7 @@ app.use("/api/auth", authRoutes);
 // Codes — con rate limit de 500/hr
 app.use("/api/codes", codesRateLimit, codesRoutes);
 app.get("/api/codes/_ping", (req, res) => res.json({ ok: true, mounted: true }));
+app.use("/api", tvSetupRoutes);
 
 // Code Logs (solo admin, ruta interna en su router)
 app.use("/api", codeLogsRoutes);

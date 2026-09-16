@@ -29,6 +29,7 @@ const NAV_ITEMS = [
     { key: "analytics", label: "Mis Estadísticas", icon: "📊", path: "/analytics" },
     { key: "expirations", label: "Vencimientos", icon: "⏳", path: "/expirations" },
     { key: "codes", label: "Códigos", icon: "🔐", path: "/codes" },
+    { key: "tvSetup", label: "Iniciar en TV", icon: "📺", path: "/tv-setup" },
     { key: "advertising", label: "Publicidad", icon: "📢", path: "/advertising" },
     { key: "support", label: "Soporte", icon: <Headphones size={19} strokeWidth={2.3} aria-hidden />, path: "/support" },
 ];
@@ -44,6 +45,7 @@ export default function Sidebar({
     onGoAnalytics,
     onGoAdmin,
     onGoCodes,
+    onGoTvSetup,
     onGoExpirations,
     onGoAdvertising,
     onGoSupport,
@@ -129,6 +131,7 @@ export default function Sidebar({
         advertising: onGoAdvertising,
         expirations: onGoExpirations,
         codes: onGoCodes,
+        tvSetup: onGoTvSetup,
         support: onGoSupport,
     };
 

@@ -27,6 +27,28 @@ function result(status, message, extra = {}) {
     return { ok: false, status, message, ...extra };
 }
 
+function safeEmailDomain(value) {
+    const email = String(value || "").trim().toLowerCase();
+    const at = email.lastIndexOf("@");
+    return at > 0 ? email.slice(at + 1) : "invalid";
+}
+
+function safePath(value) {
+    try {
+        return new URL(String(value || "")).pathname || "/";
+    } catch {
+        return "";
+    }
+}
+
+function logStage(stage, details = {}) {
+    const fields = Object.entries(details)
+        .filter(([, value]) => value !== undefined && value !== null && value !== "")
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(" ");
+    console.log(`[netflix-tv-worker] stage=${stage}${fields ? ` ${fields}` : ""}`);
+}
+
 function authorized(req) {
     const expected = String(process.env.TV_SETUP_WORKER_TOKEN || "").trim();
     const received = String(req.get("x-tv-setup-token") || "").trim();
@@ -80,6 +102,7 @@ async function waitForNavigationAfter(page, action) {
 async function submitTvCode(page, tvCode) {
     await page.goto(NETFLIX_TV_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
     await page.waitForSelector("form[data-uia='witcher-code-form']", { state: "visible", timeout: 12000 });
+    logStage("tv_page_loaded");
     await waitForNavigationAfter(page, () => page.locator("form[data-uia='witcher-code-form']").evaluate((form, code) => {
         const codeInput = form.querySelector("input[name='code']");
         const rendezvousInput = form.querySelector("input[name='tvLoginRendezvousCode']");
@@ -88,10 +111,18 @@ async function submitTvCode(page, tvCode) {
         rendezvousInput.value = code;
         form.submit();
     }, tvCode));
+    logStage("tv_code_submitted");
     const text = await bodyText(page);
     const failure = detectPageFailure(text);
-    if (failure) return failure;
-    if (isSuccessText(text)) return { ok: true, status: "completed", finalUrl: page.url() };
+    if (failure) {
+        logStage("tv_code_rejected", { status: failure.status });
+        return failure;
+    }
+    if (isSuccessText(text)) {
+        logStage("tv_setup_completed", { path: safePath(page.url()) });
+        return { ok: true, status: "completed", finalUrl: page.url() };
+    }
+    logStage("tv_step_advanced", { path: safePath(page.url()) });
     return null;
 }
 
@@ -115,19 +146,33 @@ async function submitAccountEmail(page, accountEmail) {
         "input[autocomplete='email']",
         "input[data-uia*='email' i]",
     ]);
-    if (!emailInput) return result("email_input_missing", "Netflix no mostró el campo para ingresar el correo de la cuenta.");
+    if (!emailInput) {
+        logStage("account_email_input_missing", { path: safePath(page.url()) });
+        return result("email_input_missing", "Netflix no mostró el campo para ingresar el correo de la cuenta.");
+    }
     await emailInput.fill(accountEmail);
+    logStage("account_email_filled", { domain: safeEmailDomain(accountEmail) });
     const continueButton = await findVisibleInput(page, [
         "button[data-uia*='continue' i]",
         "button[type='submit']",
         "input[type='submit']",
     ]);
-    if (!continueButton) return result("continue_button_missing", "Netflix no mostró el botón para continuar con el correo.");
+    if (!continueButton) {
+        logStage("account_email_continue_missing", { path: safePath(page.url()) });
+        return result("continue_button_missing", "Netflix no mostró el botón para continuar con el correo.");
+    }
     await waitForNavigationAfter(page, () => continueButton.click());
+    logStage("account_email_submitted", { path: safePath(page.url()) });
     const text = await bodyText(page);
     const failure = detectPageFailure(text);
-    if (failure) return failure;
-    if (isSuccessText(text)) return { ok: true, status: "completed", finalUrl: page.url() };
+    if (failure) {
+        logStage("account_email_rejected", { status: failure.status });
+        return failure;
+    }
+    if (isSuccessText(text)) {
+        logStage("tv_setup_completed", { path: safePath(page.url()) });
+        return { ok: true, status: "completed", finalUrl: page.url() };
+    }
     return null;
 }
 
@@ -247,6 +292,10 @@ async function startRun({ tvCode, accountEmail }) {
         }
         await waitForLoginCodeScreen(page);
         const loginInputs = await visibleCodeInputs(page);
+        logStage("login_code_screen_checked", {
+            inputCount: loginInputs.length,
+            path: safePath(page.url()),
+        });
         if (loginInputs.length < 1) {
             const failure = detectPageFailure(await bodyText(page));
             await browser.close().catch(() => {});

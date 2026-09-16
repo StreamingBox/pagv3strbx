@@ -24,6 +24,10 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /continueButton\.click\(\)/);
     assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
+    assert.match(source, /responseSummaries: responseSummaries/);
+    assert.match(source, /hasLoginCodePrompt/);
+    assert.match(source, /account_email_retry/);
+    assert.match(source, /email_flow_not_advanced/);
 });
 
 test("worker exposes the resend step used by Netflix when the PIN is not received", () => {
@@ -46,4 +50,14 @@ test("worker enters the TV code through the visible Netflix PIN fields", () => {
 test("worker enters the Netflix login code through keyboard events", () => {
     assert.match(source, /field\.pressSequentially\(code\[position\]\)/);
     assert.match(source, /field\.pressSequentially\(code, \{ delay: 50 \}\)/);
+});
+
+test("worker clears browser state and closes every failed or completed attempt", () => {
+    assert.match(source, /context\.newCDPSession\(page\)/);
+    assert.match(source, /Network\.clearBrowserCache/);
+    assert.match(source, /Network\.clearBrowserCookies/);
+    assert.match(source, /window\.localStorage\.clear\(\)/);
+    assert.match(source, /window\.sessionStorage\.clear\(\)/);
+    assert.match(source, /activeSessions\.set\(sessionId, \{ browser, context, page, timer: null \}\)/);
+    assert.match(source, /if \(!keepSession\) await closeBrowserSession\(\{ browser, context, page \}\)/);
 });

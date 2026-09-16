@@ -212,12 +212,20 @@ async function submitAccountEmail(page, accountEmail) {
         return result("continue_button_missing", "Netflix no mostró el botón para continuar con el correo.");
     }
     const nonGetRequests = [];
+    const responseRecords = [];
     const requestListener = (request) => {
         if (request.method() === "GET") return;
         const path = safeNetflixPath(request.url());
         if (path) nonGetRequests.push(`${request.method()} ${path}`);
     };
+    const responseListener = (response) => {
+        const request = response.request();
+        if (request.method() === "GET") return;
+        const path = safeNetflixPath(response.url());
+        if (path) responseRecords.push({ response, method: request.method(), path });
+    };
     page.on("request", requestListener);
+    page.on("response", responseListener);
     try {
         await page.waitForTimeout(250);
         await emailInput.press("Tab");
@@ -225,13 +233,58 @@ async function submitAccountEmail(page, accountEmail) {
         await waitForNavigationAfter(page, () => continueButton.click());
     } finally {
         page.off("request", requestListener);
+        page.off("response", responseListener);
+    }
+    const responseSummaries = [];
+    for (const record of responseRecords) {
+        const summary = {
+            method: record.method,
+            status: record.response.status(),
+            path: record.path,
+        };
+        if (record.path === "/graphql") {
+            const payload = await record.response.json().catch(() => null);
+            summary.topLevelKeys = payload && typeof payload === "object" ? Object.keys(payload).slice(0, 8) : [];
+            summary.errorCount = Array.isArray(payload?.errors) ? payload.errors.length : 0;
+        }
+        responseSummaries.push(summary);
     }
     logStage("account_email_submitted", {
         path: safePath(page.url()),
         nonGetRequestCount: nonGetRequests.length,
         requestPaths: [...new Set(nonGetRequests)].slice(0, 6),
+        responseSummaries: responseSummaries.slice(0, 6),
     });
     const text = await bodyText(page);
+    const normalizedText = normalizeText(text);
+    logStage("account_email_state", {
+        path: safePath(page.url()),
+        hasLoginCodePrompt: /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText),
+        hasResendText: /(?:solicita el reenvio|reenviar codigo|resend code)/i.test(normalizedText),
+        hasEmailInput: await page.locator("input[name='userLoginId']").count() > 0,
+        hasPasswordInput: await page.locator("input[name='password']").count() > 0,
+        hasConnectedNotice: normalizedText.includes("tu tv ahora esta conectada"),
+        hasValidationError: /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText),
+    });
+    const hasLoginCodePrompt = /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText);
+    const hasEmailInput = await page.locator("input[name='userLoginId']").count() > 0;
+    const hasPasswordInput = await page.locator("input[name='password']").count() > 0;
+    const hasValidationError = /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText);
+    if (!hasLoginCodePrompt && hasEmailInput && hasPasswordInput && !hasValidationError) {
+        const retryButton = await findVisibleInput(page, [
+            "button[data-uia*='continue' i]",
+            "button[type='submit']",
+            "input[type='submit']",
+        ]);
+        if (retryButton && await retryButton.isEnabled().catch(() => false)) {
+            logStage("account_email_retry", { path: safePath(page.url()) });
+            await waitForNavigationAfter(page, () => retryButton.click());
+            if (!await waitForLoginCodeScreen(page, 8000)) {
+                logStage("email_flow_not_advanced", { path: safePath(page.url()) });
+                return result("email_flow_not_advanced", "Netflix recibió el correo, pero no avanzó a la pantalla del código de Inicio.");
+            }
+        }
+    }
     const failure = detectPageFailure(text);
     if (failure) {
         logStage("account_email_rejected", { status: failure.status });
@@ -244,7 +297,7 @@ async function submitAccountEmail(page, accountEmail) {
     return null;
 }
 
-async function waitForLoginCodeScreen(page) {
+async function waitForLoginCodeScreen(page, timeout = 12000) {
     return page.waitForFunction(() => {
         const text = String(document.body?.innerText || "")
             .normalize("NFD")
@@ -256,7 +309,7 @@ async function waitForLoginCodeScreen(page) {
         });
         return /code.*email|codigo.*correo|codigo.*email|enviamos.*correo|sent.*email/i.test(text)
             || inputs.filter((input) => input.maxLength === 1).length >= 4;
-    }, { timeout: 12000 }).then(() => true).catch(() => false);
+    }, { timeout }).then(() => true).catch(() => false);
 }
 
 async function resendLoginCode(page) {
@@ -344,12 +397,44 @@ async function fillLoginCode(page, loginCode) {
     return null;
 }
 
+async function clearBrowserState(context, page) {
+    await context?.clearCookies().catch(() => {});
+    await page?.evaluate(() => {
+        try {
+            window.localStorage.clear();
+            window.sessionStorage.clear();
+        } catch {
+            // Some Netflix documents do not expose storage to the page.
+        }
+    }).catch(() => {});
+
+    // A fresh incognito context already isolates the run, but clear the
+    // Chromium cache too so retries cannot inherit a partial browser state.
+    if (context && page) {
+        const cdp = await context.newCDPSession(page).catch(() => null);
+        if (cdp) {
+            await cdp.send("Network.clearBrowserCache").catch(() => {});
+            await cdp.send("Network.clearBrowserCookies").catch(() => {});
+            await cdp.detach().catch(() => {});
+        }
+    }
+    logStage("browser_state_cleared");
+}
+
+async function closeBrowserSession(session) {
+    if (!session) return;
+    await clearBrowserState(session.context, session.page);
+    await session.page?.close().catch(() => {});
+    await session.context?.close().catch(() => {});
+    await session.browser?.close().catch(() => {});
+}
+
 async function closeSession(sessionId) {
     const session = activeSessions.get(sessionId);
     if (!session) return;
     activeSessions.delete(sessionId);
     clearTimeout(session.timer);
-    await session.browser.close().catch(() => {});
+    await closeBrowserSession(session);
 }
 
 function scheduleSessionExpiry(sessionId) {
@@ -374,25 +459,22 @@ async function startRun({ tvCode, accountEmail }) {
     if (!email) return result("account_email_missing", "El pedido no tiene un correo de cuenta asignado.");
 
     let browser;
+    let context;
+    let page;
+    let keepSession = false;
     try {
         browser = await launchBrowser();
-        const context = await browser.newContext({
+        context = await browser.newContext({
             locale: "es-CO",
             timezoneId: "America/Bogota",
             viewport: { width: 1365, height: 900 },
         });
-        const page = await context.newPage();
+        page = await context.newPage();
         page.setDefaultTimeout(12000);
         const codeStep = await submitTvCode(page, normalizedTvCode);
-        if (codeStep) {
-            await browser.close().catch(() => {});
-            return codeStep;
-        }
+        if (codeStep) return codeStep;
         const emailStep = await submitAccountEmail(page, email);
-        if (emailStep) {
-            await browser.close().catch(() => {});
-            return emailStep;
-        }
+        if (emailStep) return emailStep;
         const loginCodeScreenDetected = await waitForLoginCodeScreen(page);
         const loginInputs = await visibleCodeInputs(page);
         const loginText = normalizeText(await bodyText(page));
@@ -405,21 +487,21 @@ async function startRun({ tvCode, accountEmail }) {
         });
         if (!loginCodeScreenDetected) {
             const failure = detectPageFailure(loginText);
-            await browser.close().catch(() => {});
             return failure || result("login_code_screen_missing", "Netflix no confirmó la pantalla para ingresar el código de Inicio.");
         }
         if (loginInputs.length < 1) {
             const failure = detectPageFailure(await bodyText(page));
-            await browser.close().catch(() => {});
             return failure || result("login_code_input_missing", "Netflix no mostró el campo para ingresar el código de Inicio.");
         }
         const sessionId = crypto.randomUUID();
-        activeSessions.set(sessionId, { browser, page, timer: null });
+        activeSessions.set(sessionId, { browser, context, page, timer: null });
         scheduleSessionExpiry(sessionId);
+        keepSession = true;
         browser = null;
+        context = null;
+        page = null;
         return { ok: true, status: "awaiting_login_code", sessionId };
     } catch (error) {
-        await browser?.close().catch(() => {});
         const message = String(error?.message || error || "");
         if (/Executable doesn't exist|browserType\.launch|libatk|playwright.*browser/i.test(message)) {
             return result("browser_unavailable", "La automatización de Netflix no está disponible en el worker.");
@@ -427,6 +509,8 @@ async function startRun({ tvCode, accountEmail }) {
         if (/timeout|timed out/i.test(message)) return result("automation_timeout", "Netflix tardó demasiado en responder. Intenta nuevamente.");
         console.error("[netflix-tv-worker] start error", { message });
         return result("automation_error", "No fue posible iniciar la conexión automática con Netflix.");
+    } finally {
+        if (!keepSession) await closeBrowserSession({ browser, context, page });
     }
 }
 

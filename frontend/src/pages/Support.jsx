@@ -43,6 +43,7 @@ export default function Support() {
     const navigate = useNavigate();
     const logout = useAppLogout();
     const { user } = useAuth();
+    const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
     const [subscriptionId, setSubscriptionId] = useState("");
     const [observation, setObservation] = useState("");
     const [evidence, setEvidence] = useState(null);
@@ -300,7 +301,11 @@ export default function Support() {
                                     placeholder="Ej: 4722"
                                     disabled={sending}
                                 />
-                                <small>Es el ID que aparece en el enlace o detalle de credenciales.</small>
+                                <small>
+                                    {isAdmin
+                                        ? "Como administrador puedes reportar cualquier cuenta existente; debe estar activa."
+                                        : "Es el ID que aparece en el enlace o detalle de credenciales."}
+                                </small>
                             </label>
 
                             <label className="support-field support-field--observation">

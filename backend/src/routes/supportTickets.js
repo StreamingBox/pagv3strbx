@@ -15,6 +15,7 @@ const {
 const { enqueueNotification } = require("../services/notificationOutbox.service");
 const { replaceSubscriptionAccount } = require("../services/accountReplacement.service");
 const { assertActiveSupportSubscription } = require("../services/supportSubscriptionEligibility.service");
+const { getSupportSubscriptionLookup } = require("../services/supportTicketAccess.service");
 const { findInactiveMasterForSubscription } = require("../services/masterAccounts.service");
 const {
     getManagementMinutes,
@@ -693,6 +694,7 @@ async function attemptAutoMasterResolution(conn, { ticketId, subscriptionId }) {
 router.post("/support/tickets", requireAuth, supportUploadRateLimit, uploadEvidence, async (req, res) => {
     const userId = Number(req.user.id);
     const subscriptionId = Number(req.body?.subscriptionId);
+    const subscriptionLookup = getSupportSubscriptionLookup(req.user, subscriptionId);
     const observation = String(req.body?.observation || "").trim();
 
     if (!Number.isFinite(subscriptionId) || subscriptionId <= 0) {
@@ -723,15 +725,17 @@ router.post("/support/tickets", requireAuth, supportUploadRateLimit, uploadEvide
                LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
                LEFT JOIN order_items oi ON oi.subscription_id = s.id
                LEFT JOIN orders o ON o.id = oi.order_id
-              WHERE s.id = ? AND s.user_id = ?
+              WHERE ${subscriptionLookup.where}
               ORDER BY oi.id DESC
               LIMIT 1`,
-            [subscriptionId, userId]
+            subscriptionLookup.params
         );
         const subscription = subscriptions[0];
         if (!subscription) {
             return res.status(404).json({
-                message: "No encontramos ese ID entre tus cuentas compradas.",
+                message: subscriptionLookup.isAdmin
+                    ? "No encontramos ese ID de cuenta."
+                    : "No encontramos ese ID entre tus cuentas compradas.",
             });
         }
         try {
@@ -749,13 +753,14 @@ router.post("/support/tickets", requireAuth, supportUploadRateLimit, uploadEvide
             });
         }
 
+        const ticketOwnerId = Number(subscription.user_id);
         const [openRows] = await conn.query(
             `SELECT id, ticket_code
                FROM support_tickets
               WHERE subscription_id = ? AND user_id = ? AND status IN ('open', 'in_progress')
               ORDER BY id DESC
               LIMIT 1`,
-            [subscriptionId, userId]
+            [subscriptionId, ticketOwnerId]
         );
         if (openRows.length) {
             return res.status(409).json({
@@ -776,7 +781,7 @@ router.post("/support/tickets", requireAuth, supportUploadRateLimit, uploadEvide
             [
                 ticketCode,
                 subscriptionId,
-                userId,
+                ticketOwnerId,
                 subscription.platform_id,
                 subscription.order_id || null,
                 subscription.order_code || null,

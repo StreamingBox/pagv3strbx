@@ -63,6 +63,13 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(workerSource, /hasCodePrompt/);
 });
 
+test("TV setup logs the worker status without logging credentials", () => {
+    assert.match(automationSource, /httpStatus: error\?\.response\?\.status/);
+    assert.match(automationSource, /status: error\?\.response\?\.data\?\.status/);
+    assert.match(automationSource, /message: error\?\.response\?\.data\?\.message/);
+    assert.doesNotMatch(automationSource, /console\.error\([^\n]*accountPassword/);
+});
+
 test("TV setup client maps worker errors without leaking credentials", () => {
     assert.equal(automationTest.normalizeTvCode("9875-3269"), "98753269");
     assert.equal(automationTest.workerBaseUrl(), "");

@@ -132,7 +132,11 @@ async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, reques
         return { ok: true, status: "completed", finalUrl: complete.finalUrl || null };
     } catch (error) {
         await cancelWorkerSession(baseUrl, sessionId);
-        console.error("[netflixTvSetup] worker error", { message: error?.message || String(error) });
+        console.error("[netflixTvSetup] worker error", {
+            httpStatus: error?.response?.status || null,
+            status: error?.response?.data?.status || null,
+            message: error?.response?.data?.message || error?.message || String(error),
+        });
         return mapWorkerError(error, "worker_unavailable", "No fue posible conectar con el servicio de automatización.");
     }
 }

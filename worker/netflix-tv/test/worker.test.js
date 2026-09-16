@@ -1,6 +1,9 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const test = require("node:test");
 const { __test } = require("../src/server");
+
+const source = fs.readFileSync(require.resolve("../src/server"), "utf8");
 
 test("worker detects Netflix success without treating the informational reCAPTCHA footer as a challenge", () => {
     assert.equal(__test.detectPageFailure("Esta página está protegida por Google reCAPTCHA para comprobar que no eres un robot."), null);
@@ -10,4 +13,10 @@ test("worker detects Netflix success without treating the informational reCAPTCH
 
 test("worker normalizes the TV code to digits", () => {
     assert.equal(__test.normalizeDigits("9875-3269"), "98753269");
+});
+
+test("worker verifies the filled email and records the Netflix submit request safely", () => {
+    assert.match(source, /matches: filledEmail === normalizedEmail/);
+    assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
+    assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
 });

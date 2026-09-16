@@ -1,0 +1,18 @@
+[Unit]
+Description=STRBX Netflix TV setup worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/var/www/strbx-netflix-tv-worker
+Environment=NODE_ENV=production
+Environment=NETFLIX_TV_SETUP_HEADLESS=false
+EnvironmentFile=/var/www/strbx-netflix-tv-worker/.env
+ExecStart=/usr/bin/xvfb-run --auto-servernum --server-args="-screen 0 1365x900x24 -nolisten tcp" /usr/bin/node /var/www/strbx-netflix-tv-worker/src/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

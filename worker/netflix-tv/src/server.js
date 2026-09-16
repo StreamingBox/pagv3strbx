@@ -41,6 +41,15 @@ function safePath(value) {
     }
 }
 
+function safeNetflixPath(value) {
+    try {
+        const url = new URL(String(value || ""));
+        return /(^|\.)netflix\.com$/i.test(url.hostname) ? url.pathname || "/" : "";
+    } catch {
+        return "";
+    }
+}
+
 function logStage(stage, details = {}) {
     const fields = Object.entries(details)
         .filter(([, value]) => value !== undefined && value !== null && value !== "")
@@ -139,6 +148,7 @@ async function findVisibleInput(page, selectors) {
 }
 
 async function submitAccountEmail(page, accountEmail) {
+    const normalizedEmail = String(accountEmail || "").trim().toLowerCase();
     const emailInput = await findVisibleInput(page, [
         "input[type='email']",
         "input[name='email']",
@@ -150,8 +160,13 @@ async function submitAccountEmail(page, accountEmail) {
         logStage("account_email_input_missing", { path: safePath(page.url()) });
         return result("email_input_missing", "Netflix no mostró el campo para ingresar el correo de la cuenta.");
     }
-    await emailInput.fill(accountEmail);
-    logStage("account_email_filled", { domain: safeEmailDomain(accountEmail) });
+    await emailInput.fill(normalizedEmail);
+    const filledEmail = String(await emailInput.inputValue().catch(() => "")).trim().toLowerCase();
+    logStage("account_email_filled", {
+        domain: safeEmailDomain(normalizedEmail),
+        matches: filledEmail === normalizedEmail,
+        valueLength: filledEmail.length,
+    });
     const continueButton = await findVisibleInput(page, [
         "button[data-uia*='continue' i]",
         "button[type='submit']",
@@ -161,8 +176,23 @@ async function submitAccountEmail(page, accountEmail) {
         logStage("account_email_continue_missing", { path: safePath(page.url()) });
         return result("continue_button_missing", "Netflix no mostró el botón para continuar con el correo.");
     }
-    await waitForNavigationAfter(page, () => continueButton.click());
-    logStage("account_email_submitted", { path: safePath(page.url()) });
+    const nonGetRequests = [];
+    const requestListener = (request) => {
+        if (request.method() === "GET") return;
+        const path = safeNetflixPath(request.url());
+        if (path) nonGetRequests.push(`${request.method()} ${path}`);
+    };
+    page.on("request", requestListener);
+    try {
+        await waitForNavigationAfter(page, () => continueButton.click());
+    } finally {
+        page.off("request", requestListener);
+    }
+    logStage("account_email_submitted", {
+        path: safePath(page.url()),
+        nonGetRequestCount: nonGetRequests.length,
+        requestPaths: [...new Set(nonGetRequests)].slice(0, 6),
+    });
     const text = await bodyText(page);
     const failure = detectPageFailure(text);
     if (failure) {

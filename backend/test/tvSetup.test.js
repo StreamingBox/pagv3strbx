@@ -24,6 +24,10 @@ test("TV setup delegates the login code to the existing Inicio counter", () => {
     assert.match(routeSource, /message: "OK:code-tv-setup"/);
 });
 
+test("TV setup run accepts the formatted code returned by validation", () => {
+    assert.match(routeSource, /if \(!\/\^\\d\{4\}-\\d\{4\}\$\/\.test\(tvCode\) \|\| !subscriptionId\)/);
+});
+
 test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(routeSource, /router\.post\("\/tv-setup\/run", requireAuth/);
     assert.match(automationSource, /https:\/\/www\.netflix\.com\/tv2/);

@@ -220,7 +220,7 @@ router.post("/tv-setup/run", requireAuth, async (req, res) => {
     const tvCode = normalizeTvCode(req.body?.tvCode);
     const subscriptionId = parseSubscriptionId(req.body?.orderNumber);
 
-    if (!/^\d{8}$/.test(tvCode) || !subscriptionId) {
+    if (!/^\d{4}-\d{4}$/.test(tvCode) || !subscriptionId) {
         return res.status(400).json({
             ok: false,
             status: "invalid_input",

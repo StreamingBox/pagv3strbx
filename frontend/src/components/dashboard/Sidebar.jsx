@@ -315,6 +315,7 @@ export default function Sidebar({
                         <nav className="sb-nav">
                             {NAV_ITEMS
                                 .filter((item, index, arr) => arr.findIndex((x) => x.key === item.key) === index)
+                                .filter((item) => item.key !== "tvSetup" || isAdmin)
                                 .filter((item) => !liteSite || !["advertising", "analytics", "codes"].includes(item.key))
                                 .map((item) => {
                                 const isActive = activePath === item.path;

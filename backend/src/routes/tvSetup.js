@@ -39,6 +39,17 @@ function isAdmin(user) {
     return String(user?.role || "").trim().toLowerCase() === "admin";
 }
 
+function requireAdmin(req, res, next) {
+    if (!isAdmin(req.user)) {
+        return res.status(403).json({
+            ok: false,
+            status: "admin_required",
+            message: "Este módulo está en pruebas y solo está disponible para administradores.",
+        });
+    }
+    return next();
+}
+
 function buildValidatedData(subscription, tvCode) {
     return {
         ok: true,
@@ -194,8 +205,8 @@ async function requestLoginCodeForSetup(req, orderNumber) {
 }
 
 function automationHttpStatus(status) {
-    if (["invalid_tv_code", "tv_code_input_missing", "tv_code_submit_missing", "tv_code_submit_disabled", "account_email_missing", "email_input_missing", "continue_button_missing", "email_flow_not_advanced", "password_required", "password_input_missing", "password_submit_missing", "password_flow_not_advanced", "account_password_rejected", "login_code_input_missing", "invalid_login_code", "login_code_rejected"].includes(status)) return 400;
-    if (["browser_unavailable", "login_code_unavailable", "provider_config_error", "imap_error", "imap_auth_error"].includes(status)) return 503;
+    if (["invalid_tv_code", "tv_code_input_missing", "tv_code_submit_missing", "tv_code_submit_disabled", "account_email_missing", "email_input_missing", "email_input_mismatch", "continue_button_missing", "email_flow_not_advanced", "login_code_action_missing", "password_required", "login_code_input_missing", "invalid_login_code", "login_code_rejected", "login_code_not_accepted", "login_not_confirmed", "completion_not_confirmed"].includes(status)) return 400;
+    if (["browser_unavailable", "login_code_unavailable", "provider_config_error", "imap_error", "imap_auth_error", "worker_secure_transport_required"].includes(status)) return 503;
     if (status === "automation_timeout") return 504;
     if (status === "captcha_required") return 422;
     return 502;
@@ -205,7 +216,7 @@ function automationHttpStatus(status) {
  * POST /tv-setup/validate
  * Validates the TV code and account before starting the automated browser flow.
  */
-router.post("/tv-setup/validate", requireAuth, async (req, res) => {
+router.post("/tv-setup/validate", requireAuth, requireAdmin, async (req, res) => {
     const tvCode = normalizeTvCode(req.body?.tvCode);
     const subscriptionId = parseSubscriptionId(req.body?.orderNumber);
 
@@ -241,10 +252,10 @@ router.post("/tv-setup/validate", requireAuth, async (req, res) => {
 
 /**
  * POST /tv-setup/run
- * Completes Netflix TV2, the account email challenge and the Inicio code
- * inside a short-lived server-side browser session.
+ * Signs into the Netflix account with its email code, then links the TV code
+ * inside the same short-lived server-side browser session.
  */
-router.post("/tv-setup/run", requireAuth, async (req, res) => {
+router.post("/tv-setup/run", requireAuth, requireAdmin, async (req, res) => {
     const tvCode = normalizeTvCode(req.body?.tvCode);
     const subscriptionId = parseSubscriptionId(req.body?.orderNumber);
 
@@ -272,7 +283,6 @@ router.post("/tv-setup/run", requireAuth, async (req, res) => {
         const flow = await runNetflixTvSetup({
             tvCode,
             accountEmail: loaded.subscription.accountEmail,
-            accountPassword: loaded.subscription.accountPassword,
             requestLoginCode: () => requestLoginCodeForSetup(req, subscriptionId),
         });
 
@@ -281,6 +291,7 @@ router.post("/tv-setup/run", requireAuth, async (req, res) => {
                 ok: false,
                 status: flow.status,
                 message: flow.message,
+                ...(flow.diagnostics ? { diagnostics: flow.diagnostics } : {}),
             });
         }
 
@@ -304,7 +315,7 @@ router.post("/tv-setup/run", requireAuth, async (req, res) => {
 });
 
 if (process.env.NODE_ENV !== "production") {
-    router.get("/tv-setup/_ping", (req, res) => res.json({ ok: true, mounted: true }));
+    router.get("/tv-setup/_ping", requireAuth, requireAdmin, (req, res) => res.json({ ok: true, mounted: true }));
 }
 
 module.exports = router;

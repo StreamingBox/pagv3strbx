@@ -142,8 +142,19 @@ function decodeHtml(value) {
 }
 
 function decodeHtmlMarkup(value) {
-    const $ = cheerio.load(`<div id="message">${String(value || "")}</div>`);
-    return $("#message").html() || "";
+    let markup = String(value || "");
+
+    // StoreTools returns the email HTML escaped inside the JSON payload. Decode
+    // it once as text, then parse the resulting markup so its links are visible.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const $ = cheerio.load(`<div id="message">${markup}</div>`);
+        const html = $("#message").html() || "";
+        const text = $("#message").text() || "";
+        if (/<(?:a|button|input)\b/i.test(html) || text === markup) return html;
+        markup = text;
+    }
+
+    return markup;
 }
 
 function extractStoretoolsCode(entry) {
@@ -405,6 +416,7 @@ module.exports = {
         extractStoretoolsCode,
         selectLatestStoretoolsCode,
         selectLatestStoretoolsTemporaryEmail,
+        decodeHtmlMarkup,
         extractStoretoolsTemporaryAction,
         extractStoretoolsTemporaryCode,
         safeNetflixTemporaryUrl,

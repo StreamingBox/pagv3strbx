@@ -75,6 +75,16 @@ test("elige el último correo temporal de Netflix y encuentra el enlace Obtener 
     );
 });
 
+test("decodifica el HTML escapado que StoreTools entrega en el correo temporal", () => {
+    const escapedMessage = "&lt;a href=&quot;https://www.netflix.com/account/travel/verify?nf_token=escaped-token&amp;source=email&quot;&gt;Obtener código&lt;/a&gt;";
+    const messageHtml = storetoolsTest.decodeHtmlMarkup(escapedMessage);
+
+    assert.deepEqual(
+        storetoolsTest.extractStoretoolsTemporaryAction(messageHtml),
+        { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=escaped-token&source=email" },
+    );
+});
+
 test("inicia sesión en StoreTools, consulta Netflix y conserva la cookie", async () => {
     const originalRequest = axios.request;
     const calls = [];

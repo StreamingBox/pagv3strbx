@@ -165,6 +165,73 @@
     line-height: 1.45;
 }
 
+.tv-setup-diagnostics {
+    margin: -4px 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--stroke);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, .42);
+}
+
+.tv-setup-diagnostics h2 {
+    margin: 0 0 8px;
+    color: var(--text);
+    font-size: 13px;
+}
+
+.tv-setup-diagnostics ol {
+    display: grid;
+    gap: 7px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tv-setup-diagnostics li {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 22px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.tv-setup-diagnostics li > span {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    color: #a5b4fc;
+    background: rgba(99, 102, 241, .16);
+    font-weight: 900;
+}
+
+.tv-setup-diagnostics li.is-completed > span {
+    color: #052e24;
+    background: #6ee7b7;
+}
+
+.tv-setup-diagnostics li.is-failed > span,
+.tv-setup-diagnostics li.is-not_detected > span,
+.tv-setup-diagnostics li.is-missing > span {
+    color: #450a0a;
+    background: #fca5a5;
+}
+
+.tv-setup-diagnostics li strong {
+    min-width: 0;
+    color: var(--text);
+    font-weight: 650;
+}
+
+.tv-setup-diagnostics li small {
+    color: var(--muted);
+    font-size: 11px;
+    white-space: nowrap;
+}
+
 .tv-setup-card,
 .tv-setup-success {
     border: 1px solid var(--stroke);
@@ -658,5 +725,13 @@
 
     .tv-setup-login-code strong {
         font-size: 27px;
+    }
+
+    .tv-setup-diagnostics li {
+        grid-template-columns: 18px minmax(0, 1fr);
+    }
+
+    .tv-setup-diagnostics li small {
+        grid-column: 2;
     }
 }

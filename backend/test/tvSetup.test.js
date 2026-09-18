@@ -6,6 +6,8 @@ const test = require("node:test");
 const routeSource = fs.readFileSync(path.join(__dirname, "../src/routes/tvSetup.js"), "utf8");
 const automationSource = fs.readFileSync(path.join(__dirname, "../src/services/netflixTvSetupService.js"), "utf8");
 const workerSource = fs.readFileSync(path.join(__dirname, "../../worker/netflix-tv/src/server.js"), "utf8");
+const appSource = fs.readFileSync(path.join(__dirname, "../../frontend/src/App.jsx"), "utf8");
+const sidebarSource = fs.readFileSync(path.join(__dirname, "../../frontend/src/components/dashboard/Sidebar.jsx"), "utf8");
 const { __test: automationTest } = require("../src/services/netflixTvSetupService");
 
 test("TV setup validates an eight-digit code and an active Netflix subscription", () => {
@@ -13,18 +15,19 @@ test("TV setup validates an eight-digit code and an active Netflix subscription"
     assert.match(routeSource, /replace\(\/\\D\/g, ""\)/);
     assert.match(routeSource, /tv_code_submit_disabled/);
     assert.match(routeSource, /email_flow_not_advanced/);
-    assert.match(routeSource, /password_required/);
+    assert.match(routeSource, /login_code_action_missing/);
+    assert.match(routeSource, /email_input_mismatch/);
     assert.match(routeSource, /toCodeSlug\(subscription\.platformSlug\) !== "netflix"/);
     assert.match(routeSource, /subscription\.status.*active/);
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);
     assert.match(routeSource, /accountEmail: subscription\.accountEmail/);
-    assert.match(routeSource, /accountPassword: loaded\.subscription\.accountPassword/);
-    assert.match(routeSource, /account_password_rejected/);
+    assert.doesNotMatch(routeSource, /accountPassword/);
 });
 
 test("TV setup delegates the login code to the existing Inicio counter", () => {
     assert.match(routeSource, /loginCodeAction: "code"/);
     assert.match(routeSource, /sharesLoginCodeCounter: true/);
+    assert.match(routeSource, /flow\.diagnostics/);
     assert.match(routeSource, /requestCodeForOrder/);
     assert.match(routeSource, /message: "OK:code-tv-setup"/);
 });
@@ -47,7 +50,8 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(automationSource, /\/run\/start/);
     assert.match(automationSource, /\/run\/complete/);
     assert.match(automationSource, /requestLoginCode/);
-    assert.match(automationSource, /accountPassword/);
+    assert.doesNotMatch(automationSource, /accountPassword/);
+    assert.match(automationSource, /El servicio de automatización debe usar HTTPS para proteger los códigos de acceso/);
     assert.match(automationSource, /\/run\/resend/);
     assert.match(automationSource, /RESENDABLE_LOGIN_CODE_STATUSES/);
     assert.doesNotMatch(automationSource, /require\(["']playwright["']\)/);
@@ -61,6 +65,16 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(workerSource, /app\.post\("\/run\/resend"/);
     assert.match(workerSource, /loginCodeScreenDetected/);
     assert.match(workerSource, /hasCodePrompt/);
+    assert.match(workerSource, /account_email_waiting_for_login_code_screen/);
+    assert.match(workerSource, /account_email_code_screen_detected/);
+    assert.match(workerSource, /visibleActionSummary/);
+    assert.match(workerSource, /\}, undefined, \{ timeout \}\)/);
+    const workerRunSource = workerSource.slice(workerSource.indexOf("async function startRun"), workerSource.indexOf("async function completeRun"));
+    const tvCodeFirst = workerRunSource.indexOf("const codeStep = await submitTvCode(page, normalizedTvCode)");
+    const emailLater = workerRunSource.indexOf("const emailStep = await submitAccountEmail(page, email)");
+    assert.ok(tvCodeFirst >= 0 && emailLater > tvCodeFirst);
+    assert.match(workerSource, /findLoginCodeAction\(page, "account_email"\)/);
+    assert.doesNotMatch(workerSource, /submitAccountPassword|accountPassword|passwordInput\.fill/);
 });
 
 test("TV setup logs the worker status without logging credentials", () => {
@@ -73,11 +87,26 @@ test("TV setup logs the worker status without logging credentials", () => {
 test("TV setup client maps worker errors without leaking credentials", () => {
     assert.equal(automationTest.normalizeTvCode("9875-3269"), "98753269");
     assert.equal(automationTest.workerBaseUrl(), "");
+    assert.equal(automationTest.hasSecureWorkerTransport("https://worker.example.test"), true);
+    assert.equal(automationTest.hasSecureWorkerTransport("http://127.0.0.1:4100"), true);
+    assert.equal(automationTest.hasSecureWorkerTransport("http://worker.example.test"), false);
     assert.equal(automationTest.mapWorkerError({ response: { status: 401, data: {} } }, "worker_unavailable", "fallback").status, "worker_unauthorized");
+    const diagnostics = { steps: [{ key: "account_email_filled", state: "completed" }] };
+    assert.deepEqual(automationTest.mapWorkerError({
+        response: { status: 400, data: { status: "login_code_action_missing", message: "No PIN", diagnostics } },
+    }, "worker_unavailable", "fallback").diagnostics, diagnostics);
 });
 
-test("TV setup is available to authenticated users and protects ownership", () => {
-    assert.match(routeSource, /router\.post\("\/tv-setup\/validate", requireAuth/);
+test("TV setup is restricted to admins in the UI and on every API entry point", () => {
+    assert.match(routeSource, /function requireAdmin\(req, res, next\)/);
+    assert.match(routeSource, /if \(!isAdmin\(req\.user\)\)/);
+    assert.match(routeSource, /router\.post\("\/tv-setup\/validate", requireAuth, requireAdmin/);
+    assert.match(routeSource, /router\.post\("\/tv-setup\/run", requireAuth, requireAdmin/);
+    assert.match(routeSource, /router\.get\("\/tv-setup\/_ping", requireAuth, requireAdmin/);
+    const tvSetupRoute = appSource.match(/path="\/tv-setup"[\s\S]*?<\/ProtectedRoute>[\s\S]*?\/>/)?.[0] || "";
+    assert.match(tvSetupRoute, /roles=\{\["admin"\]\}/);
+    assert.doesNotMatch(tvSetupRoute, /"user"/);
+    assert.match(sidebarSource, /filter\(\(item\) => item\.key !== "tvSetup" \|\| isAdmin\)/);
     assert.match(routeSource, /Number\(subscription\.userId\) !== Number\(req\.user\?\.id\)/);
     assert.match(routeSource, /isAdmin\(req\.user\)/);
 });

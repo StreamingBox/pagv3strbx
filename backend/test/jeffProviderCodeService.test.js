@@ -170,6 +170,24 @@ test("provider remains disabled unless the slug and credentials are configured",
     assert.equal(enabled.enabled, true);
 });
 
+test("permite el tiempo necesario para una búsqueda lenta de Jeff sin quitar el límite", () => {
+    const configured = getJeffProviderConfigForSlug("netflix", {
+        JEFF_PROVIDER_PLATFORM_SLUGS: "netflix",
+        JEFF_PROVIDER_USERNAME: "user",
+        JEFF_PROVIDER_PASSWORD: "pass",
+        JEFF_PROVIDER_TIMEOUT_MS: "45000",
+    });
+    const capped = getJeffProviderConfigForSlug("netflix", {
+        JEFF_PROVIDER_PLATFORM_SLUGS: "netflix",
+        JEFF_PROVIDER_USERNAME: "user",
+        JEFF_PROVIDER_PASSWORD: "pass",
+        JEFF_PROVIDER_TIMEOUT_MS: "120000",
+    });
+
+    assert.equal(configured.timeoutMs, 45000);
+    assert.equal(capped.timeoutMs, 60000);
+});
+
 test("logs in, keeps the session cookie, searches by email and returns the provider code", async () => {
     const originalRequest = axios.request;
     const calls = [];

@@ -3,6 +3,8 @@ const STRBX_PROVIDER = "strbx";
 const JEFF_PREMIUM_PROVIDER = "jeff_premium";
 const STORETOOLS_PROVIDER = "storetools";
 const LIVEONIX_PROVIDER = "liveonix";
+const DEFAULT_PROVIDER_TIMEOUT_MS = 45000;
+const MAX_PROVIDER_TIMEOUT_MS = 60000;
 
 function normalizeSlug(value) {
     return String(value || "")
@@ -75,7 +77,10 @@ function getJeffProviderConfigForProvider(provider, env = process.env, metadata 
     const baseUrl = normalizeBaseUrl(env.JEFF_PROVIDER_BASE_URL);
     const username = String(env.JEFF_PROVIDER_USERNAME || env.JEFF_PROVIDER_PHONE || "").trim();
     const password = String(env.JEFF_PROVIDER_PASSWORD || "");
-    const timeoutMs = Math.min(Math.max(Number(env.JEFF_PROVIDER_TIMEOUT_MS) || 15000, 5000), 30000);
+    const timeoutMs = Math.min(
+        Math.max(Number(env.JEFF_PROVIDER_TIMEOUT_MS) || DEFAULT_PROVIDER_TIMEOUT_MS, 5000),
+        MAX_PROVIDER_TIMEOUT_MS
+    );
     const maxAgeMinutes = Math.min(Math.max(Number(env.JEFF_PROVIDER_MAX_AGE_MINUTES) || 15, 1), 60);
 
     return {

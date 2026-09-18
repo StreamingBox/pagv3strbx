@@ -75,6 +75,47 @@ function ErrorNotice({ message }) {
     );
 }
 
+const AUTOMATION_DIAGNOSTIC_LABELS = {
+    tv_code_submitted: "Código del TV enviado a Netflix",
+    account_email_filled: "Correo exacto del pedido escrito",
+    continue_clicked: "Se pulsó Continuar",
+    login_code_screen: "Pantalla del código de Inicio",
+    password_form: "Campo de contraseña de Netflix",
+    login_code_action: "Opción para pedir el código de Inicio",
+};
+
+function AutomationDiagnostics({ diagnostics }) {
+    const steps = Array.isArray(diagnostics?.steps) ? diagnostics.steps : [];
+    if (!steps.length) return null;
+
+    const stateLabels = {
+        completed: "Hecho",
+        failed: "No",
+        not_run: "No ejecutado",
+        not_detected: "No apareció",
+        visible: "Visible",
+        not_visible: "No visible",
+        available: "Disponible",
+        missing: "No disponible",
+        not_found: "No encontrada",
+    };
+
+    return (
+        <section className="tv-setup-diagnostics" aria-label="Detalle de la prueba">
+            <h2>Detalle de la prueba</h2>
+            <ol>
+                {steps.filter((item) => AUTOMATION_DIAGNOSTIC_LABELS[item.key]).map((item) => (
+                    <li className={`is-${item.state}`} key={item.key}>
+                        <span aria-hidden="true">{item.state === "completed" ? <Check size={14} strokeWidth={3} /> : item.state === "failed" ? "!" : "·"}</span>
+                        <strong>{AUTOMATION_DIAGNOSTIC_LABELS[item.key]}</strong>
+                        <small>{stateLabels[item.state] || "Pendiente"}</small>
+                    </li>
+                ))}
+            </ol>
+        </section>
+    );
+}
+
 function buildTvSetupErrorMessage(data, fallback) {
     const status = String(data?.status || "").trim().toLowerCase();
     const messages = {
@@ -88,13 +129,19 @@ function buildTvSetupErrorMessage(data, fallback) {
         tv_code_submit_missing: "Netflix no mostró el botón para continuar con el código del TV.",
         tv_code_submit_disabled: "Netflix no habilitó el código del TV. Revisa los 8 dígitos que aparecen en pantalla.",
         email_input_missing: "Netflix no mostró el campo del correo. El correo no alcanzó a escribirse.",
+        email_input_mismatch: "Netflix no conservó el correo exacto del pedido. Se detuvo antes de continuar para evitar usar otra cuenta.",
         continue_button_missing: "El correo se cargó, pero Netflix no mostró el botón para continuar.",
         email_flow_not_advanced: "Netflix recibió el correo, pero no avanzó a la pantalla del código de Inicio. Verifica que el correo de la cuenta sea el correcto e inténtalo nuevamente.",
-        password_required: "Netflix pidió la contraseña y no ofreció el código de Inicio para esta cuenta. Verifica que el correo sea el principal o usa una cuenta con código de Inicio.",
+        password_required: "Netflix mostró la contraseña, pero no ofreció el código de Inicio ni en Obtener ayuda. No se ingresó la contraseña.",
         password_input_missing: "Netflix pidió la contraseña, pero no mostró el campo para ingresarla.",
+        password_input_mismatch: "Netflix no conservó la contraseña de la cuenta. Se detuvo antes de enviarla.",
         password_submit_missing: "Netflix pidió la contraseña, pero no mostró el botón para continuar.",
         password_flow_not_advanced: "Netflix no confirmó la conexión después de ingresar la contraseña.",
         account_password_rejected: "Netflix rechazó la contraseña almacenada para esta cuenta. Actualiza la cuenta e inténtalo nuevamente.",
+        worker_secure_transport_required: "No se inició el proceso porque la conexión segura entre servidores no está disponible.",
+        login_not_confirmed: "Netflix no confirmó el inicio de sesión después de ingresar el código.",
+        login_code_not_accepted: "Netflix mantuvo la pantalla del código de Inicio. No se vinculó el TV.",
+        completion_not_confirmed: "Netflix inició sesión, pero no confirmó que el TV quedara vinculado.",
         login_code_input_missing: "Netflix no mostró la pantalla para ingresar el código de Inicio.",
         login_code_screen_missing: "Netflix no confirmó la pantalla para ingresar el código de Inicio.",
         resend_unavailable: "Netflix no ofreció la opción para reenviar el código de Inicio.",
@@ -148,6 +195,7 @@ const { user } = useAuth();
     const [validated, setValidated] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [automationDiagnostics, setAutomationDiagnostics] = useState(null);
     const [automationAttempted, setAutomationAttempted] = useState(false);
     const [completed, setCompleted] = useState(false);
 
@@ -158,6 +206,7 @@ const { user } = useAuth();
         if (!payload?.orderNumber || (loading && !force)) return;
         setLoading(true);
         setError("");
+        setAutomationDiagnostics(null);
         setAutomationAttempted(true);
         setStep(2);
 
@@ -167,6 +216,7 @@ const { user } = useAuth();
                 orderNumber: payload.orderNumber,
             }, { timeoutMs: TV_SETUP_REQUEST_TIMEOUT_MS });
             if (!response.ok) {
+                setAutomationDiagnostics(response.data?.diagnostics || null);
                 throw new Error(buildTvSetupErrorMessage(response.data, "No fue posible completar la conexión automática."));
             }
             setValidated((current) => ({ ...current, ...response.data }));
@@ -184,6 +234,7 @@ const { user } = useAuth();
         if (!canValidate) return;
         setLoading(true);
         setError("");
+        setAutomationDiagnostics(null);
         setValidated(null);
         setCompleted(false);
         setAutomationAttempted(false);
@@ -213,6 +264,7 @@ const { user } = useAuth();
         setAutomationAttempted(false);
         setCompleted(false);
         setError("");
+        setAutomationDiagnostics(null);
     }
 
     return (
@@ -253,6 +305,7 @@ const { user } = useAuth();
 
                     <StepIndicator step={completed ? 4 : step} />
                     <ErrorNotice message={error} />
+                    <AutomationDiagnostics diagnostics={automationDiagnostics} />
 
                     {completed ? (
                         <motion.section className="tv-setup-success" initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}>

@@ -513,7 +513,9 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                     config: jeffProviderConfig,
                     action: normalizedAction,
                 }),
-                jeffProviderConfig.timeoutMs + 1000,
+                // Jeff retries a timed-out search once, so the outer guard must
+                // leave enough time for both attempts to finish.
+                (jeffProviderConfig.timeoutMs * 2) + 2000,
                 "Tiempo de espera agotado consultando el proveedor externo."
             );
         } else if (requestedSlug === "netflix") {

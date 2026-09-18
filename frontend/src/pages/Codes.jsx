@@ -58,8 +58,7 @@ function FaqItem({ q, a }) {
 }
 
 /* ─── Campo credencial ─── */
-function CredField({ label, value, icon, secret = false }) {
-    const [revealed, setRevealed] = useState(false);
+function CredField({ label, value, icon }) {
     const [copied, setCopied] = useState(false);
 
     async function copy() {
@@ -81,17 +80,59 @@ function CredField({ label, value, icon, secret = false }) {
             <div style={{ width: 28, height: 28, borderRadius: 7, background: "rgba(13,166,242,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 13 }}>{icon}</div>
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 9, fontWeight: 800, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", wordBreak: "break-all", fontFamily: secret && !revealed ? "monospace" : "inherit" }}>
-                    {secret && !revealed ? "••••••••••••" : value}
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", wordBreak: "break-all" }}>
+                    {value}
                 </div>
             </div>
             <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                {secret && <button onClick={() => setRevealed(v => !v)} style={IB}>{revealed ? "🙈" : "👁️"}</button>}
                 <button onClick={copy} style={{ ...IB, background: copied ? "rgba(16,185,129,0.2)" : IB.background, border: copied ? "1px solid rgba(16,185,129,0.4)" : IB.border, color: copied ? "#10b981" : IB.color }}>
                     {copied ? "✓" : "⎘"}
                 </button>
             </div>
         </div>
+    );
+}
+
+function SearchLoading({ platform }) {
+    return (
+        <motion.div
+            role="status"
+            aria-live="polite"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            style={{
+                display: "flex", alignItems: "center", gap: 12, padding: "13px 14px",
+                borderRadius: 10, background: "rgba(13,166,242,0.08)",
+                border: "1px solid rgba(13,166,242,0.28)",
+            }}
+        >
+            <motion.div
+                aria-hidden="true"
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                style={{
+                    width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+                    border: "3px solid rgba(13,166,242,0.2)", borderTopColor: "var(--accent)",
+                }}
+            />
+            <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 800 }}>Buscando tu código</div>
+                <div style={{ color: "var(--muted)", fontSize: 11, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    Consultando {platform?.label || "el proveedor"}
+                </div>
+            </div>
+            <div aria-hidden="true" style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                {[0, 1, 2].map((delay) => (
+                    <motion.span
+                        key={delay}
+                        animate={{ opacity: [0.25, 1, 0.25], scale: [0.8, 1, 0.8] }}
+                        transition={{ duration: 0.9, repeat: Infinity, delay: delay * 0.15 }}
+                        style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)" }}
+                    />
+                ))}
+            </div>
+        </motion.div>
     );
 }
 
@@ -217,7 +258,9 @@ export default function Codes() {
         setLoadingSlug(`${slug}:${action}`);
         try {
             const body = { orderNumber: orderNumber.trim(), action };
-            const r = await apiPost(`/api/codes/${slug}/request`, body);
+            // External inbox providers can take longer than the default API
+            // timeout; the backend still enforces its own bounded timeout.
+            const r = await apiPost(`/api/codes/${slug}/request`, body, { timeoutMs: 95000 });
             if (!r.ok) {
                 const fallbackMessage = r.status >= 500 ? "Time-out o error interno. Intenta más tarde." : "Error solicitando código";
                 setData({
@@ -443,6 +486,11 @@ export default function Codes() {
                                 </div>
                             </div>
 
+                            {/* Estado animado de consulta */}
+                            <AnimatePresence mode="wait">
+                                {loadingSlug && <SearchLoading platform={activeMeta} />}
+                            </AnimatePresence>
+
                             {/* Errores */}
                             <AnimatePresence>
                                 {error && (
@@ -507,7 +555,7 @@ export default function Codes() {
                                             </div>
                                         ) : (
                                             <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                                                {data.code && <CredField label="Código de acceso" value={data.code} icon="🔑" secret />}
+                                                {data.code && <CredField label="Código de acceso" value={data.code} icon="🔑" />}
                                             </div>
                                         )}
                                     </motion.div>

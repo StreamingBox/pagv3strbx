@@ -1,0 +1,69 @@
+/* Shared mobile guardrails for admin pages. Component-specific layouts can opt out with their own scroll wrapper. */
+.main,
+.main > *,
+.main > * > * {
+    min-width: 0;
+}
+
+.main > * {
+    max-width: 100%;
+}
+
+.main img,
+.main video,
+.main canvas,
+.main iframe {
+    max-width: 100%;
+}
+
+.main input,
+.main select,
+.main textarea,
+.main button {
+    max-width: 100%;
+}
+
+.main [style*="overflowX"],
+.main [style*="overflow-x"],
+.main .table-scroll,
+.main .table-wrap {
+    max-width: 100%;
+}
+
+@media (max-width: 720px) {
+    .main {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    /* Inline grid definitions are used by several legacy admin forms. */
+    .main > section[style*="grid-template-columns"],
+    .main > div[style*="grid-template-columns"],
+    .main form > div[style*="grid-template-columns"] {
+        grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    /* Fixed-width controls remain usable on narrow phones. */
+    .main [style*="width: 280px"],
+    .main [style*="width: 300px"],
+    .main [style*="width: 320px"],
+    .main [style*="width: 360px"],
+    .main [style*="width: 420px"] {
+        width: 100% !important;
+    }
+
+    .main .btn,
+    .main .btn-ghost {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 420px) {
+    .main {
+        font-size: 13px;
+    }
+
+    .main table {
+        font-size: 12px;
+    }
+}

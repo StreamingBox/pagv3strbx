@@ -24,6 +24,16 @@ function workerBaseUrl() {
     return String(process.env.NETFLIX_TV_SETUP_WORKER_URL || "").trim().replace(/\/$/, "");
 }
 
+function hasSecureWorkerTransport(value) {
+    try {
+        const url = new URL(value);
+        if (url.protocol === "https:") return true;
+        return url.protocol === "http:" && ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname);
+    } catch {
+        return false;
+    }
+}
+
 function workerToken() {
     return String(process.env.NETFLIX_TV_SETUP_WORKER_TOKEN || "").trim();
 }
@@ -39,7 +49,9 @@ function result(status, message, extra = {}) {
 
 function mapWorkerError(error, fallbackStatus, fallbackMessage) {
     const response = error?.response?.data;
-    if (response?.status && response?.message) return result(response.status, response.message);
+    if (response?.status && response?.message) {
+        return result(response.status, response.message, response.diagnostics ? { diagnostics: response.diagnostics } : {});
+    }
     if (error?.code === "ECONNABORTED" || /timeout/i.test(String(error?.message || ""))) {
         return result("automation_timeout", "El servicio de automatización tardó demasiado en responder.");
     }
@@ -68,10 +80,9 @@ async function resendWorkerLoginCode(baseUrl, sessionId) {
     return response.data || {};
 }
 
-async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, requestLoginCode }) {
+async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
     const normalizedTvCode = normalizeTvCode(tvCode);
     const email = String(accountEmail || "").trim();
-    const password = String(accountPassword || "");
     const baseUrl = workerBaseUrl();
 
     if (!normalizedTvCode) return result("invalid_tv_code", "El código del TV debe tener 8 dígitos.");
@@ -80,13 +91,15 @@ async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, reques
     if (!baseUrl || !workerToken()) {
         return result("worker_config_error", "El servicio de automatización no está configurado en el servidor.");
     }
+    if (!hasSecureWorkerTransport(baseUrl)) {
+        return result("worker_secure_transport_required", "El servicio de automatización debe usar HTTPS para proteger los códigos de acceso.");
+    }
 
     let sessionId = null;
     try {
         const startResponse = await axios.post(`${baseUrl}/run/start`, {
             tvCode: normalizedTvCode,
             accountEmail: email,
-            accountPassword: password,
         }, {
             headers: workerHeaders(),
             timeout: DEFAULT_TIMEOUT_MS,
@@ -144,5 +157,5 @@ async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, reques
 module.exports = {
     NETFLIX_TV_URL,
     runNetflixTvSetup,
-    __test: { normalizeTvCode, mapWorkerError, workerBaseUrl, RESENDABLE_LOGIN_CODE_STATUSES },
+    __test: { normalizeTvCode, mapWorkerError, workerBaseUrl, hasSecureWorkerTransport, RESENDABLE_LOGIN_CODE_STATUSES },
 };

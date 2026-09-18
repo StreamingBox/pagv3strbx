@@ -224,7 +224,7 @@ export default function App() {
                 <Route
                     path="/tv-setup"
                     element={
-                        <ProtectedRoute roles={["admin", "user"]}>
+                        <ProtectedRoute roles={["admin"]}>
                             <TvSetup />
                         </ProtectedRoute>
                     }

@@ -9,6 +9,7 @@ import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { COUNTRY_OPTIONS, findCountry } from "../data/countries.js";
 import "../styles/special-effects.css";
+import "../styles/admin-providers.css";
 
 const LOGO_URL = "/api/branding/logo";
 
@@ -481,7 +482,7 @@ export default function AdminProviders() {
     }, [upcomingRenewals]);
 
     return (
-        <div className="page-shell">
+        <div className="page-shell admin-providers-page">
             <div className="page-shell-bg" aria-hidden>
                 <div className="bg-orb orb-1" />
                 <div className="bg-orb orb-2" />
@@ -499,8 +500,8 @@ export default function AdminProviders() {
                     onLogout={logout}
                 />
 
-                <main className="main" style={{ padding: "20px 24px 48px", maxWidth: 1320, margin: "0 auto" }}>
-                    <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap", marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid var(--stroke)" }}>
+                <main className="main admin-providers-main" style={{ padding: "20px 24px 48px", maxWidth: 1320, margin: "0 auto" }}>
+                    <header className="admin-providers-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap", marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid var(--stroke)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                             <div style={{ width: 52, height: 52, borderRadius: 14, display: "grid", placeItems: "center", color: "#22d3ee", background: "rgba(34,211,238,.12)", border: "1px solid rgba(34,211,238,.35)" }}>
                                 <Factory size={26} aria-hidden />
@@ -519,8 +520,8 @@ export default function AdminProviders() {
                     {error && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#fca5a5", background: "rgba(239,68,68,.11)", border: "1px solid rgba(239,68,68,.35)", fontSize: 13, fontWeight: 700 }}>{error}</div>}
                     {success && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#86efac", background: "rgba(16,185,129,.11)", border: "1px solid rgba(16,185,129,.35)", fontSize: 13, fontWeight: 700 }}>{success}</div>}
 
-                    <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(360px, .85fr)", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
-                        <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                    <section className="admin-providers-summary-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(360px, .85fr)", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                                 <Crown size={19} color="#fbbf24" aria-hidden />
                                 <div>
@@ -533,7 +534,7 @@ export default function AdminProviders() {
                                     {topProviders.map((provider, index) => {
                                         const activeCount = Number(provider.activeAccountCount || 0);
                                         const totalCount = Number(provider.accountCount || 0);
-                                        return <div key={provider.id} data-provider-rank style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
+                                        return <div key={provider.id} data-provider-rank className="admin-providers-ranking-row" style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
                                             <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 9, color: index === 0 ? "#111827" : "var(--text)", background: index === 0 ? "#fbbf24" : "rgba(139,92,246,.18)", border: "1px solid rgba(139,92,246,.32)", fontWeight: 900, fontSize: 12 }}>{index + 1}</span>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, color: "var(--text)", fontSize: 13, fontWeight: 800 }}>
@@ -551,7 +552,7 @@ export default function AdminProviders() {
                             ) : <div style={{ padding: "18px 0 6px", color: "var(--muted)", fontSize: 13 }}>Aún no hay proveedores para mostrar.</div>}
                         </div>
 
-                        <div style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                        <div className="admin-providers-panel admin-providers-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
                                 <CalendarClock size={19} color="#fbbf24" aria-hidden />
                                 <div>
@@ -563,7 +564,7 @@ export default function AdminProviders() {
                                 <div ref={renewalListRef} style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#fbbf24 rgba(148,163,184,.14)" }}>
                                     {upcomingRenewals.map((account) => {
                                         const expired = account.daysRemaining < 0;
-                                        return <div key={account.id} data-renewal-row style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
+                                        return <div key={account.id} data-renewal-row className="admin-providers-renewal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
                                             <div style={{ minWidth: 0 }}>
                                                 <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12, fontWeight: 800 }}>{account.accountEmail}</div>
                                                 <div style={{ marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: 11 }}>{account.providerName} · {account.platformName} · vence {shortDate(account.expiresAt)}</div>
@@ -581,8 +582,8 @@ export default function AdminProviders() {
                         </div>
                     </section>
 
-                    <section style={{ display: "grid", gridTemplateColumns: "minmax(280px, .82fr) minmax(480px, 1.5fr)", gap: 18, alignItems: "start", marginBottom: 18 }}>
-                        <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
+                    <section className="admin-providers-management-grid" style={{ display: "grid", gridTemplateColumns: "minmax(280px, .82fr) minmax(480px, 1.5fr)", gap: 18, alignItems: "start", marginBottom: 18 }}>
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                                 <ShieldCheck size={18} color="#22d3ee" aria-hidden />
                                 <div>
@@ -595,7 +596,7 @@ export default function AdminProviders() {
                                     <label style={labelStyle}>Nombre del proveedor *</label>
                                     <input style={inputStyle} value={providerForm.name} onChange={(event) => setProviderForm({ ...providerForm, name: event.target.value })} placeholder="Ej. StoreTools.co" required />
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "minmax(0, .8fr) minmax(0, 1.2fr)", gap: 12 }}>
+                                <div className="admin-providers-form-grid admin-providers-form-grid--contact" style={{ display: "grid", gridTemplateColumns: "minmax(0, .8fr) minmax(0, 1.2fr)", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Número de WhatsApp</label>
                                         <input style={inputStyle} type="tel" value={providerForm.whatsappNumber} onChange={(event) => setProviderForm({ ...providerForm, whatsappNumber: event.target.value })} placeholder="+57 300 000 0000" maxLength={40} />
@@ -605,7 +606,7 @@ export default function AdminProviders() {
                                         <input style={inputStyle} type="url" value={providerForm.codePageUrl} onChange={(event) => setProviderForm({ ...providerForm, codePageUrl: event.target.value })} placeholder="https://proveedor.com/consultar" required />
                                     </div>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                <div className="admin-providers-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Usuario de la página *</label>
                                         <input style={inputStyle} value={providerForm.codePageUsername} onChange={(event) => setProviderForm({ ...providerForm, codePageUsername: event.target.value })} placeholder="Usuario de acceso" required />
@@ -628,7 +629,7 @@ export default function AdminProviders() {
                             </form>
                         </div>
 
-                        <div style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                                 <Factory size={18} color="#a78bfa" aria-hidden />
                                 <div>
@@ -637,7 +638,7 @@ export default function AdminProviders() {
                                 </div>
                             </div>
                             <form id="provider-account-form" onSubmit={saveAccount} style={{ display: "grid", gap: 13 }}>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                                <div className="admin-providers-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Proveedor *</label>
                                         <select style={inputStyle} value={accountForm.providerId} onChange={(event) => setAccountForm({ ...accountForm, providerId: event.target.value })} required>
@@ -659,7 +660,7 @@ export default function AdminProviders() {
                                         <input style={inputStyle} type="email" value={accountForm.accountEmail} onChange={(event) => setAccountForm({ ...accountForm, accountEmail: event.target.value })} placeholder="cuenta@dominio.com" required />
                                     </div>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                                <div className="admin-providers-form-grid admin-providers-form-grid--triple" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Fecha de compra *</label>
                                         <input style={inputStyle} type="date" value={accountForm.purchaseDate} onChange={(event) => setAccountForm({ ...accountForm, purchaseDate: event.target.value })} required />
@@ -673,7 +674,7 @@ export default function AdminProviders() {
                                         <CountryPicker value={accountForm.ipAddress} onChange={(countryCode) => setAccountForm({ ...accountForm, ipAddress: countryCode })} />
                                     </div>
                                 </div>
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
+                                <div className="admin-providers-form-grid admin-providers-form-grid--amount" style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Valor de compra</label>
                                         <input style={inputStyle} type="number" min="0" step="0.01" value={accountForm.amount} onChange={(event) => setAccountForm({ ...accountForm, amount: event.target.value })} placeholder="0.00" />
@@ -696,14 +697,14 @@ export default function AdminProviders() {
                         </div>
                     </section>
 
-                    <section style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, marginBottom: 18, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                    <section className="admin-providers-panel admin-providers-table-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, marginBottom: 18, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
                             <div>
                                 <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Proveedores registrados</h2>
                                 <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>{providers.length} proveedor(es) · {activeProviders.length} activo(s)</p>
                             </div>
                         </div>
-                        <div style={{ overflowX: "auto" }}>
+                        <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
                                 <thead><tr>{["Proveedor", "WhatsApp", "Página de códigos", "Cuentas Netflix", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 12px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)" }}>{title}</th>)}</tr></thead>
                                 <tbody>
@@ -724,14 +725,14 @@ export default function AdminProviders() {
                         </div>
                     </section>
 
-                    <section style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                    <section className="admin-providers-panel admin-providers-table-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
                             <div>
                                 <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Cuentas de proveedor</h2>
                                 <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca y controla las cuentas más recientes por proveedor.</p>
                             </div>
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px", gap: 10, marginBottom: 10 }}>
+                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px", gap: 10, marginBottom: 10 }}>
                             <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
                             <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
                                 <option value="">Todos los proveedores</option>
@@ -749,7 +750,7 @@ export default function AdminProviders() {
                             <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
                             <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
-                        <div style={{ overflowX: "auto" }}>
+                        <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
                                 <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>

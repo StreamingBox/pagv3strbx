@@ -161,6 +161,69 @@ test("inicia sesión en StoreTools, consulta Netflix y conserva la cookie", asyn
     }
 });
 
+test("reintenta la consulta cuando el correo todavía no aparece en la primera respuesta", async () => {
+    const originalRequest = axios.request;
+    let queryCalls = 0;
+    axios.request = async (options) => {
+        if (options.method === "GET" && options.url.endsWith("/consultar")) {
+            return {
+                status: 200,
+                headers: { "set-cookie": ["PHPSESSID=retry-session; Path=/; HttpOnly"] },
+                data: "<html>StoreTools</html>",
+            };
+        }
+        if (options.method === "POST" && options.url.endsWith("/validarID.php")) {
+            return { status: 200, headers: {}, data: { respuesta: "exito" } };
+        }
+        if (options.method === "POST" && options.url.endsWith("/get_email.php")) {
+            queryCalls += 1;
+            return {
+                status: 200,
+                headers: {},
+                data: queryCalls === 1
+                    ? { respuesta: "exito", resultadoCorreos: [] }
+                    : {
+                        respuesta: "exito",
+                        resultadoCorreos: [{
+                            fecha: "17-Sep-2026 21:45:36",
+                            asunto: "Netflix: Tu código de inicio de sesión",
+                            mensaje: "Ingresa este código: <strong>5 3 0 5</strong>",
+                        }],
+                    },
+            };
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.url}`);
+    };
+
+    try {
+        const result = await fetchCodeFromStoretoolsProvider({
+            email: "cliente@ejemplo.com",
+            config: {
+                enabled: true,
+                baseUrl: "https://storetools.co",
+                userId: "user-id",
+                timeoutMs: 5000,
+                pagePath: "/consultar",
+                loginPath: "/funciones/validarID.php",
+                queryPath: "/funciones/get_email.php",
+                platform: "netflix",
+                platformId: "1",
+                language: "es",
+            },
+        });
+
+        assert.deepEqual(result, {
+            ok: true,
+            type: "code",
+            code: "5305",
+            source: "storetools_provider",
+        });
+        assert.equal(queryCalls, 2);
+    } finally {
+        axios.request = originalRequest;
+    }
+});
+
 test("StoreTools abre Obtener código y extrae los cuatro dígitos temporales", async () => {
     const originalRequest = axios.request;
     const calls = [];

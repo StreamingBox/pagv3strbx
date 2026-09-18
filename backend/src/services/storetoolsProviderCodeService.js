@@ -4,6 +4,7 @@ const { extractJeffProviderCode } = require("./jeffProviderCodeService");
 
 const USER_AGENT = "StreamingBox-CodeService/1.0 (+https://strbx.com.co)";
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const QUERY_RETRY_DELAY_MS = 700;
 const TEMPORARY_SUBJECT = /tu\s+c[oó]digo\s+de\s+acceso\s+temporal\s+de\s+netflix\b/i;
 const MONTHS = {
     jan: 0, ene: 0,
@@ -22,6 +23,10 @@ const MONTHS = {
 
 function providerError(status, message) {
     return { ok: false, status, message };
+}
+
+function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function providerEndpoint(value, baseUrl) {
@@ -341,32 +346,40 @@ async function fetchCodeFromStoretoolsProvider({ email, config, action = "code" 
         }
 
         stage = "email_search";
-        const query = await requestWithCookies({
-            method: "POST",
-            url: queryUrl,
-            data: new URLSearchParams({
-                plataforma: config.platform,
-                idPlataforma: config.platformId,
-                correoConsultar: String(email || "").trim(),
-                language: config.language,
-            }).toString(),
-            jar,
-            timeoutMs: config.timeoutMs,
-            referer: pageUrl,
-            origin,
-        });
-        const queryResult = parseJson(query.response.data);
-        if (!queryResult) {
-            return providerError("provider_layout_changed", "La respuesta del proveedor cambió.");
-        }
-        if (String(queryResult.respuesta || "").toLowerCase() !== "exito") {
-            return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo.");
+        const normalizedAction = String(action || "code").trim().toLowerCase();
+        let queryResult = null;
+        let selected = null;
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+            const query = await requestWithCookies({
+                method: "POST",
+                url: queryUrl,
+                data: new URLSearchParams({
+                    plataforma: config.platform,
+                    idPlataforma: config.platformId,
+                    correoConsultar: String(email || "").trim(),
+                    language: config.language,
+                }).toString(),
+                jar,
+                timeoutMs: config.timeoutMs,
+                referer: pageUrl,
+                origin,
+            });
+            queryResult = parseJson(query.response.data);
+            if (!queryResult) {
+                return providerError("provider_layout_changed", "La respuesta del proveedor cambió.");
+            }
+            if (String(queryResult.respuesta || "").toLowerCase() === "exito") {
+                selected = normalizedAction === "temporary"
+                    ? selectLatestStoretoolsTemporaryEmail(queryResult.resultadoCorreos)
+                    : selectLatestStoretoolsCode(queryResult.resultadoCorreos);
+                if (selected) break;
+            }
+            if (attempt < 2) await wait(QUERY_RETRY_DELAY_MS);
         }
 
-        const normalizedAction = String(action || "code").trim().toLowerCase();
-        const selected = normalizedAction === "temporary"
-            ? selectLatestStoretoolsTemporaryEmail(queryResult.resultadoCorreos)
-            : selectLatestStoretoolsCode(queryResult.resultadoCorreos);
+        if (!queryResult || String(queryResult.respuesta || "").toLowerCase() !== "exito") {
+            return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo.");
+        }
         if (!selected) {
             return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo.");
         }

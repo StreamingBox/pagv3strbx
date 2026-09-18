@@ -61,6 +61,25 @@ function redirectEndpoint(value, currentUrl) {
     }
 }
 
+function safeNetflixTemporaryUrl(value, baseUrl) {
+    try {
+        const url = new URL(String(value || "").trim(), baseUrl);
+        const hostname = url.hostname.toLowerCase();
+        const isNetflixHost = hostname === "netflix.com" || hostname === "www.netflix.com";
+        const path = url.pathname.toLowerCase();
+        if (
+            url.protocol !== "https:"
+            || !isNetflixHost
+            || !(path === "/account/travel" || path.startsWith("/account/travel/"))
+        ) {
+            return "";
+        }
+        return url.toString();
+    } catch {
+        return "";
+    }
+}
+
 function updateCookies(jar, setCookie) {
     for (const rawCookie of Array.isArray(setCookie) ? setCookie : []) {
         const firstPart = String(rawCookie || "").split(";", 1)[0];
@@ -228,7 +247,7 @@ function extractTemporaryAction(html, currentUrl) {
 
         const href = String($(element).attr("href") || "").trim();
         if (href) {
-            const url = redirectEndpoint(href, currentUrl);
+            const url = safeNetflixTemporaryUrl(href, currentUrl) || redirectEndpoint(href, currentUrl);
             if (url) selected = { method: "GET", url };
             return;
         }
@@ -254,6 +273,44 @@ function extractTemporaryAction(html, currentUrl) {
     });
 
     return selected;
+}
+
+async function fetchNetflixTemporaryPage({ url, timeoutMs, referer }) {
+    let currentUrl = safeNetflixTemporaryUrl(url, url);
+    if (!currentUrl) throw new Error("El enlace temporal de Netflix no es válido.");
+
+    for (let redirects = 0; redirects <= 5; redirects += 1) {
+        let response;
+        try {
+            response = await axios.request({
+                method: "GET",
+                url: currentUrl,
+                headers: {
+                    "User-Agent": USER_AGENT,
+                    Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
+                    ...(referer ? { Referer: referer } : {}),
+                },
+                timeout: timeoutMs,
+                maxRedirects: 0,
+                validateStatus: (status) => status >= 200 && status < 400,
+            });
+        } catch (error) {
+            const wrapped = new Error(isProviderTimeout(error)
+                ? "El enlace temporal de Netflix tardó demasiado en responder."
+                : "No fue posible abrir el enlace temporal de Netflix.");
+            wrapped.code = isProviderTimeout(error) ? "provider_timeout" : "provider_unavailable";
+            wrapped.causeCode = error?.code || null;
+            throw wrapped;
+        }
+
+        if (!REDIRECT_STATUSES.has(response.status)) return { response, url: currentUrl };
+        const nextUrl = safeNetflixTemporaryUrl(response.headers?.location, currentUrl);
+        if (!nextUrl) throw new Error("Netflix devolvió una redirección no permitida.");
+        currentUrl = nextUrl;
+    }
+
+    throw new Error("Netflix devolvió demasiadas redirecciones.");
 }
 
 function extractLiveonixTemporaryCode(html) {
@@ -330,16 +387,22 @@ async function fetchCodeFromLiveonixProvider({ email, config, action = "code" })
                 if (!temporaryAction) continue;
 
                 stage = "temporary_code_page";
-                const codePage = await requestWithCookies({
-                    method: temporaryAction.method,
-                    url: temporaryAction.url,
-                    data: temporaryAction.method === "POST"
-                        ? new URLSearchParams(temporaryAction.data || {}).toString()
-                        : undefined,
-                    jar,
-                    timeoutMs: config.timeoutMs,
-                    referer: messageUrl,
-                });
+                const codePage = safeNetflixTemporaryUrl(temporaryAction.url, messageUrl)
+                    ? await fetchNetflixTemporaryPage({
+                        url: temporaryAction.url,
+                        timeoutMs: config.timeoutMs,
+                        referer: messageUrl,
+                    })
+                    : await requestWithCookies({
+                        method: temporaryAction.method,
+                        url: temporaryAction.url,
+                        data: temporaryAction.method === "POST"
+                            ? new URLSearchParams(temporaryAction.data || {}).toString()
+                            : undefined,
+                        jar,
+                        timeoutMs: config.timeoutMs,
+                        referer: messageUrl,
+                    });
                 code = extractLiveonixTemporaryCode(codePage.response.data);
             }
             if (code) return { ok: true, type: "code", code, source: "liveonix_provider" };
@@ -369,5 +432,6 @@ module.exports = {
         extractLiveonixCode,
         extractTemporaryAction,
         extractLiveonixTemporaryCode,
+        safeNetflixTemporaryUrl,
     },
 };

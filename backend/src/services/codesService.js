@@ -29,6 +29,15 @@ const { isStoredDateOnlyExpired } = require("../utils/date");
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
+function codeProviderLabel(provider) {
+    return {
+        [JEFF_PREMIUM_PROVIDER]: "Jeff Premium",
+        [STORETOOLS_PROVIDER]: "StoreTools",
+        [LIVEONIX_PROVIDER]: "LiveOnix",
+        [STRBX_PROVIDER]: "Gmail",
+    }[provider] || provider;
+}
+
 function normalizeSlug(slug) {
     return String(slug || "").trim().toLowerCase();
 }
@@ -572,12 +581,17 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             "imap_timeout",
             "imap_tls_error",
         ]);
+        const providerMismatchMessage = fetchStatus === "provider_code_not_found"
+            && requestedSlug === "netflix"
+            && accountCodeProvider !== STRBX_PROVIDER
+            ? ` No se encontró en el proveedor configurado (${codeProviderLabel(accountCodeProvider)}); verifica que la cuenta esté marcada con la fuente donde llegó el correo.`
+            : "";
         return {
             http: serviceUnavailableStatuses.has(fetchStatus) ? 503 : 404,
             body: {
                 ok: false,
                 status: fetchStatus,
-                message: fetchingResult.message || "No se encontró código",
+                message: `${fetchingResult.message || "No se encontró código"}${providerMismatchMessage}`,
             },
             meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
         };

@@ -108,6 +108,25 @@ test("filtra el asunto temporal y encuentra el enlace Obtener código", () => {
         method: "GET",
         url: "https://liveonix.myes.space/obtener/28513",
     });
+
+    const netflixAction = liveonixTest.extractTemporaryAction(`
+        <div>Tu código de acceso temporal de Netflix</div>
+        <a href="https://www.netflix.com/account/travel/verify?nf_token=temp-token">Obtener código</a>
+    `, "https://liveonix.myes.space/leer/28513");
+    assert.deepEqual(netflixAction, {
+        method: "GET",
+        url: "https://www.netflix.com/account/travel/verify?nf_token=temp-token",
+    });
+});
+
+test("solo acepta enlaces HTTPS de verificación temporal de Netflix", () => {
+    assert.equal(
+        liveonixTest.safeNetflixTemporaryUrl("https://www.netflix.com/account/travel/verify?token=ok"),
+        "https://www.netflix.com/account/travel/verify?token=ok"
+    );
+    assert.equal(liveonixTest.safeNetflixTemporaryUrl("https://www.netflix.com/login"), "");
+    assert.equal(liveonixTest.safeNetflixTemporaryUrl("https://netflix.com.evil.example/account/travel/verify"), "");
+    assert.equal(liveonixTest.safeNetflixTemporaryUrl("http://www.netflix.com/account/travel/verify"), "");
 });
 
 test("extrae el código temporal de la página final de LiveOnix", () => {
@@ -222,12 +241,13 @@ test("consulta el correo temporal, pulsa Obtener código y devuelve cuatro dígi
                 headers: {},
                 data: `
                     <div>Asunto: Tu código de acceso temporal de Netflix</div>
-                    <a href="/obtener/28513">Obtener código</a>
+                    <a href="https://www.netflix.com/account/travel/verify?nf_token=temp-token">Obtener código</a>
                 `,
             };
         }
-        if (options.method === "GET" && options.url.endsWith("/obtener/28513")) {
-            assert.match(options.headers.Cookie, /session=temp-session/);
+        if (options.method === "GET" && options.url === "https://www.netflix.com/account/travel/verify?nf_token=temp-token") {
+            assert.equal(options.headers.Cookie, undefined);
+            assert.equal(options.headers.Referer, "https://liveonix.myes.space/leer/28513");
             return {
                 status: 200,
                 headers: {},
@@ -264,7 +284,7 @@ test("consulta el correo temporal, pulsa Obtener código y devuelve cuatro dígi
             source: "liveonix_provider",
         });
         assert.equal(calls.length, 5);
-        assert.equal(calls[4].url, "https://liveonix.myes.space/obtener/28513");
+        assert.equal(calls[4].url, "https://www.netflix.com/account/travel/verify?nf_token=temp-token");
     } finally {
         axios.request = originalRequest;
     }

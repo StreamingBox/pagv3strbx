@@ -167,17 +167,16 @@ function buildMicrosoftOfficeNotice() {
 }
 
 const PLATFORM_36_ACCOUNT_NOTICE = [
-    "\u26a0\ufe0f ACCIONES IMPORTANTES AL RECIBIR TU CUENTA",
+    "🖥️ ChatGpt Cuenta Personal - Sin garantía",
+    "⚠️ ACCIONES IMPORTANTES AL RECIBIR TU CUENTA",
     "",
-    "\ud83d\udd10 Por seguridad, cambia inmediatamente el 2FA o reempl\u00e1zalo por tu correo personal en cuanto recibas la cuenta.",
+    "🔐 Por seguridad, cambia inmediatamente el 2FA en cuanto recibas la cuenta.",
     "",
-    "\u2705 Si la cuenta es nueva, el cambio normalmente se realiza sin inconvenientes. Durante el proceso puede que no recibas c\u00f3digos en el Gmail original; esto puede ser normal.",
+    "👉 Haz este cambio de inmediato para proteger el acceso y evitar bloqueos o inconvenientes.",
     "",
-    "\ud83d\udc49 Haz este cambio de inmediato para proteger el acceso y evitar bloqueos o inconvenientes.",
+    "🚫 IMPORTANTE: después de cambiar la contraseña y el 2FA, no los modifiques nuevamente. La garantía no cubre cambios posteriores realizados por el cliente, ya que usamos códigos OTP y no tenemos acceso para recuperar el correo.",
     "",
-    "\ud83d\udeab IMPORTANTE: despu\u00e9s de cambiar la contrase\u00f1a y el 2FA, no los modifiques nuevamente. La garant\u00eda no cubre cambios posteriores realizados por el cliente, ya que usamos c\u00f3digos OTP de Gmail y no tenemos acceso para recuperar el correo.",
-    "",
-    "\ud83d\udccc El reporte de un 2FA correcto como si fuera inv\u00e1lido para solicitar otra cuenta se considerar\u00e1 un uso indebido y puede anular la garant\u00eda."
+    "📌 El reporte de un 2FA correcto como si fuera inválido para solicitar otra cuenta se considerará un uso indebido y puede anular la garantía."
 ].join("\n");
 
 function platformIdOf({ platformId, purchasedPlatformId, platform, plan } = {}) {
@@ -245,7 +244,6 @@ function buildAccountDeliveryMessage({
                 ? buildIptvCredentialsMessage(safeAccount)
                 : buildChatGPTPersonalCredentialsMessage(safeAccount)
         );
-        appendPlatform36Notice(lines, platformId);
         return lines.join("\n").trim();
     }
 
@@ -276,7 +274,6 @@ function buildAccountDeliveryMessage({
         lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
     }
 
-    appendPlatform36Notice(lines, platformId);
     return lines.join("\n").trim();
 }
 

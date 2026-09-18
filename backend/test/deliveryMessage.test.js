@@ -186,8 +186,29 @@ test("platform 36 appends the account security notice to every delivery", () => 
     });
 
     assert.match(message, /ACCIONES IMPORTANTES AL RECIBIR TU CUENTA/);
+    assert.match(message, /🖥️ ChatGpt Cuenta Personal - Sin garantía/);
     assert.match(message, /cambia inmediatamente el 2FA/);
+    assert.match(message, /códigos OTP y no tenemos acceso para recuperar el correo/);
     assert.match(message, /garant/);
+});
+
+test("ChatGPT security notice is excluded from replacement messages", () => {
+    const message = buildAccountDeliveryMessage({
+        intro: "Tu cuenta ha sido reemplazada por:",
+        orderCode: "ORD-REEMPLAZO-36",
+        subscriptionId: 636,
+        platformId: 36,
+        platformName: "ChatGPT Cuenta Personal - Sin garantia",
+        account: {
+            email: "cliente@example.com",
+            password: "secret",
+            two_factor_secret: "2fa-secreto",
+        },
+    });
+
+    assert.doesNotMatch(message, /ACCIONES IMPORTANTES AL RECIBIR TU CUENTA/);
+    assert.match(message, /Correo: cliente@example\.com/);
+    assert.match(message, /2FA: 2fa-secreto/);
 });
 
 test("platform 36 notice appears once in a multi-item order", () => {

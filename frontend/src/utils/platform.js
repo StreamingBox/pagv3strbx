@@ -14,6 +14,7 @@ export function slugifyLogo(text) {
 // Algunas plataformas usan su archivo oficial en SVG para conservar el logotipo
 // nítido sobre el fondo oscuro del catálogo. Las demás siguen usando PNG.
 const PLATFORM_LOGO_EXTENSION_OVERRIDES = Object.freeze({
+    "max": "svg",
     "hbo-max-standar-cuenta-completa": "svg",
 });
 

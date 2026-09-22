@@ -365,9 +365,9 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
             <AnimatePresence>
                 {show && (
                     <motion.tr initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                        <td colSpan={8} style={{ padding: 0 }}>
-                            <div style={{ padding: "18px 20px 0", background: "linear-gradient(180deg, rgba(13,166,242,0.07), rgba(13,166,242,0.03))" }}>
-                                <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025))", border: "1px solid var(--stroke2)", borderRadius: 20, overflow: "hidden" }}>
+                        <td colSpan={8} className="inventory-detail-cell" style={{ padding: 0 }}>
+                            <div className="inventory-detail-wrap" style={{ padding: "18px 20px 0", background: "linear-gradient(180deg, rgba(13,166,242,0.07), rgba(13,166,242,0.03))" }}>
+                                <div className="inventory-detail-card" style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025))", border: "1px solid var(--stroke2)", borderRadius: 20, overflow: "hidden" }}>
                                     <div style={{ padding: "18px 18px 16px", borderBottom: "1px solid var(--stroke2)", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                                         <div>
                                             <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.6px", fontWeight: 800 }}>Tarjeta de cuenta</div>
@@ -384,12 +384,12 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                         </span>
                                     </div>
 
-                                    <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
+                                    <div className="inventory-detail-grid" style={{ padding: 18, gap: 24, alignItems: "start" }}>
                                         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
                                             <AccountCurrentState account={detail?.account || it} detail={detail} />
                                         </div>
                                         <AccountProfilesSummary account={detail?.account || it} profiles={detail?.profiles || []} />
-                                        <div style={{ minWidth: 0 }}>
+                                        <div className="inventory-detail-column" style={{ minWidth: 0 }}>
                                             <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 14 }}>Datos de la cuenta</div>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
                                                 <DetailStat label="Correo" value={it.email} />
@@ -421,7 +421,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                             )}
                                         </div>
 
-                                        <div style={{ minWidth: 0 }}>
+                                        <div className="inventory-detail-column" style={{ minWidth: 0 }}>
                                             <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 14 }}>Historial y trazabilidad</div>
                                             {detailLoading ? (
                                                 <div style={{ padding: "24px 0", textAlign: "center", color: "var(--muted)" }}>Cargando historial...</div>

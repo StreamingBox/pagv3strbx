@@ -7,6 +7,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import SearchableSelect from "../components/adminInventory/SearchableSelect.jsx";
 import InventoryRow from "../components/adminInventory/InventoryRow.jsx";
 import "../styles/special-effects.css";
+import "../styles/admin-inventory.css";
 import { formatBogotaDate, normalizeDateOnly } from "../utils/datetime.js";
 
 const LOGO_URL = "/api/branding/logo";

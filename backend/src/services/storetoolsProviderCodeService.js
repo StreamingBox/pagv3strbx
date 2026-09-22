@@ -42,77 +42,39 @@ function providerEndpoint(value, baseUrl) {
     }
 }
 
-function updateCookies(jar, setCookie) {
-    for (const rawCookie of Array.isArray(setCookie) ? setCookie : []) {
-        const firstPart = String(rawCookie || "").split(";", 1)[0];
-        const separator = firstPart.indexOf("=");
-        if (separator <= 0) continue;
-        jar.set(firstPart.slice(0, separator).trim(), firstPart.slice(separator + 1).trim());
-    }
-}
-
-function serializeCookies(jar) {
-    return [...jar.entries()].map(([name, value]) => `${name}=${value}`).join("; ");
-}
-
 function isProviderTimeout(error) {
     const code = String(error?.code || "").toUpperCase();
     return ["ECONNABORTED", "ETIMEDOUT", "ESOCKETTIMEDOUT"].includes(code)
         || /timeout|timed out/i.test(String(error?.message || ""));
 }
 
-async function requestWithCookies({ method, url, data, jar, timeoutMs, referer, origin }) {
-    let currentUrl = url;
-    let currentMethod = method;
-    let currentData = data;
+async function requestJson({ method, url, data, timeoutMs, token }) {
+    const headers = {
+        "User-Agent": USER_AGENT,
+        Accept: "application/json",
+        "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
 
-    for (let redirects = 0; redirects <= 5; redirects += 1) {
-        const headers = {
-            "User-Agent": USER_AGENT,
-            Accept: "application/json, text/html;q=0.9, */*;q=0.8",
-            "Accept-Language": "es-CO,es;q=0.9,en;q=0.7",
-            "X-Requested-With": "XMLHttpRequest",
-            ...(origin ? { Origin: origin } : {}),
-            ...(referer ? { Referer: referer } : {}),
-        };
-        const cookieHeader = serializeCookies(jar);
-        if (cookieHeader) headers.Cookie = cookieHeader;
-        if (currentMethod === "POST") headers["Content-Type"] = "application/x-www-form-urlencoded; charset=UTF-8";
-
-        let response;
-        try {
-            response = await axios.request({
-                method: currentMethod,
-                url: currentUrl,
-                data: currentData,
-                headers,
-                timeout: timeoutMs,
-                maxRedirects: 0,
-                validateStatus: (status) => status >= 200 && status < 400,
-            });
-        } catch (error) {
-            const wrapped = new Error(isProviderTimeout(error)
-                ? "El proveedor no respondió a tiempo."
-                : "No fue posible conectar con el proveedor.");
-            wrapped.code = isProviderTimeout(error) ? "provider_timeout" : "provider_unavailable";
-            wrapped.causeCode = error?.code || null;
-            throw wrapped;
-        }
-
-        updateCookies(jar, response.headers?.["set-cookie"]);
-        if (!REDIRECT_STATUSES.has(response.status)) return { response, url: currentUrl };
-
-        const location = response.headers?.location;
-        const nextUrl = providerEndpoint(location, origin);
-        if (!nextUrl) throw new Error("El proveedor devolvió una redirección no permitida.");
-        currentUrl = nextUrl;
-        if (![307, 308].includes(response.status)) {
-            currentMethod = "GET";
-            currentData = undefined;
-        }
+    try {
+        return await axios.request({
+            method,
+            url,
+            data: JSON.stringify(data),
+            headers,
+            timeout: timeoutMs,
+            maxRedirects: 0,
+            validateStatus: (status) => status >= 200 && status < 500,
+        });
+    } catch (error) {
+        const wrapped = new Error(isProviderTimeout(error)
+            ? "El proveedor no respondió a tiempo."
+            : "No fue posible conectar con el proveedor.");
+        wrapped.code = isProviderTimeout(error) ? "provider_timeout" : "provider_unavailable";
+        wrapped.causeCode = error?.code || null;
+        throw wrapped;
     }
-
-    throw new Error("El proveedor devolvió demasiadas redirecciones.");
 }
 
 function parseJson(data) {
@@ -307,68 +269,64 @@ async function fetchCodeFromStoretoolsProvider({ email, config, action = "code" 
         return providerError("provider_config_error", "El proveedor externo de códigos no está configurado.");
     }
 
-    const jar = new Map();
-    const origin = String(config.baseUrl || "").replace(/\/+$/, "");
-    let stage = "landing_page";
+    let stage = "validate_id";
 
     try {
-        const pageUrl = providerEndpoint(config.pagePath, config.baseUrl);
-        const loginUrl = providerEndpoint(config.loginPath, config.baseUrl);
+        const validateIdUrl = providerEndpoint(config.validateIdPath, config.baseUrl);
         const queryUrl = providerEndpoint(config.queryPath, config.baseUrl);
-        if (!pageUrl || !loginUrl || !queryUrl) {
+        if (!validateIdUrl || !queryUrl) {
             return providerError("provider_config_error", "La configuración del proveedor no es válida.");
         }
 
-        await requestWithCookies({
-            method: "GET",
-            url: pageUrl,
-            jar,
-            timeoutMs: config.timeoutMs,
-            origin,
-        });
-
-        stage = "login_submit";
-        const login = await requestWithCookies({
+        stage = "validate_id";
+        const validation = await requestJson({
             method: "POST",
-            url: loginUrl,
-            data: new URLSearchParams({
-                tipo: "login",
-                idUsuarioConsulta: String(config.userId),
-            }).toString(),
-            jar,
+            url: validateIdUrl,
+            data: { idUsuarioConsulta: String(config.userId || "").trim() },
             timeoutMs: config.timeoutMs,
-            referer: pageUrl,
-            origin,
         });
-        const loginResult = parseJson(login.response.data);
-        if (!loginResult || String(loginResult.respuesta || "").toLowerCase() !== "exito") {
-            return providerError("provider_auth_error", "El proveedor rechazó la autenticación.");
+        const validationResult = parseJson(validation.data);
+        const validationStatus = String(validationResult?.respuesta || validationResult?.status || "").toLowerCase();
+        if (validation.status >= 400 || !validationResult || validationStatus !== "exito") {
+            return providerError("provider_auth_error", "No se pudo validar el acceso configurado.");
         }
+
+        const token = String(validationResult.token || validationResult.accessToken || "").trim();
+        const identity = validationResult.datos || validationResult.usuario || {};
+        const idUsuarioConsulta = String(
+            identity.idConsulta || identity.idUsuario || config.userId || "",
+        ).trim();
 
         stage = "email_search";
         const normalizedAction = String(action || "code").trim().toLowerCase();
         let queryResult = null;
         let selected = null;
         for (let attempt = 0; attempt < 3; attempt += 1) {
-            const query = await requestWithCookies({
+            const query = await requestJson({
                 method: "POST",
                 url: queryUrl,
-                data: new URLSearchParams({
+                data: {
                     plataforma: config.platform,
                     idPlataforma: config.platformId,
                     correoConsultar: String(email || "").trim(),
+                    modo: "correo",
+                    tipoConsulta: "correo",
+                    token: token || null,
+                    idUsuarioConsulta,
                     language: config.language,
-                }).toString(),
-                jar,
+                },
                 timeoutMs: config.timeoutMs,
-                referer: pageUrl,
-                origin,
+                token,
             });
-            queryResult = parseJson(query.response.data);
+            queryResult = parseJson(query.data);
             if (!queryResult) {
-                return providerError("provider_layout_changed", "La respuesta del proveedor cambió.");
+                return providerError("provider_layout_changed", "La respuesta del servicio de consulta cambió.");
             }
-            if (String(queryResult.respuesta || "").toLowerCase() === "exito") {
+            const queryStatus = String(queryResult.respuesta || queryResult.status || "").toLowerCase();
+            if (queryStatus === "sesion") {
+                return providerError("provider_auth_error", "La sesión de consulta no está autorizada.");
+            }
+            if (queryStatus === "exito") {
                 selected = normalizedAction === "temporary"
                     ? selectLatestStoretoolsTemporaryEmail(queryResult.resultadoCorreos)
                     : selectLatestStoretoolsCode(queryResult.resultadoCorreos);
@@ -377,7 +335,7 @@ async function fetchCodeFromStoretoolsProvider({ email, config, action = "code" 
             if (attempt < 2) await wait(QUERY_RETRY_DELAY_MS);
         }
 
-        if (!queryResult || String(queryResult.respuesta || "").toLowerCase() !== "exito") {
+        if (!queryResult || String(queryResult.respuesta || queryResult.status || "").toLowerCase() !== "exito") {
             return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo.");
         }
         if (!selected) {
@@ -413,12 +371,12 @@ async function fetchCodeFromStoretoolsProvider({ email, config, action = "code" 
             causeCode: error?.causeCode || null,
         });
         if (error?.code === "provider_timeout") {
-            return providerError("provider_timeout", "La consulta al proveedor tardó demasiado. Intenta nuevamente.");
+            return providerError("provider_timeout", "La consulta tardó demasiado. Intenta nuevamente.");
         }
         if (/redirecci[oó]n no permitida|demasiadas redirecciones/i.test(error?.message || "")) {
-            return providerError("provider_layout_changed", "El flujo de navegación del proveedor cambió.");
+            return providerError("provider_layout_changed", "El flujo de navegación del servicio cambió.");
         }
-        return providerError("provider_unavailable", "No fue posible consultar el buzón del proveedor.");
+        return providerError("provider_unavailable", "No fue posible consultar el buzón de códigos.");
     }
 }
 

@@ -118,6 +118,7 @@ function LifecycleGlossary({ account, detail, incoming, outgoing }) {
 
     const terms = [
         ["Venta", "La compra o suscripción que vinculó una cuenta con un cliente. Puede aparecer aunque después la cuenta sea reemplazada."],
+        ["Vendida", "Estado de inventario que indica que la cuenta ya fue vinculada a una venta. No significa por sí solo que haya sido reemplazada."],
         ["Entró por reemplazo", "Esta cuenta tomó el lugar de otra para conservar la misma suscripción. Es el enlace hacia atrás en el árbol."],
         ["Salió por reemplazo", "Otra cuenta tomó el lugar de esta. Es el enlace hacia adelante en el árbol."],
         ["Asignada", "La cuenta está actualmente vinculada a una suscripción o comprador; no describe si llegó por venta o por reemplazo."],
@@ -132,7 +133,7 @@ function LifecycleGlossary({ account, detail, incoming, outgoing }) {
 
             <AccountLineage account={account} replacements={detail?.replacements || []} />
 
-            <details style={{ marginBottom: 16, border: "1px solid var(--stroke2)", borderRadius: 14, background: "rgba(255,255,255,0.025)" }}>
+            <details open style={{ marginBottom: 16, border: "1px solid var(--stroke2)", borderRadius: 14, background: "rgba(255,255,255,0.025)" }}>
                 <summary style={{ cursor: "pointer", padding: "12px 14px", color: "var(--text)", fontSize: 13, fontWeight: 800 }}>Glosario: cómo leer los estados</summary>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, padding: "0 14px 14px" }}>
                     {terms.map(([term, explanation]) => (

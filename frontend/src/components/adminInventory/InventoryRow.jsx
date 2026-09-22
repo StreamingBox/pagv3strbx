@@ -28,6 +28,58 @@ function MiniPill({ label, tone = "default" }) {
     );
 }
 
+function getAccountState(account = {}) {
+    const status = String(account.status || "").toLowerCase();
+    const states = {
+        available: { key: "available", label: "LIBRE", title: "Libre / disponible", color: "#10b981", background: "rgba(16,185,129,0.14)" },
+        assigned: { key: "assigned", label: "OCUPADA", title: "Ocupada / asignada", color: "#0da6f2", background: "rgba(13,166,242,0.14)" },
+        sold: { key: "sold", label: "OCUPADA", title: "Ocupada / vendida", color: "#8b5cf6", background: "rgba(139,92,246,0.14)" },
+        inactive: { key: "inactive", label: "INACTIVA", title: "Inactiva", color: "#9ca3af", background: "rgba(107,114,128,0.14)" },
+        down: { key: "down", label: "NO DISPONIBLE", title: "Caída / no disponible", color: "#ef4444", background: "rgba(239,68,68,0.14)" },
+        expired: { key: "expired", label: "VENCIDA", title: "Vencida", color: "#f59e0b", background: "rgba(245,158,11,0.14)" },
+        disabled: { key: "disabled", label: "DESHABILITADA", title: "Deshabilitada", color: "#9ca3af", background: "rgba(107,114,128,0.18)" },
+        legacy_review: { key: "legacy_review", label: "REVISAR", title: "Revisión manual", color: "#fbbf24", background: "rgba(245,158,11,0.14)" },
+    };
+    return states[status] || { key: "unknown", label: "REVISAR", title: status || "Estado no confirmado", color: "var(--muted)", background: "rgba(255,255,255,0.06)" };
+}
+
+function AccountCurrentState({ account, detail }) {
+    const state = getAccountState(account);
+    const assignedEmail = account?.assigned_user_email || detail?.lastSubscription?.buyer_email || "";
+    const expiration = account?.display_expires_at || account?.expires_at;
+    const order = detail?.lastSubscription?.order_code || account?.current_order_code || "";
+    let explanation = "No se pudo confirmar si está libre. Revisa el estado técnico antes de entregarla.";
+
+    if (state.key === "available") {
+        explanation = "Está libre: no tiene una asignación activa ni comprador asociado.";
+    } else if (state.key === "assigned" || state.key === "sold") {
+        explanation = `No está libre. Está vinculada${assignedEmail ? ` a ${assignedEmail}` : " a una suscripción activa"}${order ? ` mediante ${order}` : ""}.`;
+    } else if (state.key === "expired") {
+        explanation = "No está libre automáticamente: figura vencida y necesita revisión antes de volver a entregarse.";
+    } else if (state.key === "inactive" || state.key === "down" || state.key === "disabled") {
+        explanation = "No está disponible para entrega mientras conserve este estado técnico.";
+    } else if (state.key === "legacy_review") {
+        explanation = "No debe entregarse sin una revisión manual del administrador.";
+    }
+
+    return (
+        <div style={{ marginBottom: 16, background: state.background, border: `1px solid ${state.color}66`, borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                    <div style={{ fontSize: 11, color: state.color, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 900 }}>Estado actual</div>
+                    <div style={{ marginTop: 5, color: "var(--text)", fontSize: 17, fontWeight: 900 }}>{state.title}</div>
+                </div>
+                <span style={{ color: state.color, fontSize: 12, fontWeight: 900, letterSpacing: "0.4px" }}>{state.label}</span>
+            </div>
+            <div style={{ marginTop: 7, color: "var(--text)", fontSize: 13, lineHeight: 1.5, fontWeight: 600 }}>{explanation}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                <MiniPill label={`Estado técnico: ${account?.status || "sin dato"}`} />
+                {expiration && <MiniPill label={`Expira ${formatBogotaDate(expiration)}`} tone="warning" />}
+            </div>
+        </div>
+    );
+}
+
 function accountReference(id, email, fallback = "Cuenta sin identificar") {
     const accountId = id ? `Cuenta #${id}` : fallback;
     return email ? `${accountId} · ${email}` : accountId;
@@ -181,33 +233,10 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
 
     const replacementRelations = getReplacementRelations(detail?.account?.id || it.id, detail?.replacements || []);
 
-    let badgeBg, badgeColor, badgeText;
-    if (it.is_replacement) {
-        badgeBg = "rgba(245,158,11,0.16)";
-        badgeColor = "#f59e0b";
-        badgeText = "Entró por reemplazo";
-    } else {
-        switch (it.status) {
-            case "available":
-                badgeBg = "rgba(16,185,129,0.15)"; badgeColor = "#10b981"; badgeText = "Disponible"; break;
-            case "assigned":
-                badgeBg = "rgba(13,166,242,0.15)"; badgeColor = "#0da6f2"; badgeText = "Asignada"; break;
-            case "sold":
-                badgeBg = "rgba(139,92,246,0.15)"; badgeColor = "#8b5cf6"; badgeText = "Vendida"; break;
-            case "inactive":
-                badgeBg = "rgba(107,114,128,0.15)"; badgeColor = "#9ca3af"; badgeText = "Inactiva"; break;
-            case "down":
-                badgeBg = "rgba(239,68,68,0.15)"; badgeColor = "#ef4444"; badgeText = "Caída"; break;
-            case "expired":
-                badgeBg = "rgba(245,158,11,0.15)"; badgeColor = "#f59e0b"; badgeText = "Vencida"; break;
-            case "disabled":
-                badgeBg = "rgba(107,114,128,0.18)"; badgeColor = "#9ca3af"; badgeText = "Deshabilitada"; break;
-            case "legacy_review":
-                badgeBg = "rgba(245,158,11,0.15)"; badgeColor = "#fbbf24"; badgeText = "Revisión manual"; break;
-            default:
-                badgeBg = "rgba(255,255,255,0.05)"; badgeColor = "var(--muted)"; badgeText = String(it.status); break;
-        }
-    }
+    const accountState = getAccountState(it);
+    const badgeBg = accountState.background;
+    const badgeColor = accountState.color;
+    const badgeText = accountState.label;
 
     const rowBtnStyle = { padding: "4px 10px", fontSize: 11, height: "auto", borderRadius: 6, minWidth: 0, whiteSpace: "nowrap" };
 
@@ -279,6 +308,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                                 <MiniPill label={`Venta ${it.sale_id ? `#${it.sale_id}` : "sin ID"}`} tone="accent" />
                                                 <MiniPill label={`Expira ${formatBogotaDate(it.display_expires_at || it.expires_at)}`} tone="warning" />
                                                 <MiniPill label={it.assigned_user_email || "Sin asignar"} />
+                                                {it.is_replacement && <MiniPill label="Historial: entró por reemplazo" tone="warning" />}
                                             </div>
                                         </div>
                                         <span style={{ background: badgeBg, color: badgeColor, padding: "7px 14px", borderRadius: 999, fontSize: 12, fontWeight: 800, border: `1px solid ${badgeColor}40`, whiteSpace: "nowrap" }}>
@@ -287,6 +317,9 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                     </div>
 
                                     <div style={{ padding: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, alignItems: "start" }}>
+                                        <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
+                                            <AccountCurrentState account={detail?.account || it} detail={detail} />
+                                        </div>
                                         <div style={{ minWidth: 0 }}>
                                             <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 14 }}>Datos de la cuenta</div>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>

@@ -28,6 +28,125 @@ function MiniPill({ label, tone = "default" }) {
     );
 }
 
+function accountReference(id, email, fallback = "Cuenta sin identificar") {
+    const accountId = id ? `Cuenta #${id}` : fallback;
+    return email ? `${accountId} · ${email}` : accountId;
+}
+
+function getReplacementRelations(accountId, replacements = []) {
+    const currentId = String(accountId);
+    return {
+        incoming: replacements.find((row) => String(row.new_account_id) === currentId) || null,
+        outgoing: replacements.find((row) => String(row.old_account_id) === currentId) || null,
+    };
+}
+
+function AccountLineage({ account, replacements = [] }) {
+    const { incoming, outgoing } = getReplacementRelations(account?.id, replacements);
+    const hasRelations = !!incoming || !!outgoing;
+    const nodes = [
+        ...(incoming ? [{
+            key: `old-${incoming.id}`,
+            tone: "#f59e0b",
+            label: "Cuenta anterior",
+            value: accountReference(incoming.old_account_id, incoming.old_account_email),
+            description: "La cuenta que estaba asignada antes.",
+        }] : []),
+        {
+            key: "current",
+            tone: "#10b981",
+            label: "Cuenta actual",
+            value: accountReference(account?.id, account?.email),
+            description: incoming ? "Entró para ocupar el lugar de la cuenta anterior." : "Cuenta que estás consultando.",
+        },
+        ...(outgoing ? [{
+            key: `new-${outgoing.id}`,
+            tone: "#0da6f2",
+            label: "Cuenta que la reemplazó",
+            value: accountReference(outgoing.new_account_id, outgoing.new_account_email, "Cuenta nueva"),
+            description: "Tomó esta suscripción después.",
+        }] : []),
+    ];
+
+    return (
+        <div style={{ marginBottom: 16, background: "rgba(13,166,242,0.06)", border: "1px solid rgba(13,166,242,0.2)", borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div>
+                    <div style={{ fontSize: 11, color: "#0da6f2", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 800 }}>Árbol de cuentas</div>
+                    <div style={{ marginTop: 5, fontSize: 13, color: "var(--text)", fontWeight: 600 }}>
+                        {hasRelations ? "Así pasó la suscripción de una cuenta a otra." : "Esta cuenta no tiene reemplazos registrados."}
+                    </div>
+                </div>
+                <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>origen → cuenta actual → siguiente</span>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "stretch", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+                {nodes.map((node, index) => (
+                    <div key={node.key} style={{ display: "flex", alignItems: "center", gap: 8, flex: "1 1 190px", minWidth: 0 }}>
+                        <div style={{ flex: 1, minWidth: 0, padding: "11px 12px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: `1px solid ${node.tone}55` }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 7, color: node.tone, fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.35px" }}>
+                                <span style={{ width: 8, height: 8, borderRadius: 999, background: node.tone, boxShadow: `0 0 0 3px ${node.tone}22`, flex: "0 0 auto" }} />
+                                {node.label}
+                            </div>
+                            <div style={{ marginTop: 8, color: "var(--text)", fontSize: 13, fontWeight: 800, overflowWrap: "anywhere" }}>{node.value}</div>
+                            <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{node.description}</div>
+                        </div>
+                        {index < nodes.length - 1 && <div aria-hidden="true" style={{ color: "var(--muted)", fontSize: 20, fontWeight: 800 }}>→</div>}
+                    </div>
+                ))}
+            </div>
+
+            {!hasRelations && (
+                <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>Si aparece un reemplazo, aquí se mostrará qué cuenta salió y cuál entró.</div>
+            )}
+        </div>
+    );
+}
+
+function LifecycleGlossary({ account, detail, incoming, outgoing }) {
+    const sale = detail?.lastSubscription;
+    let summary = "Esta cuenta todavía no tiene una venta o reemplazo registrado.";
+    if (incoming && outgoing) {
+        summary = `Esta cuenta entró para reemplazar a la cuenta #${incoming.old_account_id || "anterior"} y después fue reemplazada por la cuenta #${outgoing.new_account_id || "siguiente"}.`;
+    } else if (incoming) {
+        summary = `Esta cuenta entró como reemplazo de la cuenta #${incoming.old_account_id || "anterior"}. No significa que sea una venta nueva: tomó el lugar de esa cuenta en la misma suscripción.`;
+    } else if (outgoing) {
+        summary = `Esta cuenta salió por reemplazo: la cuenta #${outgoing.new_account_id || "siguiente"} tomó su lugar en la suscripción.`;
+    } else if (sale) {
+        summary = `Esta cuenta quedó asociada a ${sale.order_code || (sale.order_id ? `la orden #${sale.order_id}` : "una venta registrada")}.`;
+    }
+
+    const terms = [
+        ["Venta", "La compra o suscripción que vinculó una cuenta con un cliente. Puede aparecer aunque después la cuenta sea reemplazada."],
+        ["Entró por reemplazo", "Esta cuenta tomó el lugar de otra para conservar la misma suscripción. Es el enlace hacia atrás en el árbol."],
+        ["Salió por reemplazo", "Otra cuenta tomó el lugar de esta. Es el enlace hacia adelante en el árbol."],
+        ["Asignada", "La cuenta está actualmente vinculada a una suscripción o comprador; no describe si llegó por venta o por reemplazo."],
+    ];
+
+    return (
+        <>
+            <div style={{ marginBottom: 16, background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.22)", borderRadius: 14, padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "#10b981", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 800 }}>Qué pasó con esta cuenta</div>
+                <div style={{ marginTop: 6, color: "var(--text)", fontSize: 13, lineHeight: 1.5, fontWeight: 600 }}>{summary}</div>
+            </div>
+
+            <AccountLineage account={account} replacements={detail?.replacements || []} />
+
+            <details style={{ marginBottom: 16, border: "1px solid var(--stroke2)", borderRadius: 14, background: "rgba(255,255,255,0.025)" }}>
+                <summary style={{ cursor: "pointer", padding: "12px 14px", color: "var(--text)", fontSize: 13, fontWeight: 800 }}>Glosario: cómo leer los estados</summary>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, padding: "0 14px 14px" }}>
+                    {terms.map(([term, explanation]) => (
+                        <div key={term} style={{ padding: "10px 11px", borderRadius: 10, background: "rgba(255,255,255,0.035)" }}>
+                            <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 800 }}>{term}</div>
+                            <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11, lineHeight: 1.45 }}>{explanation}</div>
+                        </div>
+                    ))}
+                </div>
+            </details>
+        </>
+    );
+}
+
 function InventoryTimelineItem({ entry }) {
     const titleColor = entry.type === "replacement_in" ? "#10b981" : entry.type === "replacement_out" ? "#f59e0b" : "#0da6f2";
     return (
@@ -41,6 +160,9 @@ function InventoryTimelineItem({ entry }) {
                     <div style={{ fontSize: 12, color: "var(--muted)" }}>{formatBogotaDate(entry.created_at)}</div>
                 </div>
                 <div style={{ marginTop: 4, fontSize: 13, color: "var(--text)", fontWeight: 600 }}>{entry.subtitle || "—"}</div>
+                {entry.type === "subscription" && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Movimiento de venta o suscripción.</div>}
+                {entry.type === "replacement_in" && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Esta cuenta tomó el lugar de la cuenta indicada.</div>}
+                {entry.type === "replacement_out" && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>La cuenta indicada tomó el lugar de esta cuenta.</div>}
                 {!!entry.meta && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>{entry.meta}</div>}
                 {!!entry.expires_at && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Expira: {formatBogotaDate(entry.expires_at)}</div>}
                 {!!entry.admin_email && <div style={{ marginTop: 4, fontSize: 12, color: "var(--muted)" }}>Admin: {entry.admin_email}</div>}
@@ -56,11 +178,13 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
         if (show) onOpenDetail?.();
     }, [show, onOpenDetail]);
 
+    const replacementRelations = getReplacementRelations(detail?.account?.id || it.id, detail?.replacements || []);
+
     let badgeBg, badgeColor, badgeText;
     if (it.is_replacement) {
         badgeBg = "rgba(245,158,11,0.16)";
         badgeColor = "#f59e0b";
-        badgeText = "Cuenta reemplazada";
+        badgeText = "Entró por reemplazo";
     } else {
         switch (it.status) {
             case "available":
@@ -208,14 +332,21 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                                         <DetailStat label="Última orden" value={detail?.lastSubscription?.order_code || (detail?.lastSubscription?.order_id ? `#${detail.lastSubscription.order_id}` : "—")} tone="accent" />
                                                         <DetailStat label="Último comprador" value={detail?.lastSubscription?.buyer_email || detail?.lastSubscription?.buyer_name || "—"} />
                                                         <DetailStat label="Suscripciones" value={detail?.subscriptions?.length ? String(detail.subscriptions.length) : "0"} />
-                                                        <DetailStat label="Reemplazos" value={detail?.replacements?.length ? String(detail.replacements.length) : "0"} />
+                                                        <DetailStat label="Movimientos de reemplazo" value={detail?.replacements?.length ? String(detail.replacements.length) : "0"} />
                                                     </div>
+
+                                                    <LifecycleGlossary
+                                                        account={detail?.account || it}
+                                                        detail={detail}
+                                                        incoming={replacementRelations.incoming}
+                                                        outgoing={replacementRelations.outgoing}
+                                                    />
 
                                                     {!!detail?.replacements?.[0] && (
                                                         <div style={{ marginBottom: 16, background: "rgba(13,166,242,0.08)", border: "1px solid rgba(13,166,242,0.22)", borderRadius: 14, padding: "12px 14px" }}>
                                                             <div style={{ fontSize: 11, color: "#0da6f2", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 800 }}>Último reemplazo</div>
                                                             <div style={{ marginTop: 6, fontSize: 14, color: "var(--text)", fontWeight: 700 }}>
-                                                                {detail.replacements[0].direction === "incoming" ? "Esta cuenta entró como reemplazo" : "Esta cuenta fue reemplazada por otra"}
+                                                                {detail.replacements[0].direction === "incoming" ? "Entró para reemplazar a la cuenta anterior" : "Salió porque otra cuenta tomó su lugar"}
                                                             </div>
                                                             <div style={{ marginTop: 4, fontSize: 13, color: "var(--muted)", wordBreak: "break-word" }}>
                                                                 {detail.replacements[0].direction === "incoming"

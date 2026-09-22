@@ -80,6 +80,74 @@ function AccountCurrentState({ account, detail }) {
     );
 }
 
+function getProfileState(profile = {}) {
+    const state = profile.state || String(profile.status || "").toLowerCase();
+    if (state === "available") {
+        return { label: "LIBRE", color: "#10b981", background: "rgba(16,185,129,0.12)", description: "Sin venta ni asignación activa." };
+    }
+    if (state === "replaced") {
+        return { label: "REEMPLAZADO", color: "#f59e0b", background: "rgba(245,158,11,0.12)", description: "Salió por reemplazo; ya no tiene una suscripción activa." };
+    }
+    if (state === "occupied" || state === "assigned") {
+        return {
+            label: "OCUPADO",
+            color: "#0da6f2",
+            background: "rgba(13,166,242,0.12)",
+            description: profile.replacements_in > 0 ? "Tiene suscripción activa y entró por reemplazo." : "Tiene una suscripción activa.",
+        };
+    }
+    if (state === "sold") {
+        return { label: "VENDIDO", color: "#8b5cf6", background: "rgba(139,92,246,0.12)", description: "Marcado como vendido; revisa su historial antes de reutilizarlo." };
+    }
+    return { label: "REVISAR", color: "#fbbf24", background: "rgba(245,158,11,0.12)", description: "Estado que requiere revisión." };
+}
+
+function AccountProfilesSummary({ account, profiles = [] }) {
+    if (!profiles.length) return null;
+
+    const counts = profiles.reduce((result, profile) => {
+        const state = getProfileState(profile).label;
+        result[state] = (result[state] || 0) + 1;
+        return result;
+    }, {});
+    const occupied = counts.OCUPADO || 0;
+    const replaced = counts.REEMPLAZADO || 0;
+    const available = counts.LIBRE || 0;
+    const summary = `Este correo tiene ${profiles.length} perfiles: ${occupied} ocupado${occupied === 1 ? "" : "s"}, ${replaced} reemplazado${replaced === 1 ? "" : "s"} y ${available} libre${available === 1 ? "" : "s"}.`;
+
+    return (
+        <div style={{ gridColumn: "1 / -1", minWidth: 0, marginBottom: 2, background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.24)", borderRadius: 14, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                    <div style={{ fontSize: 11, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 900 }}>Estado del correo completo</div>
+                    <div style={{ marginTop: 6, color: "var(--text)", fontSize: 14, lineHeight: 1.5, fontWeight: 800 }}>{summary}</div>
+                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>Aquí se separa el estado de cada perfil del historial de reemplazos.</div>
+                </div>
+                <span style={{ color: available > 0 ? "#10b981" : "#f59e0b", fontSize: 12, fontWeight: 900 }}>{available > 0 ? "Hay perfiles libres" : "No hay perfiles libres"}</span>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9, marginTop: 13 }}>
+                {profiles.map((profile) => {
+                    const profileState = getProfileState(profile);
+                    const isCurrent = String(profile.id) === String(account?.id);
+                    return (
+                        <div key={profile.id} style={{ minWidth: 0, padding: "11px 12px", borderRadius: 12, background: profileState.background, border: `1px solid ${profileState.color}55` }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                                <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 900 }}>Perfil {profile.profile_number ?? "—"}</div>
+                                <span style={{ color: profileState.color, fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{profileState.label}</span>
+                            </div>
+                            {isCurrent && <div style={{ marginTop: 3, color: "#a78bfa", fontSize: 10, fontWeight: 800 }}>Este es el perfil consultado</div>}
+                            <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{profileState.description}</div>
+                            {profile.assigned_user_email && <div style={{ marginTop: 5, color: "var(--muted)", fontSize: 10, overflowWrap: "anywhere" }}>Asignado a: {profile.assigned_user_email}</div>}
+                            {profile.expires_at && <div style={{ marginTop: 3, color: "var(--muted)", fontSize: 10 }}>Expira: {formatBogotaDate(profile.expires_at)}</div>}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 function accountReference(id, email, fallback = "Cuenta sin identificar") {
     const accountId = id ? `Cuenta #${id}` : fallback;
     return email ? `${accountId} · ${email}` : accountId;
@@ -320,6 +388,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
                                             <AccountCurrentState account={detail?.account || it} detail={detail} />
                                         </div>
+                                        <AccountProfilesSummary account={detail?.account || it} profiles={detail?.profiles || []} />
                                         <div style={{ minWidth: 0 }}>
                                             <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 14 }}>Datos de la cuenta</div>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>

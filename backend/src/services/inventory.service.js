@@ -602,6 +602,33 @@ async function getInventoryAccountDetail(id) {
         throw err;
     }
 
+    const [profileRows] = await pool.query(
+        `SELECT
+            pa.id,
+            pa.profile_number,
+            pa.status,
+            pa.assigned_to_user_id,
+            u.email AS assigned_user_email,
+            pa.assigned_at,
+            pa.expires_at,
+            (SELECT COUNT(*)
+               FROM subscriptions profile_sub
+              WHERE profile_sub.platform_account_id = pa.id
+                AND profile_sub.status = 'active') AS active_subscriptions,
+            (SELECT COUNT(*)
+               FROM account_replacement_logs profile_replacement_in
+              WHERE profile_replacement_in.new_account_id = pa.id) AS replacements_in,
+            (SELECT COUNT(*)
+               FROM account_replacement_logs profile_replacement_out
+              WHERE profile_replacement_out.old_account_id = pa.id) AS replacements_out
+         FROM platform_accounts pa
+         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
+         WHERE pa.platform_id = ?
+           AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
+         ORDER BY pa.profile_number IS NULL, pa.profile_number, pa.id`,
+        [account.platform_id, account.email]
+    );
+
     const [subscriptionRows] = await pool.query(
         `SELECT
             s.id AS subscription_id,
@@ -721,6 +748,33 @@ async function getInventoryAccountDetail(id) {
         },
         currentSubscription,
         lastSubscription,
+        profiles: profileRows.map((row) => {
+            const activeSubscriptions = Number(row.active_subscriptions || 0);
+            const replacementsIn = Number(row.replacements_in || 0);
+            const replacementsOut = Number(row.replacements_out || 0);
+            const status = String(row.status || "").toLowerCase();
+            const state = replacementsOut > 0 && activeSubscriptions === 0
+                ? "replaced"
+                : activeSubscriptions > 0 || ["assigned", "sold"].includes(status)
+                    ? "occupied"
+                    : status === "available" && !row.assigned_to_user_id
+                        ? "available"
+                        : status || "review";
+
+            return {
+                id: row.id,
+                profile_number: row.profile_number,
+                status: row.status,
+                state,
+                assigned_to_user_id: row.assigned_to_user_id,
+                assigned_user_email: row.assigned_user_email,
+                assigned_at: row.assigned_at,
+                expires_at: row.expires_at,
+                active_subscriptions: activeSubscriptions,
+                replacements_in: replacementsIn,
+                replacements_out: replacementsOut,
+            };
+        }),
         subscriptions: subscriptionRows,
         replacements: replacementRows.map((row) => ({
             ...row,

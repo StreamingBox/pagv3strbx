@@ -43,21 +43,27 @@ test("StoreTools solo se habilita cuando la cuenta fue marcada como ese proveedo
 
 test("elige el último correo de inicio de Netflix y extrae cuatro dígitos", () => {
     assert.ok(storetoolsTest.parseStoretoolsDate("29-Aug-2026 17:29:12") > 0);
+    assert.ok(
+        storetoolsTest.parseStoretoolsDate("23/9/2026, 9:45:07 a. m.")
+        > storetoolsTest.parseStoretoolsDate("23/9/2026, 9:31:25 a. m.")
+    );
 
     const selected = storetoolsTest.selectLatestStoretoolsCode([
         {
-            fecha: "29-Aug-2026 17:20:00",
+            fecha: "23/9/2026, 9:31:25 a. m.",
             asunto: "Netflix: Tu código de inicio de sesión",
-            mensaje: "Ingresa este código: <strong>1094</strong>",
+            para: "pullnetflix16+h dbeatty3@gmail.com",
+            mensaje: "Ingresa este código: <strong>7020</strong>",
         },
         {
-            fecha: "29-Aug-2026 17:29:12",
+            fecha: "23/9/2026, 9:45:07 a. m.",
             asunto: "Netflix: Tu código de inicio de sesión",
-            mensaje: "Ingresa este código: <strong>8245</strong>",
+            para: "pullnetflix16+tumak@gmail.com",
+            mensaje: "Ingresa este código: <strong>5662</strong>",
         },
-    ]);
+    ], "pullnetflix16+tumak@gmail.com");
 
-    assert.equal(selected.code, "8245");
+    assert.equal(selected.code, "5662");
 });
 
 test("elige el último correo temporal de Netflix y encuentra el enlace Obtener código", () => {

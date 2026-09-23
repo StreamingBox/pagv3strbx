@@ -87,19 +87,61 @@ function parseJson(data) {
 }
 
 function parseStoretoolsDate(value) {
-    const match = String(value || "").trim().match(
+    const raw = String(value || "").trim();
+    const localeValue = raw
+        .replace(/\u00a0/g, " ")
+        .replace(/\./g, "")
+        .replace(/,/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    const localeMatch = localeValue.match(
+        /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s+([ap])\s*m)?$/i
+    );
+    if (localeMatch) {
+        let hour = Number(localeMatch[4]);
+        const meridiem = String(localeMatch[7] || "").toLowerCase();
+        if (meridiem === "a" && hour === 12) hour = 0;
+        if (meridiem === "p" && hour < 12) hour += 12;
+        return Date.UTC(
+            Number(localeMatch[3]),
+            Number(localeMatch[2]) - 1,
+            Number(localeMatch[1]),
+            hour,
+            Number(localeMatch[5]),
+            Number(localeMatch[6] || 0)
+        );
+    }
+
+    const match = raw.match(
         /^(\d{1,2})[-\s/]([A-Za-z]{3,4})[-\s/](\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?/i
     );
-    if (!match) return 0;
-    const month = MONTHS[String(match[2]).toLowerCase()];
-    if (month === undefined) return 0;
-    return Date.UTC(
-        Number(match[3]),
-        month,
-        Number(match[1]),
-        Number(match[4]),
-        Number(match[5]),
-        Number(match[6] || 0)
+    if (match) {
+        const month = MONTHS[String(match[2]).toLowerCase()];
+        if (month !== undefined) {
+            return Date.UTC(
+                Number(match[3]),
+                month,
+                Number(match[1]),
+                Number(match[4]),
+                Number(match[5]),
+                Number(match[6] || 0)
+            );
+        }
+    }
+
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function normalizeRecipient(value) {
+    const raw = String(value || "").toLowerCase().trim();
+    const email = raw.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+/i);
+    return (email ? email[0] : raw).replace(/\s+/g, "");
+}
+
+function getStoretoolsRecipient(row) {
+    return normalizeRecipient(
+        row?.para || row?.to || row?.recipient || row?.destinatario || ""
     );
 }
 
@@ -138,21 +180,27 @@ function extractStoretoolsCode(entry) {
     return "";
 }
 
-function selectLatestStoretoolsCode(rows) {
+function selectLatestStoretoolsCode(rows, targetEmail = "") {
     const normalized = (Array.isArray(rows) ? rows : [])
         .map((row, index) => ({
             row,
             index,
             stamp: parseStoretoolsDate(row?.fecha || row?.date || row?.created_at),
+            recipient: getStoretoolsRecipient(row),
             text: `${String(row?.asunto || row?.subject || "")} ${String(row?.mensaje || row?.message || "")}`,
         }))
         .filter(({ row }) => row && typeof row === "object");
 
-    const loginCodeRows = normalized.filter(({ text }) =>
+    const target = normalizeRecipient(targetEmail);
+    const rowsWithRecipient = normalized.filter(({ recipient }) => recipient);
+    const recipientRows = target && rowsWithRecipient.length
+        ? normalized.filter(({ recipient }) => recipient === target)
+        : normalized;
+    const loginCodeRows = recipientRows.filter(({ text }) =>
         /netflix/i.test(text)
         && /(c[oó]digo.*inicio|inicio.*sesi[oó]n|sign\s*in)/i.test(text)
     );
-    const candidates = loginCodeRows.length ? loginCodeRows : normalized;
+    const candidates = loginCodeRows.length ? loginCodeRows : recipientRows;
     candidates.sort((a, b) => b.stamp - a.stamp || b.index - a.index);
 
     for (const candidate of candidates) {
@@ -162,18 +210,27 @@ function selectLatestStoretoolsCode(rows) {
     return null;
 }
 
-function selectLatestStoretoolsTemporaryEmail(rows) {
+function selectLatestStoretoolsTemporaryEmail(rows, targetEmail = "") {
     const normalized = (Array.isArray(rows) ? rows : [])
         .map((row, index) => ({
             row,
             index,
             stamp: parseStoretoolsDate(row?.fecha || row?.date || row?.created_at),
+            recipient: getStoretoolsRecipient(row),
             subject: String(row?.asunto || row?.subject || ""),
         }))
-        .filter(({ row, subject }) => row && typeof row === "object" && TEMPORARY_SUBJECT.test(subject))
+        .filter(({ row, subject }) => row && typeof row === "object" && TEMPORARY_SUBJECT.test(subject));
+
+    const target = normalizeRecipient(targetEmail);
+    const rowsWithRecipient = normalized.filter(({ recipient }) => recipient);
+    const recipientRows = target && rowsWithRecipient.length
+        ? normalized.filter(({ recipient }) => recipient === target)
+        : normalized;
+
+    recipientRows
         .sort((a, b) => b.stamp - a.stamp || b.index - a.index);
 
-    return normalized[0] || null;
+    return recipientRows[0] || null;
 }
 
 function safeNetflixTemporaryUrl(value, baseUrl = "https://storetools.co/") {
@@ -328,8 +385,8 @@ async function fetchCodeFromStoretoolsProvider({ email, config, action = "code" 
             }
             if (queryStatus === "exito") {
                 selected = normalizedAction === "temporary"
-                    ? selectLatestStoretoolsTemporaryEmail(queryResult.resultadoCorreos)
-                    : selectLatestStoretoolsCode(queryResult.resultadoCorreos);
+                    ? selectLatestStoretoolsTemporaryEmail(queryResult.resultadoCorreos, email)
+                    : selectLatestStoretoolsCode(queryResult.resultadoCorreos, email);
                 if (selected) break;
             }
             if (attempt < 2) await wait(QUERY_RETRY_DELAY_MS);
@@ -384,6 +441,8 @@ module.exports = {
     fetchCodeFromStoretoolsProvider,
     __test: {
         parseStoretoolsDate,
+        normalizeRecipient,
+        getStoretoolsRecipient,
         extractStoretoolsCode,
         selectLatestStoretoolsCode,
         selectLatestStoretoolsTemporaryEmail,

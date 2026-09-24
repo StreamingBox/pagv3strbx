@@ -78,6 +78,13 @@ test("encuentra el correo temporal de Jeff y valida el enlace Obtener código de
         ),
         { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=abc" }
     );
+    assert.deepEqual(
+        jeffProviderTest.extractJeffTemporaryAction(
+            `<button data-url="https://www.netflix.com/account/travel/verify?nf_token=button-token">Continuar</button>`,
+            "https://proveedores-jeff.store/v1/user-panel/email/123"
+        ),
+        { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=button-token" }
+    );
     assert.equal(
         jeffProviderTest.safeNetflixTemporaryUrl(
             "https://evil.example/account/travel/verify?nf_token=abc",

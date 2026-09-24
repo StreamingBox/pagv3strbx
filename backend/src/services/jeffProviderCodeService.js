@@ -180,11 +180,37 @@ function safeNetflixTemporaryUrl(value, baseUrl) {
     }
 }
 
+function extractUrlCandidate(value) {
+    const raw = String(value || "").trim().replace(/&amp;/gi, "&");
+    if (!raw) return "";
+    const match = raw.match(/(?:https?:\/\/|\/)[^\s'"<>`)]+/i);
+    return match?.[0] || raw;
+}
+
+function extractElementUrl($, element, currentUrl) {
+    const candidates = [
+        $(element).attr("href"),
+        $(element).attr("data-href"),
+        $(element).attr("data-url"),
+        $(element).attr("data-link"),
+        $(element).attr("onclick"),
+    ];
+
+    for (const candidate of candidates) {
+        const value = extractUrlCandidate(candidate);
+        if (!value) continue;
+        const absolute = absoluteUrl(value, currentUrl);
+        if (absolute) return absolute;
+    }
+
+    return "";
+}
+
 function extractJeffTemporaryAction(html, currentUrl) {
     const $ = cheerio.load(String(html || ""));
     let selected = null;
 
-    $("a[href], button, input[type='submit'], input[type='button']").each((_, element) => {
+    $("a[href], button, input[type='submit'], input[type='button'], [data-href], [data-url]").each((_, element) => {
         if (selected) return;
         const text = [
             $(element).text(),
@@ -193,21 +219,34 @@ function extractJeffTemporaryAction(html, currentUrl) {
             $(element).attr("title"),
             $(element).attr("data-uia"),
         ].filter(Boolean).join(" ");
-        if (!/obtener\s+c[oó]digo\b/i.test(text)) return;
 
-        const href = safeNetflixTemporaryUrl($(element).attr("href"), currentUrl);
-        if (href) selected = { method: "GET", url: href };
+        const providerUrl = extractElementUrl($, element, currentUrl);
+        const href = safeNetflixTemporaryUrl(providerUrl, currentUrl);
+        if (!href) return;
+        if (/obtener\s+c[oó]digo\b/i.test(text) || /\/account\/travel\/verify(?:\/|\?|$)/i.test(href)) {
+            selected = { method: "GET", url: href };
+        }
     });
 
-    return selected;
+    if (selected) return selected;
+
+    const rawLinks = String(html || "").match(
+        /https?:\/\/(?:www\.)?netflix\.com\/account\/travel\/verify[^\s'"<>)]*/gi
+    ) || [];
+    for (const rawLink of rawLinks) {
+        const href = safeNetflixTemporaryUrl(extractUrlCandidate(rawLink), currentUrl);
+        if (href) return { method: "GET", url: href };
+    }
+
+    return null;
 }
 
 function findJeffTemporaryMessageLinks(html, currentUrl) {
     const $ = cheerio.load(String(html || ""));
     const candidates = [];
 
-    $("a[href]").each((index, element) => {
-        const href = absoluteUrl($(element).attr("href"), currentUrl);
+    $("a[href], button, [data-href], [data-url], form[action]").each((index, element) => {
+        const href = extractElementUrl($, element, currentUrl);
         if (!href) return;
         const label = safeText([
             $(element).text(),
@@ -227,7 +266,7 @@ function findJeffTemporaryMessageLinks(html, currentUrl) {
             }
             container = container.parent();
         }
-        if (!subjectContainer) return;
+        if (!subjectContainer && !/\/(?:email|message|correo)(?:\/|$)/i.test(href)) return;
 
         const preferred = /(ver|abrir|leer|mensaje|correo|email|view|read|eye)/i.test(label) ? 0 : 1;
         candidates.push({ method: "GET", url: href, index, preferred });

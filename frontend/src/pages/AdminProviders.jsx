@@ -3,11 +3,12 @@ import { animate } from "animejs/animation";
 import { createScope } from "animejs/scope";
 import { stagger } from "animejs/utils";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, ChevronDown, Crown, Factory, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
+import { CalendarClock, ChevronDown, Crown, Download, Factory, FileSpreadsheet, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { COUNTRY_OPTIONS, findCountry } from "../data/countries.js";
+import { loadXlsx } from "../utils/loadXlsx.js";
 import "../styles/special-effects.css";
 import "../styles/admin-providers.css";
 
@@ -194,6 +195,7 @@ export default function AdminProviders() {
     const [accountOrder, setAccountOrder] = useState("desc");
     const [accountLimit, setAccountLimit] = useState("10");
     const [loading, setLoading] = useState(true);
+    const [exporting, setExporting] = useState("");
     const [savingProvider, setSavingProvider] = useState(false);
     const [savingAccount, setSavingAccount] = useState(false);
     const [renewingAccountId, setRenewingAccountId] = useState(null);
@@ -259,6 +261,58 @@ export default function AdminProviders() {
     }, [accounts, accountOrder, accountSearch, filterProviderId]);
 
     const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
+
+    async function exportAccounts(scope = "filtered") {
+        const rows = [...(scope === "all" ? accounts : filteredAccounts)].sort((left, right) => accountOrder === "asc"
+            ? Number(left.id) - Number(right.id)
+            : Number(right.id) - Number(left.id));
+        if (!rows.length) {
+            setError(scope === "all" ? "No hay cuentas para exportar." : "No hay cuentas que coincidan con los filtros.");
+            return;
+        }
+
+        setExporting(scope);
+        setError("");
+        try {
+            const XLSX = await loadXlsx();
+            const exportRows = rows.map((account) => {
+                const days = getDaysRemaining(account.expiresAt);
+                const country = findCountry(account.ipAddress);
+                return {
+                    ID: account.id,
+                    Proveedor: account.providerName || "",
+                    Plataforma: account.platformName || "",
+                    Cuenta: account.accountEmail || "",
+                    "Fecha de compra": shortDate(account.purchaseDate),
+                    Vencimiento: shortDate(account.expiresAt),
+                    "Días restantes": days === null ? "" : days,
+                    País: country ? country.name : (account.ipAddress || ""),
+                    Valor: Number(account.amount || 0),
+                    Moneda: account.currency || "",
+                    Estado: account.status === "active" ? "Activo" : "Inactivo",
+                };
+            });
+            const worksheet = XLSX.utils.json_to_sheet(exportRows);
+            worksheet["!cols"] = [
+                { wch: 8 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 },
+                { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
+            ];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Cuentas");
+
+            const selectedProvider = providers.find((provider) => String(provider.id) === String(filterProviderId));
+            const context = scope === "all"
+                ? "todas"
+                : (selectedProvider?.name || "filtradas");
+            const safeContext = context.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "cuentas";
+            XLSX.writeFile(workbook, `Cuentas_proveedores_${safeContext}_${localToday()}.xlsx`);
+            showMessage(`${rows.length} cuenta(s) exportada(s) correctamente.`);
+        } catch (exportError) {
+            setError(exportError?.message || "No se pudo generar el archivo de exportación.");
+        } finally {
+            setExporting("");
+        }
+    }
 
     function showMessage(message) {
         setSuccess(message);
@@ -729,7 +783,15 @@ export default function AdminProviders() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
                             <div>
                                 <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Cuentas de proveedor</h2>
-                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca y controla las cuentas más recientes por proveedor.</p>
+                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca, exporta y controla las cuentas por proveedor.</p>
+                            </div>
+                            <div className="admin-providers-export-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button className="btn-ghost" type="button" onClick={() => exportAccounts("filtered")} disabled={Boolean(exporting)} title="Exportar la vista actual con sus filtros" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                    <Download size={15} aria-hidden /> {exporting === "filtered" ? "Generando..." : "Exportar vista"}
+                                </button>
+                                <button className="btn" type="button" onClick={() => exportAccounts("all")} disabled={Boolean(exporting)} title="Exportar todas las cuentas de proveedores" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                    <FileSpreadsheet size={15} aria-hidden /> {exporting === "all" ? "Generando..." : "Exportar todas"}
+                                </button>
                             </div>
                         </div>
                         <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px", gap: 10, marginBottom: 10 }}>

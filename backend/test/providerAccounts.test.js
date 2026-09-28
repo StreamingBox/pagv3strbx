@@ -35,3 +35,21 @@ test("renewal preserves remaining calendar days", () => {
         "2026-10-07"
     );
 });
+
+test("normalizes and validates the optional card renewal date", () => {
+    const payload = adminProvidersTesting.accountPayload({
+        providerId: 1,
+        platformId: 2,
+        accountEmail: "provider@example.com",
+        purchaseDate: "2026-09-28",
+        cardRenewalDate: " 2026-10-15 ",
+        amount: 30000,
+        currency: "COP",
+    });
+
+    assert.equal(payload.cardRenewalDate, "2026-10-15");
+    assert.equal(
+        adminProvidersTesting.validateAccountPayload({ ...payload, cardRenewalDate: "2026-02-30" }, { passwordRequired: false }),
+        "La fecha de renovación de tarjeta no es válida."
+    );
+});

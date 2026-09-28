@@ -37,6 +37,7 @@ function duplicateError(error) {
 
 function accountPayload(body = {}) {
     const purchaseDate = String(body.purchaseDate ?? body.purchase_date ?? "").trim();
+    const cardRenewalDateRaw = String(body.cardRenewalDate ?? body.card_renewal_date ?? "").trim();
     const currency = normalizeCurrency(body.currency);
     const amount = parseAmount(body.amount);
     const accountEmail = cleanText(body.accountEmail ?? body.account_email, 190);
@@ -50,6 +51,7 @@ function accountPayload(body = {}) {
         accountPassword,
         purchaseDate,
         expiresAt: addCalendarDays(purchaseDate, 30),
+        cardRenewalDate: cardRenewalDateRaw || null,
         ipAddress,
         amount,
         currency,
@@ -69,6 +71,7 @@ function validateAccountPayload(payload, { passwordRequired = true } = {}) {
     if (passwordRequired && !payload.accountPassword) return "La contraseña de la cuenta es obligatoria.";
     if (!isDateOnly(payload.purchaseDate)) return "La fecha de compra no es válida.";
     if (!payload.expiresAt) return "No se pudo calcular la fecha de vencimiento.";
+    if (payload.cardRenewalDate && !isDateOnly(payload.cardRenewalDate)) return "La fecha de renovación de tarjeta no es válida.";
     if (!payload.currency) return "La moneda debe ser COP o USD.";
     if (payload.amount === null) return "El valor debe ser un número mayor o igual a cero.";
     return null;
@@ -100,6 +103,7 @@ async function getAccountById(id) {
             pa.account_email AS accountEmail,
             DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
             DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
+            DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
             pa.ip_address AS ipAddress,
             pa.amount,
             pa.currency,
@@ -275,6 +279,7 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
                 pa.account_email AS accountEmail,
                 DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
                 DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
+                DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
                 pa.ip_address AS ipAddress,
                 pa.amount,
                 pa.currency,
@@ -315,8 +320,8 @@ router.post("/admin/provider-accounts", requireAuth, requireRole("admin"), async
         const [result] = await pool.query(
             `INSERT INTO provider_accounts (
                 provider_id, platform_id, account_email, account_password,
-                purchase_date, expires_at, ip_address, amount, currency, status
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
+                purchase_date, expires_at, card_renewal_date, ip_address, amount, currency, status
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')`,
             [
                 payload.providerId,
                 payload.platformId,
@@ -324,6 +329,7 @@ router.post("/admin/provider-accounts", requireAuth, requireRole("admin"), async
                 payload.accountPassword,
                 payload.purchaseDate,
                 payload.expiresAt,
+                payload.cardRenewalDate,
                 payload.ipAddress,
                 payload.amount,
                 payload.currency,
@@ -346,6 +352,7 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
                     account_email AS accountEmail, account_password AS accountPassword,
                     DATE_FORMAT(purchase_date, '%Y-%m-%d') AS purchaseDate,
                     DATE_FORMAT(expires_at, '%Y-%m-%d') AS expiresAt,
+                    DATE_FORMAT(card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
                     ip_address AS ipAddress, amount, currency, status
              FROM provider_accounts WHERE id = ? LIMIT 1`,
             [id]
@@ -366,6 +373,7 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
             purchaseDate: renewalRequested
                 ? renewalDate
                 : (body.purchaseDate ?? body.purchase_date ?? existing.purchaseDate),
+            cardRenewalDate: body.cardRenewalDate ?? body.card_renewal_date ?? existing.cardRenewalDate,
             ipAddress: body.ipAddress ?? body.ip_address ?? existing.ipAddress,
             amount: body.amount ?? existing.amount,
             currency: body.currency ?? existing.currency,
@@ -392,7 +400,7 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
         await pool.query(
             `UPDATE provider_accounts SET
                 provider_id = ?, platform_id = ?, account_email = ?, account_password = ?,
-                purchase_date = ?, expires_at = ?, ip_address = ?, amount = ?, currency = ?, status = ?
+                purchase_date = ?, expires_at = ?, card_renewal_date = ?, ip_address = ?, amount = ?, currency = ?, status = ?
              WHERE id = ?`,
             [
                 payload.providerId,
@@ -401,6 +409,7 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
                 payload.accountPassword,
                 payload.purchaseDate,
                 payload.expiresAt,
+                payload.cardRenewalDate,
                 payload.ipAddress,
                 payload.amount,
                 payload.currency,

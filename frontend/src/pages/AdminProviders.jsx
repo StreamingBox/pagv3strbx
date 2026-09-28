@@ -176,6 +176,7 @@ function initialAccount() {
         platformId: "",
         accountEmail: "",
         purchaseDate: localToday(),
+        cardRenewalDate: "",
         ipAddress: "",
         amount: "",
         currency: "COP",
@@ -285,6 +286,7 @@ export default function AdminProviders() {
                     Cuenta: account.accountEmail || "",
                     "Fecha de compra": shortDate(account.purchaseDate),
                     Vencimiento: shortDate(account.expiresAt),
+                    "Renovación tarjeta": shortDate(account.cardRenewalDate),
                     "Días restantes": days === null ? "" : days,
                     País: country ? country.name : (account.ipAddress || ""),
                     Valor: Number(account.amount || 0),
@@ -295,7 +297,7 @@ export default function AdminProviders() {
             const worksheet = XLSX.utils.json_to_sheet(exportRows);
             worksheet["!cols"] = [
                 { wch: 8 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 },
-                { wch: 16 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
+                { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
             ];
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Cuentas");
@@ -392,6 +394,7 @@ export default function AdminProviders() {
             platformId: String(account.platformId),
             accountEmail: account.accountEmail || "",
             purchaseDate: String(account.purchaseDate || "").slice(0, 10),
+            cardRenewalDate: String(account.cardRenewalDate || "").slice(0, 10),
             ipAddress: account.ipAddress || "",
             amount: account.amount ?? "",
             currency: account.currency || "COP",
@@ -728,6 +731,13 @@ export default function AdminProviders() {
                                         <CountryPicker value={accountForm.ipAddress} onChange={(countryCode) => setAccountForm({ ...accountForm, ipAddress: countryCode })} />
                                     </div>
                                 </div>
+                                <div className="admin-providers-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 12 }}>
+                                    <div>
+                                        <label style={labelStyle}>Fecha renovación tarjeta</label>
+                                        <input style={inputStyle} type="date" value={accountForm.cardRenewalDate} onChange={(event) => setAccountForm({ ...accountForm, cardRenewalDate: event.target.value })} />
+                                        <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11 }}>Opcional. Fecha en que debe renovarse la tarjeta del proveedor.</div>
+                                    </div>
+                                </div>
                                 <div className="admin-providers-form-grid admin-providers-form-grid--amount" style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Valor de compra</label>
@@ -813,8 +823,8 @@ export default function AdminProviders() {
                             <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1080 }}>
-                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
+                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
@@ -826,13 +836,14 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
                                             <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
+                                            <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
                                             <td style={{ padding: "13px 11px", color: active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{active ? "Activo" : "Inactivo"}</td>
                                             <td style={{ padding: "13px 11px" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12 }}>{active ? "Desactivar" : "Activar"}</button><button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id} title="Eliminar cuenta duplicada" aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12 }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
                                         </tr>;
                                     })}
-                                    {!visibleAccounts.length && <tr><td colSpan="9" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                    {!visibleAccounts.length && <tr><td colSpan="10" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

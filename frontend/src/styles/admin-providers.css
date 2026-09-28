@@ -48,6 +48,17 @@
     -webkit-overflow-scrolling: touch;
 }
 
+.admin-providers-icon-action {
+    width: 34px;
+    height: 34px;
+    padding: 0 !important;
+    display: inline-grid !important;
+    place-items: center;
+    flex: 0 0 34px;
+    font-size: 16px;
+    line-height: 1;
+}
+
 @media (max-width: 1100px) {
     .admin-providers-management-grid {
         grid-template-columns: minmax(0, 1fr) !important;

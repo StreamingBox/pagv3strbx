@@ -74,6 +74,10 @@ function providerHistoryLabel(account) {
     return ids.filter(Boolean).map((id) => `#${id}`).join(" → ");
 }
 
+function isReplacedProviderAccount(account) {
+    return account?.status === "replaced" || Boolean(account?.historyNextId);
+}
+
 function matchesCardRenewalFilter(account, filter) {
     const days = getDaysRemaining(account.cardRenewalDate);
     if (filter === "missing") return days === null;
@@ -294,6 +298,7 @@ export default function AdminProviders() {
             .filter((account) => Number(account.id) !== sourceId)
             .filter((account) => account.status === "active")
             .filter((account) => Number(account.platformId) === sourcePlatformId)
+            .filter((account) => !account.historyPreviousId)
             .filter((account) => !sourceHistoryIds.includes(Number(account.id)))
             .sort((left, right) => Number(left.id) - Number(right.id));
     }, [accounts, replacementSourceAccount]);
@@ -316,7 +321,6 @@ export default function AdminProviders() {
                 const country = findCountry(account.ipAddress);
                 return {
                     ID: account.id,
-                    Histórico: providerHistoryLabel(account),
                     Proveedor: account.providerName || "",
                     Plataforma: account.platformName || "",
                     Cuenta: account.accountEmail || "",
@@ -327,13 +331,13 @@ export default function AdminProviders() {
                     País: country ? country.name : (account.ipAddress || ""),
                     Valor: Number(account.amount || 0),
                     Moneda: account.currency || "",
-                    Estado: account.status === "active" ? "Activo" : account.status === "replaced" ? "Reemplazada" : "Inactivo",
+                    Estado: account.status === "active" ? "Activo" : isReplacedProviderAccount(account) ? "Desactivada por reemplazo" : "Desactivada",
                 };
             });
             const worksheet = XLSX.utils.json_to_sheet(exportRows);
             worksheet["!cols"] = [
-                { wch: 8 }, { wch: 22 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 },
-                { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
+                { wch: 8 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 }, { wch: 16 },
+                { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
             ];
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Cuentas");
@@ -631,7 +635,7 @@ export default function AdminProviders() {
                     onLogout={logout}
                 />
 
-                <main className="main admin-providers-main" style={{ padding: "20px 24px 48px", maxWidth: 1320, margin: "0 auto" }}>
+                <main className="main admin-providers-main" style={{ padding: "20px 24px 48px", width: "100%", maxWidth: "none", margin: "0 auto" }}>
                     <header className="admin-providers-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 18, flexWrap: "wrap", marginBottom: 24, paddingBottom: 20, borderBottom: "1px solid var(--stroke)" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                             <div style={{ width: 52, height: 52, borderRadius: 14, display: "grid", placeItems: "center", color: "#22d3ee", background: "rgba(34,211,238,.12)", border: "1px solid rgba(34,211,238,.35)" }}>
@@ -932,12 +936,14 @@ export default function AdminProviders() {
                             <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1400 }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
                                 <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
-                                        const replaced = account.status === "replaced";
+                                        const replaced = isReplacedProviderAccount(account);
+                                        const canReplace = active && !replaced;
+                                        const canToggle = !replaced;
                                         const historyLabel = providerHistoryLabel(account);
                                         const days = getDaysRemaining(account.expiresAt);
                                         const country = findCountry(account.ipAddress);
@@ -951,8 +957,8 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
-                                            <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Reemplazada" : active ? "Activo" : "Inactivo"}</td>
-                                            <td style={{ padding: "13px 11px", minWidth: 360, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>Editar</button>{!replaced && <button className="btn-ghost" type="button" onClick={() => openReplacement(account)} disabled={!active} title="Registrar reemplazo y conservar el historial" style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#67e8f9", borderColor: "rgba(34,211,238,.35)", fontSize: 12, flex: "0 0 auto" }}><ArrowRightLeft size={14} aria-hidden />Reemplazar</button>}{!replaced && <button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>{active ? "Desactivar" : "Activar"}</button>}<button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12, flex: "0 0 auto" }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
+                                            <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Desactivada por reemplazo" : active ? "Activo" : "Desactivada"}</td>
+                                            <td style={{ padding: "13px 11px", minWidth: 360, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>Editar</button>{canReplace && <button className="btn-ghost" type="button" onClick={() => openReplacement(account)} title="Registrar reemplazo y conservar el historial" style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#67e8f9", borderColor: "rgba(34,211,238,.35)", fontSize: 12, flex: "0 0 auto" }}><ArrowRightLeft size={14} aria-hidden />Reemplazar</button>}{canToggle && <button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>{active ? "Desactivar" : "Activar"}</button>}<button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12, flex: "0 0 auto" }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
                                         </tr>;
                                     })}
                                     {!visibleAccounts.length && <tr><td colSpan="11" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}

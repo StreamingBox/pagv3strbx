@@ -538,7 +538,7 @@ router.post("/admin/provider-accounts/:id/replace", requireAuth, requireRole("ad
         }
 
         await conn.query(
-            "UPDATE provider_accounts SET status = 'replaced' WHERE id = ?",
+            "UPDATE provider_accounts SET status = 'inactive' WHERE id = ?",
             [oldAccountId]
         );
         await conn.query(

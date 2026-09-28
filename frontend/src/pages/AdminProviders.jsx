@@ -290,6 +290,7 @@ export default function AdminProviders() {
     const replacementCandidates = useMemo(() => {
         if (!replacementSourceAccount) return [];
         const sourceId = Number(replacementSourceAccount.id);
+        const sourceProviderId = Number(replacementSourceAccount.providerId);
         const sourcePlatformId = Number(replacementSourceAccount.platformId);
         const sourceHistoryIds = Array.isArray(replacementSourceAccount.historyIds)
             ? replacementSourceAccount.historyIds.map(Number)
@@ -297,6 +298,7 @@ export default function AdminProviders() {
         return accounts
             .filter((account) => Number(account.id) !== sourceId)
             .filter((account) => account.status === "active")
+            .filter((account) => Number(account.providerId) === sourceProviderId)
             .filter((account) => Number(account.platformId) === sourcePlatformId)
             .filter((account) => !account.historyPreviousId)
             .filter((account) => !sourceHistoryIds.includes(Number(account.id)))

@@ -518,6 +518,10 @@ router.post("/admin/provider-accounts/:id/replace", requireAuth, requireRole("ad
             await conn.rollback();
             return res.status(400).json({ message: "La cuenta nueva debe pertenecer a la misma plataforma." });
         }
+        if (Number(oldAccount.providerId) !== Number(newAccount.providerId)) {
+            await conn.rollback();
+            return res.status(400).json({ message: "La cuenta nueva debe pertenecer al mismo proveedor." });
+        }
 
         const [historyRows] = await conn.query(
             `SELECT old_account_id AS oldAccountId,

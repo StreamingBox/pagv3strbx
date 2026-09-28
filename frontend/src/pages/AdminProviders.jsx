@@ -62,6 +62,11 @@ function shortDate(value) {
     return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : value;
 }
 
+function providerAmount(value) {
+    const amount = Number(value);
+    return Number.isFinite(amount) ? String(amount) : "0";
+}
+
 function getDaysRemaining(value) {
     if (!value) return null;
     const today = new Date(`${localToday()}T00:00:00`);
@@ -821,7 +826,7 @@ export default function AdminProviders() {
                                 <div className="admin-providers-form-grid admin-providers-form-grid--amount" style={{ display: "grid", gridTemplateColumns: "1fr 160px", gap: 12 }}>
                                     <div>
                                         <label style={labelStyle}>Valor de compra</label>
-                                        <input style={inputStyle} type="number" min="0" step="0.01" value={accountForm.amount} onChange={(event) => setAccountForm({ ...accountForm, amount: event.target.value })} placeholder="0.00" />
+                                        <input style={inputStyle} type="number" min="0" step="0.01" value={accountForm.amount} onChange={(event) => setAccountForm({ ...accountForm, amount: event.target.value })} placeholder="0" />
                                     </div>
                                     <div>
                                         <label style={labelStyle}>Moneda *</label>
@@ -958,7 +963,7 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
                                             <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
-                                            <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
+                                            <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{providerAmount(account.amount)} {account.currency}</td>
                                             <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Desactivada por reemplazo" : active ? "Activo" : "Desactivada"}</td>
                                             <td style={{ padding: "13px 11px", minWidth: 170, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => editAccount(account)} title="Editar cuenta" aria-label={`Editar cuenta ${account.id}`}>✏️</button>{canReplace && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openReplacement(account)} title="Reemplazar cuenta y conservar el historial" aria-label={`Reemplazar cuenta ${account.id}`}>🔄</button>}{canToggle && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => toggleAccount(account)} title={active ? "Desactivar cuenta" : "Activar cuenta"} aria-label={`${active ? "Desactivar" : "Activar"} cuenta ${account.id}`}>{active ? "⏸️" : "▶️"}</button>}<button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`}>🗑️</button></div></td>
                                         </tr>;

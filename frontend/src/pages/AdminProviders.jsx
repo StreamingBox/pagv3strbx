@@ -69,6 +69,16 @@ function getDaysRemaining(value) {
     return Math.ceil((expiry - today) / 86400000);
 }
 
+function matchesCardRenewalFilter(account, filter) {
+    const days = getDaysRemaining(account.cardRenewalDate);
+    if (filter === "missing") return days === null;
+    if (filter === "expired") return days !== null && days < 0;
+    if (filter === "next7") return days !== null && days >= 0 && days <= 7;
+    if (filter === "next30") return days !== null && days >= 0 && days <= 30;
+    if (filter === "active") return days !== null && days >= 0;
+    return true;
+}
+
 function CountryPicker({ value, onChange }) {
     const wrapperRef = useRef(null);
     const inputRef = useRef(null);
@@ -192,6 +202,7 @@ export default function AdminProviders() {
     const [providerForm, setProviderForm] = useState(emptyProvider);
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
+    const [cardRenewalFilter, setCardRenewalFilter] = useState("all");
     const [accountSearch, setAccountSearch] = useState("");
     const [accountOrder, setAccountOrder] = useState("desc");
     const [accountLimit, setAccountLimit] = useState("10");
@@ -251,6 +262,7 @@ export default function AdminProviders() {
         const query = accountSearch.trim().toLowerCase();
         return accounts
             .filter((account) => !filterProviderId || String(account.providerId) === String(filterProviderId))
+            .filter((account) => matchesCardRenewalFilter(account, cardRenewalFilter))
             .filter((account) => {
                 if (!query) return true;
                 return [account.id, account.accountEmail, account.providerName, account.platformName, account.ipAddress]
@@ -259,7 +271,7 @@ export default function AdminProviders() {
             .sort((left, right) => accountOrder === "asc"
                 ? Number(left.id) - Number(right.id)
                 : Number(right.id) - Number(left.id));
-    }, [accounts, accountOrder, accountSearch, filterProviderId]);
+    }, [accounts, accountOrder, accountSearch, cardRenewalFilter, filterProviderId]);
 
     const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
 
@@ -804,7 +816,7 @@ export default function AdminProviders() {
                                 </button>
                             </div>
                         </div>
-                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px", gap: 10, marginBottom: 10 }}>
+                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr)", gap: 10, marginBottom: 10 }}>
                             <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
                             <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
                                 <option value="">Todos los proveedores</option>
@@ -816,6 +828,14 @@ export default function AdminProviders() {
                             </select>
                             <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => setAccountLimit(event.target.value)} aria-label="Cantidad de cuentas visibles">
                                 {[5, 10, 15, 20].map((amount) => <option key={amount} value={amount}>Últimos {amount}</option>)}
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={cardRenewalFilter} onChange={(event) => setCardRenewalFilter(event.target.value)} aria-label="Filtrar vencimientos de renovación de tarjeta">
+                                <option value="all">Renovación: todas</option>
+                                <option value="expired">Renovación: vencidas</option>
+                                <option value="next7">Renovación: próximos 7 días</option>
+                                <option value="next30">Renovación: próximos 30 días</option>
+                                <option value="active">Renovación: vigentes</option>
+                                <option value="missing">Renovación: sin fecha</option>
                             </select>
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>

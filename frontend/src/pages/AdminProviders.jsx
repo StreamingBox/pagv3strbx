@@ -3,7 +3,7 @@ import { animate } from "animejs/animation";
 import { createScope } from "animejs/scope";
 import { stagger } from "animejs/utils";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock, ChevronDown, Crown, Download, Factory, FileSpreadsheet, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
+import { ArrowRightLeft, CalendarClock, ChevronDown, Crown, Download, Factory, FileSpreadsheet, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -67,6 +67,11 @@ function getDaysRemaining(value) {
     const today = new Date(`${localToday()}T00:00:00`);
     const expiry = new Date(`${String(value).slice(0, 10)}T00:00:00`);
     return Math.ceil((expiry - today) / 86400000);
+}
+
+function providerHistoryLabel(account) {
+    const ids = Array.isArray(account?.historyIds) && account.historyIds.length ? account.historyIds : [account?.id];
+    return ids.filter(Boolean).map((id) => `#${id}`).join(" → ");
 }
 
 function matchesCardRenewalFilter(account, filter) {
@@ -214,6 +219,10 @@ export default function AdminProviders() {
     const [deletingAccountId, setDeletingAccountId] = useState(null);
     const [editingProviderId, setEditingProviderId] = useState(null);
     const [editingAccountId, setEditingAccountId] = useState(null);
+    const [replacementSourceAccount, setReplacementSourceAccount] = useState(null);
+    const [replacementTargetId, setReplacementTargetId] = useState("");
+    const [replacementReason, setReplacementReason] = useState("");
+    const [replacingAccountId, setReplacingAccountId] = useState(null);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const topRankingRef = useRef(null);
@@ -274,6 +283,20 @@ export default function AdminProviders() {
     }, [accounts, accountOrder, accountSearch, cardRenewalFilter, filterProviderId]);
 
     const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
+    const replacementCandidates = useMemo(() => {
+        if (!replacementSourceAccount) return [];
+        const sourceId = Number(replacementSourceAccount.id);
+        const sourcePlatformId = Number(replacementSourceAccount.platformId);
+        const sourceHistoryIds = Array.isArray(replacementSourceAccount.historyIds)
+            ? replacementSourceAccount.historyIds.map(Number)
+            : [sourceId];
+        return accounts
+            .filter((account) => Number(account.id) !== sourceId)
+            .filter((account) => account.status === "active")
+            .filter((account) => Number(account.platformId) === sourcePlatformId)
+            .filter((account) => !sourceHistoryIds.includes(Number(account.id)))
+            .sort((left, right) => Number(left.id) - Number(right.id));
+    }, [accounts, replacementSourceAccount]);
 
     async function exportAccounts(scope = "filtered") {
         const rows = [...(scope === "all" ? accounts : filteredAccounts)].sort((left, right) => accountOrder === "asc"
@@ -293,6 +316,7 @@ export default function AdminProviders() {
                 const country = findCountry(account.ipAddress);
                 return {
                     ID: account.id,
+                    Histórico: providerHistoryLabel(account),
                     Proveedor: account.providerName || "",
                     Plataforma: account.platformName || "",
                     Cuenta: account.accountEmail || "",
@@ -303,12 +327,12 @@ export default function AdminProviders() {
                     País: country ? country.name : (account.ipAddress || ""),
                     Valor: Number(account.amount || 0),
                     Moneda: account.currency || "",
-                    Estado: account.status === "active" ? "Activo" : "Inactivo",
+                    Estado: account.status === "active" ? "Activo" : account.status === "replaced" ? "Reemplazada" : "Inactivo",
                 };
             });
             const worksheet = XLSX.utils.json_to_sheet(exportRows);
             worksheet["!cols"] = [
-                { wch: 8 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 },
+                { wch: 8 }, { wch: 22 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 },
                 { wch: 16 }, { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
             ];
             const workbook = XLSX.utils.book_new();
@@ -460,6 +484,44 @@ export default function AdminProviders() {
             setError(requestError?.message || "No se pudo eliminar la cuenta del proveedor.");
         } finally {
             setDeletingAccountId(null);
+        }
+    }
+
+    function openReplacement(account) {
+        setReplacementSourceAccount(account);
+        setReplacementTargetId("");
+        setReplacementReason("Cuenta con credenciales inválidas");
+        setError("");
+    }
+
+    function closeReplacement() {
+        setReplacementSourceAccount(null);
+        setReplacementTargetId("");
+        setReplacementReason("");
+    }
+
+    async function replaceAccount() {
+        if (!replacementSourceAccount || !replacementTargetId) {
+            setError("Selecciona la cuenta que entrará como reemplazo.");
+            return;
+        }
+        setReplacingAccountId(replacementSourceAccount.id);
+        setError("");
+        try {
+            const result = await apiFetch(`/admin/provider-accounts/${replacementSourceAccount.id}/replace`, {
+                method: "POST",
+                body: JSON.stringify({
+                    replacementAccountId: Number(replacementTargetId),
+                    reason: replacementReason.trim() || null,
+                }),
+            });
+            showMessage(result?.message || "Reemplazo registrado correctamente.");
+            closeReplacement();
+            await load();
+        } catch (requestError) {
+            setError(requestError?.message || "No se pudo registrar el reemplazo de la cuenta.");
+        } finally {
+            setReplacingAccountId(null);
         }
     }
 
@@ -816,6 +878,33 @@ export default function AdminProviders() {
                                 </button>
                             </div>
                         </div>
+                        {replacementSourceAccount && <div style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(13,166,242,.09)", border: "1px solid rgba(34,211,238,.35)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                    <div style={{ color: "#67e8f9", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Nuevo reemplazo</div>
+                                    <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Reemplazar cuenta #{replacementSourceAccount.id}</h3>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>La cuenta anterior quedará como reemplazada y se conservará la cadena histórica.</p>
+                                </div>
+                                <button className="btn-ghost" type="button" onClick={closeReplacement} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
+                            </div>
+                            <div className="admin-providers-replacement-form" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.2fr) minmax(220px, 1fr) auto", gap: 10, alignItems: "end", marginTop: 13 }}>
+                                <div>
+                                    <label style={labelStyle}>Cuenta nueva *</label>
+                                    <select style={inputStyle} value={replacementTargetId} onChange={(event) => setReplacementTargetId(event.target.value)} disabled={replacingAccountId === replacementSourceAccount.id}>
+                                        <option value="">Selecciona una cuenta activa</option>
+                                        {replacementCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>#{candidate.id} · {candidate.providerName} · {candidate.accountEmail}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Motivo</label>
+                                    <input style={inputStyle} value={replacementReason} onChange={(event) => setReplacementReason(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} />
+                                </div>
+                                <button className="btn" type="button" onClick={replaceAccount} disabled={replacingAccountId === replacementSourceAccount.id || !replacementCandidates.length} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>
+                                    <ArrowRightLeft size={15} aria-hidden /> {replacingAccountId === replacementSourceAccount.id ? "Guardando..." : "Confirmar reemplazo"}
+                                </button>
+                            </div>
+                            {!replacementCandidates.length && <div style={{ marginTop: 9, color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>No hay otra cuenta activa de la misma plataforma disponible para reemplazarla.</div>}
+                        </div>}
                         <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr)", gap: 10, marginBottom: 10 }}>
                             <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
                             <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
@@ -843,15 +932,18 @@ export default function AdminProviders() {
                             <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1180 }}>
-                                <thead><tr>{["ID", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1400 }}>
+                                <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
+                                        const replaced = account.status === "replaced";
+                                        const historyLabel = providerHistoryLabel(account);
                                         const days = getDaysRemaining(account.expiresAt);
                                         const country = findCountry(account.ipAddress);
                                         return <tr key={account.id}>
                                             <td style={{ padding: "13px 11px", color: "#67e8f9", fontWeight: 900, fontSize: 12 }}>#{account.id}</td>
+                                            <td title={historyLabel} style={{ padding: "13px 11px", minWidth: 135, maxWidth: 190 }}><div style={{ color: account.historyTotal > 1 ? "#67e8f9" : "var(--muted)", fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{historyLabel}</div><div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{account.historyTotal > 1 ? `Paso ${account.historySequence} de ${account.historyTotal}` : "Original"}</div></td>
                                             <td style={{ padding: "13px 11px" }}><div style={{ color: "var(--text)", fontWeight: 800 }}>{account.providerName}</div><div style={{ color: "#a78bfa", fontSize: 12, marginTop: 3 }}>{account.platformName}</div></td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
@@ -859,11 +951,11 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{Number(account.amount || 0).toFixed(2)} {account.currency}</td>
-                                            <td style={{ padding: "13px 11px", color: active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{active ? "Activo" : "Inactivo"}</td>
-                                            <td style={{ padding: "13px 11px", minWidth: 235, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>{active ? "Desactivar" : "Activar"}</button><button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id} title="Eliminar cuenta duplicada" aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12, flex: "0 0 auto" }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
+                                            <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Reemplazada" : active ? "Activo" : "Inactivo"}</td>
+                                            <td style={{ padding: "13px 11px", minWidth: 360, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost" type="button" onClick={() => editAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>Editar</button>{!replaced && <button className="btn-ghost" type="button" onClick={() => openReplacement(account)} disabled={!active} title="Registrar reemplazo y conservar el historial" style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#67e8f9", borderColor: "rgba(34,211,238,.35)", fontSize: 12, flex: "0 0 auto" }}><ArrowRightLeft size={14} aria-hidden />Reemplazar</button>}{!replaced && <button className="btn-ghost" type="button" onClick={() => toggleAccount(account)} style={{ height: 32, padding: "0 9px", fontSize: 12, flex: "0 0 auto" }}>{active ? "Desactivar" : "Activar"}</button>}<button className="btn-ghost" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`} style={{ height: 32, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 5, color: "#fca5a5", borderColor: "rgba(239,68,68,.38)", fontSize: 12, flex: "0 0 auto" }}><Trash2 size={14} aria-hidden />{deletingAccountId === account.id ? "..." : "Eliminar"}</button></div></td>
                                         </tr>;
                                     })}
-                                    {!visibleAccounts.length && <tr><td colSpan="10" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                    {!visibleAccounts.length && <tr><td colSpan="11" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

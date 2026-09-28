@@ -53,3 +53,19 @@ test("normalizes and validates the optional card renewal date", () => {
         "La fecha de renovación de tarjeta no es válida."
     );
 });
+
+test("builds a consecutive provider account replacement history", () => {
+    const history = adminProvidersTesting.buildProviderAccountHistory(
+        [{ id: 8 }, { id: 9 }, { id: 10 }],
+        [
+            { oldAccountId: 8, newAccountId: 9 },
+            { oldAccountId: 9, newAccountId: 10 },
+        ]
+    );
+
+    assert.deepEqual(history.map((account) => account.historyIds), [[8, 9, 10], [8, 9, 10], [8, 9, 10]]);
+    assert.equal(history[0].historySequence, 1);
+    assert.equal(history[1].historyPreviousId, 8);
+    assert.equal(history[1].historyNextId, 10);
+    assert.equal(history[2].historySequence, 3);
+});

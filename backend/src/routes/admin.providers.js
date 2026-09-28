@@ -35,6 +35,60 @@ function duplicateError(error) {
     return String(error?.code || "") === "ER_DUP_ENTRY";
 }
 
+function buildProviderAccountHistory(accounts, logs) {
+    const incomingByNewId = new Map();
+    const outgoingByOldId = new Map();
+    for (const log of logs || []) {
+        const oldId = Number(log.oldAccountId);
+        const newId = Number(log.newAccountId);
+        if (!oldId || !newId) continue;
+        incomingByNewId.set(newId, oldId);
+        outgoingByOldId.set(oldId, newId);
+    }
+
+    return (accounts || []).map((account) => {
+        const accountId = Number(account.id);
+        const chainIds = [];
+        const seenBackward = new Set();
+        let rootId = accountId;
+        while (incomingByNewId.has(rootId) && !seenBackward.has(rootId)) {
+            seenBackward.add(rootId);
+            rootId = incomingByNewId.get(rootId);
+        }
+
+        const seenForward = new Set();
+        let currentId = rootId;
+        while (currentId && !seenForward.has(currentId)) {
+            seenForward.add(currentId);
+            chainIds.push(currentId);
+            currentId = outgoingByOldId.get(currentId) || null;
+        }
+        if (!chainIds.length) chainIds.push(accountId);
+
+        const sequence = Math.max(0, chainIds.indexOf(accountId)) + 1;
+        return {
+            ...account,
+            historyIds: chainIds,
+            historyRootId: chainIds[0],
+            historyPreviousId: sequence > 1 ? chainIds[sequence - 2] : null,
+            historyNextId: sequence < chainIds.length ? chainIds[sequence] : null,
+            historySequence: sequence,
+            historyTotal: chainIds.length,
+        };
+    });
+}
+
+async function addProviderAccountHistory(accounts, queryable = pool) {
+    if (!accounts.length) return accounts;
+    const [logs] = await queryable.query(
+        `SELECT old_account_id AS oldAccountId,
+                new_account_id AS newAccountId
+           FROM provider_account_replacement_logs
+          ORDER BY id ASC`
+    );
+    return buildProviderAccountHistory(accounts, logs);
+}
+
 function accountPayload(body = {}) {
     const purchaseDate = String(body.purchaseDate ?? body.purchase_date ?? "").trim();
     const cardRenewalDateRaw = String(body.cardRenewalDate ?? body.card_renewal_date ?? "").trim();
@@ -117,7 +171,8 @@ async function getAccountById(id) {
         LIMIT 1`,
         [id]
     );
-    return rows[0] || null;
+    const [account] = await addProviderAccountHistory(rows);
+    return account || null;
 }
 
 router.get("/admin/providers", requireAuth, requireRole("admin"), async (_req, res) => {
@@ -292,7 +347,7 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
             ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
             ORDER BY pa.id DESC
         `, params);
-        return res.json(rows);
+        return res.json(await addProviderAccountHistory(rows));
     } catch (error) {
         console.error("[admin/provider-accounts] list error", error);
         return res.status(500).json({ message: "No se pudieron cargar las cuentas de proveedor." });
@@ -424,11 +479,105 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
     }
 });
 
+router.post("/admin/provider-accounts/:id/replace", requireAuth, requireRole("admin"), async (req, res) => {
+    const oldAccountId = parseId(req.params.id);
+    const newAccountId = parseId(req.body?.replacementAccountId ?? req.body?.newAccountId);
+    const reason = cleanText(req.body?.reason, 255);
+    if (!oldAccountId || !newAccountId) {
+        return res.status(400).json({ message: "Selecciona una cuenta válida para el reemplazo." });
+    }
+    if (oldAccountId === newAccountId) {
+        return res.status(400).json({ message: "La cuenta nueva debe ser diferente a la cuenta reemplazada." });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+        await conn.beginTransaction();
+        const [accountRows] = await conn.query(
+            `SELECT id, provider_id AS providerId, platform_id AS platformId, status
+               FROM provider_accounts
+              WHERE id IN (?, ?)
+              FOR UPDATE`,
+            [oldAccountId, newAccountId]
+        );
+        const oldAccount = accountRows.find((row) => Number(row.id) === oldAccountId);
+        const newAccount = accountRows.find((row) => Number(row.id) === newAccountId);
+        if (!oldAccount || !newAccount) {
+            await conn.rollback();
+            return res.status(404).json({ message: "No se encontró una de las cuentas del reemplazo." });
+        }
+        if (String(oldAccount.status) !== "active") {
+            await conn.rollback();
+            return res.status(409).json({ message: "La cuenta seleccionada ya no está activa para reemplazo." });
+        }
+        if (String(newAccount.status) !== "active") {
+            await conn.rollback();
+            return res.status(409).json({ message: "La cuenta nueva debe estar activa y disponible." });
+        }
+        if (Number(oldAccount.platformId) !== Number(newAccount.platformId)) {
+            await conn.rollback();
+            return res.status(400).json({ message: "La cuenta nueva debe pertenecer a la misma plataforma." });
+        }
+
+        const [historyRows] = await conn.query(
+            `SELECT old_account_id AS oldAccountId,
+                    new_account_id AS newAccountId
+               FROM provider_account_replacement_logs
+              WHERE old_account_id IN (?, ?)
+                 OR new_account_id IN (?, ?)
+              FOR UPDATE`,
+            [oldAccountId, newAccountId, oldAccountId, newAccountId]
+        );
+        if (historyRows.some((row) => Number(row.oldAccountId) === oldAccountId)) {
+            await conn.rollback();
+            return res.status(409).json({ message: "La cuenta seleccionada ya tiene un reemplazo registrado." });
+        }
+        if (historyRows.some((row) => Number(row.newAccountId) === newAccountId)) {
+            await conn.rollback();
+            return res.status(409).json({ message: "La cuenta nueva ya pertenece a otro historial." });
+        }
+
+        await conn.query(
+            "UPDATE provider_accounts SET status = 'replaced' WHERE id = ?",
+            [oldAccountId]
+        );
+        await conn.query(
+            `INSERT INTO provider_account_replacement_logs
+                (old_account_id, new_account_id, reason, admin_user_id)
+             VALUES (?, ?, ?, ?)`,
+            [oldAccountId, newAccountId, reason, req.user.id]
+        );
+        await conn.commit();
+        return res.json({
+            message: `Cuenta #${oldAccountId} reemplazada por la cuenta #${newAccountId}.`,
+            oldAccountId,
+            newAccountId,
+            account: await getAccountById(newAccountId),
+        });
+    } catch (error) {
+        try { await conn.rollback(); } catch { /* transaction may already be closed */ }
+        console.error("[admin/provider-accounts] replacement error", error);
+        return res.status(500).json({ message: "No se pudo registrar el reemplazo de la cuenta." });
+    } finally {
+        conn.release();
+    }
+});
+
 router.delete("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ message: "Cuenta de proveedor inválida." });
 
     try {
+        const [historyRows] = await pool.query(
+            `SELECT id
+               FROM provider_account_replacement_logs
+              WHERE old_account_id = ? OR new_account_id = ?
+              LIMIT 1`,
+            [id, id]
+        );
+        if (historyRows.length) {
+            return res.status(409).json({ message: "No se puede eliminar una cuenta que tiene historial de reemplazo." });
+        }
         const [result] = await pool.query("DELETE FROM provider_accounts WHERE id = ?", [id]);
         if (!result.affectedRows) return res.status(404).json({ message: "Cuenta de proveedor no encontrada." });
         return res.json({ ok: true, deletedId: id });
@@ -444,6 +593,7 @@ router.delete("/admin/provider-accounts/:id", requireAuth, requireRole("admin"),
 module.exports = router;
 module.exports.__testing = {
     accountPayload,
+    buildProviderAccountHistory,
     calculateRenewedExpiry,
     validateAccountPayload,
 };

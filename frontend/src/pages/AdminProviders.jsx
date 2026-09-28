@@ -64,7 +64,7 @@ function shortDate(value) {
 
 function providerAmount(value) {
     const amount = Number(value);
-    return Number.isFinite(amount) ? String(amount) : "0";
+    return Number.isFinite(amount) ? amount.toLocaleString("es-CO", { maximumFractionDigits: 2 }) : "0";
 }
 
 function getDaysRemaining(value) {

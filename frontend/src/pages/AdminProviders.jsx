@@ -83,6 +83,16 @@ function isReplacedProviderAccount(account) {
     return account?.status === "replaced" || Boolean(account?.historyNextId);
 }
 
+function isProviderReported(account) {
+    return Boolean(account?.providerReportedAt);
+}
+
+function matchesProviderReportFilter(account, filter) {
+    if (filter === "reported") return isProviderReported(account);
+    if (filter === "pending") return !isProviderReported(account);
+    return true;
+}
+
 function matchesCardRenewalFilter(account, filter) {
     const days = getDaysRemaining(account.cardRenewalDate);
     if (filter === "missing") return days === null;
@@ -217,6 +227,7 @@ export default function AdminProviders() {
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
     const [cardRenewalFilter, setCardRenewalFilter] = useState("all");
+    const [providerReportFilter, setProviderReportFilter] = useState("all");
     const [accountSearch, setAccountSearch] = useState("");
     const [accountOrder, setAccountOrder] = useState("desc");
     const [accountLimit, setAccountLimit] = useState("10");
@@ -232,6 +243,9 @@ export default function AdminProviders() {
     const [replacementTargetId, setReplacementTargetId] = useState("");
     const [replacementReason, setReplacementReason] = useState("");
     const [replacingAccountId, setReplacingAccountId] = useState(null);
+    const [providerReportAccount, setProviderReportAccount] = useState(null);
+    const [providerReportNote, setProviderReportNote] = useState("");
+    const [savingProviderReport, setSavingProviderReport] = useState(false);
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
     const topRankingRef = useRef(null);
@@ -281,6 +295,7 @@ export default function AdminProviders() {
         return accounts
             .filter((account) => !filterProviderId || String(account.providerId) === String(filterProviderId))
             .filter((account) => matchesCardRenewalFilter(account, cardRenewalFilter))
+            .filter((account) => matchesProviderReportFilter(account, providerReportFilter))
             .filter((account) => {
                 if (!query) return true;
                 return [account.id, account.accountEmail, account.providerName, account.platformName, account.ipAddress]
@@ -289,7 +304,7 @@ export default function AdminProviders() {
             .sort((left, right) => accountOrder === "asc"
                 ? Number(left.id) - Number(right.id)
                 : Number(right.id) - Number(left.id));
-    }, [accounts, accountOrder, accountSearch, cardRenewalFilter, filterProviderId]);
+    }, [accounts, accountOrder, accountSearch, cardRenewalFilter, filterProviderId, providerReportFilter]);
 
     const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
     const replacementCandidates = useMemo(() => {
@@ -338,13 +353,17 @@ export default function AdminProviders() {
                     País: country ? country.name : (account.ipAddress || ""),
                     Valor: Number(account.amount || 0),
                     Moneda: account.currency || "",
+                    "Reporte proveedor": isProviderReported(account) ? "Reportada" : "Pendiente",
+                    "Fecha reporte": shortDate(account.providerReportedAt),
+                    "Nota reporte": account.providerReportNote || "",
                     Estado: account.status === "active" ? "Activo" : isReplacedProviderAccount(account) ? "Desactivada por reemplazo" : "Desactivada",
                 };
             });
             const worksheet = XLSX.utils.json_to_sheet(exportRows);
             worksheet["!cols"] = [
                 { wch: 8 }, { wch: 24 }, { wch: 28 }, { wch: 34 }, { wch: 16 }, { wch: 16 },
-                { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 10 }, { wch: 12 },
+                { wch: 20 }, { wch: 16 }, { wch: 24 }, { wch: 14 }, { wch: 20 }, { wch: 16 },
+                { wch: 34 }, { wch: 24 }, { wch: 14 },
             ];
             const workbook = XLSX.utils.book_new();
             XLSX.utils.book_append_sheet(workbook, worksheet, "Cuentas");
@@ -495,6 +514,36 @@ export default function AdminProviders() {
             setError(requestError?.message || "No se pudo eliminar la cuenta del proveedor.");
         } finally {
             setDeletingAccountId(null);
+        }
+    }
+
+    function openProviderReport(account) {
+        setProviderReportAccount(account);
+        setProviderReportNote(account.providerReportNote || "");
+        setError("");
+    }
+
+    function closeProviderReport() {
+        setProviderReportAccount(null);
+        setProviderReportNote("");
+    }
+
+    async function saveProviderReport(reported = true) {
+        if (!providerReportAccount) return;
+        setSavingProviderReport(true);
+        setError("");
+        try {
+            const result = await apiFetch(`/admin/provider-accounts/${providerReportAccount.id}/report`, {
+                method: "POST",
+                body: JSON.stringify({ reported, note: providerReportNote.trim() || null }),
+            });
+            showMessage(result?.message || "Seguimiento actualizado correctamente.");
+            closeProviderReport();
+            await load();
+        } catch (requestError) {
+            setError(requestError?.message || "No se pudo actualizar el seguimiento del reporte.");
+        } finally {
+            setSavingProviderReport(false);
         }
     }
 
@@ -916,7 +965,25 @@ export default function AdminProviders() {
                             </div>
                             {!replacementCandidates.length && <div style={{ marginTop: 9, color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>No hay otra cuenta activa de la misma plataforma disponible para reemplazarla.</div>}
                         </div>}
-                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr)", gap: 10, marginBottom: 10 }}>
+                        {providerReportAccount && <div className="admin-providers-report-form" style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(245,158,11,.09)", border: "1px solid rgba(245,158,11,.38)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                    <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Seguimiento al proveedor</div>
+                                    <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Cuenta #{providerReportAccount.id} · {providerReportAccount.providerName}</h3>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>{isProviderReported(providerReportAccount) ? `Reportada el ${shortDate(providerReportAccount.providerReportedAt)}.` : "Aún no has registrado el reporte al proveedor."}</p>
+                                </div>
+                                <button className="btn-ghost" type="button" onClick={closeProviderReport} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
+                            </div>
+                            <div className="admin-providers-report-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: 10, alignItems: "end", marginTop: 13 }}>
+                                <div>
+                                    <label style={labelStyle}>Nota del reporte</label>
+                                    <input style={inputStyle} value={providerReportNote} onChange={(event) => setProviderReportNote(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} disabled={savingProviderReport} />
+                                </div>
+                                <button className="btn" type="button" onClick={() => saveProviderReport(true)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>🚩 {savingProviderReport ? "Guardando..." : isProviderReported(providerReportAccount) ? "Actualizar reporte" : "Marcar reportada"}</button>
+                                {isProviderReported(providerReportAccount) && <button className="btn-ghost" type="button" onClick={() => saveProviderReport(false)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>✅ Cerrar reporte</button>}
+                            </div>
+                        </div>}
+                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr) minmax(170px, .9fr)", gap: 10, marginBottom: 10 }}>
                             <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
                             <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
                                 <option value="">Todos los proveedores</option>
@@ -937,14 +1004,19 @@ export default function AdminProviders() {
                                 <option value="active">Renovación: vigentes</option>
                                 <option value="missing">Renovación: sin fecha</option>
                             </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={providerReportFilter} onChange={(event) => setProviderReportFilter(event.target.value)} aria-label="Filtrar reportes al proveedor">
+                                <option value="all">Reporte: todos</option>
+                                <option value="reported">Reporte: reportadas</option>
+                                <option value="pending">Reporte: pendientes</option>
+                            </select>
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>
                             <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
                             <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1040 }}>
-                                <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
+                                <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Reporte", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
                                 <tbody>
                                     {visibleAccounts.map((account) => {
                                         const active = account.status === "active";
@@ -952,6 +1024,7 @@ export default function AdminProviders() {
                                         const canReplace = active && !replaced;
                                         const canToggle = !replaced;
                                         const historyLabel = providerHistoryLabel(account);
+                                        const reported = isProviderReported(account);
                                         const days = getDaysRemaining(account.expiresAt);
                                         const country = findCountry(account.ipAddress);
                                         return <tr key={account.id}>
@@ -964,11 +1037,12 @@ export default function AdminProviders() {
                                             <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
                                             <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{providerAmount(account.amount)} {account.currency}</td>
+                                            <td title={account.providerReportNote || "Sin nota de seguimiento"} style={{ padding: "13px 11px", minWidth: 115, whiteSpace: "nowrap" }}><div style={{ color: reported ? "#fbbf24" : "var(--muted)", fontWeight: 800, fontSize: 12 }}>{reported ? "Reportada" : "Pendiente"}</div>{reported && <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{shortDate(account.providerReportedAt)}</div>}</td>
                                             <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Desactivada por reemplazo" : active ? "Activo" : "Desactivada"}</td>
-                                            <td style={{ padding: "13px 11px", minWidth: 170, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => editAccount(account)} title="Editar cuenta" aria-label={`Editar cuenta ${account.id}`}>✏️</button>{canReplace && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openReplacement(account)} title="Reemplazar cuenta y conservar el historial" aria-label={`Reemplazar cuenta ${account.id}`}>🔄</button>}{canToggle && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => toggleAccount(account)} title={active ? "Desactivar cuenta" : "Activar cuenta"} aria-label={`${active ? "Desactivar" : "Activar"} cuenta ${account.id}`}>{active ? "⏸️" : "▶️"}</button>}<button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`}>🗑️</button></div></td>
+                                            <td style={{ padding: "13px 11px", minWidth: 210, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => editAccount(account)} title="Editar cuenta" aria-label={`Editar cuenta ${account.id}`}>✏️</button>{canReplace && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openReplacement(account)} title="Reemplazar cuenta y conservar el historial" aria-label={`Reemplazar cuenta ${account.id}`}>🔄</button>}{canToggle && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => toggleAccount(account)} title={active ? "Desactivar cuenta" : "Activar cuenta"} aria-label={`${active ? "Desactivar" : "Activar"} cuenta ${account.id}`}>{active ? "⏸️" : "▶️"}</button>}<button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openProviderReport(account)} title={reported ? "Ver y actualizar el reporte al proveedor" : "Marcar cuenta como reportada al proveedor"} aria-label={`${reported ? "Ver reporte de" : "Reportar"} cuenta ${account.id}`}>{reported ? "✅" : "🚩"}</button><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`}>🗑️</button></div></td>
                                         </tr>;
                                     })}
-                                    {!visibleAccounts.length && <tr><td colSpan="11" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                    {!visibleAccounts.length && <tr><td colSpan="12" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
                         </div>

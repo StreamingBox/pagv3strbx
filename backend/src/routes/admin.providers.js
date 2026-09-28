@@ -158,6 +158,8 @@ async function getAccountById(id) {
             DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
             DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
             DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
+             DATE_FORMAT(pa.provider_reported_at, '%Y-%m-%d %H:%i') AS providerReportedAt,
+             pa.provider_report_note AS providerReportNote,
             pa.ip_address AS ipAddress,
             pa.amount,
             pa.currency,
@@ -335,6 +337,8 @@ router.get("/admin/provider-accounts", requireAuth, requireRole("admin"), async 
                 DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
                 DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
                 DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
+                DATE_FORMAT(pa.provider_reported_at, '%Y-%m-%d %H:%i') AS providerReportedAt,
+                pa.provider_report_note AS providerReportNote,
                 pa.ip_address AS ipAddress,
                 pa.amount,
                 pa.currency,
@@ -476,6 +480,32 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
     } catch (error) {
         console.error("[admin/provider-accounts] update error", error);
         return res.status(500).json({ message: "No se pudo actualizar la cuenta del proveedor." });
+    }
+});
+
+router.post("/admin/provider-accounts/:id/report", requireAuth, requireRole("admin"), async (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ message: "Cuenta de proveedor inválida." });
+
+    const reported = req.body?.reported === undefined ? true : Boolean(parseBoolean(req.body.reported));
+    const note = cleanText(req.body?.note ?? req.body?.reportNote, 255);
+    try {
+        const [result] = await pool.query(
+            `UPDATE provider_accounts
+                SET provider_reported_at = ${reported ? "CURRENT_TIMESTAMP" : "NULL"},
+                    provider_report_note = ?,
+                    provider_reported_by = ${reported ? "?" : "NULL"}
+              WHERE id = ?`,
+            reported ? [note, req.user.id, id] : [reported ? note : null, id]
+        );
+        if (!result.affectedRows) return res.status(404).json({ message: "Cuenta de proveedor no encontrada." });
+        return res.json({
+            message: reported ? "Cuenta marcada como reportada al proveedor." : "Reporte de proveedor cerrado.",
+            account: await getAccountById(id),
+        });
+    } catch (error) {
+        console.error("[admin/provider-accounts] report error", error);
+        return res.status(500).json({ message: "No se pudo actualizar el seguimiento del reporte." });
     }
 });
 

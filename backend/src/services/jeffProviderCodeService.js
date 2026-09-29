@@ -109,7 +109,7 @@ function extractCodeFromText(text, allowUnlabeled = false) {
     while ((match = CODE_VALUE.exec(value))) {
         const candidate = String(match[1] || "").replace(/[^0-9]/g, "");
         if (candidate.length < 4 || candidate.length > 8) continue;
-        if (/^20[0-9]{2}$/.test(candidate) || /^\d{8}$/.test(candidate)) continue;
+        if (/^20[0-9]{2}$/.test(candidate) || candidate === "0000" || /^\d{8}$/.test(candidate)) continue;
         if (!allowUnlabeled && !CODE_CONTEXT.test(value.slice(Math.max(0, match.index - 100), match.index + match[0].length + 100))) continue;
         return candidate;
     }
@@ -121,7 +121,7 @@ function extractExplicitCode(text) {
     if (!match?.[1]) return "";
     const candidate = String(match[1]).replace(/[^0-9]/g, "");
     if (candidate.length < 4 || candidate.length > 8) return "";
-    if (/^20[0-9]{2}$/.test(candidate) || /^\d{8}$/.test(candidate)) return "";
+    if (candidate === "0000" || /^\d{8}$/.test(candidate)) return "";
     return candidate;
 }
 

@@ -29,6 +29,11 @@ const { isStoredDateOnlyExpired } = require("../utils/date");
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
+function isValidAccessCode(value) {
+    const code = String(value || "").replace(/\D/g, "");
+    return /^\d{4,8}$/.test(code) && code !== "0000";
+}
+
 function normalizeSlug(slug) {
     return String(slug || "").trim().toLowerCase();
 }
@@ -578,6 +583,18 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 ok: false,
                 status: fetchStatus,
                 message: fetchingResult.message || "No se encontró código",
+            },
+            meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
+        };
+    }
+
+    if (["code", "temporary"].includes(normalizedAction) && !isValidAccessCode(fetchingResult.code)) {
+        return {
+            http: 404,
+            body: {
+                ok: false,
+                status: "provider_code_not_found",
+                message: "El proveedor no devolvió un código de acceso válido.",
             },
             meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
         };

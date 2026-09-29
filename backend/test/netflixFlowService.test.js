@@ -3,6 +3,27 @@ const test = require("node:test");
 const axios = require("axios");
 const { __test } = require("../src/services/netflixFlowService");
 
+test("accepts a temporary Netflix code that matches a year", () => {
+    const html = `
+        <h1>Usa este código para ver Netflix en tu dispositivo</h1>
+        <p>Ingresa este código en el dispositivo solicitante para obtener acceso temporal.</p>
+        <strong>2023</strong>
+        <p>Este código vence después de 15 minutos.</p>
+    `;
+
+    assert.equal(__test.extractNetflixTemporaryCode(html), "2023");
+});
+
+test("rejects the zero placeholder from a temporary Netflix page", () => {
+    const html = `
+        <h1>Usa este código para ver Netflix en tu dispositivo</h1>
+        <p>Ingresa este código en el dispositivo solicitante para obtener acceso temporal.</p>
+        <strong>0000</strong>
+    `;
+
+    assert.equal(__test.extractNetflixTemporaryCode(html), "");
+});
+
 test("Netflix approval only succeeds after the final confirmation page", async () => {
     const originalAdapter = axios.defaults.adapter;
     axios.defaults.adapter = async (config) => ({

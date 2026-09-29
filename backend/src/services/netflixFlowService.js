@@ -55,7 +55,6 @@ function normalizeTemporaryCodeCandidate(value) {
     const digits = String(value || "").replace(/\D/g, "");
     if (digits.length !== 4) return "";
     if (digits === "0000") return "";
-    if (/^20[0-9]{2}$/.test(digits)) return "";
     return digits;
 }
 
@@ -209,13 +208,12 @@ function extractNetflixLoginOtp(content) {
         /(?:codigo de inicio de sesion|sign.?in code)[^0-9]{0,200}?([0-9][\s.\-]*[0-9][\s.\-]*[0-9][\s.\-]*[0-9])(?:[^0-9]|$)/i,
     ];
 
-    const blockYear = new Set(['2023', '2024', '2025', '2026', '2027', '2028']);
     for (const haystack of [normalizedText, normalizedSource, textOnly, source]) {
         for (const pattern of patterns) {
             const match = haystack.match(pattern);
             if (match && match[1]) {
                 const digits = String(match[1]).replace(/[^0-9]/g, '');
-                if (digits.length === 4 && !blockYear.has(digits)) {
+                if (digits.length === 4 && digits !== "0000") {
                     return digits;
                 }
             }
@@ -229,15 +227,6 @@ function extractNetflixTemporaryCode(content) {
     const textOnly = cheerio.load(`<body>${source}</body>`)("body").text().replace(/\s+/g, " ").trim();
     const normalizedText = normalizeText(textOnly);
     const normalizedSource = normalizeText(source.replace(/<[^>]+>/g, " "));
-
-    const $ = cheerio.load(source || "<body></body>");
-    let isolatedCode = "";
-    $("*").each((_, el) => {
-        if (isolatedCode) return;
-        const candidate = normalizeTemporaryCodeCandidate($(el).text());
-        if (candidate) isolatedCode = candidate;
-    });
-    if (isolatedCode) return isolatedCode;
 
     const patterns = [
         /usa este codigo para ver netflix en tu dispositivo[\s\S]{0,260}?ingresa este codigo en el dispositivo solicitante para obtener acceso temporal\.?\s*((?:[0-9][\s.\-]*){4})/i,
@@ -256,6 +245,17 @@ function extractNetflixTemporaryCode(content) {
             }
         }
     }
+
+    // Use a leaf element only after the explicit text patterns. This avoids
+    // reading hidden placeholders or parent containers before the real code.
+    const $ = cheerio.load(source || "<body></body>");
+    let isolatedCode = "";
+    $("*").each((_, el) => {
+        if (isolatedCode || $(el).children().length) return;
+        const candidate = normalizeTemporaryCodeCandidate($(el).text());
+        if (candidate) isolatedCode = candidate;
+    });
+    if (isolatedCode) return isolatedCode;
 
     if (
         normalizedText.includes("acceso temporal")
@@ -887,35 +887,6 @@ async function fetchNetflixFlow({ toEmail, maxAgeMinutes = 15, action = "code" }
                         return { ...result, emailDate: msgDate };
                     }
                     lastFlowFailure = result;
-                } else {
-                    const $ = cheerio.load(html || "<body></body>");
-                    let extractedCode = null;
-
-                    // 1. Buscar en HTML con Cheerio dentro de cualquier etiqueta
-                    $('*').each((i, el) => {
-                        const t = $(el).text().trim();
-                        if (/^([0-9]\s*){4,6}$/.test(t)) {
-                            extractedCode = t.replace(/\s/g, '');
-                        }
-                    });
-
-                    // 2. Fallback: buscarlo en texto plano
-                    if (!extractedCode) {
-                        const plainMatches = text.match(/\b(?:[0-9]\s*){4,6}\b/g);
-                        if (plainMatches) {
-                            for (let mt of plainMatches) {
-                                let rm = mt.replace(/\s/g, '');
-                                if (rm.length >= 4 && rm !== "2023" && rm !== "2024" && rm !== "2025" && rm !== "2026") {
-                                    extractedCode = rm;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-
-                    if (extractedCode) {
-                        return { ok: true, type: "code", code: extractedCode, emailDate: msgDate };
-                    }
                 }
 
                 const extractedCode = extractNetflixTemporaryCode(`${subject}\n${text}\n${html}`);
@@ -1017,6 +988,8 @@ module.exports = {
         findNetflixButtonLink,
         findApprovalActionLink,
         extractApprovalDeviceName,
+        extractNetflixLoginOtp,
+        extractNetflixTemporaryCode,
         scrapeApproveLink,
         pageLooksApproved,
         pageLooksExpired,

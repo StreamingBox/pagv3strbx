@@ -48,6 +48,37 @@
     -webkit-overflow-scrolling: touch;
 }
 
+.admin-providers-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--stroke);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.admin-providers-pagination > div {
+    display: flex;
+    gap: 8px;
+}
+
+.admin-providers-pagination button {
+    min-height: 36px;
+    padding: 0 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+}
+
+.admin-providers-pagination button:disabled {
+    opacity: .48;
+    cursor: not-allowed;
+}
+
 .admin-providers-icon-action {
     width: 34px;
     height: 34px;
@@ -110,6 +141,14 @@
 
     .admin-providers-account-filters {
         grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .admin-providers-renewal-filter {
+        width: 100% !important;
+    }
+
+    .admin-providers-pagination {
+        flex-wrap: wrap;
     }
 
     .admin-providers-replacement-form {

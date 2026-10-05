@@ -3,7 +3,7 @@ import { animate } from "animejs/animation";
 import { createScope } from "animejs/scope";
 import { stagger } from "animejs/utils";
 import { useNavigate } from "react-router-dom";
-import { ArrowRightLeft, CalendarClock, ChevronDown, Crown, Download, Factory, FileSpreadsheet, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
+import { ArrowRightLeft, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, Crown, Download, Factory, FileSpreadsheet, RefreshCcw, RotateCcw, Save, Search, ShieldCheck, ToggleLeft, ToggleRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiFetch as baseApiFetch, apiLogout } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -226,11 +226,13 @@ export default function AdminProviders() {
     const [providerForm, setProviderForm] = useState(emptyProvider);
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
+    const [renewalProviderFilter, setRenewalProviderFilter] = useState("");
     const [cardRenewalFilter, setCardRenewalFilter] = useState("all");
     const [providerReportFilter, setProviderReportFilter] = useState("all");
     const [accountSearch, setAccountSearch] = useState("");
     const [accountOrder, setAccountOrder] = useState("desc");
     const [accountLimit, setAccountLimit] = useState("10");
+    const [accountPage, setAccountPage] = useState(1);
     const [loading, setLoading] = useState(true);
     const [exporting, setExporting] = useState("");
     const [savingProvider, setSavingProvider] = useState(false);
@@ -250,6 +252,11 @@ export default function AdminProviders() {
     const [success, setSuccess] = useState("");
     const topRankingRef = useRef(null);
     const renewalListRef = useRef(null);
+
+    function updateAccountFilter(setter, value) {
+        setAccountPage(1);
+        setter(value);
+    }
 
     async function logout() {
         try { await apiLogout(); } catch { /* logout remains local even if the request fails */ }
@@ -306,7 +313,15 @@ export default function AdminProviders() {
                 : Number(right.id) - Number(left.id));
     }, [accounts, accountOrder, accountSearch, cardRenewalFilter, filterProviderId, providerReportFilter]);
 
-    const visibleAccounts = useMemo(() => filteredAccounts.slice(0, Number(accountLimit)), [filteredAccounts, accountLimit]);
+    const accountPageCount = Math.max(1, Math.ceil(filteredAccounts.length / Number(accountLimit)));
+    const currentAccountPage = Math.min(accountPage, accountPageCount);
+    const firstVisibleAccount = filteredAccounts.length ? (currentAccountPage - 1) * Number(accountLimit) + 1 : 0;
+    const lastVisibleAccount = Math.min(currentAccountPage * Number(accountLimit), filteredAccounts.length);
+    const visibleAccounts = useMemo(() => filteredAccounts.slice(
+        (currentAccountPage - 1) * Number(accountLimit),
+        currentAccountPage * Number(accountLimit),
+    ), [filteredAccounts, accountLimit, currentAccountPage]);
+
     const replacementCandidates = useMemo(() => {
         if (!replacementSourceAccount) return [];
         const sourceId = Number(replacementSourceAccount.id);
@@ -613,6 +628,9 @@ export default function AdminProviders() {
         .map((account) => ({ ...account, daysRemaining: getDaysRemaining(account.expiresAt) }))
         .filter((account) => account.status === "active" && account.daysRemaining !== null && account.daysRemaining <= 7)
         .sort((left, right) => left.daysRemaining - right.daysRemaining), [accounts]);
+    const filteredUpcomingRenewals = useMemo(() => upcomingRenewals.filter((account) => (
+        !renewalProviderFilter || String(account.providerId) === String(renewalProviderFilter)
+    )), [upcomingRenewals, renewalProviderFilter]);
     const topProviderMax = Math.max(1, ...topProviders.map((provider) => Number(provider.activeAccountCount || 0)));
 
     useEffect(() => {
@@ -655,7 +673,7 @@ export default function AdminProviders() {
 
     useEffect(() => {
         const root = renewalListRef.current;
-        if (!root || !upcomingRenewals.length) return undefined;
+        if (!root || !filteredUpcomingRenewals.length) return undefined;
         const scope = createScope({
             root,
             mediaQueries: { reduceMotion: "(prefers-reduced-motion: reduce)" },
@@ -670,7 +688,7 @@ export default function AdminProviders() {
             });
         });
         return () => scope.revert();
-    }, [upcomingRenewals]);
+    }, [filteredUpcomingRenewals]);
 
     return (
         <div className="page-shell admin-providers-page">
@@ -744,16 +762,22 @@ export default function AdminProviders() {
                         </div>
 
                         <div className="admin-providers-panel admin-providers-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-                                <CalendarClock size={19} color="#fbbf24" aria-hidden />
-                                <div>
-                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Recordatorio de renovación</h2>
-                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Cuentas activas que vencen en 7 días o menos.</p>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <CalendarClock size={19} color="#fbbf24" aria-hidden />
+                                    <div>
+                                        <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Recordatorio de renovación</h2>
+                                        <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Cuentas activas que vencen en 7 días o menos.</p>
+                                    </div>
                                 </div>
+                                <select className="admin-providers-renewal-filter" style={{ ...inputStyle, width: 220, minHeight: 38 }} value={renewalProviderFilter} onChange={(event) => setRenewalProviderFilter(event.target.value)} aria-label="Filtrar recordatorio por proveedor">
+                                    <option value="">Todos los proveedores</option>
+                                    {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                                </select>
                             </div>
-                            {upcomingRenewals.length ? (
+                            {filteredUpcomingRenewals.length ? (
                                 <div ref={renewalListRef} style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#fbbf24 rgba(148,163,184,.14)" }}>
-                                    {upcomingRenewals.map((account) => {
+                                    {filteredUpcomingRenewals.map((account) => {
                                         const expired = account.daysRemaining < 0;
                                         return <div key={account.id} data-renewal-row className="admin-providers-renewal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
                                             <div style={{ minWidth: 0 }}>
@@ -769,7 +793,7 @@ export default function AdminProviders() {
                                         </div>;
                                     })}
                                 </div>
-                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "#86efac", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> No hay cuentas próximas a vencer.</div>}
+                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "#86efac", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {renewalProviderFilter ? "Este proveedor no tiene cuentas próximas a vencer." : "No hay cuentas próximas a vencer."}</div>}
                         </div>
                     </section>
 
@@ -984,19 +1008,19 @@ export default function AdminProviders() {
                             </div>
                         </div>}
                         <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr) minmax(170px, .9fr)", gap: 10, marginBottom: 10 }}>
-                            <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
-                            <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => setFilterProviderId(event.target.value)} aria-label="Filtrar cuentas por proveedor">
+                            <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => updateAccountFilter(setAccountSearch, event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => updateAccountFilter(setFilterProviderId, event.target.value)} aria-label="Filtrar cuentas por proveedor">
                                 <option value="">Todos los proveedores</option>
                                 {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
                             </select>
-                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountOrder} onChange={(event) => setAccountOrder(event.target.value)} aria-label="Orden de cuentas">
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountOrder} onChange={(event) => updateAccountFilter(setAccountOrder, event.target.value)} aria-label="Orden de cuentas">
                                 <option value="desc">ID descendente</option>
                                 <option value="asc">ID ascendente</option>
                             </select>
-                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => setAccountLimit(event.target.value)} aria-label="Cantidad de cuentas visibles">
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => updateAccountFilter(setAccountLimit, event.target.value)} aria-label="Cantidad de cuentas visibles">
                                 {[5, 10, 15, 20].map((amount) => <option key={amount} value={amount}>Últimos {amount}</option>)}
                             </select>
-                            <select style={{ ...inputStyle, minHeight: 38 }} value={cardRenewalFilter} onChange={(event) => setCardRenewalFilter(event.target.value)} aria-label="Filtrar vencimientos de renovación de tarjeta">
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={cardRenewalFilter} onChange={(event) => updateAccountFilter(setCardRenewalFilter, event.target.value)} aria-label="Filtrar vencimientos de renovación de tarjeta">
                                 <option value="all">Renovación: todas</option>
                                 <option value="expired">Renovación: vencidas</option>
                                 <option value="next7">Renovación: próximos 7 días</option>
@@ -1004,7 +1028,7 @@ export default function AdminProviders() {
                                 <option value="active">Renovación: vigentes</option>
                                 <option value="missing">Renovación: sin fecha</option>
                             </select>
-                            <select style={{ ...inputStyle, minHeight: 38 }} value={providerReportFilter} onChange={(event) => setProviderReportFilter(event.target.value)} aria-label="Filtrar reportes al proveedor">
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={providerReportFilter} onChange={(event) => updateAccountFilter(setProviderReportFilter, event.target.value)} aria-label="Filtrar reportes al proveedor">
                                 <option value="all">Reporte: todos</option>
                                 <option value="reported">Reporte: reportadas</option>
                                 <option value="pending">Reporte: pendientes</option>
@@ -1012,7 +1036,7 @@ export default function AdminProviders() {
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>
                             <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
-                            <span>Mostrando <strong style={{ color: "var(--text)" }}>{Math.min(visibleAccounts.length, Number(accountLimit))}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
+                            <span>Mostrando <strong style={{ color: "var(--text)" }}>{firstVisibleAccount}–{lastVisibleAccount}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
                         </div>
                         <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
                             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
@@ -1045,6 +1069,17 @@ export default function AdminProviders() {
                                     {!visibleAccounts.length && <tr><td colSpan="12" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
                                 </tbody>
                             </table>
+                        </div>
+                        <div className="admin-providers-pagination">
+                            <span>Página <strong>{currentAccountPage}</strong> de <strong>{accountPageCount}</strong></span>
+                            <div>
+                                <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.max(1, currentAccountPage - 1))} disabled={currentAccountPage <= 1} aria-label="Página anterior">
+                                    <ChevronLeft size={16} aria-hidden /> Anterior
+                                </button>
+                                <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.min(accountPageCount, currentAccountPage + 1))} disabled={currentAccountPage >= accountPageCount} aria-label="Página siguiente">
+                                    Siguiente <ChevronRight size={16} aria-hidden />
+                                </button>
+                            </div>
                         </div>
                     </section>
                 </main>

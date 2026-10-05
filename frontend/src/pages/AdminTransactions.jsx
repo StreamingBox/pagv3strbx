@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiLogout } from "../api/api";
-import { fetchAdminGlobalTransactions, fetchUsers } from "../api/adminUsersApi";
+import { fetchAdminGlobalTransactions, fetchAdminTransactionDeliveredAccounts, fetchUsers } from "../api/adminUsersApi";
 import TransactionsList from "../components/wallet/TransactionsList";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
@@ -114,6 +114,7 @@ export default function AdminTransactions() {
                     ) : (
                         <TransactionsList
                             fetchFn={fetchAdminGlobalTransactions}
+                            fetchDeliveredAccounts={fetchAdminTransactionDeliveredAccounts}
                             users={allUsers}
                         />
                     )}

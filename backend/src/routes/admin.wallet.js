@@ -3,6 +3,7 @@ const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { resolveDeliveredAccountId } = require("../services/transactionDelivery.service");
 
 const router = express.Router();
 
@@ -276,8 +277,111 @@ router.get("/admin/wallet/transactions", requireAuth, requireRole("admin"), asyn
     }
 });
 
+router.get("/admin/wallet/transactions/:transactionId/delivered-accounts", requireAuth, requireRole("admin"), async (req, res) => {
+    const transactionId = Number(req.params.transactionId);
+    if (!Number.isInteger(transactionId) || transactionId <= 0) {
+        return res.status(400).json({ message: "ID de transacción inválido." });
+    }
 
+    try {
+        const [transactionRows] = await pool.query(
+            `SELECT t.type, t.reference_type, t.reference_id, o.created_at AS order_created_at
+               FROM wallet_transactions t
+               LEFT JOIN orders o ON t.reference_type = 'order' AND o.id = t.reference_id
+              WHERE t.id = ?
+              LIMIT 1`,
+            [transactionId]
+        );
+        const transaction = transactionRows[0];
+        if (!transaction) return res.status(404).json({ message: "Transacción no encontrada." });
+        if (transaction.type !== "purchase" || transaction.reference_type !== "order"
+            || !transaction.reference_id || !transaction.order_created_at) {
+            return res.json({ items: [] });
+        }
 
+        const orderId = Number(transaction.reference_id);
+        const [items] = await pool.query(
+            `SELECT oi.id AS item_id, s.id AS subscription_id, s.platform_account_id AS current_account_id,
+                    s.event_link_url, s.event_link_title, s.expires_at,
+                    p.name AS platform_name, d.name AS duration_name
+               FROM order_items oi
+               JOIN subscriptions s ON s.id = oi.subscription_id
+               JOIN platforms p ON p.id = oi.platform_id
+               LEFT JOIN durations d ON d.id = s.duration_id
+              WHERE oi.order_id = ?
+              ORDER BY oi.id`,
+            [orderId]
+        );
+        if (!items.length) return res.json({ items: [] });
+
+        const subscriptionIds = [...new Set(items.map((item) => Number(item.subscription_id)))];
+        const placeholders = subscriptionIds.map(() => "?").join(",");
+        const [historyRows] = await pool.query(
+            `SELECT 'replacement' AS source, subscription_id, order_id, NULL AS renewal_order_id,
+                    old_account_id, new_account_id, created_at, id
+               FROM account_replacement_logs
+              WHERE subscription_id IN (${placeholders})
+             UNION ALL
+             SELECT 'renewal' AS source, subscription_id, NULL AS order_id, renewal_order_id,
+                    previous_account_id AS old_account_id, new_account_id, created_at, id
+               FROM subscription_renewal_logs
+              WHERE subscription_id IN (${placeholders})`,
+            [...subscriptionIds, ...subscriptionIds]
+        );
+        const historyBySubscription = new Map();
+        for (const event of historyRows) {
+            const key = Number(event.subscription_id);
+            const history = historyBySubscription.get(key) || [];
+            history.push(event);
+            historyBySubscription.set(key, history);
+        }
+
+        const resolvedItems = items.map((item) => {
+            const deliveredAccountId = resolveDeliveredAccountId(
+                item.current_account_id,
+                transaction.order_created_at,
+                historyBySubscription.get(Number(item.subscription_id)) || [],
+                orderId,
+            );
+            return { ...item, delivered_account_id: deliveredAccountId };
+        });
+        const accountIds = [...new Set(resolvedItems.flatMap((item) => [item.delivered_account_id, item.current_account_id])
+            .map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+        const accountById = new Map();
+
+        if (accountIds.length) {
+            const accountPlaceholders = accountIds.map(() => "?").join(",");
+            const [accountRows] = await pool.query(
+                `SELECT pa.id, pa.platform_id, p.name AS platform_name, pa.email, pa.password,
+                        pa.access_url, pa.pin, pa.two_factor_secret, pa.profile_number
+                   FROM platform_accounts pa
+                   LEFT JOIN platforms p ON p.id = pa.platform_id
+                  WHERE pa.id IN (${accountPlaceholders})`,
+                accountIds
+            );
+            for (const account of accountRows) accountById.set(Number(account.id), account);
+        }
+
+        return res.json({
+            items: resolvedItems.map((item) => ({
+                itemId: item.item_id,
+                subscriptionId: item.subscription_id,
+                platformName: item.platform_name,
+                durationName: item.duration_name,
+                expiresAt: item.expires_at,
+                eventLinkTitle: item.event_link_title,
+                eventLinkUrl: item.event_link_url,
+                deliveredAccount: accountById.get(Number(item.delivered_account_id)) || null,
+                currentAccount: Number(item.current_account_id) !== Number(item.delivered_account_id)
+                    ? accountById.get(Number(item.current_account_id)) || null
+                    : null,
+            })),
+        });
+    } catch (error) {
+        console.error("Error GET /admin/wallet/transactions/:transactionId/delivered-accounts:", error);
+        return res.status(500).json({ message: "No se pudieron cargar los datos entregados." });
+    }
+});
 
 router.get("/admin/wallet/transactions/:userId", requireAuth, requireRole("admin"), async (req, res) => {
     try {

@@ -109,6 +109,12 @@ export async function fetchAdminGlobalTransactions(query = {}) {
     });
 }
 
+export async function fetchAdminTransactionDeliveredAccounts(transactionId) {
+    return request(`/admin/wallet/transactions/${transactionId}/delivered-accounts`, {
+        method: "GET",
+    });
+}
+
 export async function resetInvestment(userId) {
     return request(`/admin/wallet/investment/${userId}`, {
         method: "DELETE",

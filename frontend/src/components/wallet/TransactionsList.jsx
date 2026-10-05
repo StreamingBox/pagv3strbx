@@ -155,7 +155,29 @@ function UserRow({ label, sublabel, selected, onClick }) {
 }
 
 /* ─── Transaction Detail Modal ─── */
-function TransactionModal({ tx, onClose }) {
+function DeliveredAccountFields({ account }) {
+    const fields = [
+        ["Correo", account.email],
+        ["Contraseña", account.password],
+        ["Perfil", account.profile_number],
+        ["PIN", account.pin],
+        ["2FA / Secreto", account.two_factor_secret],
+        ["Enlace de acceso", account.access_url],
+    ];
+
+    return (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 10 }}>
+            {fields.map(([label, value]) => (
+                <div key={label} style={{ minWidth: 0, padding: "9px 10px", borderRadius: 9, background: "var(--bg0)", border: "1px solid var(--stroke2)" }}>
+                    <div style={{ color: "var(--muted)", fontSize: 10, fontWeight: 800, textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                    <div style={{ color: "var(--text)", fontSize: 12, fontWeight: 650, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{value || "—"}</div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function TransactionModal({ tx, onClose, deliveryDetails, canViewDeliveredAccounts }) {
     if (!tx) return null;
     const { label, color, bg, icon } = getType(tx.type);
     return (
@@ -181,7 +203,8 @@ function TransactionModal({ tx, onClose }) {
                     onClick={e => e.stopPropagation()}
                     style={{
                         background: "var(--card)", border: "1px solid var(--stroke)",
-                        borderRadius: 20, padding: "28px 32px", maxWidth: 480, width: "100%",
+                        borderRadius: 20, padding: "24px 26px", maxWidth: 680, width: "100%",
+                        maxHeight: "90vh", overflowY: "auto",
                         boxShadow: "0 30px 80px rgba(0,0,0,0.4)",
                     }}
                 >
@@ -215,6 +238,47 @@ function TransactionModal({ tx, onClose }) {
                         </div>
                     ))}
 
+                    {canViewDeliveredAccounts && tx.type === "purchase" && tx.reference_type === "order" && (
+                        <section style={{ marginTop: 18, padding: 14, borderRadius: 12, border: "1px solid var(--stroke)", background: "rgba(13,166,242,.06)" }}>
+                            <div style={{ color: "var(--text)", fontSize: 14, fontWeight: 850 }}>Datos de la cuenta entregada</div>
+                            <p style={{ margin: "4px 0 12px", color: "var(--muted)", fontSize: 11 }}>Compra #{tx.reference_id}. Los datos se cargan solo al abrir este detalle.</p>
+                            {deliveryDetails?.loading ? (
+                                <div style={{ color: "var(--muted)", fontSize: 12 }}>Cargando cuentas entregadas...</div>
+                            ) : deliveryDetails?.error ? (
+                                <div role="alert" style={{ color: "#fca5a5", fontSize: 12 }}>{deliveryDetails.error}</div>
+                            ) : deliveryDetails?.items?.length ? (
+                                <div style={{ display: "grid", gap: 12 }}>
+                                    {deliveryDetails.items.map((item) => (
+                                        <div key={item.itemId} style={{ minWidth: 0, padding: 12, borderRadius: 10, background: "var(--card)", border: "1px solid var(--stroke2)" }}>
+                                            <div style={{ color: "#67e8f9", fontSize: 12, fontWeight: 850 }}>
+                                                {item.deliveredAccount?.platform_name || item.platformName}
+                                                {item.durationName ? ` · ${item.durationName}` : ""}
+                                                {item.deliveredAccount?.profile_number ? ` · Perfil ${item.deliveredAccount.profile_number}` : ""}
+                                            </div>
+                                            {item.deliveredAccount ? (
+                                                <DeliveredAccountFields account={item.deliveredAccount} />
+                                            ) : item.eventLinkUrl ? (
+                                                <div style={{ marginTop: 9, color: "var(--text)", fontSize: 12, overflowWrap: "anywhere" }}>
+                                                    {item.eventLinkTitle || "Enlace entregado"}: {item.eventLinkUrl}
+                                                </div>
+                                            ) : (
+                                                <div style={{ marginTop: 9, color: "var(--muted)", fontSize: 12 }}>Esta compra no tiene una cuenta individual asociada.</div>
+                                            )}
+                                            {item.currentAccount && (
+                                                <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--stroke2)" }}>
+                                                    <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 850 }}>Cuenta actualmente vinculada · {item.currentAccount.platform_name || item.platformName}</div>
+                                                    <DeliveredAccountFields account={item.currentAccount} />
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div style={{ color: "var(--muted)", fontSize: 12 }}>No se encontraron datos de cuenta para esta compra.</div>
+                            )}
+                        </section>
+                    )}
+
                     <button onClick={onClose} style={{ marginTop: 20, width: "100%", padding: "10px", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "var(--font)", boxShadow: "0 4px 16px rgba(13,166,242,0.3)" }}>
                         Cerrar
                     </button>
@@ -225,7 +289,7 @@ function TransactionModal({ tx, onClose }) {
 }
 
 /* ─── Main ─── */
-export default function TransactionsList({ fetchFn, userId, users }) {
+export default function TransactionsList({ fetchFn, userId, users, fetchDeliveredAccounts }) {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
@@ -240,8 +304,27 @@ export default function TransactionsList({ fetchFn, userId, users }) {
     const [search, setSearch] = useState("");          // búsqueda libre
     const [searchInput, setSearchInput] = useState(""); // input controlado
     const [selectedTx, setSelectedTx] = useState(null);
+    const [deliveryDetails, setDeliveryDetails] = useState({ transactionId: null, items: [], loading: false, error: "" });
     const [showUserDrop, setShowUserDrop] = useState(false);
     const userDropRef = useRef(null);
+
+    async function openTransaction(tx) {
+        setSelectedTx(tx);
+        const canLoadAccounts = Boolean(fetchDeliveredAccounts && tx.type === "purchase" && tx.reference_type === "order" && tx.reference_id);
+        setDeliveryDetails({ transactionId: tx.id, items: [], loading: canLoadAccounts, error: "" });
+        if (!canLoadAccounts) return;
+
+        try {
+            const result = await fetchDeliveredAccounts(tx.id);
+            setDeliveryDetails((current) => current.transactionId === tx.id
+                ? { ...current, items: result?.items || [], loading: false }
+                : current);
+        } catch (requestError) {
+            setDeliveryDetails((current) => current.transactionId === tx.id
+                ? { ...current, loading: false, error: requestError.message || "No se pudieron cargar los datos de la cuenta." }
+                : current);
+        }
+    }
 
     // Close user dropdown on outside click
     useEffect(() => {
@@ -310,7 +393,12 @@ export default function TransactionsList({ fetchFn, userId, users }) {
 
     return (
         <>
-            <TransactionModal tx={selectedTx} onClose={() => setSelectedTx(null)} />
+            <TransactionModal
+                tx={selectedTx}
+                onClose={() => setSelectedTx(null)}
+                deliveryDetails={selectedTx && deliveryDetails.transactionId === selectedTx.id ? deliveryDetails : null}
+                canViewDeliveredAccounts={Boolean(fetchDeliveredAccounts)}
+            />
 
             {/* ─── KPI Row ─── */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 20 }}>
@@ -485,7 +573,7 @@ export default function TransactionsList({ fetchFn, userId, users }) {
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             transition={{ delay: idx * 0.015 }}
-                                            onClick={() => setSelectedTx(t)}
+                                            onClick={() => openTransaction(t)}
                                             style={{
                                                 cursor: "pointer",
                                                 borderBottom: "1px solid var(--stroke2)",

@@ -6,6 +6,7 @@ const { credFingerprint } = require("../utils/credFingerprint");
 const {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
+    getProviderForNetflixAccountEmail,
     countDeliveredByFingerprint,
     getLastCodeReset,
 } = require("./codeQueries");
@@ -375,11 +376,18 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         }
     }
 
-    // El proveedor se decide por cuenta. STRBX/Gmail es el valor normal; los
-    // portales externos solo se activan para cuentas Netflix marcadas por el admin.
-    const accountCodeProvider = requestedSlug === "netflix"
+    // El proveedor indicado en inventario manda; si quedó en el valor por
+    // defecto, inferimos el portal desde la cuenta Netflix del listado proveedor.
+    let accountCodeProvider = requestedSlug === "netflix"
         ? normalizeCodeProvider(sub.accountCodeProvider)
         : STRBX_PROVIDER;
+    if (requestedSlug === "netflix" && accountCodeProvider === STRBX_PROVIDER) {
+        const listedProviderName = await getProviderForNetflixAccountEmail(soldAccountEmail);
+        if (listedProviderName) {
+            const inferredProvider = normalizeCodeProvider(listedProviderName);
+            if (inferredProvider !== STRBX_PROVIDER) accountCodeProvider = inferredProvider;
+        }
+    }
     const jeffProviderConfig = getJeffProviderConfigForProvider(accountCodeProvider, process.env, {
         slug: requestedSlug,
     });

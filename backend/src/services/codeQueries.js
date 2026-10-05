@@ -46,6 +46,26 @@ async function getSubscriptionWithAccount(orderId) {
     return rows?.[0] || null;
 }
 
+async function getProviderForNetflixAccountEmail(accountEmail) {
+    const email = String(accountEmail || "").trim();
+    if (!email) return null;
+
+    const [rows] = await pool.query(
+        `SELECT p.name AS providerName
+           FROM provider_accounts pa
+           JOIN providers p ON p.id = pa.provider_id
+           JOIN platforms pl ON pl.id = pa.platform_id
+          WHERE LOWER(TRIM(pa.account_email)) = LOWER(?)
+            AND pa.status = 'active'
+            AND p.is_active = 1
+            AND (LOWER(pl.slug) LIKE '%netflix%' OR LOWER(pl.name) LIKE '%netflix%')
+          ORDER BY pa.updated_at DESC, pa.id DESC
+          LIMIT 1`,
+        [email]
+    );
+    return rows?.[0]?.providerName || null;
+}
+
 async function getLastDelivered(orderId, platformSlugLower) {
     const [rows] = await pool.query(
         `SELECT id, credential_fingerprint, created_at
@@ -205,6 +225,7 @@ async function getLastCodeReset({ orderId, platformSlugLower, credentialFingerpr
 module.exports = {
     getCodePlatformBySlug,
     getSubscriptionWithAccount,
+    getProviderForNetflixAccountEmail,
     getLastDelivered,
     countDeliveredByFingerprint,
     getDeliveryCountersByFingerprint,

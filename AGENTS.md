@@ -1,6 +1,6 @@
 # Instrucciones obligatorias para este repositorio
 
-Lee este archivo antes de explorar, editar, probar, respaldar o desplegar cambios. Aplícalo junto con cualquier `AGENTS.md` más específico que exista en los directorios afectados. Si una instrucción no se puede cumplir, detente antes de una acción de riesgo y explica el bloqueo.
+Antes de cada cambio, vuelve a consultar este archivo, incluso si el cambio es un seguimiento dentro de la misma conversación. Léelo también antes de explorar, probar, respaldar o desplegar. Aplícalo junto con cualquier `AGENTS.md` más específico que exista en los directorios afectados. Si una instrucción no se puede cumplir, detente antes de una acción de riesgo y explica el bloqueo.
 
 ## Antes de cada tarea
 

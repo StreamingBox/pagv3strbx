@@ -9,6 +9,7 @@ import FolderGrid from "../components/advertising/FolderGrid.jsx";
 import ImageGrid from "../components/advertising/ImageGrid.jsx";
 import LightboxPreview from "../components/advertising/LightboxPreview.jsx";
 import { startDownload } from "../components/advertising/utils.js";
+import { sortAdvertisingFolders } from "../utils/sortAdvertisingFolders.js";
 import { apiGet } from "../api/api";
 import "../styles/special-effects.css";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -24,7 +25,7 @@ async function fetchFolders() {
 async function fetchImages(folderId, page) {
     if (!folderId) return { data: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 } };
     const response = await apiGet(`/advertising/images/${folderId}?page=${page}&limit=10`);
-    if (!response.ok) throw new Error(response.data?.message || "Error cargando imagenes.");
+    if (!response.ok) throw new Error(response.data?.message || "Error cargando archivos.");
     return {
         data: Array.isArray(response.data?.data) ? response.data.data : [],
         pagination: response.data?.pagination || { page, limit: 10, total: 0, totalPages: 1 },
@@ -52,7 +53,7 @@ export default function Advertising() {
         keepPreviousData: true,
     });
 
-    const folders = foldersQuery.data || [];
+    const folders = sortAdvertisingFolders(foldersQuery.data || []);
     const images = imagesQuery.data?.data || [];
     const imagePagination = imagesQuery.data?.pagination || { page: 1, limit: 10, total: 0, totalPages: 1 };
     const error = foldersQuery.error?.message || imagesQuery.error?.message || "";
@@ -99,7 +100,7 @@ export default function Advertising() {
                 <main className="main" style={{ padding: "20px 24px 40px" }}>
                     <AdvertisingHeader
                         title="Publicidad"
-                        subtitle="Explora imagenes promocionales y descargalas con un clic."
+                        subtitle="Explora imagenes y videos promocionales y descargalos con un clic."
                     />
 
                     <AnimatePresence>
@@ -138,7 +139,7 @@ export default function Advertising() {
                                     Volver
                                 </button>
                                 <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text)" }}>{selectedFolder.name}</div>
-                                <div style={{ fontSize: 13, color: "var(--muted)" }}>{images.length} imagenes</div>
+                                <div style={{ fontSize: 13, color: "var(--muted)" }}>{images.length} archivo(s)</div>
                             </div>
 
                             {imagesQuery.isLoading ? (
@@ -151,12 +152,12 @@ export default function Advertising() {
                                         images={images}
                                         onPreview={setPreviewImage}
                                         onDownload={startDownload}
-                                        emptyTitle="No hay imagenes en esta carpeta"
+                                        emptyTitle="No hay archivos en esta carpeta"
                                     />
                                     {images.length ? (
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
                                             <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>
-                                                Mostrando {images.length} de {imagePagination.total || images.length} imagen(es)
+                                                Mostrando {images.length} de {imagePagination.total || images.length} archivo(s)
                                             </span>
                                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                                 <button className="btn-ghost" disabled={imagePage <= 1} onClick={() => setImagePage((page) => Math.max(1, page - 1))} style={{ height: 38, padding: "0 14px" }}>Anterior</button>

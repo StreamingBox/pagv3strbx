@@ -1,5 +1,13 @@
 const { currentBogotaDateOnly, formatExpiryDateOnly } = require("./date");
 
+function canRenewAfterExpiry({ actorRole, status, isAttended, isPastExpiry, extendedRenewal = false }) {
+    if (!isPastExpiry || String(status || "").toLowerCase() !== "active" || Number(isAttended) === 1) {
+        return false;
+    }
+
+    return actorRole === "admin" ? extendedRenewal === true : true;
+}
+
 function getRenewalEligibility({
     expiresAt,
     expiresAtIsDateOnly = false,
@@ -9,6 +17,7 @@ function getRenewalEligibility({
     renewalCount = 0,
     platformSlug = "",
     platformName = "",
+    allowExpired = false,
     now = new Date(),
 }) {
     const normalizedSlug = String(platformSlug || "").trim().toLowerCase();
@@ -60,7 +69,7 @@ function getRenewalEligibility({
     }
 
     const todayBogota = currentBogotaDateOnly(now);
-    if (expiresOnDate < todayBogota) {
+    if (expiresOnDate < todayBogota && !allowExpired) {
         return {
             canRenew: false,
             expiresOnDate,
@@ -75,4 +84,4 @@ function getRenewalEligibility({
     };
 }
 
-module.exports = { getRenewalEligibility };
+module.exports = { canRenewAfterExpiry, getRenewalEligibility };

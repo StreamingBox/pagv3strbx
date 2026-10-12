@@ -8,6 +8,7 @@ const {
     normalizeCurrency,
 } = require("../services/providerAccounts.service");
 const { currentBogotaDateOnly } = require("../utils/date");
+const { isStrbxReportedNetflixProviderAccount } = require("../utils/strbxReportedAccounts");
 
 const router = express.Router();
 
@@ -407,13 +408,18 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
 
     try {
         const [existingRows] = await pool.query(
-            `SELECT provider_id AS providerId, platform_id AS platformId,
+            `SELECT provider_id AS providerId, provider.name AS providerName,
+                    platform_id AS platformId, platform.name AS platformName,
                     account_email AS accountEmail, account_password AS accountPassword,
                     DATE_FORMAT(purchase_date, '%Y-%m-%d') AS purchaseDate,
                     DATE_FORMAT(expires_at, '%Y-%m-%d') AS expiresAt,
                     DATE_FORMAT(card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
+                    provider_reported_at AS providerReportedAt,
                     ip_address AS ipAddress, amount, currency, status
-             FROM provider_accounts WHERE id = ? LIMIT 1`,
+             FROM provider_accounts pa
+             JOIN providers provider ON provider.id = pa.provider_id
+             JOIN platforms platform ON platform.id = pa.platform_id
+             WHERE pa.id = ? LIMIT 1`,
             [id]
         );
         const existing = existingRows[0];
@@ -423,6 +429,20 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
         const renewalRequested = body.renew === true
             || body.renew === "true"
             || String(body.action || "").trim().toLowerCase() === "renew";
+        const protectedReportedAccount = isStrbxReportedNetflixProviderAccount(existing);
+        if (renewalRequested && protectedReportedAccount) {
+            return res.status(409).json({ message: "Esta cuenta Netflix de Streaming Box está reportada y no se puede renovar." });
+        }
+        if (protectedReportedAccount && (
+            (body.providerId !== undefined && Number(body.providerId) !== Number(existing.providerId))
+            || (body.provider_id !== undefined && Number(body.provider_id) !== Number(existing.providerId))
+            || (body.platformId !== undefined && Number(body.platformId) !== Number(existing.platformId))
+            || (body.platform_id !== undefined && Number(body.platform_id) !== Number(existing.platformId))
+            || (body.accountEmail !== undefined && String(body.accountEmail).trim().toLowerCase() !== String(existing.accountEmail).trim().toLowerCase())
+            || (body.account_email !== undefined && String(body.account_email).trim().toLowerCase() !== String(existing.accountEmail).trim().toLowerCase())
+        )) {
+            return res.status(409).json({ message: "Cierra el reporte al proveedor antes de cambiar el proveedor, la plataforma o el correo de esta cuenta." });
+        }
         const renewalDate = currentBogotaDateOnly();
         const merged = {
             providerId: body.providerId ?? body.provider_id ?? existing.providerId,

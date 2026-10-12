@@ -246,7 +246,7 @@ async function verifyFolderAccess(folderId) {
 }
 
 /**
- * Lista las imágenes dentro de una carpeta de Drive.
+ * Lista imágenes y videos dentro de una carpeta de Drive.
  * Verifica acceso a la carpeta antes de listar.
  */
 async function listImagesInFolder(folderId) {
@@ -260,7 +260,7 @@ async function listImagesInFolder(folderId) {
 
     const res = await drive.files.list({
         ...getDriveRequestDefaults(),
-        q: `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`,
+        q: `'${folderId}' in parents and (mimeType contains 'image/' or mimeType contains 'video/') and trashed=false`,
         fields: "files(id, name, mimeType, webViewLink, thumbnailLink, size, createdTime)",
         orderBy: "createdTime desc",
     });
@@ -382,11 +382,13 @@ function isExplicitlyActive(value) {
  * Nunca expone webViewLink ni el thumbnailLink crudo de la API de Drive.
  */
 function normalizeImage(file, dbMeta = null) {
+    const mimeType = dbMeta?.mime_type || file.mimeType || "";
     return {
         id: dbMeta?.id || null,
         fileId: file.id,
         name: dbMeta?.file_name || file.name,
-        mimeType: dbMeta?.mime_type || file.mimeType,
+        mimeType,
+        isVideo: mimeType.startsWith("video/"),
         thumbnailLink: getThumbnailLink(file.id),
         previewLink: getPreviewLink(file.id),
         downloadLink: getDownloadLink(file.id),
@@ -412,7 +414,7 @@ async function getFileInfo(fileId) {
     return res.data;
 }
 
-async function getFileStream(fileId) {
+async function getFileStream(fileId, range = "") {
     const drive = getDrive();
     const meta = await getFileInfo(fileId);
     const response = await drive.files.get(
@@ -421,11 +423,16 @@ async function getFileStream(fileId) {
             supportsAllDrives: true,
             alt: "media",
         },
-        { responseType: "stream" }
+        {
+            responseType: "stream",
+            ...(range ? { headers: { Range: range } } : {}),
+        }
     );
     return {
         meta,
         stream: response.data,
+        status: response.status,
+        headers: response.headers,
     };
 }
 

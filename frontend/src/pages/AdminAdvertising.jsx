@@ -25,6 +25,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import AdvertisingHeader from "../components/advertising/AdvertisingHeader.jsx";
 import ImageGrid from "../components/advertising/ImageGrid.jsx";
 import { formatSize } from "../components/advertising/utils.js";
+import { sortAdvertisingFolders } from "../utils/sortAdvertisingFolders.js";
 import "../styles/special-effects.css";
 
 const LOGO_URL = "/api/branding/logo";
@@ -68,7 +69,7 @@ async function fetchFolders() {
 async function fetchImages(folderId, page, limit) {
     if (!folderId) return { data: [], pagination: { page: 1, limit, total: 0, totalPages: 1 } };
     const response = await apiGet(`/admin/advertising/images/${folderId}?page=${page}&limit=${limit}`);
-    if (!response.ok) throw new Error(response.data?.message || "Error cargando imagenes.");
+    if (!response.ok) throw new Error(response.data?.message || "Error cargando archivos.");
     return {
         data: Array.isArray(response.data?.data) ? response.data.data : [],
         pagination: response.data?.pagination || { page, limit, total: 0, totalPages: 1 },
@@ -110,7 +111,7 @@ export default function AdminAdvertising() {
         keepPreviousData: true,
     });
 
-    const folders = foldersQuery.data || [];
+    const folders = sortAdvertisingFolders(foldersQuery.data || []);
     const images = imagesQuery.data?.data || [];
     const imagePagination = imagesQuery.data?.pagination || { page: 1, limit: imageLimit, total: 0, totalPages: 1 };
     const error = actionError || foldersQuery.error?.message || imagesQuery.error?.message || "";
@@ -129,7 +130,7 @@ export default function AdminAdvertising() {
         const driveStatus = params.get("drive");
         if (driveStatus === "connected") {
             setActionError("");
-            showSuccess("Google Drive reconectado. Ya puedes volver a cargar las imagenes.", 5000);
+            showSuccess("Google Drive reconectado. Ya puedes volver a cargar archivos.", 5000);
         } else if (driveStatus === "error") {
             setActionError(params.get("message") || "No se pudo reconectar Google Drive.");
         }
@@ -245,8 +246,8 @@ export default function AdminAdvertising() {
                 showSuccess(`Carpeta "${confirmDelete.name}" eliminada.`);
             } else {
                 const response = await apiDelete(`/admin/advertising/images/${confirmDelete.id}`);
-                if (!response.ok) throw new Error(response.data?.message || "Error eliminando imagen.");
-                showSuccess(`Imagen "${confirmDelete.name}" eliminada.`);
+                if (!response.ok) throw new Error(response.data?.message || "Error eliminando archivo.");
+                showSuccess(`Archivo "${confirmDelete.name}" eliminado.`);
             }
             const folderId = selectedFolder?.id;
             setConfirmDelete(null);
@@ -258,10 +259,18 @@ export default function AdminAdvertising() {
     }
 
     async function uploadImages(filesInput) {
+        const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"]);
+        const allowedExtensions = /\.(jpe?g|png|webp|gif|mp4|webm)$/i;
         const files = Array.from(filesInput || []).filter((file) =>
-            String(file?.type || "").toLowerCase().startsWith("image/")
+            allowedTypes.has(String(file?.type || "").toLowerCase()) ||
+            (!file?.type && allowedExtensions.test(file?.name || ""))
         );
-        if (!files.length) return;
+        if (!files.length) {
+            if (Array.from(filesInput || []).length) {
+                setActionError("Formatos permitidos: JPEG, PNG, WEBP, GIF, MP4 y WebM.");
+            }
+            return;
+        }
         if (!selectedFolder) {
             setActionError("Selecciona una carpeta primero.");
             return;
@@ -278,8 +287,8 @@ export default function AdminAdvertising() {
             formData.append("folder_id", selectedFolder.id);
 
             const response = await apiPostFormData(`/admin/advertising/images/${selectedFolder.id}`, formData);
-            if (!response.ok) throw new Error(response.data?.message || "Error subiendo imagenes.");
-            showSuccess(response.data?.message || `${files.length} imagen(es) subida(s).`, 4000);
+            if (!response.ok) throw new Error(response.data?.message || "Error subiendo archivos.");
+            showSuccess(response.data?.message || `${files.length} archivo(s) subido(s).`, 4000);
             setImagePage(1);
             await refreshAdvertisingQueries(selectedFolder.id);
         } catch (err) {
@@ -298,7 +307,7 @@ export default function AdminAdvertising() {
             if (!response.ok) throw new Error(response.data?.message || "Error.");
             await refreshAdvertisingQueries(selectedFolder?.id);
         } catch (err) {
-            setActionError(err?.message || "Error actualizando imagen.");
+            setActionError(err?.message || "Error actualizando archivo.");
         }
     }
 
@@ -355,7 +364,7 @@ export default function AdminAdvertising() {
                     ) : (
                         <>
                             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{folder.name}</div>
-                            <div style={{ fontSize: 11, color: "var(--muted)" }}>{folder.imageCount || 0} imagen(es)</div>
+                            <div style={{ fontSize: 11, color: "var(--muted)" }}>{folder.mediaCount ?? folder.imageCount ?? 0} archivo(s)</div>
                         </>
                     )}
                 </div>
@@ -424,7 +433,7 @@ export default function AdminAdvertising() {
                 <main className="main" style={{ padding: "20px 24px 40px" }}>
                     <AdvertisingHeader
                         title="Publicidad"
-                        subtitle="Administra imagenes publicitarias en Google Drive. Organiza por carpetas y controla visibilidad."
+                        subtitle="Administra imagenes y videos publicitarios en Google Drive. Organiza por carpetas y controla visibilidad."
                     >
                         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
                             <div style={{ background: "rgba(13,166,242,0.1)", border: "1px solid rgba(13,166,242,0.25)", borderRadius: 10, padding: "6px 14px", display: "flex", alignItems: "center", gap: 8 }}>
@@ -510,7 +519,7 @@ export default function AdminAdvertising() {
                                 <div style={{ padding: "80px 20px", textAlign: "center", color: "var(--muted)" }}>
                                     <ImageIcon size={38} strokeWidth={1.7} style={{ marginBottom: 16, color: "#38bdf8" }} />
                                     <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Selecciona una carpeta</div>
-                                    <div style={{ fontSize: 13 }}>Elige una carpeta del panel izquierdo para ver y administrar sus imagenes.</div>
+                                    <div style={{ fontSize: 13 }}>Elige una carpeta del panel izquierdo para ver y administrar sus archivos.</div>
                                 </div>
                             ) : (
                                 <>
@@ -539,18 +548,18 @@ export default function AdminAdvertising() {
                                             <div>
                                                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{selectedFolder.name}</h3>
                                                 <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                                                    {images.length} imagenes - {formatSize(totalSize, "-")}
+                                                    {images.length} archivo(s) - {formatSize(totalSize, "-")}
                                                 </span>
                                                 <div style={{ fontSize: 12, color: dragActive ? "#38bdf8" : "var(--muted)", marginTop: 6, fontWeight: dragActive ? 700 : 500 }}>
-                                                    {dragActive ? "Suelta las imagenes para cargarlas en esta carpeta." : "Tambien puedes arrastrar varias imagenes aqui."}
+                                                    {dragActive ? "Suelta los archivos para cargarlos en esta carpeta." : "Arrastra imagenes o videos MP4/WebM (max. 50 MB cada uno)."}
                                                 </div>
                                             </div>
                                         </div>
                                         <div style={{ display: "flex", gap: 8 }}>
-                                            <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: "none" }} onChange={(event) => uploadImages(event.target.files)} />
+                                            <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,.jpg,.jpeg,.png,.webp,.gif,.mp4,.webm" style={{ display: "none" }} onChange={(event) => uploadImages(event.target.files)} />
                                             <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{ background: "linear-gradient(135deg, #0da6f2, #6333ff)", color: "#fff", border: "none", padding: "0 18px", height: 38, borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font)", boxShadow: "0 4px 12px rgba(13,166,242,0.3)", display: "flex", alignItems: "center", gap: 7 }}>
                                                 <UploadCloud size={16} />
-                                                {uploading ? "Subiendo..." : "Subir imagenes"}
+                                                {uploading ? "Subiendo..." : "Subir archivos"}
                                             </button>
                                         </div>
                                     </div>
@@ -585,7 +594,7 @@ export default function AdminAdvertising() {
                                                 {images.length ? (
                                                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
                                                         <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700 }}>
-                                                            Mostrando {images.length} de {imagePagination.total || images.length} imagen(es)
+                                                            Mostrando {images.length} de {imagePagination.total || images.length} archivo(s)
                                                         </div>
                                                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                                             <select
@@ -638,7 +647,7 @@ export default function AdminAdvertising() {
                                 Confirmar eliminacion
                             </h3>
                             <p style={{ margin: "0 0 20px", color: "var(--muted)", fontSize: 13, lineHeight: 1.6 }}>
-                                Esta accion eliminara {confirmDelete.type === "folder" ? "la carpeta" : "la imagen"} "{confirmDelete.name}".
+                                Esta accion eliminara {confirmDelete.type === "folder" ? "la carpeta" : "el archivo"} "{confirmDelete.name}".
                             </p>
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                                 <button className="btn-ghost" onClick={() => setConfirmDelete(null)} style={{ height: 36, padding: "0 14px" }}>Cancelar</button>

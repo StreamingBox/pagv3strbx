@@ -17,8 +17,10 @@ const {
 } = require("../utils/normalize");
 const { validateCostModelInput } = require("../utils/accountCosts");
 const { normalizeAccessUrl } = require("../utils/accountAccess");
-const { isIptvProduct } = require("../utils/productDeliveryProfile");
+const { isIptvProduct, isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
+const { clearTotpSecret, isYoutubeTotpProduct, saveTotpSecret, verifyTotpCode } = require("./youtubeTotp.service");
+const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
@@ -34,6 +36,18 @@ LEFT JOIN (
         GROUP BY new_account_id
     ) arl_last ON arl_last.max_id = arl1.id
 ) latest_replacement ON latest_replacement.new_account_id = pa.id`;
+
+function isEmailSearchQuery(q) {
+    const value = String(q || "").trim();
+    return value.includes("@") && !/\s/.test(value);
+}
+
+function inventoryOrderBy(q) {
+    const reportPriority = `CASE WHEN ${strbxReportedNetflixAccountSql("pa")} THEN 0 ELSE 1 END ASC, `;
+    return isEmailSearchQuery(q)
+        ? `ORDER BY ${reportPriority}${ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL} DESC, pa.id DESC`
+        : `ORDER BY ${reportPriority}pa.id DESC`;
+}
 
 function toMoney(value) {
     const amount = Number(value || 0);
@@ -317,18 +331,24 @@ function buildInventoryWhere({ platformId, status, q, assignedTo, profileNumber,
         }
     }
 
-    if (q) {
-        where.push(`(
-            pa.email LIKE ? OR
-            pa.platform_name LIKE ? OR
-            p.name LIKE ? OR
-            CAST(pa.id AS CHAR) LIKE ? OR
-            CAST(active_sub.id AS CHAR) LIKE ? OR
-            CAST(latest_replacement.subscription_id AS CHAR) LIKE ? OR
-            CAST(latest_replacement.order_id AS CHAR) LIKE ? OR
-            COALESCE(latest_replacement.order_code, '') LIKE ?
-        )`);
-        params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+    const searchValue = String(q || "").trim();
+    if (searchValue) {
+        if (isEmailSearchQuery(searchValue)) {
+            where.push("pa.email LIKE ?");
+            params.push(`${searchValue}%`);
+        } else {
+            where.push(`(
+                pa.email LIKE ? OR
+                pa.platform_name LIKE ? OR
+                p.name LIKE ? OR
+                CAST(pa.id AS CHAR) LIKE ? OR
+                CAST(active_sub.id AS CHAR) LIKE ? OR
+                CAST(latest_replacement.subscription_id AS CHAR) LIKE ? OR
+                CAST(latest_replacement.order_id AS CHAR) LIKE ? OR
+                COALESCE(latest_replacement.order_code, '') LIKE ?
+            )`);
+            params.push(`%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`, `%${searchValue}%`);
+        }
     }
 
     if (assignedTo) {
@@ -412,10 +432,12 @@ async function getInventory(query = {}) {
       pa.pin,
       pa.two_factor_secret,
       pa.profile_number,
+      pa.youtube_channel_name,
       pa.parent_account_cost_total,
       pa.parent_profiles_total,
       pa.unit_cost,
       pa.status,
+      (${strbxReportedNetflixAccountSql("pa")}) AS strbx_provider_reported,
       pa.assigned_to_user_id,
       u.email AS assigned_user_email,
       u.name  AS assigned_user_name,
@@ -439,7 +461,7 @@ async function getInventory(query = {}) {
      AND active_sub.status = 'active'
     ${LATEST_REPLACEMENT_JOIN}
     ${whereSql}
-    ORDER BY pa.id DESC
+    ${inventoryOrderBy(q)}
     LIMIT ${limitNum} OFFSET ${offset}`,
         params
     );
@@ -447,6 +469,7 @@ async function getInventory(query = {}) {
     const items = rows.map((r) => ({
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
+        strbx_provider_reported: Boolean(r.strbx_provider_reported),
         sale_id: r.sale_id || null,
         is_replacement: !!r.replacement_log_id,
         replaced_from_account_id: r.replaced_from_account_id || null,
@@ -493,6 +516,7 @@ async function exportInventoryCsv(query = {}) {
       pa.pin,
       pa.two_factor_secret,
       pa.profile_number,
+      pa.youtube_channel_name,
       pa.parent_account_cost_total,
       pa.parent_profiles_total,
       pa.unit_cost,
@@ -523,6 +547,7 @@ async function exportInventoryCsv(query = {}) {
         "pin",
         "two_factor_secret",
         "profile_number",
+        "youtube_channel_name",
         "account_cost_total",
         "account_profiles_total",
         "unit_cost",
@@ -542,6 +567,7 @@ async function exportInventoryCsv(query = {}) {
             escapeCsv(r.pin),
             escapeCsv(r.two_factor_secret),
             escapeCsv(r.profile_number),
+            escapeCsv(r.youtube_channel_name),
             escapeCsv(r.parent_account_cost_total),
             escapeCsv(r.parent_profiles_total),
             escapeCsv(r.unit_cost),
@@ -577,6 +603,7 @@ async function getInventoryAccountDetail(id) {
             pa.pin,
             pa.two_factor_secret,
             pa.profile_number,
+            pa.youtube_channel_name,
             pa.parent_account_cost_total,
             pa.parent_profiles_total,
             pa.unit_cost,
@@ -799,6 +826,9 @@ async function patchInventory(id, body = {}, options = {}) {
         access_url,
         pin,
         two_factor_secret,
+        totp_secret,
+        totp_confirmation_code,
+        clear_totp_secret,
         profile_number,
         reset_assign,
         force_release,
@@ -1000,7 +1030,8 @@ async function patchInventory(id, body = {}, options = {}) {
 
         const [[current]] = await conn.query(
             `SELECT pa.id, pa.identity_id, pa.platform_id, pa.email, pa.password, pa.access_url, pa.pin,
-                    pa.two_factor_secret, pa.profile_number, p.name AS platform_name, p.slug AS platform_slug
+                    pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name,
+                    p.name AS platform_name, p.slug AS platform_slug
              FROM platform_accounts pa
              LEFT JOIN platforms p ON p.id = pa.platform_id
              WHERE pa.id = ?
@@ -1119,6 +1150,24 @@ async function patchInventory(id, body = {}, options = {}) {
             refreshIdentity = true;
         }
 
+        if (has("youtube_channel_name") || has("youtubeChannelName")) {
+            if (!isYouTubeChannelProduct({ platformName: current.platform_name, platformSlug: current.platform_slug })) {
+                const err = new Error("El nombre de canal solo aplica a cuentas de YouTube compatibles.");
+                err.status = 400;
+                throw err;
+            }
+            const channelName = normalizeOptionalValue(
+                has("youtube_channel_name") ? body.youtube_channel_name : body.youtubeChannelName
+            );
+            if (channelName && channelName.length > 180) {
+                const err = new Error("El nombre del canal no puede superar 180 caracteres.");
+                err.status = 400;
+                throw err;
+            }
+            sets.push("youtube_channel_name = ?");
+            params.push(channelName);
+        }
+
         if (has("expiresAt") || has("expires_at")) {
             const rawExpires = has("expiresAt") ? expiresAt : expires_at;
             const expText = normalizeOptionalValue(rawExpires);
@@ -1167,6 +1216,32 @@ async function patchInventory(id, body = {}, options = {}) {
             params.push(costModel.unitCost);
         }
 
+        const totpSecret = String(totp_secret || "").trim();
+        const clearTotp = clear_totp_secret === true || String(clear_totp_secret || "").toLowerCase() === "true";
+        let totpUpdated = false;
+        if (totpSecret || clearTotp) {
+            if (!isYoutubeTotpProduct(`${current.platform_name || ""} ${current.platform_slug || ""}`)) {
+                const err = new Error("El autenticador TOTP solo se configura para cuentas de YouTube Premium o YouTube Music.");
+                err.status = 400;
+                throw err;
+            }
+            if (totpSecret && clearTotp) {
+                const err = new Error("No puedes guardar y eliminar la clave TOTP en la misma solicitud.");
+                err.status = 400;
+                throw err;
+            }
+            if (totpSecret) {
+                const confirmationCode = String(totp_confirmation_code || "").trim();
+                if (!/^\d{6}$/.test(confirmationCode) || !verifyTotpCode(totpSecret, confirmationCode)) {
+                    const err = new Error("El código de Authenticator no coincide. Revisa la clave y escribe el código actual de 6 dígitos.");
+                    err.status = 400;
+                    throw err;
+                }
+                await saveTotpSecret(conn, nextEmail, totpSecret);
+            } else await clearTotpSecret(conn, nextEmail);
+            totpUpdated = true;
+        }
+
         if (refreshIdentity) {
             const identityProfile = normalizeProfileForIdentity(nextProfile);
             const [identityResult] = await conn.query(
@@ -1201,7 +1276,7 @@ async function patchInventory(id, body = {}, options = {}) {
 
         if (!sets.length) {
             await conn.commit();
-            return { ok: true, unchanged: true };
+            return { ok: true, unchanged: !totpUpdated, totpUpdated };
         }
 
         await conn.query(
@@ -1212,7 +1287,7 @@ async function patchInventory(id, body = {}, options = {}) {
         );
 
         await conn.commit();
-        return { ok: true };
+        return { ok: true, totpUpdated };
     } catch (err) {
         await conn.rollback();
         throw err;
@@ -1228,5 +1303,7 @@ module.exports = {
     patchInventory,
     __test: {
         buildInventoryWhere,
+        inventoryOrderBy,
+        isEmailSearchQuery,
     },
 };

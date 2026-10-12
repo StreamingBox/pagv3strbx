@@ -30,10 +30,28 @@ function sanitizeFilename(name) {
 
 function sanitizeExtension(name, mimeType = "") {
     const ext = String(path.extname(name || "") || "").toLowerCase();
-    if ([".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(ext)) return ext;
-    if (mimeType.includes("png")) return ".png";
-    if (mimeType.includes("webp")) return ".webp";
-    if (mimeType.includes("gif")) return ".gif";
+    const mimeExtensions = {
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+    };
+    const normalizedMimeType = String(mimeType).toLowerCase();
+    const canonicalExtension = mimeExtensions[normalizedMimeType];
+    if (canonicalExtension) {
+        const matchingExtensions = {
+            "image/jpeg": [".jpg", ".jpeg"],
+            "image/png": [".png"],
+            "image/webp": [".webp"],
+            "image/gif": [".gif"],
+            "video/mp4": [".mp4"],
+            "video/webm": [".webm"],
+        };
+        return matchingExtensions[normalizedMimeType].includes(ext) ? ext : canonicalExtension;
+    }
+    if ([".jpg", ".jpeg", ".png", ".webp", ".gif", ".mp4", ".webm"].includes(ext)) return ext;
     return ".jpg";
 }
 
@@ -45,7 +63,13 @@ function buildAdvertisingFileName(file) {
 }
 
 function hashUpload(filePath) {
-    return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash("sha256");
+        const stream = fs.createReadStream(filePath);
+        stream.on("data", (chunk) => hash.update(chunk));
+        stream.on("error", reject);
+        stream.on("end", () => resolve(hash.digest("hex")));
+    });
 }
 
 function cleanupTemp(file) {
@@ -86,9 +110,9 @@ const upload = multer({
     dest: TMP_DIR,
     limits: { fileSize: 50 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-        const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+        const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"];
         if (!allowed.includes(file.mimetype)) {
-            return cb(new Error("Solo imagenes JPEG, PNG, WEBP y GIF."));
+            return cb(new Error("Formatos permitidos: JPEG, PNG, WEBP, GIF, MP4 y WebM."));
         }
         cb(null, true);
     },
@@ -338,6 +362,7 @@ router.get("/folders", async (_req, res) => {
                 name: folderMeta.get(folder.id)?.name || folder.name,
                 createdTime: folder.createdTime,
                 isActive: folderMeta.has(folder.id) ? folderMeta.get(folder.id).isActive : true,
+                mediaCount: countMap[folder.id] || 0,
                 imageCount: countMap[folder.id] || 0,
             })),
         });
@@ -453,7 +478,7 @@ router.get("/images/:folderId", async (req, res) => {
         const status = driveErrorStatus(err);
         res.status(status).json({
             ok: false,
-            message: driveErrorMessage(err, "Error listando imagenes.", req.params.folderId),
+            message: driveErrorMessage(err, "Error listando archivos.", req.params.folderId),
         });
     }
 });
@@ -464,7 +489,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
         const files = req.files;
 
         if (!files || files.length === 0) {
-            return res.status(400).json({ ok: false, message: "Selecciona al menos una imagen." });
+            return res.status(400).json({ ok: false, message: "Selecciona al menos una imagen o video." });
         }
 
         const prepared = [];
@@ -474,7 +499,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
 
         for (const file of files) {
             const originalName = file.originalname;
-            const fileHash = hashUpload(file.path);
+            const fileHash = await hashUpload(file.path);
             const [existing] = await pool.query(
                 "SELECT id, file_name FROM advertising_images WHERE file_hash = ? LIMIT 1",
                 [fileHash]
@@ -496,7 +521,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
         if (!prepared.length) {
             return res.status(400).json({
                 ok: false,
-                message: `No se subio ninguna imagen nueva. Duplicadas: ${duplicates.join(", ")}`,
+                message: `No se subio ningun archivo nuevo. Duplicados: ${duplicates.join(", ")}`,
             });
         }
 
@@ -528,7 +553,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
         const extra = duplicates.length ? ` ${duplicates.length} duplicada(s) omitida(s).` : "";
         const message = errors
             ? `${uploaded.length} subida(s), ${errors.length} error(es): ${errors.map(e => e.file).join(', ')}.${extra}`
-            : `${uploaded.length} imagen(es) subida(s).${extra}`;
+            : `${uploaded.length} archivo(s) subido(s).${extra}`;
 
         res.json({
             ok: true,
@@ -537,7 +562,7 @@ router.post("/images/:folderId", upload.array("images", 20), async (req, res) =>
         });
     } catch (err) {
         console.error("[admin/advertising/images POST]", err.message);
-        res.status(driveErrorStatus(err)).json({ ok: false, message: driveErrorMessage(err, "Error subiendo imagenes.") });
+        res.status(driveErrorStatus(err)).json({ ok: false, message: driveErrorMessage(err, "Error subiendo archivos.") });
     }
 });
 
@@ -546,7 +571,7 @@ router.patch("/images/:fileId/toggle", async (req, res) => {
         const { fileId } = req.params;
         const [rows] = await pool.query("SELECT id, is_active FROM advertising_images WHERE file_id = ?", [fileId]);
         if (!rows.length) {
-            return res.status(404).json({ ok: false, message: "Imagen no encontrada." });
+            return res.status(404).json({ ok: false, message: "Archivo no encontrado." });
         }
 
         const newActive = rows[0].is_active ? 0 : 1;
@@ -575,10 +600,10 @@ router.delete("/images/:fileId", async (req, res) => {
         const { fileId } = req.params;
         await driveService.deleteFile(fileId);
         await pool.query("DELETE FROM advertising_images WHERE file_id = ?", [fileId]);
-        res.json({ ok: true, message: "Imagen eliminada." });
+        res.json({ ok: true, message: "Archivo eliminado." });
     } catch (err) {
         console.error("[admin/advertising/images DELETE]", err.message);
-        res.status(500).json({ ok: false, message: driveErrorMessage(err, "Error eliminando imagen.") });
+        res.status(500).json({ ok: false, message: driveErrorMessage(err, "Error eliminando archivo.") });
     }
 });
 

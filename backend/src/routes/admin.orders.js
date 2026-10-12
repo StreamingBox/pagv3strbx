@@ -199,7 +199,7 @@ router.get("/admin/orders/:id", requireAuth, requireRole("admin"), async (req, r
  */
 router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async (req, res) => {
     const orderId = Number(req.params.id);
-    const { newAccountId, deductWallet, overridePrice, note } = req.body || {};
+    const { newAccountId, deductWallet, overridePrice, note, extendedRenewal } = req.body || {};
 
     if (!Number.isFinite(orderId) || orderId <= 0) {
         return res.status(400).json({ message: "ID de pedido inválido." });
@@ -218,6 +218,7 @@ router.post("/admin/orders/:id/renew", requireAuth, requireRole("admin"), async 
             note,
             newAccountId,
             allowAccountChange: true,
+            extendedRenewal: extendedRenewal === true,
         });
 
         const [userRows] = await conn.query(

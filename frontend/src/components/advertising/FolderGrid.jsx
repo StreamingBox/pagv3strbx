@@ -47,7 +47,7 @@ export default function FolderGrid({
                     >
                         <Folder size={34} strokeWidth={1.8} style={{ marginBottom: 12, color: "#38bdf8" }} />
                         <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text)" }}>{folder.name}</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{folder.imageCount || 0} imagen(es)</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>{folder.mediaCount ?? folder.imageCount ?? 0} archivo(s)</div>
                         {renderActions ? <div style={{ marginTop: 12 }}>{renderActions(folder)}</div> : null}
                     </MotionDiv>
                 );

@@ -315,12 +315,14 @@ async function queueCreatedNotifications(conn, ticket, {
             accountPassword: account?.password || "",
         };
     }
-    await enqueueNotification(conn, {
-        channel: "email",
-        eventType: "support_created",
-        dedupeKey: `support-${eventKey}-email:${ticket.id}`,
-        payload: { ticket, customerName: ticket.userName },
-    });
+    for (const recipient of ["customer", "admin"]) {
+        await enqueueNotification(conn, {
+            channel: "email",
+            eventType: `support_created_${recipient}`,
+            dedupeKey: `support-${eventKey}-email-${recipient}:${ticket.id}`,
+            payload: { ticket, customerName: ticket.userName },
+        });
+    }
     await enqueueNotification(conn, {
         channel: "telegram",
         eventType: "support_created",

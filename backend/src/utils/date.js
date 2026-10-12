@@ -49,6 +49,31 @@ function toSqlDateTime(value) {
     return d.toISOString().slice(0, 19).replace("T", " ");
 }
 
+function bogotaMonthUtcRange(year, month) {
+    const numericYear = Number(year);
+    const numericMonth = Number(month);
+    if (!Number.isInteger(numericYear) || numericYear < 1 || numericYear > 9998
+        || !Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+        throw new RangeError("Se requiere un año y mes válidos para calcular el rango UTC de Bogotá.");
+    }
+
+    const toSqlDateTimeValue = (date) => date.toISOString().slice(0, 19).replace("T", " ");
+    const atBogotaMonthStart = (monthOffset) => {
+        const date = new Date(0);
+        date.setUTCFullYear(numericYear, monthOffset, 1);
+        date.setUTCHours(BOGOTA_UTC_OFFSET_HOURS, 0, 0, 0);
+        return date;
+    };
+    const start = atBogotaMonthStart(numericMonth - 1);
+    const end = atBogotaMonthStart(numericMonth);
+    return {
+        startUtc: toSqlDateTimeValue(start),
+        endUtc: toSqlDateTimeValue(end),
+        startDate: start.toISOString().slice(0, 10),
+        endDate: end.toISOString().slice(0, 10),
+    };
+}
+
 function addDaysExact(value, days) {
     const base = parseDateTime(value) || new Date();
     const safeDays = Number(days || 0);
@@ -148,6 +173,7 @@ module.exports = {
     BOGOTA_UTC_OFFSET,
     addDaysBogotaDateOnly,
     addDaysExact,
+    bogotaMonthUtcRange,
     bogotaDateOnlyToUtcEndOfDay,
     bogotaDateSql,
     currentBogotaDateOnly,

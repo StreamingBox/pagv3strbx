@@ -12,6 +12,10 @@ const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
 const { enqueueNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
+const {
+    getStrbxReportedNetflixProviderAccount,
+    canSellStrbxReportedNetflixAccount,
+} = require("../utils/strbxReportedAccounts");
 
 /**
  * Vende una cuenta específica desde el inventario.
@@ -59,6 +63,16 @@ async function sellAccountFromInventory(payload) {
         if (account.status !== "available") {
             const err = new Error(`La cuenta no está disponible (estado: ${account.status}).`);
             err.status = 409;
+            throw err;
+        }
+
+        const providerReport = await getStrbxReportedNetflixProviderAccount(conn, {
+            platformId: account.platform_id,
+            email: account.email,
+        });
+        if (!canSellStrbxReportedNetflixAccount(providerReport, adminUserId)) {
+            const err = new Error("Esta cuenta reportada solo puede venderla el administrador que registró el reporte al proveedor.");
+            err.status = 403;
             throw err;
         }
 
@@ -233,6 +247,7 @@ async function sellAccountFromInventory(payload) {
                 pin: account.pin,
                 two_factor_secret: account.two_factor_secret,
                 profile_number: account.profile_number,
+                youtube_channel_name: account.youtube_channel_name,
                 access_url: account.access_url
             },
             expiresAt: finalExpiresAt,

@@ -21,7 +21,8 @@ test("TV setup validates an eight-digit code and an active Netflix subscription"
     assert.match(routeSource, /subscription\.status.*active/);
     assert.match(routeSource, /isStoredDateOnlyExpired\(subscription\.expires_at\)/);
     assert.match(routeSource, /accountEmail: subscription\.accountEmail/);
-    assert.doesNotMatch(routeSource, /accountPassword/);
+    const validatedData = routeSource.slice(routeSource.indexOf("function buildValidatedData"), routeSource.indexOf("async function loadValidatedSubscription"));
+    assert.doesNotMatch(validatedData, /accountPassword/);
 });
 
 test("TV setup delegates the login code to the existing Inicio counter", () => {
@@ -50,7 +51,8 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     assert.match(automationSource, /\/run\/start/);
     assert.match(automationSource, /\/run\/complete/);
     assert.match(automationSource, /requestLoginCode/);
-    assert.doesNotMatch(automationSource, /accountPassword/);
+    assert.match(automationSource, /accountPassword: typeof accountPassword/);
+    assert.match(routeSource, /accountPassword: loaded\.subscription\.accountPassword/);
     assert.match(automationSource, /El servicio de automatización debe usar HTTPS para proteger los códigos de acceso/);
     assert.match(automationSource, /\/run\/resend/);
     assert.match(automationSource, /RESENDABLE_LOGIN_CODE_STATUSES/);
@@ -74,7 +76,7 @@ test("TV setup delegates Netflix TV2 automation to the isolated worker", () => {
     const emailLater = workerRunSource.indexOf("const emailStep = await submitAccountEmail(page, email)");
     assert.ok(tvCodeFirst >= 0 && emailLater > tvCodeFirst);
     assert.match(workerSource, /findLoginCodeAction\(page, "account_email"\)/);
-    assert.doesNotMatch(workerSource, /submitAccountPassword|accountPassword|passwordInput\.fill/);
+    assert.match(workerSource, /submitAccountPassword\(page, accountPassword\)/);
 });
 
 test("TV setup logs the worker status without logging credentials", () => {

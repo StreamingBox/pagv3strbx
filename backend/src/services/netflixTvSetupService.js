@@ -1,7 +1,9 @@
 const axios = require("axios");
 
 const NETFLIX_TV_URL = "https://www.netflix.com/tv2";
-const DEFAULT_TIMEOUT_MS = 25000;
+const START_TIMEOUT_MS = 60000;
+const COMPLETE_TIMEOUT_MS = 35000;
+const RESEND_TIMEOUT_MS = 20000;
 const RESENDABLE_LOGIN_CODE_STATUSES = new Set([
     "mailbox_empty",
     "sender_mismatch",
@@ -75,12 +77,12 @@ async function cancelWorkerSession(baseUrl, sessionId) {
 async function resendWorkerLoginCode(baseUrl, sessionId) {
     const response = await axios.post(`${baseUrl}/run/resend`, { sessionId }, {
         headers: workerHeaders(),
-        timeout: DEFAULT_TIMEOUT_MS,
+        timeout: RESEND_TIMEOUT_MS,
     });
     return response.data || {};
 }
 
-async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
+async function runNetflixTvSetup({ tvCode, accountEmail, accountPassword, requestLoginCode }) {
     const normalizedTvCode = normalizeTvCode(tvCode);
     const email = String(accountEmail || "").trim();
     const baseUrl = workerBaseUrl();
@@ -100,9 +102,10 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
         const startResponse = await axios.post(`${baseUrl}/run/start`, {
             tvCode: normalizedTvCode,
             accountEmail: email,
+            accountPassword: typeof accountPassword === "string" ? accountPassword : "",
         }, {
             headers: workerHeaders(),
-            timeout: DEFAULT_TIMEOUT_MS,
+            timeout: START_TIMEOUT_MS,
         });
         const start = startResponse.data || {};
         if (!start.ok) return result(start.status || "automation_error", start.message || "No se pudo iniciar la conexión con Netflix.");
@@ -117,7 +120,7 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
                 status: "resend_unavailable",
                 message: error?.message || "No fue posible solicitar el reenvío del código.",
             }));
-            if (resend.ok) loginCodeResult = await requestLoginCode();
+            if (resend.ok) loginCodeResult = await requestLoginCode({ maxAttempts: 1 });
         }
         if (!loginCodeResult?.ok || !loginCodeResult.code) {
             await cancelWorkerSession(baseUrl, sessionId);
@@ -137,7 +140,7 @@ async function runNetflixTvSetup({ tvCode, accountEmail, requestLoginCode }) {
             loginCode,
         }, {
             headers: workerHeaders(),
-            timeout: DEFAULT_TIMEOUT_MS,
+            timeout: COMPLETE_TIMEOUT_MS,
         });
         const complete = completeResponse.data || {};
         sessionId = null;

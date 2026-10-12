@@ -4,9 +4,15 @@ set -u
 # Keep the cleanup scoped to disposable operational files.
 BACKUP_ROOT="/var/backups/streaming-box/scheduled"
 PM2_LOG_ROOTS=("/home/ubuntu/.pm2/logs" "/root/.pm2/logs")
+RCLONE_BIN="${RCLONE_BIN:-/home/ubuntu/.local/bin/rclone}"
+DRIVE_ROOT="${BACKUP_DRIVE_DEST:-gdrive:StreamingBoxBackups/production/scheduled}"
 
 log() {
     logger -t streaming-box-cleanup -- "$*" 2>/dev/null || true
+}
+
+rclone_as_ubuntu() {
+    runuser -u ubuntu -- env HOME=/home/ubuntu "$RCLONE_BIN" "$@"
 }
 
 disk_usage_percent() {
@@ -16,25 +22,34 @@ disk_usage_percent() {
 remove_old_scheduled_backups() {
     [ -d "$BACKUP_ROOT" ] || return 0
 
-    # Normal retention is three days. The name guard prevents this job from
-    # ever traversing outside the scheduled-backup directory.
-    find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +3 -exec rm -rf -- {} +
+    local backup name target
+    while IFS= read -r backup; do
+        case "$backup" in
+            "$BACKUP_ROOT"/*) ;;
+            *) continue ;;
+        esac
 
-    # If the root filesystem is still tight, keep only the three newest
-    # scheduled snapshots. Manual backups and application data are untouched.
-    local usage
-    usage="$(disk_usage_percent)"
-    if [ "${usage:-0}" -ge 85 ]; then
-        while IFS= read -r backup; do
-            case "$backup" in
-                "$BACKUP_ROOT"/*) rm -rf -- "$backup"; log "Removed old scheduled backup: $backup" ;;
-            esac
-        done < <(
-            find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' -printf '%T@ %p\n' \
-                | sort -nr \
-                | awk 'NR > 3 {sub(/^[^ ]+ /, ""); print}'
-        )
-    fi
+        if [ ! -s "$backup/database.sql.gz" ] || [ ! -s "$backup/user-assets.tgz" ]; then
+            log "Keeping incomplete local backup for recovery: $backup"
+            continue
+        fi
+
+        name="$(basename "$backup")"
+        target="${DRIVE_ROOT%/}/$name"
+        if ! rclone_as_ubuntu copy "$backup" "$target" --transfers 1 --checkers 2; then
+            log "Drive upload failed; kept local backup: $backup"
+            continue
+        fi
+        if ! rclone_as_ubuntu check "$backup" "$target" --one-way; then
+            log "Drive verification failed; kept local backup: $backup"
+            continue
+        fi
+
+        rm -rf -- "$backup"
+        log "Drive copy verified; removed local backup: $backup"
+    done < <(
+        find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*' -mtime +0 -print
+    )
 }
 
 clean_temporary_files() {
@@ -54,5 +69,6 @@ clean_pm2_logs() {
 remove_old_scheduled_backups
 clean_temporary_files
 clean_pm2_logs
+apt-get clean >/dev/null 2>&1 || true
 journalctl --vacuum-time=14d >/dev/null 2>&1 || true
 log "Daily cleanup completed; filesystem usage is $(disk_usage_percent)%"

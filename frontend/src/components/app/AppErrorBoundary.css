@@ -1,0 +1,127 @@
+.app-error-boundary {
+    display: grid;
+    min-height: 100dvh;
+    place-items: center;
+    padding: 24px;
+}
+
+.app-error-boundary__card {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 520px);
+    padding: 30px;
+    overflow: hidden;
+    border: 1px solid var(--stroke);
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: var(--shadow);
+}
+
+.app-error-boundary__card::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: var(--accent);
+    content: "";
+}
+
+.app-error-boundary__icon {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    margin-bottom: 18px;
+    place-items: center;
+    border: 1px solid rgba(59, 130, 246, .35);
+    border-radius: 12px;
+    background: rgba(59, 130, 246, .1);
+    color: var(--accent);
+}
+
+.app-error-boundary__eyebrow {
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.app-error-boundary__title {
+    margin: 0 0 10px;
+    color: var(--text);
+    font-size: 24px;
+    line-height: 1.25;
+}
+
+.app-error-boundary__message {
+    margin: 0 0 22px;
+    color: var(--muted);
+    font-size: 15px;
+    line-height: 1.6;
+}
+
+.app-error-boundary__button {
+    display: inline-flex;
+    min-height: 46px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 0 17px;
+    border: 1px solid var(--accent-dark);
+    border-radius: 10px;
+    background: var(--accent-dark);
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 800;
+    transition: filter .16s ease, transform .16s ease, opacity .16s ease;
+}
+
+.app-error-boundary__button:hover:not(:disabled) {
+    filter: brightness(.9);
+    transform: translateY(-1px);
+}
+
+.app-error-boundary__button:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, .4);
+    outline-offset: 3px;
+}
+
+.app-error-boundary__button:disabled {
+    cursor: wait;
+    opacity: .75;
+}
+
+.app-error-boundary__spin {
+    animation: app-error-boundary-spin .8s linear infinite;
+}
+
+@keyframes app-error-boundary-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+    .app-error-boundary {
+        padding: 16px;
+    }
+
+    .app-error-boundary__card {
+        padding: 24px 20px;
+    }
+
+    .app-error-boundary__title {
+        font-size: 21px;
+    }
+
+    .app-error-boundary__button {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-error-boundary__button,
+    .app-error-boundary__spin {
+        animation: none;
+        transition: none;
+    }
+}

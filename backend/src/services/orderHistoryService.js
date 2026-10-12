@@ -1,5 +1,7 @@
 const pool = require("../db");
 const { getRenewalEligibility } = require("../utils/renewals");
+const { currentBogotaDateOnly } = require("../utils/date");
+const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
 const BOGOTA_TODAY_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
 
 async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, limit = 5 }) {
@@ -97,13 +99,16 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
          d.name AS duration_name,
          pp.is_renewable,
          pp.price AS renewal_price,
+         COALESCE(rl.renewal_count, 0) AS renewal_count,
          a.id AS platform_account_id,
          a.email,
          a.password,
          a.pin,
          a.profile_number,
+         a.youtube_channel_name,
          a.access_url,
          a.expires_at AS account_expires_at,
+         (${strbxReportedNetflixAccountSql("a")}) AS strbx_provider_reported,
          cl.token
        FROM subscriptions s
        LEFT JOIN durations d ON d.id = s.duration_id
@@ -133,6 +138,7 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
                 renewal_price: Number(r.renewal_price ?? r.subscription_price ?? 0),
                 renewal_currency: r.subscription_currency,
                 is_renewable: Number(r.is_renewable) === 1,
+                strbx_provider_reported: Boolean(r.strbx_provider_reported),
                 account: r.platform_account_id
                     ? {
                         id: r.platform_account_id,
@@ -140,6 +146,7 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
                         password: r.password,
                         pin: r.pin,
                         profile_number: r.profile_number,
+                        youtube_channel_name: r.youtube_channel_name,
                         access_url: r.access_url,
                     }
                     : null,
@@ -156,13 +163,17 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
         const renewal = getRenewalEligibility({
             expiresAt: extra?.expires_at ?? null,
             expiresAtIsDateOnly: Boolean(extra?.expires_at_is_date_only),
-            isRenewable: Boolean(extra?.is_renewable),
+            isRenewable: Boolean(extra?.is_renewable) && !extra?.strbx_provider_reported,
             status: extra?.subscription_status ?? null,
             isAttended: extra?.is_attended ?? 0,
             renewalCount: extra?.renewal_count ?? 0,
             platformSlug: it.platform_slug,
             platformName: it.platform_name,
+            allowExpired: String(extra?.subscription_status || "").toLowerCase() === "active" && Number(extra?.is_attended) !== 1,
         });
+        const isExtendedRenewal = Boolean(
+            renewal.canRenew && renewal.expiresOnDate && renewal.expiresOnDate < currentBogotaDateOnly()
+        );
 
         map.get(it.order_id)?.items.push({
             ...it,
@@ -171,13 +182,16 @@ async function getOrdersHistory({ userId, from, to, platformId, q, page = 1, lim
             subscription_starts_at: extra?.starts_at ?? null,
             subscription_expires_at: extra?.expires_at ?? null,
             renewal: {
-                is_renewable: Boolean(extra?.is_renewable),
+                is_renewable: Boolean(extra?.is_renewable) && !extra?.strbx_provider_reported,
                 can_renew_now: renewal.canRenew,
-                block_reason: renewal.reason,
+                block_reason: extra?.strbx_provider_reported
+                    ? "Esta cuenta de Netflix fue reportada al proveedor y no admite renovaciones."
+                    : renewal.reason,
                 eligible_until_date: renewal.expiresOnDate,
                 renewal_price: Number(extra?.renewal_price ?? 0),
                 currency: extra?.renewal_currency ?? null,
                 renewal_count: Number(extra?.renewal_count || 0),
+                extended_renewal: isExtendedRenewal,
             },
             account: extra?.account ?? null,
             credential_url: extra?.credential_url ?? null,
@@ -200,6 +214,7 @@ async function getRenewalsHistory({
     const where = [
         `s.user_id = ?`,
         `COALESCE(pp.is_renewable, 0) = 1`,
+        `NOT (${strbxReportedNetflixAccountSql("pa")})`,
     ];
     const params = [userId];
 
@@ -227,7 +242,7 @@ async function getRenewalsHistory({
         where.push(`LOWER(COALESCE(s.status, '')) != 'cancelled'`);
         where.push(`COALESCE(s.is_attended, 0) = 0`);
         where.push(`${effectiveExpiresSql} IS NOT NULL`);
-        where.push(`${effectiveExpiresDateSql} >= ${BOGOTA_TODAY_SQL}`);
+        where.push(`(${effectiveExpiresDateSql} >= ${BOGOTA_TODAY_SQL} OR LOWER(COALESCE(s.status, '')) = 'active')`);
         where.push(`NOT (
           (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
             OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -240,7 +255,7 @@ async function getRenewalsHistory({
           LOWER(COALESCE(s.status, '')) = 'cancelled' OR
           COALESCE(s.is_attended, 0) = 1 OR
           ${effectiveExpiresSql} IS NULL OR
-          ${effectiveExpiresDateSql} < ${BOGOTA_TODAY_SQL} OR
+          (${effectiveExpiresDateSql} < ${BOGOTA_TODAY_SQL} AND LOWER(COALESCE(s.status, '')) != 'active') OR
           (
             (LOWER(COALESCE(p.slug, '')) IN ('youtube-music', 'youtubemusic')
               OR (LOWER(COALESCE(p.name, '')) LIKE '%youtube%' AND LOWER(COALESCE(p.name, '')) LIKE '%music%'))
@@ -292,12 +307,14 @@ async function getRenewalsHistory({
            p.slug AS platform_slug,
            d.name AS duration_name,
            pp.price AS renewal_price,
+           COALESCE(pp.is_renewable, 0) AS is_renewable,
            COALESCE(rl.renewal_count, 0) AS renewal_count,
            pa.id AS platform_account_id,
            pa.email,
            pa.password,
            pa.pin,
-           pa.profile_number
+           pa.profile_number,
+           pa.youtube_channel_name
          FROM subscriptions s
          JOIN order_items oi ON oi.subscription_id = s.id
          JOIN orders o ON o.id = oi.order_id
@@ -326,13 +343,17 @@ async function getRenewalsHistory({
         const renewal = getRenewalEligibility({
             expiresAt: row.subscription_expires_at,
             expiresAtIsDateOnly: true,
-            isRenewable: true,
+            isRenewable: Number(row.is_renewable) === 1,
             status: row.subscription_status,
             isAttended: row.is_attended,
             renewalCount: row.renewal_count,
             platformSlug: row.platform_slug,
             platformName: row.platform_name,
+            allowExpired: String(row.subscription_status || "").toLowerCase() === "active" && Number(row.is_attended) !== 1,
         });
+        const isExtendedRenewal = Boolean(
+            renewal.canRenew && renewal.expiresOnDate && renewal.expiresOnDate < currentBogotaDateOnly()
+        );
 
         return {
             order_id: row.order_id,
@@ -352,13 +373,14 @@ async function getRenewalsHistory({
             original_subscription_expires_at: row.subscription_expires_at,
             account_expires_at: row.account_expires_at,
             renewal: {
-                is_renewable: true,
+                is_renewable: Number(row.is_renewable) === 1,
                 can_renew_now: renewal.canRenew,
                 block_reason: renewal.reason,
                 eligible_until_date: renewal.expiresOnDate,
                 renewal_price: Number(row.renewal_price ?? row.subscription_price ?? 0),
                 currency: row.subscription_currency || row.order_currency,
                 renewal_count: Number(row.renewal_count || 0),
+                extended_renewal: isExtendedRenewal,
             },
             account: row.platform_account_id
                 ? {
@@ -367,6 +389,7 @@ async function getRenewalsHistory({
                     password: row.password,
                     pin: row.pin,
                     profile_number: row.profile_number,
+                    youtube_channel_name: row.youtube_channel_name,
                 }
                 : null,
         };

@@ -3,6 +3,7 @@ const {
     sendOrderDeliveryEmail,
     sendStockAvailableEmail,
     sendSupportTicketCreatedEmails,
+    sendSupportTicketCreatedEmail,
     sendSupportTicketResolvedEmail,
 } = require("./mailService");
 
@@ -60,6 +61,7 @@ async function buildOrderDeliveryPayload(orderId) {
             pa.pin AS account_pin,
             pa.two_factor_secret AS account_two_factor_secret,
             pa.profile_number AS account_profile,
+            pa.youtube_channel_name AS account_youtube_channel_name,
             cl.token
          FROM order_items oi
          JOIN subscriptions s ON s.id = oi.subscription_id
@@ -107,6 +109,7 @@ async function buildOrderDeliveryPayload(orderId) {
                 pin: row.account_pin,
                 two_factor_secret: row.account_two_factor_secret,
                 profile_number: row.account_profile,
+                youtube_channel_name: row.account_youtube_channel_name,
             } : null,
         })),
     };
@@ -155,7 +158,25 @@ async function dispatchNotification(item) {
             await notifySupportTicketCreated(payload.ticket, payload.attachmentFile);
             return { ok: true, delivery: "telegram" };
         }
+        const [[ticket]] = await pool.query(
+            "SELECT status FROM support_tickets WHERE id = ? LIMIT 1",
+            [Number(payload.ticket?.id)]
+        );
+        if (!ticket || ticket.status === "resolved") {
+            return { ok: true, delivery: "support_stale_skipped" };
+        }
         return sendSupportTicketCreatedEmails(payload);
+    }
+    if (["support_created_customer", "support_created_admin"].includes(item.event_type)) {
+        const [[ticket]] = await pool.query(
+            "SELECT status FROM support_tickets WHERE id = ? LIMIT 1",
+            [Number(payload.ticket?.id)]
+        );
+        if (!ticket || ticket.status === "resolved") {
+            return { ok: true, delivery: "support_stale_skipped" };
+        }
+        const recipient = item.event_type === "support_created_admin" ? "admin" : "customer";
+        return sendSupportTicketCreatedEmail({ ...payload, recipient });
     }
     if (item.event_type === "support_resolved") {
         return sendSupportTicketResolvedEmail(payload);

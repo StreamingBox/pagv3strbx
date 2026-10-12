@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { bogotaMonthUtcRange } = require("../utils/date");
 const { GEMINI_5TB_COST_COP, IPTV_COST_COP } = require("../utils/profitCosts");
 
 const router = express.Router();
@@ -117,16 +118,17 @@ function buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column =
 
 async function getMonthlySalesAdjustments({ year, month, currency, isGlobalAdmin, targetUserIds }) {
     const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds });
+    const { startDate, endDate } = bogotaMonthUtcRange(year, month);
     const [rows] = await pool.query(`
         SELECT DAY(adjustment_date) AS day, SUM(amount) AS amount
         FROM sales_adjustments
-        WHERE YEAR(adjustment_date) = ?
-          AND MONTH(adjustment_date) = ?
+        WHERE adjustment_date >= ?
+          AND adjustment_date < ?
           AND UPPER(currency) = ?
           ${userFilter.sql}
         GROUP BY DAY(adjustment_date)
         ORDER BY day ASC
-    `, [year, month, currency, ...userFilter.params]);
+    `, [startDate, endDate, currency, ...userFilter.params]);
     return rows.map((row) => ({
         day: Number(row.day),
         amount: Number(row.amount || 0),
@@ -135,6 +137,7 @@ async function getMonthlySalesAdjustments({ year, month, currency, isGlobalAdmin
 
 async function getMonthlyPlatformSalesAdjustments({ year, month, currency, isGlobalAdmin, targetUserIds }) {
     const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const { startDate, endDate } = bogotaMonthUtcRange(year, month);
     const [rows] = await pool.query(`
         SELECT
             COALESCE(sa.platform_id, oi.platform_id) AS platform_id,
@@ -143,13 +146,13 @@ async function getMonthlyPlatformSalesAdjustments({ year, month, currency, isGlo
         FROM sales_adjustments sa
         LEFT JOIN order_items oi ON oi.id = sa.order_item_id
         LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
-        WHERE YEAR(sa.adjustment_date) = ?
-          AND MONTH(sa.adjustment_date) = ?
+        WHERE sa.adjustment_date >= ?
+          AND sa.adjustment_date < ?
           AND UPPER(sa.currency) = ?
           AND COALESCE(sa.platform_id, oi.platform_id) IS NOT NULL
           ${userFilter.sql}
         GROUP BY COALESCE(sa.platform_id, oi.platform_id)
-    `, [year, month, currency, ...userFilter.params]);
+    `, [startDate, endDate, currency, ...userFilter.params]);
     return rows.map((row) => ({
         platformId: Number(row.platform_id),
         name: row.name || "Sin plataforma",
@@ -159,6 +162,7 @@ async function getMonthlyPlatformSalesAdjustments({ year, month, currency, isGlo
 
 async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobalAdmin, targetUserIds }) {
     const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
+    const { startDate, endDate } = bogotaMonthUtcRange(year, month);
     const comparableCostSql = analyticsComparableCostSql({
         orderAlias: "o",
         itemAlias: "oi",
@@ -169,13 +173,13 @@ async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobal
     const sourceItemIsTrackedSql = `(
         sa.order_item_id IS NOT NULL
         AND o.id IS NOT NULL
-        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
         AND ${comparableCostSql}
     )`;
     const sourceItemIsUntrackedSql = `(
         sa.order_item_id IS NOT NULL
         AND o.id IS NOT NULL
-        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
         AND NOT ${comparableCostSql}
     )`;
     const genericAdjustmentSql = "(sa.order_item_id IS NULL OR o.id IS NULL)";
@@ -209,8 +213,8 @@ async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobal
         LEFT JOIN platforms p ON p.id = COALESCE(sa.platform_id, oi.platform_id)
         LEFT JOIN subscriptions s ON s.id = oi.subscription_id
         LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
-        WHERE YEAR(sa.adjustment_date) = ?
-          AND MONTH(sa.adjustment_date) = ?
+        WHERE sa.adjustment_date >= ?
+          AND sa.adjustment_date < ?
           AND UPPER(sa.currency) = ?
           ${userFilter.sql}
     `, [
@@ -221,8 +225,8 @@ async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobal
         currency,
         NET_PROFIT_TRACKING_START_AT,
         NET_PROFIT_TRACKING_START_AT,
-        year,
-        month,
+        startDate,
+        endDate,
         currency,
         ...userFilter.params,
     ]);
@@ -240,10 +244,11 @@ async function getMonthlySalesAdjustmentImpact({ year, month, currency, isGlobal
 
 async function getPlatformSalesAdjustmentImpacts({ monthList, currency, isGlobalAdmin, targetUserIds }) {
     const userFilter = buildSalesAdjustmentUserFilter({ isGlobalAdmin, targetUserIds, column: "sa.applies_to_user_id" });
-    const monthFilter = monthList
-        .map(() => "(YEAR(sa.adjustment_date) = ? AND MONTH(sa.adjustment_date) = ?)")
+    const monthRanges = monthList.map(({ year, month }) => bogotaMonthUtcRange(year, month));
+    const monthFilter = monthRanges
+        .map(() => "(sa.adjustment_date >= ? AND sa.adjustment_date < ?)")
         .join(" OR ");
-    const monthParams = monthList.flatMap(({ year, month }) => [year, month]);
+    const monthParams = monthRanges.flatMap(({ startDate, endDate }) => [startDate, endDate]);
     const comparableCostSql = analyticsComparableCostSql({
         orderAlias: "o",
         itemAlias: "oi",
@@ -265,13 +270,13 @@ async function getPlatformSalesAdjustmentImpacts({ monthList, currency, isGlobal
             CASE
                 WHEN sa.order_item_id IS NOT NULL
                  AND o.id IS NOT NULL
-                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                 AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                 THEN 1 ELSE 0
             END AS source_item_in_tracking,
             CASE
                 WHEN sa.order_item_id IS NOT NULL
                  AND o.id IS NOT NULL
-                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                 AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                  AND ${comparableCostSql}
                 THEN 1 ELSE 0
             END AS source_item_tracked
@@ -351,13 +356,13 @@ async function getDailySalesAdjustmentImpact({ date, currency, isGlobalAdmin, ta
     const sourceItemIsTrackedSql = `(
         sa.order_item_id IS NOT NULL
         AND o.id IS NOT NULL
-        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
         AND ${comparableCostSql}
     )`;
     const sourceItemIsUntrackedSql = `(
         sa.order_item_id IS NOT NULL
         AND o.id IS NOT NULL
-        AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+        AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
         AND NOT ${comparableCostSql}
     )`;
     const genericAdjustmentSql = "(sa.order_item_id IS NULL OR o.id IS NULL)";
@@ -440,13 +445,13 @@ async function getDailyPlatformSalesAdjustmentImpacts({ date, currency, isGlobal
             CASE
                 WHEN sa.order_item_id IS NOT NULL
                  AND o.id IS NOT NULL
-                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                 THEN 1 ELSE 0
             END AS source_item_in_tracking,
             CASE
                 WHEN sa.order_item_id IS NOT NULL
                  AND o.id IS NOT NULL
-                 AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                  AND ${comparableCostSql}
                 THEN 1 ELSE 0
             END AS source_item_tracked
@@ -579,10 +584,12 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1); // 1-12
 
-        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+        if (!Number.isInteger(targetYear) || targetYear < 1 || targetYear > 9998 || !Number.isFinite(targetMonth) ||
             targetMonth < 1 || targetMonth > 12) {
             return res.status(400).json({ error: "Parámetros year/month inválidos" });
         }
+
+        const targetRange = bogotaMonthUtcRange(targetYear, targetMonth);
 
         // Previous month
         let prevYear = targetYear;
@@ -591,8 +598,13 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
 
         const userFilter = userId ? "AND u.id = ?" : "";
         // Parámetros en orden: year, month, [userId]
-        const curParams = userId ? [targetYear, targetMonth, targetCurrency, userId] : [targetYear, targetMonth, targetCurrency];
-        const prevParams = userId ? [prevYear, prevMonth, targetCurrency, userId] : [prevYear, prevMonth, targetCurrency];
+        const prevRange = bogotaMonthUtcRange(prevYear, prevMonth);
+        const curParams = userId
+            ? [targetRange.startUtc, targetRange.endUtc, targetCurrency, userId]
+            : [targetRange.startUtc, targetRange.endUtc, targetCurrency];
+        const prevParams = userId
+            ? [prevRange.startUtc, prevRange.endUtc, targetCurrency, userId]
+            : [prevRange.startUtc, prevRange.endUtc, targetCurrency];
 
         // Current month daily totals — grouped in Colombia time (UTC-5)
         const curQuery = `
@@ -602,8 +614,8 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
                 SUM(o.total) as revenue
             FROM orders o
             JOIN users u ON o.user_id = u.id
-            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+            WHERE o.created_at >= ?
+              AND o.created_at < ?
               AND UPPER(o.currency) = ?
             ${userFilter}
             GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
@@ -617,8 +629,8 @@ router.get("/admin/analytics/sales", requireAuth, requireRole("admin"), async (r
                 SUM(o.total) as revenue
             FROM orders o
             JOIN users u ON o.user_id = u.id
-            WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+            WHERE o.created_at >= ?
+              AND o.created_at < ?
               AND UPPER(o.currency) = ?
             ${userFilter}
             GROUP BY DAY(DATE_SUB(o.created_at, INTERVAL 5 HOUR))
@@ -684,7 +696,8 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1);
 
-        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) || targetMonth < 1 || targetMonth > 12) {
+        if (!Number.isInteger(targetYear) || targetYear < 1 || targetYear > 9998
+            || !Number.isFinite(targetMonth) || targetMonth < 1 || targetMonth > 12) {
             return res.status(400).json({ error: "Parámetros year/month inválidos" });
         }
 
@@ -692,9 +705,10 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
             return res.status(400).json({ error: "ParÃ¡metro currency invÃ¡lido" });
         }
 
+        const targetRange = bogotaMonthUtcRange(targetYear, targetMonth);
         const adjustmentWhere = `
-            YEAR(sa.adjustment_date) = ?
-              AND MONTH(sa.adjustment_date) = ?
+            sa.adjustment_date >= ?
+              AND sa.adjustment_date < ?
               AND UPPER(sa.currency) = ?
         `;
         const [[rawSalesRows], [rawPlatformRows], [sellerAdjustmentRows], [platformAdjustmentRows], [summaryAdjustmentRows]] = await Promise.all([
@@ -707,12 +721,12 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                     SUM(o.total) AS revenue
                 FROM orders o
                 JOIN users u ON u.id = o.user_id
-                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-                  AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                WHERE o.created_at >= ?
+                  AND o.created_at < ?
                   AND UPPER(o.currency) = ?
                 GROUP BY u.id, u.name, u.email
                 HAVING SUM(o.total) > 0
-            `, [targetYear, targetMonth, targetCurrency]),
+            `, [targetRange.startUtc, targetRange.endUtc, targetCurrency]),
             pool.query(`
                 SELECT
                     o.user_id,
@@ -726,12 +740,12 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                 JOIN platforms p ON p.id = oi.platform_id
                 LEFT JOIN subscriptions s ON s.id = oi.subscription_id
                 LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
-                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-                  AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                WHERE o.created_at >= ?
+                  AND o.created_at < ?
                   AND UPPER(o.currency) = ?
                   AND oi.price > 0
                 GROUP BY o.user_id, p.id, p.name
-            `, [targetYear, targetMonth, targetCurrency]),
+            `, [targetRange.startUtc, targetRange.endUtc, targetCurrency]),
             pool.query(`
                 SELECT
                     sa.applies_to_user_id AS user_id,
@@ -743,7 +757,7 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                 WHERE ${adjustmentWhere}
                   AND sa.applies_to_user_id IS NOT NULL
                 GROUP BY sa.applies_to_user_id, u.name, u.email
-            `, [targetYear, targetMonth, targetCurrency]),
+            `, [targetRange.startDate, targetRange.endDate, targetCurrency]),
             pool.query(`
                 SELECT
                     sa.applies_to_user_id AS user_id,
@@ -764,12 +778,12 @@ router.get("/admin/analytics/sales-top", requireAuth, requireRole("admin"), asyn
                   AND sa.applies_to_user_id IS NOT NULL
                   AND sa.platform_id IS NOT NULL
                 GROUP BY sa.applies_to_user_id, sa.platform_id, p.name
-            `, [targetCurrency, targetYear, targetMonth, targetCurrency]),
+            `, [targetCurrency, targetRange.startDate, targetRange.endDate, targetCurrency]),
             pool.query(`
                 SELECT COALESCE(SUM(sa.amount), 0) AS revenue_adjustment
                 FROM sales_adjustments sa
                 WHERE ${adjustmentWhere}
-            `, [targetYear, targetMonth, targetCurrency]),
+            `, [targetRange.startDate, targetRange.endDate, targetCurrency]),
         ]);
 
         const sellersById = new Map();
@@ -937,7 +951,7 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         const targetYear = parseInt(year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(month, 10) || (now.getUTCMonth() + 1);
 
-        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+        if (!Number.isInteger(targetYear) || targetYear < 1 || targetYear > 9998 || !Number.isFinite(targetMonth) ||
             targetMonth < 1 || targetMonth > 12) {
             return res.status(400).json({ error: "Parámetros year/month inválidos" });
         }
@@ -946,12 +960,15 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
         let prevMonth = targetMonth - 1;
         if (prevMonth === 0) { prevMonth = 12; prevYear--; }
 
+        const currentRange = bogotaMonthUtcRange(targetYear, targetMonth);
+        const previousRange = bogotaMonthUtcRange(prevYear, prevMonth);
+
         const curQuery = `
             SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
             FROM orders
             WHERE user_id = ?
-              AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND created_at >= ?
+              AND created_at < ?
               AND UPPER(currency) = ?
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
@@ -961,8 +978,8 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
             FROM orders
             WHERE user_id = ?
-              AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+              AND created_at >= ?
+              AND created_at < ?
               AND UPPER(currency) = ?
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))
             ORDER BY day ASC
@@ -975,8 +992,8 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
             JOIN orders o ON o.id = oi.order_id
             JOIN platforms p ON p.id = oi.platform_id
             WHERE o.user_id = ?
-              AND YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-              AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+              AND o.created_at >= ?
+              AND o.created_at < ?
               AND UPPER(o.currency) = ?
             GROUP BY p.id, p.name
             ORDER BY value DESC
@@ -984,9 +1001,9 @@ router.get("/analytics/sales", requireAuth, async (req, res) => {
 
         // ✅ Paralelo: las 3 queries al mismo tiempo
         const [[rawCurRows], [rawPrevRows], [curDistRows], curAdjustments, prevAdjustments, curPlatformAdjustments] = await Promise.all([
-            pool.query(curQuery, [userId, targetYear, targetMonth, targetCurrency]),
-            pool.query(prevQuery, [userId, prevYear, prevMonth, targetCurrency]),
-            pool.query(curDistQuery, [userId, targetYear, targetMonth, targetCurrency]),
+            pool.query(curQuery, [userId, currentRange.startUtc, currentRange.endUtc, targetCurrency]),
+            pool.query(prevQuery, [userId, previousRange.startUtc, previousRange.endUtc, targetCurrency]),
+            pool.query(curDistQuery, [userId, currentRange.startUtc, currentRange.endUtc, targetCurrency]),
             getMonthlySalesAdjustments({
                 year: targetYear,
                 month: targetMonth,
@@ -1079,10 +1096,14 @@ router.get("/analytics/available-months", requireAuth, async (req, res) => {
             }
         }
 
-        const yearFilter = parsedYear && Number.isFinite(parsedYear)
-            ? "AND YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?"
-            : "";
-        if (parsedYear && Number.isFinite(parsedYear)) params.push(parsedYear);
+        const yearRange = parsedYear && Number.isInteger(parsedYear) && parsedYear >= 1 && parsedYear <= 9998
+            ? {
+                startUtc: bogotaMonthUtcRange(parsedYear, 1).startUtc,
+                endUtc: bogotaMonthUtcRange(parsedYear, 12).endUtc,
+            }
+            : null;
+        const yearFilter = yearRange ? "AND created_at >= ? AND created_at < ?" : "";
+        if (yearRange) params.push(yearRange.startUtc, yearRange.endUtc);
 
         const [rows] = await pool.query(`
             SELECT YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) as year,
@@ -1131,13 +1152,15 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
         const monthList = months.split(",").slice(0, 6).map(m => {
             const [y, mo] = m.trim().split("-").map(Number);
             return { year: y, month: mo };
-        }).filter(m => m.year && m.month);
+        }).filter((m) => Number.isInteger(m.year) && m.year >= 1 && m.year <= 9998
+            && Number.isInteger(m.month) && m.month >= 1 && m.month <= 12);
 
         const results = await Promise.all(monthList.map(async ({ year, month }) => {
+            const monthRange = bogotaMonthUtcRange(year, month);
             let dailyQ = `
                 SELECT DAY(DATE_SUB(created_at, INTERVAL 5 HOUR)) as day, COUNT(id) as orders, SUM(total) as revenue
                 FROM orders
-                WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+                WHERE created_at >= ? AND created_at < ?
                   AND UPPER(currency) = ?
             `;
             let distQ = `
@@ -1145,12 +1168,12 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 JOIN platforms p ON p.id = oi.platform_id
-                WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                WHERE o.created_at >= ? AND o.created_at < ?
                   AND UPPER(o.currency) = ?
             `;
 
-            let dailyParams = [year, month, targetCurrency];
-            let distParams = [year, month, targetCurrency];
+            let dailyParams = [monthRange.startUtc, monthRange.endUtc, targetCurrency];
+            let distParams = [monthRange.startUtc, monthRange.endUtc, targetCurrency];
 
             // If it is NOT a global admin, we filter by targetUserIds
             if (!isGlobalAdmin) {
@@ -1216,12 +1239,11 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     JOIN platforms p ON p.id = oi.platform_id
                     LEFT JOIN subscriptions s ON s.id = oi.subscription_id
                     LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
-                    WHERE YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
-                      AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?
+                    WHERE o.created_at >= ? AND o.created_at < ?
                       AND UPPER(o.currency) = ?
-                      AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                      AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                 `;
-                const profitParams = [year, month, targetCurrency, NET_PROFIT_TRACKING_START_AT];
+                const profitParams = [monthRange.startUtc, monthRange.endUtc, targetCurrency, NET_PROFIT_TRACKING_START_AT];
 
                 if (!isGlobalAdmin) {
                     const placeholders = targetUserIds.map(() => "?").join(",");
@@ -1265,10 +1287,10 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
 
                 if (!includeSupport) return monthData;
                 let supportFilter = "";
-                const supportParams = [year, month];
-                const supportSubtypeParams = [year, month];
-                const supportDailyParams = [year, month];
-                const supportPlatformParams = [year, month];
+                const supportParams = [monthRange.startUtc, monthRange.endUtc];
+                const supportSubtypeParams = [monthRange.startUtc, monthRange.endUtc];
+                const supportDailyParams = [monthRange.startUtc, monthRange.endUtc];
+                const supportPlatformParams = [monthRange.startUtc, monthRange.endUtc];
                 if (!isGlobalAdmin) {
                     const placeholders = targetUserIds.map(() => "?").join(",");
                     supportFilter = ` AND st.user_id IN (${placeholders})`;
@@ -1290,8 +1312,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                             ELSE NULL
                         END) AS avg_resolution_minutes
                     FROM support_tickets st
-                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
-                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                    WHERE st.created_at >= ? AND st.created_at < ?
                       ${supportFilter}
                 `;
                 const supportSubtypeQ = `
@@ -1300,8 +1321,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                         COUNT(*) AS count
                     FROM support_tickets st
                     WHERE st.status = 'resolved'
-                      AND YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
-                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                      AND st.created_at >= ? AND st.created_at < ?
                       ${supportFilter}
                     GROUP BY subtype_key
                     ORDER BY count DESC, subtype_key ASC
@@ -1313,8 +1333,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                         COUNT(*) AS created,
                         SUM(CASE WHEN st.status = 'resolved' THEN 1 ELSE 0 END) AS resolved
                     FROM support_tickets st
-                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
-                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                    WHERE st.created_at >= ? AND st.created_at < ?
                       ${supportFilter}
                     GROUP BY DAY(DATE_SUB(st.created_at, INTERVAL 5 HOUR))
                     ORDER BY day ASC
@@ -1323,8 +1342,7 @@ router.get("/analytics/sales/multi", requireAuth, async (req, res) => {
                     SELECT p.name AS name, COUNT(*) AS value
                     FROM support_tickets st
                     JOIN platforms p ON p.id = st.platform_id
-                    WHERE YEAR(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
-                      AND MONTH(DATE_SUB(st.created_at, INTERVAL 5 HOUR)) = ?
+                    WHERE st.created_at >= ? AND st.created_at < ?
                       ${supportFilter}
                     GROUP BY p.id, p.name
                     ORDER BY value DESC, p.name ASC
@@ -1398,7 +1416,8 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
                 const [year, month] = value.trim().split("-").map(Number);
                 return { year, month };
             })
-            .filter(({ year, month }) => Number.isInteger(year) && Number.isInteger(month) && month >= 1 && month <= 12);
+            .filter(({ year, month }) => Number.isInteger(year) && year >= 1 && year <= 9998
+                && Number.isInteger(month) && month >= 1 && month <= 12);
 
         if (monthList.length === 0) {
             return res.status(400).json({ error: "No hay meses validos para analizar" });
@@ -1418,10 +1437,11 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
             isGlobalAdmin = true;
         }
 
-        const monthFilter = monthList
-            .map(() => "(YEAR(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ? AND MONTH(DATE_SUB(o.created_at, INTERVAL 5 HOUR)) = ?)")
+        const monthRanges = monthList.map(({ year, month }) => bogotaMonthUtcRange(year, month));
+        const monthFilter = monthRanges
+            .map(() => "(o.created_at >= ? AND o.created_at < ?)")
             .join(" OR ");
-        const monthParams = monthList.flatMap(({ year, month }) => [year, month]);
+        const monthParams = monthRanges.flatMap(({ startUtc, endUtc }) => [startUtc, endUtc]);
         const userFilter = isGlobalAdmin
             ? ""
             : `AND o.user_id IN (${targetUserIds.map(() => "?").join(",")})`;
@@ -1449,7 +1469,7 @@ router.get("/admin/analytics/platform-profit", requireAuth, requireRole("admin")
             LEFT JOIN platform_accounts pa ON pa.id = s.platform_account_id
             WHERE (${monthFilter})
               AND UPPER(o.currency) = ?
-              AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+              AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
               ${userFilter}
             GROUP BY p.id, p.name, p.slug
             ORDER BY net_profit DESC, tracked_revenue DESC, revenue_total DESC, p.name ASC
@@ -1627,7 +1647,7 @@ router.get("/admin/analytics/daily-profit", requireAuth, requireRole("admin"), a
                 WHERE o.created_at >= DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 5 HOUR)
                   AND o.created_at < DATE_ADD(DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 1 DAY), INTERVAL 5 HOUR)
                   AND UPPER(o.currency) = ?
-                  AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                  AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                   ${userFilter}
             `, [date, date, targetCurrency, NET_PROFIT_TRACKING_START_AT, ...(!isGlobalAdmin ? targetUserIds : [])]),
             pool.query(`
@@ -1651,7 +1671,7 @@ router.get("/admin/analytics/daily-profit", requireAuth, requireRole("admin"), a
                 WHERE o.created_at >= DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 5 HOUR)
                   AND o.created_at < DATE_ADD(DATE_ADD(CONCAT(?, ' 00:00:00'), INTERVAL 1 DAY), INTERVAL 5 HOUR)
                   AND UPPER(o.currency) = ?
-                  AND DATE_SUB(o.created_at, INTERVAL 5 HOUR) >= ?
+                  AND o.created_at >= DATE_ADD(?, INTERVAL 5 HOUR)
                   ${userFilter}
                 GROUP BY p.id, p.name, p.slug
                 ORDER BY net_profit DESC, tracked_revenue DESC, revenue_total DESC, p.name ASC
@@ -1770,14 +1790,15 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
         const targetYear = parseInt(req.query.year, 10) || now.getUTCFullYear();
         const targetMonth = parseInt(req.query.month, 10) || (now.getUTCMonth() + 1);
 
-        if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth) ||
+        if (!Number.isInteger(targetYear) || targetYear < 1 || targetYear > 9998 || !Number.isFinite(targetMonth) ||
             targetMonth < 1 || targetMonth > 12) {
             return res.status(400).json({ error: "Parámetros year/month inválidos" });
         }
 
+        const monthRange = bogotaMonthUtcRange(targetYear, targetMonth);
         // Build user filter
         let userFilter = "";
-        let params = [targetYear, targetMonth, targetCurrency];
+        let params = [monthRange.startUtc, monthRange.endUtc, targetCurrency];
         let targetUserIds = [actingUser.id];
         let isGlobalAdmin = false;
 
@@ -1808,8 +1829,7 @@ router.get("/analytics/sales/weekly", requireAuth, async (req, res) => {
                 COUNT(id)    AS orders,
                 SUM(total)   AS revenue
             FROM orders
-            WHERE YEAR(DATE_SUB(created_at, INTERVAL 5 HOUR))  = ?
-              AND MONTH(DATE_SUB(created_at, INTERVAL 5 HOUR)) = ?
+            WHERE created_at >= ? AND created_at < ?
               AND UPPER(currency) = ?
               ${userFilter}
             GROUP BY DAY(DATE_SUB(created_at, INTERVAL 5 HOUR))

@@ -2,6 +2,7 @@ const express = require("express");
 const pool = require("../db");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
+const { isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
 
 const {
     createAccountOne,
@@ -50,7 +51,19 @@ router.post("/admin/accounts", requireAuth, requireRole("admin"), async (req, re
     const conn = await pool.getConnection();
     try {
         await conn.beginTransaction();
-        const profileNumbers = parseManualProfileNumbers(
+        let isYouTubeChannel = isYouTubeChannelProduct({ platformName: req.body?.platformName });
+        const platformId = Number(req.body?.platformId || req.body?.platform_id || 0);
+        if (platformId) {
+            const [[platform]] = await conn.query(
+                `SELECT name, slug FROM platforms WHERE id = ? LIMIT 1`,
+                [platformId]
+            );
+            isYouTubeChannel = isYouTubeChannelProduct({
+                platformName: platform?.name || req.body?.platformName,
+                platformSlug: platform?.slug,
+            });
+        }
+        const profileNumbers = isYouTubeChannel ? [null] : parseManualProfileNumbers(
             req.body?.profileNumber ?? req.body?.profile_number ?? req.body?.profile ?? req.body?.perfil
         );
         const created = [];

@@ -35,10 +35,22 @@ function isMicrosoftOfficeProduct(product = {}) {
     return compact.includes("microsoft") && compact.includes("office");
 }
 
+function isYouTubeMusicProduct(product = {}) {
+    const compact = compactProductName(product);
+    return compact.includes("youtube") && compact.includes("music");
+}
+
+function isYouTubeChannelProduct(product = {}) {
+    const compact = compactProductName(product);
+    return isYouTubeMusicProduct(product) || /youtube(?:premium)?3(?:meses|months)/.test(compact);
+}
+
 module.exports = {
     isChatGPTPersonalProduct,
     isDisneyCodeTvProduct,
     isIptvProduct,
     isMicrosoftOfficeProduct,
+    isYouTubeChannelProduct,
+    isYouTubeMusicProduct,
     normalizeProductName,
 };

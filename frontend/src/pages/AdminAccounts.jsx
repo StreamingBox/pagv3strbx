@@ -7,6 +7,7 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { loadXlsx } from "../utils/loadXlsx.js";
+import { generateTotpCode } from "../utils/youtubeTotp.js";
 const MotionDiv = motion.div;
 
 async function apiFetch(path, opts = {}) {
@@ -88,6 +89,25 @@ function isNetflixPlatform(platform) {
     return compact.includes("netflix");
 }
 
+function isYouTubeChannelPlatform(platform) {
+    const compact = `${platform?.slug || ""} ${platform?.name || platform || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("youtube") && (compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
+}
+
+function isYouTubeTotpPlatform(platform) {
+    const compact = `${platform?.slug || ""} ${platform?.name || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("youtube")
+        && (compact.includes("premium") || compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
+}
+
 function summarizeExcelRows(rows, platforms = []) {
     const summary = {
         total: rows.length,
@@ -98,6 +118,7 @@ function summarizeExcelRows(rows, platforms = []) {
         withoutCost: 0,
         invalidCost: 0,
         invalidIptvRows: [],
+        invalidYouTubeMusicRows: [],
     };
 
     for (const [index, row] of rows.entries()) {
@@ -107,14 +128,20 @@ function summarizeExcelRows(rows, platforms = []) {
         const accessUrl = readExcelValue(row, ["url", "accessurl", "access_url"]);
         const platformById = platforms.find((item) => String(item?.id) === String(platform).trim());
         const requiresIptvAccess = isIptvPlatform(platformById || platform);
+        const requiresYoutubeChannel = isYouTubeChannelPlatform(platformById || platform);
+        const youtubeChannel = readExcelValue(row, ["youtubechannelname", "nombrecanalyoutube", "nombredelcanaldeyoutube", "youtubechannel", "canalyoutube", "canaldeyoutube", "canal"]);
         const valid = !!String(platform).trim()
             && !!String(email).trim()
             && !!String(password).trim()
-            && (!requiresIptvAccess || !!String(accessUrl).trim());
+            && (!requiresIptvAccess || !!String(accessUrl).trim())
+            && (!requiresYoutubeChannel || !!String(youtubeChannel).trim());
         if (!valid) {
             summary.invalid += 1;
             if (requiresIptvAccess && (!String(email).trim() || !String(password).trim() || !String(accessUrl).trim())) {
                 summary.invalidIptvRows.push(index + 2);
+            }
+            if (requiresYoutubeChannel && !String(youtubeChannel).trim()) {
+                summary.invalidYouTubeMusicRows.push(index + 2);
             }
             continue;
         }
@@ -284,6 +311,14 @@ export default function AdminAccounts() {
     const [codeProvider, setCodeProvider] = useState("strbx");
     const [pin, setPin] = useState("");
     const [profileNumber, setProfileNumber] = useState("");
+    const [youtubeChannelName, setYoutubeChannelName] = useState("");
+    const [youtubeTotpSecret, setYoutubeTotpSecret] = useState("");
+    const [youtubeTotpConfirmationCode, setYoutubeTotpConfirmationCode] = useState("");
+    const [youtubeTotpPreview, setYoutubeTotpPreview] = useState(null);
+    const [youtubeTotpClock, setYoutubeTotpClock] = useState(0);
+    const [youtubeTotpLoading, setYoutubeTotpLoading] = useState(false);
+    const [youtubeTotpCopied, setYoutubeTotpCopied] = useState(false);
+    const [youtubeTotpError, setYoutubeTotpError] = useState("");
     const [costMode, setCostMode] = useState("screen");
     const [motherCostTotal, setMotherCostTotal] = useState("");
     const [motherProfilesTotal, setMotherProfilesTotal] = useState("");
@@ -305,6 +340,11 @@ export default function AdminAccounts() {
     const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
     const isIptv = isIptvPlatform(selectedPlatform);
     const isNetflix = isNetflixPlatform(selectedPlatform);
+    const isYouTubeChannel = isYouTubeChannelPlatform(selectedPlatform);
+    const isYouTubeTotp = isYouTubeTotpPlatform(selectedPlatform);
+    const youtubeTotpSecondsLeft = youtubeTotpPreview
+        ? Math.max(0, Math.ceil((youtubeTotpPreview.expiresAt - youtubeTotpClock) / 1000))
+        : 0;
     const hasCompactCredentials = isChatGPTPersonal || isIptv;
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
@@ -313,7 +353,7 @@ export default function AdminAccounts() {
         : manualCostAmount;
     const manualCostIncomplete = costMode === "account" && manualCostAmount > 0 && manualProfiles <= 0;
     const manualProfileList = useMemo(() => parseManualProfiles(profileNumber), [profileNumber]);
-    const manualCreateCount = hasCompactCredentials ? 1 : Math.max(1, manualProfileList.length);
+    const manualCreateCount = hasCompactCredentials || isYouTubeChannel ? 1 : Math.max(1, manualProfileList.length);
     const manualProfileSummary = manualProfileList.length > 1
         ? `Se crearan ${manualProfileList.length} registros con los perfiles: ${manualProfileList.join(", ")}.`
         : "Para crear varios perfiles con los mismos datos, escribe: 1,2,3,4.";
@@ -338,8 +378,16 @@ export default function AdminAccounts() {
     }
 
     async function createAccount() {
+        if (isYouTubeChannel && !youtubeChannelName.trim()) {
+            setError("Indica el nombre exacto del canal de YouTube que debe usar el cliente.");
+            return;
+        }
         if (manualCostIncomplete) {
             setError("Indica cuantas pantallas vendibles tiene la cuenta completa.");
+            return;
+        }
+        if (youtubeTotpSecret.trim() && !/^\d{6}$/.test(youtubeTotpConfirmationCode.trim())) {
+            setError("Ingresa el código actual de 6 dígitos de Google Authenticator para validar la clave.");
             return;
         }
 
@@ -359,7 +407,12 @@ export default function AdminAccounts() {
                     twoFactorSecret: isChatGPTPersonal ? (twoFactorSecret || null) : null,
                     codeProvider: isNetflix ? codeProvider : "strbx",
                     pin: pin || null,
-                    profileNumber: profileNumber || null,
+                    profileNumber: isYouTubeChannel ? null : (profileNumber || null),
+                    youtubeChannelName: isYouTubeChannel ? youtubeChannelName.trim() : null,
+                    ...(isYouTubeTotp && youtubeTotpSecret.trim() ? {
+                        totpSecret: youtubeTotpSecret.trim(),
+                        totpConfirmationCode: youtubeTotpConfirmationCode.trim(),
+                    } : {}),
                     costMode,
                     costAmount: motherCostTotal || null,
                     motherProfilesTotal: costMode === "account" ? (motherProfilesTotal || null) : null,
@@ -374,6 +427,11 @@ export default function AdminAccounts() {
                 setCodeProvider("strbx");
                 setPin("");
                 setProfileNumber("");
+                setYoutubeChannelName("");
+                setYoutubeTotpSecret("");
+                setYoutubeTotpConfirmationCode("");
+                setYoutubeTotpPreview(null);
+                setYoutubeTotpError("");
                 setMotherCostTotal("");
                 setMotherProfilesTotal("");
                 setExcelError(false);
@@ -420,6 +478,9 @@ export default function AdminAccounts() {
             const summary = summarizeExcelRows(rows, platforms);
             if (summary.invalidIptvRows.length) {
                 throw new Error(`IPTV requiere Usuario, Contrase\u00f1a y URL. Revisa las filas: ${summary.invalidIptvRows.join(", ")}.`);
+            }
+            if (summary.invalidYouTubeMusicRows.length) {
+                throw new Error(`YouTube Music y YouTube 3 meses requieren la columna "Nombre del canal de YouTube". Revisa las filas: ${summary.invalidYouTubeMusicRows.join(", ")}.`);
             }
             if (!summary.valid) throw new Error("El archivo no tiene cuentas validas.");
 
@@ -594,6 +655,7 @@ export default function AdminAccounts() {
             "url",
             "2FA",
             "perfil",
+            "nombreCanalYoutube",
             "pin",
             "tipoCosto",
             "valorCosto",
@@ -611,6 +673,7 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "1",
+                nombreCanalYoutube: "",
                 pin: "1234",
                 tipoCosto: "CUENTA",
                 valorCosto: 54000,
@@ -627,6 +690,7 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "2",
+                nombreCanalYoutube: "",
                 pin: "2345",
                 tipoCosto: "CUENTA",
                 valorCosto: 54000,
@@ -643,6 +707,7 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "1",
+                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: 9000,
@@ -659,6 +724,7 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "Clave o código 2FA opcional",
                 perfil: "",
+                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: "",
@@ -675,6 +741,7 @@ export default function AdminAccounts() {
                 url: "http://red4tv.lat",
                 "2FA": "",
                 perfil: "",
+                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: "",
@@ -687,7 +754,7 @@ export default function AdminAccounts() {
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
             { wch: 13 }, { wch: 22 }, { wch: 20 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
-            { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
+            { wch: 28 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
         wsExamples["!cols"] = wsCuentas["!cols"];
@@ -794,6 +861,39 @@ export default function AdminAccounts() {
     useEffect(() => {
         if (!isNetflix) setCodeProvider("strbx");
     }, [isNetflix]);
+
+    useEffect(() => {
+        if (!youtubeTotpPreview) return undefined;
+        const timer = window.setInterval(() => setYoutubeTotpClock(Date.now()), 1000);
+        return () => window.clearInterval(timer);
+    }, [youtubeTotpPreview]);
+
+    async function consultYoutubeTotpCode() {
+        setYoutubeTotpLoading(true);
+        setYoutubeTotpError("");
+        setYoutubeTotpCopied(false);
+        try {
+            const result = await generateTotpCode(youtubeTotpSecret);
+            setYoutubeTotpPreview(result);
+            setYoutubeTotpClock(Date.now());
+            setYoutubeTotpConfirmationCode(result.code);
+        } catch (err) {
+            setYoutubeTotpError(err?.message || "No se pudo generar el código.");
+        } finally {
+            setYoutubeTotpLoading(false);
+        }
+    }
+
+    async function copyYoutubeTotpCode() {
+        if (!youtubeTotpPreview?.code) return;
+        try {
+            await navigator.clipboard.writeText(youtubeTotpPreview.code);
+            setYoutubeTotpCopied(true);
+            window.setTimeout(() => setYoutubeTotpCopied(false), 1800);
+        } catch {
+            setYoutubeTotpError("No se pudo copiar automáticamente. Selecciona el código y cópialo.");
+        }
+    }
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -1129,7 +1229,94 @@ export default function AdminAccounts() {
                                 </div>
                             )}
 
-                            <div style={{ display: hasCompactCredentials ? "none" : "flex", flexDirection: "column", gap: 8 }}>
+                            {isYouTubeChannel && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        Nombre del canal de YouTube *
+                                    </label>
+                                    <input
+                                        style={inputStyle}
+                                        type="text"
+                                        maxLength={180}
+                                        placeholder="Ej: Mi canal principal"
+                                        value={youtubeChannelName}
+                                        onChange={(e) => setYoutubeChannelName(e.target.value)}
+                                    />
+                                    <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.35 }}>
+                                        El cliente debe seleccionar este canal después de iniciar sesión. No es necesariamente el nombre del correo.
+                                    </div>
+                                </div>
+                            )}
+
+                            {isYouTubeTotp && (
+                                <div style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        Clave secreta de Google Authenticator <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
+                                    </label>
+                                    <input
+                                        style={inputStyle}
+                                        type="password"
+                                        autoComplete="new-password"
+                                        placeholder="Pega la clave Base32 o la URI otpauth://"
+                                        value={youtubeTotpSecret}
+                                        onChange={(e) => {
+                                            setYoutubeTotpSecret(e.target.value);
+                                            setYoutubeTotpConfirmationCode("");
+                                            setYoutubeTotpPreview(null);
+                                            setYoutubeTotpError("");
+                                        }}
+                                    />
+                                    <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
+                                        Pulsa «Consultar código» para generar el código actual a partir de esta clave. Puedes copiarlo para iniciar sesión en Google. La clave se guarda cifrada y se comparte con las cuentas YouTube del mismo correo.
+                                    </div>
+                                    {youtubeTotpSecret.trim() && (
+                                        <>
+                                            <button
+                                                className="btn-ghost"
+                                                type="button"
+                                                onClick={consultYoutubeTotpCode}
+                                                disabled={youtubeTotpLoading}
+                                                style={{ width: "fit-content", minHeight: 40, padding: "0 16px" }}
+                                            >
+                                                {youtubeTotpLoading ? "Generando código..." : "Consultar código"}
+                                            </button>
+                                            {youtubeTotpPreview && (
+                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", border: "1px solid var(--stroke)", borderRadius: 12, background: "var(--bg0)" }}>
+                                                    <div>
+                                                        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Código actual</div>
+                                                        <code style={{ fontSize: 24, fontWeight: 800, letterSpacing: 3, color: "var(--text)" }}>{youtubeTotpPreview.code}</code>
+                                                        <div style={{ fontSize: 11, color: youtubeTotpSecondsLeft > 0 ? "#10b981" : "#f59e0b", marginTop: 4 }}>
+                                                            {youtubeTotpSecondsLeft > 0 ? `Vence en ${youtubeTotpSecondsLeft} s` : "Código vencido; consulta uno nuevo."}
+                                                        </div>
+                                                    </div>
+                                                    <button className="btn-ghost" type="button" onClick={copyYoutubeTotpCode} style={{ minHeight: 38, padding: "0 14px" }}>
+                                                        {youtubeTotpCopied ? "Copiado" : "Copiar código"}
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {youtubeTotpError && <div role="alert" style={{ fontSize: 12, color: "#f87171" }}>{youtubeTotpError}</div>}
+                                            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 4 }}>
+                                                Código para confirmar la clave
+                                            </label>
+                                            <input
+                                                style={inputStyle}
+                                                type="text"
+                                                inputMode="numeric"
+                                                autoComplete="one-time-code"
+                                                maxLength={6}
+                                                placeholder="000000"
+                                                value={youtubeTotpConfirmationCode}
+                                                onChange={(e) => setYoutubeTotpConfirmationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                            />
+                                            <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
+                                                Al consultar, este campo se completa con el código generado. También puedes escribir el código actual de tu Authenticator. No se guarda.
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            <div style={{ display: hasCompactCredentials || isYouTubeChannel ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Perfil(es) <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
@@ -1244,7 +1431,7 @@ export default function AdminAccounts() {
                                 className="btn"
                                 style={{ width: "100%", maxWidth: 320, fontSize: 14, fontWeight: 800, height: 48 }}
                                 onClick={createAccount}
-                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || manualCostIncomplete}
+                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || (isYouTubeChannel && !youtubeChannelName.trim()) || manualCostIncomplete}
                             >
                                 {saving ? "Guardando..." : "✅ Agregar Cuenta"}
                             </button>

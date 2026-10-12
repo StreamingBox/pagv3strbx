@@ -1,5 +1,6 @@
 const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
 const { excludeInactiveMasterAccountByEmailSql } = require("./expirationVisibility.service");
+const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
 
 async function getPlatformFallbacks(conn, sourcePlatformId = null) {
     const params = [];
@@ -98,6 +99,9 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     const candidatePlaceholders = candidatePlatformIds.map(() => "?").join(",");
     const replacementFilters = [];
     const replacementParams = [];
+    if (options.allowStrbxReported !== true) {
+        replacementFilters.push(`NOT (${strbxReportedNetflixAccountSql("pa")})`);
+    }
     if (excludeInactiveMasterAccounts) {
         replacementFilters.push(excludeInactiveMasterAccountByEmailSql({ accountAlias: "pa" }));
     }
@@ -111,7 +115,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
 
     if (specificAccountId > 0) {
         const [specificRows] = await conn.query(
-            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.access_url, pa.unit_cost,
+            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost,
                     p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
              FROM platform_accounts pa
              JOIN platforms p ON p.id = pa.platform_id
@@ -137,7 +141,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     }
 
     const [rows] = await conn.query(
-        `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.access_url, pa.unit_cost,
+        `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost,
                 p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
          FROM platform_accounts pa
          JOIN platforms p ON p.id = pa.platform_id AND p.is_active = 1

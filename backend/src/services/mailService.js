@@ -794,6 +794,36 @@ async function sendSupportTicketCreatedEmails({ ticket, customerName }) {
     return { ok: true, delivery: "email" };
 }
 
+async function sendSupportTicketCreatedEmail({ ticket, customerName, recipient }) {
+    const config = getSupportMailConfig();
+    if (!config) {
+        console.warn(`[mail] No hay SMTP configurado para soporte. Caso ${ticket.ticketCode} no enviado.`);
+        return { ok: true, delivery: "log" };
+    }
+
+    const inbox = String(
+        process.env.SUPPORT_INBOX ||
+        process.env.SUPPORT_SMTP_USER ||
+        "soporte@strbx.com.co"
+    ).trim();
+    const forAdmin = recipient === "admin";
+    const email = buildSupportCreatedEmail({ ticket, customerName, forAdmin });
+    const message = {
+        from: config.from,
+        to: forAdmin ? inbox : ticket.userEmail,
+        replyTo: forAdmin ? ticket.userEmail : inbox,
+        ...email,
+    };
+
+    try {
+        const transporter = await getTransporter("support");
+        await transporter.sendMail(message);
+        return { ok: true, delivery: "email" };
+    } catch (error) {
+        return { ok: false, delivery: "error", message: error?.message || "No se pudo entregar el correo de soporte." };
+    }
+}
+
 async function sendSupportTicketResolvedEmail({ ticket, customerName, responseEventId = null }) {
     const config = getSupportMailConfig();
     if (!config) {
@@ -884,5 +914,6 @@ module.exports = {
     sendTopupRejectedEmail,
     sendStockAvailableEmail,
     sendSupportTicketCreatedEmails,
+    sendSupportTicketCreatedEmail,
     sendSupportTicketResolvedEmail,
 };

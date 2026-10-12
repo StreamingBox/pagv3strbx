@@ -24,7 +24,7 @@ const LOGIN_CODE_ACTION_LABELS = [
 ];
 const PORT = Number(process.env.TV_SETUP_WORKER_PORT || 4100);
 const HOST = String(process.env.TV_SETUP_WORKER_HOST || "127.0.0.1").trim();
-const SESSION_TTL_MS = Number(process.env.TV_SETUP_WORKER_SESSION_TTL_MS || 90000);
+const SESSION_TTL_MS = Number(process.env.TV_SETUP_WORKER_SESSION_TTL_MS || 240000);
 const activeSessions = new Map();
 
 function normalizeDigits(value) {
@@ -99,13 +99,14 @@ function detectPageFailure(text, codeKind = "tv") {
         || normalized.includes("this code is invalid")
         || normalized.includes("code expired")
         || normalized.includes("codigo incorrecto")
+        || normalized.includes("el codigo es incorrecto")
         || normalized.includes("codigo no valido")) {
         return codeKind === "login"
             ? result("login_code_rejected", "Netflix rechazó el código de Inicio recibido por correo.")
             : result("invalid_tv_code", "Netflix rechazó el código del TV. Verifica los 8 dígitos e inténtalo nuevamente.");
     }
-    if (normalized.includes("no pudimos verificar") || normalized.includes("something went wrong")) {
-        return result("netflix_flow_error", "Netflix no permitió continuar con la conexión del TV.");
+    if (normalized.includes("no pudimos verificar") || normalized.includes("something went wrong") || normalized.includes("algo salio mal")) {
+        return result("netflix_flow_error", "Netflix mostró un error al iniciar sesión. Espera unos minutos antes de intentar nuevamente.");
     }
     if (normalized.includes("contrasena incorrecta")
         || normalized.includes("contrasena es incorrecta")
@@ -122,9 +123,28 @@ function isSuccessText(text) {
     return [
         "tu tv esta lista para ver netflix",
         "your tv is ready for netflix",
-        "ir a netflix",
-        "go to netflix",
+        "tu tv ahora esta conectada",
+        "your tv is now connected",
     ].some((needle) => normalized.includes(needle));
+}
+
+function isTvCompletion(text, url, hasAuthenticationInputs = false) {
+    const path = safeNetflixPath(url);
+    return !hasAuthenticationInputs && Boolean(path) && (isSuccessText(text) || /^\/tv\/out\/success\/?$/i.test(path));
+}
+
+async function isPageTvCompletion(page, text) {
+    const hasAuthenticationInputs = await page.locator("input").evaluateAll((inputs) => inputs.some((input) => {
+        const rect = input.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0
+            && !["hidden", "checkbox", "radio", "submit", "button"].includes(input.type);
+    }));
+    return isTvCompletion(text, page.url(), hasAuthenticationInputs);
+}
+
+function finalNetflixUrl(url) {
+    const parsed = new URL(url);
+    return parsed.origin + parsed.pathname;
 }
 
 async function bodyText(page) {
@@ -192,7 +212,7 @@ async function waitForNavigationAfter(page, action) {
 }
 
 async function submitTvCode(page, tvCode) {
-    await page.goto(NETFLIX_TV_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.goto(NETFLIX_TV_URL, { waitUntil: "load", timeout: 20000 });
     await page.waitForSelector("form[data-uia='witcher-code-form']", { state: "visible", timeout: 12000 });
     logStage("tv_page_loaded");
     const form = page.locator("form[data-uia='witcher-code-form']");
@@ -210,6 +230,7 @@ async function submitTvCode(page, tvCode) {
     logStage("tv_code_typed", { inputCount: fieldCount });
     await page.waitForTimeout(350);
     const submit = await findVisibleInput(page, [
+        "button[data-uia='witcher-code-submit']",
         "button[data-uia*='continue' i]",
         "button[type='submit']",
         "input[type='submit']",
@@ -233,9 +254,9 @@ async function submitTvCode(page, tvCode) {
         logStage("tv_code_rejected", { status: failure.status });
         return failure;
     }
-    if (isSuccessText(text)) {
+    if (await isPageTvCompletion(page, text)) {
         logStage("tv_setup_completed", { path: safePath(page.url()) });
-        return { ok: true, status: "completed", finalUrl: page.url() };
+        return { ok: true, status: "completed", finalUrl: finalNetflixUrl(page.url()) };
     }
     logStage("tv_step_advanced", { path: safePath(page.url()) });
     return null;
@@ -254,7 +275,7 @@ async function findVisibleInput(page, selectors) {
 }
 
 async function findVisibleTextAction(page, labels) {
-    const normalizedLabels = labels.map(normalizeText);
+    const normalizedLabels = labels.map((label) => normalizeText(String(label || "").replace(/[-_]+/g, " ")));
     const candidates = page.locator(ACTION_SELECTOR);
     const count = await candidates.count();
     for (let index = 0; index < count; index += 1) {
@@ -278,9 +299,11 @@ async function findLoginCodeAction(page, stagePrefix) {
     if (!loginCodeAction) {
         const helpAction = await findVisibleTextAction(page, ["obtener ayuda", "get help"]);
         if (helpAction) {
-            const dataUia = String(await helpAction.getAttribute("data-uia").catch(() => ""));
             const ariaExpanded = String(await helpAction.getAttribute("aria-expanded").catch(() => ""));
-            const alreadyExpanded = ariaExpanded.toLowerCase() === "true" || /expanded/i.test(dataUia);
+            // Netflix names this toggle for its next action, not its current state.
+            const visibleMenu = await findVisibleInput(page, ["[data-uia^='help-menu-item-']", "[role='menu']"]);
+            const alreadyExpanded = ariaExpanded.toLowerCase() === "true"
+                || (ariaExpanded.toLowerCase() !== "false" && Boolean(visibleMenu));
             helpExpanded = alreadyExpanded;
             logStage(alreadyExpanded ? `${stagePrefix}_help_already_open` : `${stagePrefix}_help_opened`, {
                 path: safePath(page.url()),
@@ -314,6 +337,7 @@ function buildEmailDiagnostics({ emailMatches, continueClicked, hasLoginCodeProm
 }
 
 async function submitAccountEmail(page, accountEmail) {
+    await page.waitForLoadState("load", { timeout: 20000 });
     const normalizedEmail = String(accountEmail || "").trim().toLowerCase();
     const emailInput = await findVisibleInput(page, [
         "input[type='email']",
@@ -430,6 +454,14 @@ async function submitAccountEmail(page, accountEmail) {
     const hasLoginCodePrompt = /(?:ingresa el codigo.*(?:email|correo)|codigo.*(?:email|correo)|enviamos.*(?:email|correo)|enter.*code.*email|code.*sent.*email)/i.test(normalizedText);
     const hasPasswordInput = Boolean(await findVisibleInput(page, ["input[name='password']"]));
     const hasValidationError = /(?:correo.*incorrecto|email.*invalid|introduce.*correo|ingresa.*correo.*valido|something went wrong|no pudimos verificar)/i.test(normalizedText);
+    const failure = detectPageFailure(text, "login");
+    if (failure) {
+        logStage("account_email_rejected", { status: failure.status });
+        return {
+            ...failure,
+            diagnostics: buildEmailDiagnostics({ emailMatches, continueClicked, hasLoginCodePrompt, hasPasswordInput, loginCodeActionVisible: false }),
+        };
+    }
     if (!hasLoginCodePrompt && hasPasswordInput && !hasValidationError) {
         const { helpExpanded, loginCodeAction } = await findLoginCodeAction(page, "account_email");
         if (loginCodeAction) {
@@ -454,16 +486,69 @@ async function submitAccountEmail(page, accountEmail) {
             { diagnostics: buildEmailDiagnostics({ emailMatches, continueClicked, hasLoginCodePrompt, hasPasswordInput, helpExpanded, loginCodeActionVisible: false }) },
         );
     }
-    const failure = detectPageFailure(text, "login");
-    if (failure) {
-        logStage("account_email_rejected", { status: failure.status });
-        return failure;
-    }
-    if (isSuccessText(text)) {
+    if (await isPageTvCompletion(page, text)) {
         logStage("tv_setup_completed", { path: safePath(page.url()) });
-        return { ok: true, status: "completed", finalUrl: page.url() };
+        return { ok: true, status: "completed", finalUrl: finalNetflixUrl(page.url()) };
     }
     return null;
+}
+
+async function submitAccountPassword(page, accountPassword) {
+    if (!safeNetflixPath(page.url())) {
+        return result("untrusted_login_page", "La pantalla de inicio de sesión no pertenece a Netflix.");
+    }
+    if (typeof accountPassword !== "string" || !accountPassword.length) {
+        return result("account_password_missing", "Netflix requiere una contraseña y la cuenta asignada no tiene una guardada.");
+    }
+    const passwordInput = await findVisibleInput(page, [
+        "input[type='password']",
+        "input[name='password']",
+        "input[autocomplete='current-password']",
+    ]);
+    if (!passwordInput) return result("password_input_missing", "Netflix no mostró el campo de contraseña.");
+    await passwordInput.fill(accountPassword);
+    if (await passwordInput.inputValue() !== accountPassword) {
+        return result("password_input_mismatch", "Netflix no conservó la contraseña de la cuenta.");
+    }
+    const form = passwordInput.locator("xpath=ancestor::form[1]");
+    const submit = await findVisibleInput(await form.count() ? form : page, [
+        "button[type='submit']",
+        "input[type='submit']",
+        "button[data-uia*='continue' i]",
+    ]);
+    if (!submit) return result("password_submit_missing", "Netflix no mostró el botón de inicio de sesión.");
+    if (!await submit.isEnabled()) return result("password_submit_disabled", "Netflix no habilitó el inicio de sesión.");
+    await waitForNavigationAfter(page, () => submit.click());
+    logStage("account_password_submitted", { path: safePath(page.url()) });
+    await Promise.race([
+        waitForTvCompletion(page, 12000),
+        waitForLoginCodeScreen(page, 12000),
+    ]);
+    const text = await bodyText(page);
+    const failure = detectPageFailure(text, "login");
+    if (failure) {
+        logStage("account_password_rejected", { status: failure.status, path: safePath(page.url()) });
+        return failure;
+    }
+    if (await isPageTvCompletion(page, text)) {
+        return { ok: true, status: "completed", finalUrl: finalNetflixUrl(page.url()) };
+    }
+    if (await waitForLoginCodeScreen(page, 1000)) return null;
+    logStage("account_password_not_advanced", {
+        path: safePath(page.url()),
+        visibleControls: await visibleActionSummary(page),
+        visibleInputs: await visibleInputSummary(page),
+        notices: await page.locator("h1,h2,[role='alert'],[data-uia*='error' i]").evaluateAll((elements) => elements
+            .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            })
+            .map((element) => String(element.innerText || "").replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]").slice(0, 200))
+            .filter(Boolean)),
+    });
+    return result("password_flow_not_advanced", "Netflix no confirmó el inicio de sesión con la contraseña guardada.", {
+        diagnostics: { steps: [{ key: "password_submitted", state: "completed" }, { key: "login_code_screen", state: "not_detected" }] },
+    });
 }
 
 async function waitForLoginCodeScreen(page, timeout = 12000) {
@@ -477,7 +562,7 @@ async function waitForLoginCodeScreen(page, timeout = 12000) {
             return rect.width > 0 && rect.height > 0 && input.type !== "hidden" && !input.disabled;
         });
         return /code.*email|codigo.*correo|codigo.*email|enviamos.*correo|sent.*email/i.test(text)
-            || inputs.filter((input) => input.maxLength === 1).length >= 4;
+            || inputs.filter((input) => input.maxLength === 1).length === 4;
     }, undefined, { timeout }).then(() => true).catch(() => false);
 }
 
@@ -488,8 +573,14 @@ async function waitForTvCompletion(page, timeout = 15000) {
             .replace(/[\u0300-\u036f]/g, "")
             .toLowerCase();
         const path = String(location.pathname || "").toLowerCase();
-        return /tu tv esta lista para ver netflix|your tv is ready for netflix|ir a netflix|go to netflix/i.test(text)
-            || /\/tv\/out\/success\/?$/.test(path);
+        const hasAuthenticationInputs = Array.from(document.querySelectorAll("input")).some((input) => {
+            const rect = input.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0
+                && !["hidden", "checkbox", "radio", "submit", "button"].includes(input.type);
+        });
+        return !hasAuthenticationInputs && /(^|\.)netflix\.com$/i.test(location.hostname)
+            && (/tu tv esta lista para ver netflix|your tv is ready for netflix|tu tv ahora esta conectada|your tv is now connected/i.test(text)
+                || /\/tv\/out\/success\/?$/.test(path));
     }, undefined, { timeout }).then(() => true).catch(() => false);
 }
 
@@ -575,6 +666,19 @@ async function fillLoginCode(page, loginCode) {
     }
     logStage("login_code_typed", { inputCount: separateFields.length >= 4 ? 4 : 1 });
     await page.waitForTimeout(900);
+    if (await waitForLoginCodeScreen(page, 800)) {
+        const field = allInputs.nth(inputs[0].index);
+        const form = field.locator("xpath=ancestor::form[1]");
+        const submit = await findVisibleInput(await form.count() ? form : page, [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button[data-uia*='continue' i]",
+        ]);
+        if (submit && await submit.isEnabled()) {
+            await waitForNavigationAfter(page, () => submit.click());
+            logStage("login_code_submitted", { path: safePath(page.url()) });
+        }
+    }
     return null;
 }
 
@@ -609,7 +713,7 @@ async function launchBrowser() {
     return chromium.launch(launchOptions);
 }
 
-async function startRun({ tvCode, accountEmail }) {
+async function startRun({ tvCode, accountEmail, accountPassword }) {
     const normalizedTvCode = normalizeDigits(tvCode);
     const email = String(accountEmail || "").trim();
     if (!/^\d{8}$/.test(normalizedTvCode)) return result("invalid_tv_code", "El código del TV debe tener 8 dígitos.");
@@ -631,7 +735,10 @@ async function startRun({ tvCode, accountEmail }) {
         const codeStep = await submitTvCode(page, normalizedTvCode);
         if (codeStep) return codeStep;
         const emailStep = await submitAccountEmail(page, email);
-        if (emailStep) return emailStep;
+        if (emailStep?.status === "password_required") {
+            const passwordStep = await submitAccountPassword(page, accountPassword);
+            if (passwordStep) return passwordStep;
+        } else if (emailStep) return emailStep;
         const loginCodeScreenDetected = await waitForLoginCodeScreen(page);
         const loginInputs = await visibleCodeInputs(page);
         const loginText = normalizeText(await bodyText(page));
@@ -664,7 +771,7 @@ async function startRun({ tvCode, accountEmail }) {
             return result("browser_unavailable", "La automatización de Netflix no está disponible en el worker.");
         }
         if (/timeout|timed out/i.test(message)) return result("automation_timeout", "Netflix tardó demasiado en responder. Intenta nuevamente.");
-        console.error("[netflix-tv-worker] start error", { message });
+        console.error("[netflix-tv-worker] start error", { name: error?.name || "Error" });
         return result("automation_error", "No fue posible iniciar la conexión automática con Netflix.");
     } finally {
         if (!keepSession) await closeBrowserSession({ browser, context, page });
@@ -689,16 +796,16 @@ async function completeRun({ sessionId, loginCode }) {
         }
         const tvFailure = detectPageFailure(finalText);
         if (tvFailure) return tvFailure;
-        if (!tvCompleted || !isSuccessText(finalText)) {
+        if (!tvCompleted || !await isPageTvCompletion(session.page, finalText)) {
             logStage("tv_connection_not_confirmed", { path: safePath(session.page.url()) });
             return result("completion_not_confirmed", "Netflix no confirmó que el TV quedara conectado después del código de Inicio.");
         }
         logStage("tv_setup_completed", { path: safePath(session.page.url()) });
-        return { ok: true, status: "completed", finalUrl: session.page.url() };
+        return { ok: true, status: "completed", finalUrl: finalNetflixUrl(session.page.url()) };
     } catch (error) {
         const message = String(error?.message || error || "");
         if (/timeout|timed out/i.test(message)) return result("automation_timeout", "Netflix tardó demasiado en confirmar la conexión.");
-        console.error("[netflix-tv-worker] complete error", { message });
+        console.error("[netflix-tv-worker] complete error", { name: error?.name || "Error" });
         return result("automation_error", "No fue posible confirmar la conexión automática con Netflix.");
     } finally {
         await closeSession(normalizedSessionId);
@@ -751,5 +858,5 @@ if (require.main === module) {
 
 module.exports = {
     app,
-    __test: { buildEmailDiagnostics, detectPageFailure, isSuccessText, normalizeDigits, resendLoginCode },
+    __test: { buildEmailDiagnostics, detectPageFailure, isSuccessText, isTvCompletion, isPageTvCompletion, waitForTvCompletion, normalizeDigits, resendLoginCode, submitTvCode, submitAccountEmail, submitAccountPassword, findLoginCodeAction, waitForLoginCodeScreen, fillLoginCode },
 };

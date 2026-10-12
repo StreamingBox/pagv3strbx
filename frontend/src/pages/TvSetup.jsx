@@ -82,6 +82,7 @@ const AUTOMATION_DIAGNOSTIC_LABELS = {
     login_code_screen: "Pantalla del código de Inicio",
     password_form: "Campo de contraseña de Netflix",
     login_code_action: "Opción para pedir el código de Inicio",
+    password_submitted: "Inicio con la contraseña de la cuenta",
 };
 
 function AutomationDiagnostics({ diagnostics }) {
@@ -132,10 +133,12 @@ function buildTvSetupErrorMessage(data, fallback) {
         email_input_mismatch: "Netflix no conservó el correo exacto del pedido. Se detuvo antes de continuar para evitar usar otra cuenta.",
         continue_button_missing: "El correo se cargó, pero Netflix no mostró el botón para continuar.",
         email_flow_not_advanced: "Netflix recibió el correo, pero no avanzó a la pantalla del código de Inicio. Verifica que el correo de la cuenta sea el correcto e inténtalo nuevamente.",
-        password_required: "Netflix mostró la contraseña, pero no ofreció el código de Inicio ni en Obtener ayuda. No se ingresó la contraseña.",
+        password_required: "Netflix requiere la contraseña de esta cuenta para continuar.",
+        account_password_missing: "Netflix requiere contraseña y esta cuenta no tiene una guardada. Actualiza los datos de la cuenta.",
         password_input_missing: "Netflix pidió la contraseña, pero no mostró el campo para ingresarla.",
         password_input_mismatch: "Netflix no conservó la contraseña de la cuenta. Se detuvo antes de enviarla.",
         password_submit_missing: "Netflix pidió la contraseña, pero no mostró el botón para continuar.",
+        password_submit_disabled: "Netflix no habilitó el botón de inicio de sesión. Revisa los datos de la cuenta.",
         password_flow_not_advanced: "Netflix no confirmó la conexión después de ingresar la contraseña.",
         account_password_rejected: "Netflix rechazó la contraseña almacenada para esta cuenta. Actualiza la cuenta e inténtalo nuevamente.",
         worker_secure_transport_required: "No se inició el proceso porque la conexión segura entre servidores no está disponible.",
@@ -187,7 +190,7 @@ export default function TvSetup() {
 const { user } = useAuth();
     const logout = useAppLogout();
 
-    const TV_SETUP_REQUEST_TIMEOUT_MS = 90000;
+    const TV_SETUP_REQUEST_TIMEOUT_MS = 300000;
 
     const [tvCode, setTvCode] = useState("");
     const [orderNumber, setOrderNumber] = useState("");
@@ -396,7 +399,7 @@ const { user } = useAuth();
                                         </div>
                                         <div>
                                             <strong>{loading ? "Conectando automáticamente..." : "No se completó la conexión"}</strong>
-                                            <p>{loading ? "TV2, correo, código de Inicio y confirmación se ejecutan en el servidor." : "Puedes reintentar el proceso sin volver a digitar los datos."}</p>
+                                            <p>{loading ? "Iniciando sesión con la cuenta asignada. Mantén abierta la pantalla de Netflix en tu TV." : "Puedes reintentar la conexión con un código de TV vigente."}</p>
                                         </div>
                                     </div>
 

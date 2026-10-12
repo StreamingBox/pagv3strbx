@@ -1,0 +1,17 @@
+[Unit]
+Description=Compressed RAM swap for Streaming Box
+After=systemd-modules-load.service
+Before=pm2-ubuntu.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/sbin/modprobe zram num_devices=1
+ExecStart=/usr/sbin/zramctl --find --algorithm lz4 --size 512M
+ExecStart=/usr/sbin/mkswap -f /dev/zram0
+ExecStart=/usr/sbin/swapon --priority 100 /dev/zram0
+ExecStop=/usr/sbin/swapoff /dev/zram0
+ExecStopPost=/usr/sbin/zramctl --reset /dev/zram0
+
+[Install]
+WantedBy=multi-user.target

@@ -178,7 +178,7 @@ router.get("/advertising/file/:fileId", requireFileAccess, async (req, res) => {
         );
 
         if (!rows.length) {
-            return res.status(404).json({ ok: false, message: "Imagen no encontrada en el inventario." });
+            return res.status(404).json({ ok: false, message: "Archivo no encontrado en el inventario." });
         }
 
         const cachedImage = rows[0];
@@ -187,14 +187,18 @@ router.get("/advertising/file/:fileId", requireFileAccess, async (req, res) => {
         }
 
         const etag = buildAdvertisingEtag(fileId, cachedImage);
-        if (!isDownload && matchEtag(req.headers["if-none-match"], etag)) {
+        if (!isDownload && !req.headers.range && matchEtag(req.headers["if-none-match"], etag)) {
             res.setHeader("Cache-Control", "private, no-cache, must-revalidate");
             res.setHeader("ETag", etag);
             return res.status(304).end();
         }
 
-        const { meta, stream } = await driveService.getFileStream(fileId);
+        const { meta, stream, status, headers } = await driveService.getFileStream(
+            fileId,
+            isDownload ? "" : String(req.headers.range || "")
+        );
         res.setHeader("Content-Type", meta?.mimeType || cachedImage.mime_type || "application/octet-stream");
+        res.setHeader("Accept-Ranges", "bytes");
         res.setHeader(
             "Content-Disposition",
             `${isDownload ? "attachment" : "inline"}; filename="${encodeURIComponent(meta?.name || cachedImage.file_name || fileId)}"`
@@ -205,6 +209,12 @@ router.get("/advertising/file/:fileId", requireFileAccess, async (req, res) => {
         } else {
             res.setHeader("Cache-Control", "private, no-cache, no-store, must-revalidate");
         }
+        for (const header of ["content-range", "content-length"]) {
+            const capitalizedHeader = header[0].toUpperCase() + header.slice(1);
+            const value = headers?.[header] || headers?.[capitalizedHeader];
+            if (value) res.setHeader(header, value);
+        }
+        res.status(status || 200);
         stream.on("error", (err) => {
             console.error("[advertising/file stream]", err.message);
             if (!res.headersSent) {
@@ -238,6 +248,7 @@ router.get("/advertising/folders", requireAuth, async (_req, res) => {
             folders.push({
                 id: folder.id,
                 name: folderMeta?.name || folder.name,
+                mediaCount: images.length,
                 imageCount: images.length,
                 createdTime: folder.createdTime || null,
             });

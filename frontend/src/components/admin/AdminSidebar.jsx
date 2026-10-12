@@ -44,7 +44,7 @@ const NAV_GROUPS = [
     {
         title: "Auditoria",
         links: [
-            { path: "/admin/inventory-audit", label: "Auditoria de Perfiles", icon: <ClipboardCheck size={18} strokeWidth={2.4} aria-hidden /> },
+            { path: "/admin/inventory-audit", label: "Disponibilidad de Perfiles", icon: <ClipboardCheck size={18} strokeWidth={2.4} aria-hidden /> },
         ],
     },
     {

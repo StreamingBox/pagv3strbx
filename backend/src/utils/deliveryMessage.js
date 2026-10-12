@@ -4,6 +4,7 @@ const {
     isDisneyCodeTvProduct,
     isIptvProduct,
     isMicrosoftOfficeProduct,
+    isYouTubeChannelProduct,
     normalizeProductName,
 } = require("./productDeliveryProfile");
 const { formatBogotaDateTime, isEventLinkPlan } = require("./eventLinks");
@@ -37,6 +38,17 @@ function isAssistedActivationProduct(platformName) {
 function isSpotifyProduct({ platformName, platformSlug } = {}) {
     const normalized = normalizeProductName(platformSlug || platformName);
     return normalized.includes("spotify");
+}
+
+function appendAccountDestination(lines, account = {}, platform = {}) {
+    if (isYouTubeChannelProduct(platform) && String(account.youtube_channel_name || "").trim()) {
+        lines.push(`🎵 Canal de YouTube: ${String(account.youtube_channel_name).trim()}`);
+        return;
+    }
+    const profile = account.profile_number;
+    if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
+        lines.push(`👤 Perfil: ${profile}`);
+    }
 }
 
 function buildChatGPTPersonalCredentialsMessage(account = {}) {
@@ -255,10 +267,7 @@ function buildAccountDeliveryMessage({
         lines.push(`🔑 Contraseña: ${safeAccount.password}`);
     }
 
-    const profile = safeAccount.profile_number;
-    if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
-        lines.push(`👤 Perfil: ${profile}`);
-    }
+    appendAccountDestination(lines, safeAccount, { platformName, platformSlug });
 
     const pin = safeAccount.pin;
     if (pin !== null && pin !== undefined && String(pin).trim() !== "") {
@@ -424,10 +433,10 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
             lines.push(`🔑 Contraseña: ${account.password}`);
         }
 
-        const profile = account.profile_number;
-        if (profile !== null && profile !== undefined && String(profile).trim() !== "") {
-            lines.push(`👤 Perfil: ${profile}`);
-        }
+        appendAccountDestination(lines, account, {
+            platformName,
+            platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
+        });
 
         const pin = account.pin;
         if (pin !== null && pin !== undefined && String(pin).trim() !== "") {

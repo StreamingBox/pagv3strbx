@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Image as ImageIcon } from "lucide-react";
+import { Image as ImageIcon, Play } from "lucide-react";
 import { formatSize } from "./utils.js";
 
 const MotionDiv = motion.div;
@@ -10,7 +10,7 @@ export default function ImageGrid({
     onPreview,
     onDownload,
     renderActions,
-    emptyTitle = "No hay imagenes en esta carpeta",
+    emptyTitle = "No hay archivos en esta carpeta",
     admin = false,
 }) {
     if (!images.length) {
@@ -44,14 +44,32 @@ export default function ImageGrid({
                         style={{ position: "relative", aspectRatio: "16/10", background: "#111", cursor: onPreview ? "pointer" : "default", overflow: "hidden" }}
                         onClick={() => onPreview?.(img)}
                     >
-                        <img
-                            src={img.thumbnailLink || img.previewLink || img.downloadLink}
-                            alt={img.name}
-                            style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.3s" }}
-                            loading="lazy"
-                            onMouseEnter={(e) => { if (!admin) e.currentTarget.style.transform = "scale(1.05)"; }}
-                            onMouseLeave={(e) => { if (!admin) e.currentTarget.style.transform = "scale(1)"; }}
-                        />
+                        {img.isVideo ? (
+                            <>
+                                <video
+                                    src={img.previewLink}
+                                    aria-label={`Vista previa de ${img.name}`}
+                                    muted
+                                    playsInline
+                                    preload="metadata"
+                                    style={{ width: "100%", height: "100%", objectFit: "cover", background: "#080b12" }}
+                                />
+                                <span style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", color: "#fff", background: "rgba(0,0,0,0.14)" }}>
+                                    <span style={{ width: 42, height: 42, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(0,0,0,0.62)", border: "1px solid rgba(255,255,255,0.4)" }}>
+                                        <Play size={19} fill="currentColor" />
+                                    </span>
+                                </span>
+                            </>
+                        ) : (
+                            <img
+                                src={img.thumbnailLink || img.previewLink || img.downloadLink}
+                                alt={img.name}
+                                style={{ width: "100%", height: "100%", objectFit: "cover", transition: "transform 0.3s" }}
+                                loading="lazy"
+                                onMouseEnter={(e) => { if (!admin) e.currentTarget.style.transform = "scale(1.05)"; }}
+                                onMouseLeave={(e) => { if (!admin) e.currentTarget.style.transform = "scale(1)"; }}
+                            />
+                        )}
                         {img.isActive === false ? (
                             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
                                 <span style={{ background: "rgba(239,68,68,0.8)", color: "#fff", padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 800 }}>OCULTA</span>

@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
     bulkInsertAccounts,
+    createAccountOne,
     duplicateSummaryLine,
     findExactAccountDuplicate,
     findActiveAssignedScreenDuplicate,
@@ -23,6 +24,7 @@ test("duplicate summary includes the account and sale details", () => {
         accountId: 5389,
         platformName: "Prime Video",
         email: "fatndku47@strbx.com.co",
+        youtubeChannelName: "@CanalPrincipal",
         profileNumber: "1",
         assignedTo: "comprador@example.com",
         orderCode: "ORD-123",
@@ -32,6 +34,7 @@ test("duplicate summary includes the account and sale details", () => {
     assert.match(line, /Fila 2/);
     assert.match(line, /Prime Video/);
     assert.match(line, /fatndku47@strbx\.com\.co/);
+    assert.match(line, /canal "@CanalPrincipal"/);
     assert.match(line, /perfil 1/);
     assert.match(line, /cuenta #5389/);
     assert.match(line, /ORD-123/);
@@ -99,6 +102,117 @@ test("exact duplicate lookup ignores expired or down accounts", async () => {
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) NOT IN \('inactive', 'disabled', 'down', 'expired', 'legacy_review'\)/);
     assert.match(calls[0].sql, /pa\.expires_at IS NULL/);
+});
+
+test("YouTube duplicate lookups compare the channel as well as Google credentials", async () => {
+    const calls = [];
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            return [[]];
+        },
+    };
+
+    await findReusableAccountForReload(conn, {
+        pid: 31,
+        emailValue: "ddsm29592@gmail.com",
+        accountProf: null,
+        password: "same-password",
+        youtubeChannelName: " @Strbx-2 ",
+    });
+    await findExactAccountDuplicate(conn, {
+        pid: 31,
+        emailValue: "ddsm29592@gmail.com",
+        accountProf: null,
+        password: "same-password",
+        youtubeChannelName: " @Strbx-2 ",
+    });
+    await findActiveAssignedScreenDuplicate(conn, {
+        pid: 31,
+        emailValue: "ddsm29592@gmail.com",
+        accountProf: null,
+        youtubeChannelName: " @Strbx-2 ",
+    });
+
+    assert.equal(calls.length, 3);
+    for (const call of calls) {
+        assert.match(call.sql, /LOWER\(TRIM\(COALESCE\(pa\.youtube_channel_name, ''\)\)\) = LOWER\(TRIM\(\?\)\)/);
+        assert.equal(call.params.at(-1), "@Strbx-2");
+    }
+});
+
+test("bulk YouTube Music upload allows one Google login on separate channels", async () => {
+    const calls = [];
+    let identityCreated = false;
+    let insertedAccounts = 0;
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            if (/SELECT id, name, slug FROM platforms WHERE id IN/i.test(sql)) {
+                return [[{ id: 31, name: "YouTube Music", slug: "youtube-music" }]];
+            }
+            if (sql.includes("has_replacement_history")) return [[]];
+            if (sql.includes("INSERT INTO account_identities")) {
+                if (identityCreated) return [{ insertId: 0 }];
+                identityCreated = true;
+                return [{ insertId: 900 }];
+            }
+            if (sql.includes("SELECT id FROM account_identities")) return [[{ id: 900 }]];
+            if (sql.includes("INSERT INTO platform_accounts")) {
+                insertedAccounts += 1;
+                return [{ insertId: 1000 + insertedAccounts }];
+            }
+            return [[]];
+        },
+    };
+
+    const result = await bulkInsertAccounts(conn, [
+        { platformId: 31, email: "ddsm29592@gmail.com", password: "same-password", youtubeChannelName: "Canal Principal" },
+        { platformId: 31, email: "ddsm29592@gmail.com", password: "same-password", youtubeChannelName: "@Strbx-2" },
+    ]);
+
+    assert.equal(result.inserted, 2);
+    assert.equal(result.skippedDuplicateExact, 0);
+    assert.equal(insertedAccounts, 2);
+    const duplicateLookups = calls.filter(({ sql }) => sql.includes("has_replacement_history"));
+    assert.equal(duplicateLookups.length, 4);
+    assert.ok(duplicateLookups.every(({ sql }) => sql.includes("pa.youtube_channel_name")));
+    assert.deepEqual(duplicateLookups.map(({ params }) => params.at(-1)), [
+        "Canal Principal",
+        "Canal Principal",
+        "@Strbx-2",
+        "@Strbx-2",
+    ]);
+});
+
+test("manual YouTube Music entry checks duplicates against the selected channel", async () => {
+    const calls = [];
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            if (/SELECT id, name, slug FROM platforms WHERE LOWER\(name\)/i.test(sql)) {
+                return [[{ id: 31, name: "YouTube Music", slug: "youtube-music" }]];
+            }
+            if (sql.includes("has_replacement_history")) return [[]];
+            if (sql.includes("INSERT INTO account_identities")) return [{ insertId: 900 }];
+            if (sql.includes("INSERT INTO platform_accounts")) return [{ insertId: 1001 }];
+            return [[]];
+        },
+    };
+
+    const result = await createAccountOne(conn, {
+        platformName: "YouTube Music",
+        email: "ddsm29592@gmail.com",
+        password: "same-password",
+        youtubeChannelName: "@Strbx-2",
+    });
+
+    assert.equal(result.id, 1001);
+    const duplicateLookups = calls.filter(({ sql }) => sql.includes("has_replacement_history"));
+    assert.equal(duplicateLookups.length, 2);
+    assert.ok(duplicateLookups.every(({ sql }) => sql.includes("pa.youtube_channel_name")));
+    assert.ok(duplicateLookups.every(({ params }) => params.at(-1) === "@Strbx-2"));
+    assert.ok(calls.some(({ sql, params }) => sql.includes("INSERT INTO platform_accounts") && params.includes("@Strbx-2")));
 });
 
 test("historical credential can be reused only without an active subscription", async () => {

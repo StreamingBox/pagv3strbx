@@ -1,4 +1,5 @@
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const requireAuth = require("../middleware/requireAuth");
 const pool = require("../db");
 
@@ -6,6 +7,7 @@ const { checkoutService } = require("../services/checkoutService");
 const { getOrdersHistory, getRenewalsHistory } = require("../services/orderHistoryService");
 const { renewSubscription } = require("../services/renewal.service");
 const { enqueueNotification } = require("../services/notificationOutbox.service");
+const { getSubscriptionTotp } = require("../services/youtubeTotp.service");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 const {
     excludeInactiveMasterAccountSql,
@@ -13,6 +15,14 @@ const {
 } = require("../services/expirationVisibility.service");
 
 const router = express.Router();
+const totpRateLimit = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.user?.role === "admin",
+    message: { message: "Espera un momento antes de volver a consultar el codigo." },
+});
 
 // ✅ Checkout (carrito)
 router.post("/checkout", requireAuth, async (req, res) => {
@@ -68,6 +78,27 @@ router.get("/orders", requireAuth, async (req, res) => {
     } catch (err) {
         console.error(err);
         return res.status(500).json({ message: "Error cargando historial." });
+    }
+});
+
+router.get("/orders/:subscriptionId/totp", requireAuth, totpRateLimit, async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+    const subscriptionId = Number(req.params.subscriptionId);
+    if (!Number.isInteger(subscriptionId) || subscriptionId <= 0) {
+        return res.status(400).json({ message: "La suscripcion indicada no es valida." });
+    }
+    try {
+        const data = await getSubscriptionTotp({
+            subscriptionId,
+            userId: req.user.id,
+            bypassRequestLimit: req.user.role === "admin",
+        });
+        return res.json(data);
+    } catch (error) {
+        const status = Number(error?.status || 500);
+        return res.status(status).json({
+            message: status >= 500 ? "No se pudo generar el codigo temporal." : error.message,
+        });
     }
 });
 

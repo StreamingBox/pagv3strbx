@@ -40,6 +40,7 @@ export default function AdminRenewals() {
 
     const [newAccountId, setNewAccountId] = useState("");
     const [deductWallet, setDeductWallet] = useState(true);
+    const [confirmExtendedRenewal, setConfirmExtendedRenewal] = useState(false);
     const [overridePrice, setOverridePrice] = useState("");
     const [note, setNote] = useState("");
 
@@ -116,6 +117,7 @@ export default function AdminRenewals() {
         setResult(null);
         setCopiedDeliveryMessage(false);
         setRenewErr("");
+        setConfirmExtendedRenewal(false);
         try {
             const data = await apiFetch(`/admin/orders/${id}`);
             setOrder(data);
@@ -144,6 +146,10 @@ export default function AdminRenewals() {
     async function handleRenew(e) {
         e.preventDefault();
         if (!order?.id) return;
+        if (canExtendExpiredRenewal && !confirmExtendedRenewal) {
+            setRenewErr("Confirma que quieres renovar desde la fecha de vencimiento anterior.");
+            return;
+        }
         setRenewing(true);
         setRenewErr("");
         setResult(null);
@@ -152,6 +158,7 @@ export default function AdminRenewals() {
             const body = {
                 deductWallet,
                 note: note || undefined,
+                ...(canExtendExpiredRenewal ? { extendedRenewal: true } : {}),
                 ...(newAccountId ? { newAccountId: Number(newAccountId) } : {}),
                 ...(overridePrice !== "" ? { overridePrice: Number(overridePrice) } : {}),
             };
@@ -215,11 +222,20 @@ export default function AdminRenewals() {
 
     const renewalExpiryDate = normalizeDateOnly(order?.expires_date || order?.effective_expires_at || order?.expires_at);
     const renewalTodayDate = currentBogotaDateOnly();
+    const renewalIsOverdue = Boolean(renewalExpiryDate && renewalExpiryDate < renewalTodayDate);
+    const canExtendExpiredRenewal = Boolean(
+        renewalIsOverdue &&
+        String(order?.status || "").toLowerCase() === "active" &&
+        Number(order?.is_attended) !== 1 &&
+        Number(order?.is_renewable) === 1
+    );
     const renewalBlockedReason = order?.renewal?.block_reason
         || (Number(order?.is_renewable) !== 1 ? "Este plan no tiene renovación habilitada." : "")
-        || (renewalExpiryDate && renewalExpiryDate < renewalTodayDate
-            ? "La suscripción ya no está dentro del día permitido para renovar."
+        || (Number(order?.is_attended) === 1 ? "La suscripción ya fue atendida desde vencimientos." : "")
+        || (renewalIsOverdue && !canExtendExpiredRenewal
+            ? "La renovación extendida solo está disponible si la suscripción sigue activa y pendiente en Vencimientos."
             : "");
+    const renewalNeedsConfirmation = canExtendExpiredRenewal && !confirmExtendedRenewal;
 
     return (
         <div className="page-shell">
@@ -532,12 +548,12 @@ export default function AdminRenewals() {
                             {result ? (
                                 <div style={{ background: "var(--card)", border: "1px solid rgba(16,185,129,.4)", borderRadius: 16, padding: 24, boxShadow: "0 10px 40px rgba(16,185,129,0.1)" }}>
                                     <div style={{ fontWeight: 900, fontSize: 18, color: "#10b981", marginBottom: 16 }}>
-                                        Renovación procesada
+                                        {result.extendedRenewal ? "Renovación extendida procesada" : "Renovación procesada"}
                                     </div>
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 16 }}>
                                         {[
                                             ["Orden de renovación", result.renewalOrderCode || (result.renewalOrderId ? `#${result.renewalOrderId}` : "—")],
-                                            ["Nuevo vencimiento", formatBogotaDateTime(result.newExpiry)],
+                                            ["Nuevo vencimiento", formatDateOnlyDisplay(result.newExpiry)],
                                             ["Descontado", `${Number(result.deducted || 0).toLocaleString("es-CO")} ${result.currency || ""}`.trim()],
                                             ["Saldo resultante", result.newBalance !== null ? `${Number(result.newBalance).toLocaleString("es-CO")} ${result.currency || ""}`.trim() : "—"],
                                         ].map(([label, val]) => (
@@ -569,6 +585,24 @@ export default function AdminRenewals() {
                                     {renewalBlockedReason ? (
                                         <div style={{ marginBottom: 18, padding: "12px 16px", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, color: "#ef4444", fontSize: 13 }}>
                                             {renewalBlockedReason}
+                                        </div>
+                                    ) : null}
+
+                                    {canExtendExpiredRenewal ? (
+                                        <div style={{ marginBottom: 20, padding: "14px 16px", background: "rgba(245,158,11,0.10)", border: "1px solid rgba(245,158,11,0.35)", borderRadius: 12, color: "var(--text)" }}>
+                                            <div style={{ fontWeight: 800, color: "#fbbf24", marginBottom: 6 }}>Renovación extendida</div>
+                                            <div style={{ fontSize: 13, lineHeight: 1.55 }}>
+                                                Venció el {formatDateOnlyDisplay(renewalExpiryDate)} y sigue pendiente en Vencimientos. Los {Number(order.days || 0)} días se cuentan desde ese vencimiento, no desde hoy; los días transcurridos se descuentan del nuevo período.
+                                            </div>
+                                            <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginTop: 12, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={confirmExtendedRenewal}
+                                                    onChange={(e) => setConfirmExtendedRenewal(e.target.checked)}
+                                                    style={{ marginTop: 2 }}
+                                                />
+                                                Confirmo que quiero renovar desde la fecha de vencimiento anterior.
+                                            </label>
                                         </div>
                                     ) : null}
 
@@ -639,11 +673,11 @@ export default function AdminRenewals() {
                                         <div className="admin-renewals-submitRow" style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
                                             <button
                                                 type="submit"
-                                                disabled={renewing || !!renewalBlockedReason}
+                                                disabled={renewing || !!renewalBlockedReason || renewalNeedsConfirmation}
                                                 className="admin-renewals-submitButton"
-                                                style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: (renewing || renewalBlockedReason) ? "not-allowed" : "pointer", opacity: (renewing || renewalBlockedReason) ? 0.55 : 1 }}
+                                                style={{ height: 48, padding: "0 32px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)", color: "#fff", fontWeight: 700, fontSize: 15, cursor: (renewing || renewalBlockedReason || renewalNeedsConfirmation) ? "not-allowed" : "pointer", opacity: (renewing || renewalBlockedReason || renewalNeedsConfirmation) ? 0.55 : 1 }}
                                             >
-                                                {renewing ? "Procesando..." : "Confirmar renovación"}
+                                                {renewing ? "Procesando..." : canExtendExpiredRenewal ? "Confirmar renovación extendida" : "Confirmar renovación"}
                                             </button>
                                         </div>
                                     </form>

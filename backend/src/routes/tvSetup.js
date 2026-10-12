@@ -186,15 +186,16 @@ async function requestLoginCodeOnce(req, orderNumber) {
     }
 }
 
-async function requestLoginCodeForSetup(req, orderNumber) {
+async function requestLoginCodeForSetup(req, orderNumber, maxAttempts = LOGIN_CODE_MAX_ATTEMPTS) {
     let latest = null;
 
     // Gmail/IMAP puede tardar unos segundos en reflejar el correo que Netflix
     // acaba de enviar. Reintentamos solo ante ausencia de correo o de código.
-    for (let attempt = 1; attempt <= LOGIN_CODE_MAX_ATTEMPTS; attempt += 1) {
+    const attempts = Math.max(1, Math.min(LOGIN_CODE_MAX_ATTEMPTS, Number(maxAttempts) || LOGIN_CODE_MAX_ATTEMPTS));
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
         latest = await requestLoginCodeOnce(req, orderNumber);
         if (latest?.ok || !RETRYABLE_LOGIN_CODE_STATUSES.has(latest?.status)) return latest;
-        if (attempt < LOGIN_CODE_MAX_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, LOGIN_CODE_RETRY_DELAY_MS));
+        if (attempt < attempts) await new Promise((resolve) => setTimeout(resolve, LOGIN_CODE_RETRY_DELAY_MS));
     }
 
     return latest || {
@@ -205,6 +206,7 @@ async function requestLoginCodeForSetup(req, orderNumber) {
 }
 
 function automationHttpStatus(status) {
+    if (["account_password_missing", "password_input_missing", "password_input_mismatch", "password_submit_missing", "password_submit_disabled", "password_flow_not_advanced", "account_password_rejected", "untrusted_login_page"].includes(status)) return 400;
     if (["invalid_tv_code", "tv_code_input_missing", "tv_code_submit_missing", "tv_code_submit_disabled", "account_email_missing", "email_input_missing", "email_input_mismatch", "continue_button_missing", "email_flow_not_advanced", "login_code_action_missing", "password_required", "login_code_input_missing", "invalid_login_code", "login_code_rejected", "login_code_not_accepted", "login_not_confirmed", "completion_not_confirmed"].includes(status)) return 400;
     if (["browser_unavailable", "login_code_unavailable", "provider_config_error", "imap_error", "imap_auth_error", "worker_secure_transport_required"].includes(status)) return 503;
     if (status === "automation_timeout") return 504;
@@ -283,7 +285,8 @@ router.post("/tv-setup/run", requireAuth, requireAdmin, async (req, res) => {
         const flow = await runNetflixTvSetup({
             tvCode,
             accountEmail: loaded.subscription.accountEmail,
-            requestLoginCode: () => requestLoginCodeForSetup(req, subscriptionId),
+            accountPassword: loaded.subscription.accountPassword,
+            requestLoginCode: (options) => requestLoginCodeForSetup(req, subscriptionId, options?.maxAttempts),
         });
 
         if (!flow.ok) {

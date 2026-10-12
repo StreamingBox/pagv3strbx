@@ -27,11 +27,23 @@ export default function LightboxPreview({ image, onClose }) {
                         >
                             x
                         </button>
-                        <img
-                            src={image.previewLink || image.downloadLink}
-                            alt={image.name}
-                            style={{ maxWidth: "100%", maxHeight: "85vh", borderRadius: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
-                        />
+                        {image.isVideo ? (
+                            <video
+                                src={image.previewLink || image.downloadLink}
+                                aria-label={image.name}
+                                controls
+                                autoPlay
+                                playsInline
+                                preload="metadata"
+                                style={{ display: "block", width: "min(80vw, 960px)", maxHeight: "78vh", borderRadius: 12, background: "#000", boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
+                            />
+                        ) : (
+                            <img
+                                src={image.previewLink || image.downloadLink}
+                                alt={image.name}
+                                style={{ maxWidth: "100%", maxHeight: "85vh", borderRadius: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.5)" }}
+                            />
+                        )}
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 12, color: "#fff", gap: 16 }}>
                             <span style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{image.name}</span>
                             <button

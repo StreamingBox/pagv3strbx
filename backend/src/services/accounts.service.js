@@ -10,9 +10,10 @@ const {
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
-const { isIptvProduct } = require("../utils/productDeliveryProfile");
+const { isIptvProduct, isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
 const { normalizeAccessUrl } = require("../utils/accountAccess");
 const { enqueueNotification } = require("./notificationOutbox.service");
+const { isYoutubeTotpProduct, saveTotpSecret, verifyTotpCode } = require("./youtubeTotp.service");
 const {
     STRBX_PROVIDER,
     normalizeCodeProvider,
@@ -87,11 +88,11 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, youtubeChannelName, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
-     (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, code_provider, profile_number, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
+     (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, code_provider, profile_number, youtube_channel_name, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)`,
         [
             identityId,
             pid,
@@ -103,6 +104,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
             twoFactorSecret,
             codeProvider || STRBX_PROVIDER,
             accountProf,
+            youtubeChannelName || null,
             exp,
             costModel?.parentCostTotal ?? null,
             costModel?.parentProfilesTotal ?? null,
@@ -128,6 +130,7 @@ async function reloadExistingAccount(conn, {
     twoFactorSecret,
     codeProvider,
     accountProf,
+    youtubeChannelName,
     exp,
     costModel,
 }) {
@@ -143,6 +146,7 @@ async function reloadExistingAccount(conn, {
                 two_factor_secret = ?,
                 code_provider = ?,
                 profile_number = ?,
+                youtube_channel_name = ?,
                 status = 'available',
                 expires_at = ?,
                 assigned_to_user_id = NULL,
@@ -163,6 +167,7 @@ async function reloadExistingAccount(conn, {
             twoFactorSecret,
             codeProvider || STRBX_PROVIDER,
             accountProf,
+            youtubeChannelName || null,
             exp,
             costModel?.parentCostTotal ?? null,
             costModel?.parentProfilesTotal ?? null,
@@ -202,6 +207,7 @@ function buildDuplicatePayload(row, rowNumber = null) {
         platformId: row.platform_id,
         platformName: row.platform_name || "",
         email: row.email || "",
+        youtubeChannelName: row.youtube_channel_name || "",
         profileNumber: row.profile_number ?? null,
         status: row.status || "",
         assignedTo: row.assigned_user_email || row.assigned_user_name || "",
@@ -225,7 +231,8 @@ function duplicateSummaryLine(item) {
     const order = item.orderCode || (item.orderId ? `orden #${item.orderId}` : item.subscriptionId ? `venta #${item.subscriptionId}` : "sin orden activa");
     const assignedTo = item.assignedTo ? `, asignada a ${item.assignedTo}` : "";
     const expires = item.expiresAt ? `, expira ${String(item.expiresAt).slice(0, 10)}` : ", sin fecha de expiracion";
-    return `${row}no se cargo ${item.platformName || "la plataforma"} ${item.email} (${profile}) porque ya existe la cuenta #${item.accountId}${assignedTo}, ${order}${expires}.`;
+    const channel = item.youtubeChannelName ? `, canal "${item.youtubeChannelName}"` : "";
+    return `${row}no se cargo ${item.platformName || "la plataforma"} ${item.email}${channel} (${profile}) porque ya existe la cuenta #${item.accountId}${assignedTo}, ${order}${expires}.`;
 }
 
 function duplicateSummaryMessage(items = [], limit = 5) {
@@ -236,12 +243,16 @@ function duplicateSummaryMessage(items = [], limit = 5) {
     return list.join(" ");
 }
 
-async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf }) {
+async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf, youtubeChannelName }) {
     const params = [pid, emailValue];
     const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
         ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
         : "CAST(pa.profile_number AS CHAR) = ?";
     if (profileSql.includes("?")) params.push(String(accountProf));
+    const youtubeChannelSql = youtubeChannelName
+        ? "AND LOWER(TRIM(COALESCE(pa.youtube_channel_name, ''))) = LOWER(TRIM(?))"
+        : "";
+    if (youtubeChannelName) params.push(String(youtubeChannelName).trim());
 
     const [rows] = await conn.query(
         `SELECT
@@ -250,6 +261,7 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
             COALESCE(p.name, pa.platform_name) AS platform_name,
             pa.email,
             pa.profile_number,
+            pa.youtube_channel_name,
             pa.status,
             pa.expires_at,
             active_sub.expires_at AS subscription_expires_at,
@@ -276,6 +288,7 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
          WHERE pa.platform_id = ?
            AND LOWER(pa.email) = LOWER(?)
            AND ${profileSql}
+           ${youtubeChannelSql}
            AND ${DUPLICATE_IGNORED_STATUSES_SQL}
            AND (
                 (
@@ -300,13 +313,17 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
     return rows?.[0] || null;
 }
 
-async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, password }) {
+async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, password, youtubeChannelName }) {
     const params = [pid, emailValue];
     const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
         ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
         : "CAST(pa.profile_number AS CHAR) = ?";
     if (profileSql.includes("?")) params.push(String(accountProf));
     params.push(String(password ?? ""));
+    const youtubeChannelSql = youtubeChannelName
+        ? "AND LOWER(TRIM(COALESCE(pa.youtube_channel_name, ''))) = LOWER(TRIM(?))"
+        : "";
+    if (youtubeChannelName) params.push(String(youtubeChannelName).trim());
 
     const [rows] = await conn.query(
         `SELECT
@@ -315,6 +332,7 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
             COALESCE(p.name, pa.platform_name) AS platform_name,
             pa.email,
             pa.profile_number,
+            pa.youtube_channel_name,
             pa.status,
             pa.expires_at,
             active_sub.expires_at AS subscription_expires_at,
@@ -347,6 +365,7 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
           AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
           AND ${profileSql}
           AND BINARY COALESCE(pa.password, '') = BINARY ?
+          ${youtubeChannelSql}
           AND ${DUPLICATE_IGNORED_STATUSES_SQL}
           AND (
                 (
@@ -375,13 +394,17 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
     return rows?.[0] || null;
 }
 
-async function findReusableAccountForReload(conn, { pid, emailValue, accountProf, password }) {
+async function findReusableAccountForReload(conn, { pid, emailValue, accountProf, password, youtubeChannelName }) {
     const params = [pid, emailValue];
     const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
         ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
         : "CAST(pa.profile_number AS CHAR) = ?";
     if (profileSql.includes("?")) params.push(String(accountProf));
     params.push(String(password ?? ""));
+    const youtubeChannelSql = youtubeChannelName
+        ? "AND LOWER(TRIM(COALESCE(pa.youtube_channel_name, ''))) = LOWER(TRIM(?))"
+        : "";
+    if (youtubeChannelName) params.push(String(youtubeChannelName).trim());
 
     const [rows] = await conn.query(
         `SELECT
@@ -390,6 +413,7 @@ async function findReusableAccountForReload(conn, { pid, emailValue, accountProf
             COALESCE(p.name, pa.platform_name) AS platform_name,
             pa.email,
             pa.profile_number,
+            pa.youtube_channel_name,
             pa.status,
             pa.expires_at,
             u.email AS assigned_user_email,
@@ -419,6 +443,7 @@ async function findReusableAccountForReload(conn, { pid, emailValue, accountProf
           AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
           AND ${profileSql}
           AND BINARY COALESCE(pa.password, '') = BINARY ?
+          ${youtubeChannelSql}
           AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
           AND active_sub.id IS NULL
         ORDER BY
@@ -598,6 +623,38 @@ async function createAccountOne(conn, body) {
     const costModel = validateCostModelInput(costInput);
 
     const { pid, pname, platformSlug } = await resolvePlatform(conn, { platformId, platformName });
+    const isYouTubeChannel = isYouTubeChannelProduct({ platformName: pname, platformSlug });
+    const isYouTubeTotp = isYoutubeTotpProduct(`${pname} ${platformSlug}`);
+    const totpSecret = String(body.totpSecret ?? body.totp_secret ?? "").trim();
+    const totpConfirmationCode = String(body.totpConfirmationCode ?? body.totp_confirmation_code ?? "").trim();
+    if ((totpSecret || totpConfirmationCode) && !isYouTubeTotp) {
+        const err = new Error("El autenticador TOTP solo se configura para cuentas de YouTube Premium, YouTube Music o YouTube de 3 meses.");
+        err.status = 400;
+        throw err;
+    }
+    if (totpSecret && (!/^\d{6}$/.test(totpConfirmationCode) || !verifyTotpCode(totpSecret, totpConfirmationCode))) {
+        const err = new Error("El código de Authenticator no coincide. Revisa la clave y escribe el código actual de 6 dígitos.");
+        err.status = 400;
+        throw err;
+    }
+    if (!totpSecret && totpConfirmationCode) {
+        const err = new Error("Ingresa la clave Base32 del autenticador antes del código de confirmación.");
+        err.status = 400;
+        throw err;
+    }
+    const youtubeChannelName = isYouTubeChannel
+        ? normalizeOptionalValue(body.youtubeChannelName ?? body.youtube_channel_name)
+        : null;
+    if (isYouTubeChannel && !youtubeChannelName) {
+        const err = new Error("El nombre del canal de YouTube es obligatorio.");
+        err.status = 400;
+        throw err;
+    }
+    if (youtubeChannelName && youtubeChannelName.length > 180) {
+        const err = new Error("El nombre del canal no puede superar 180 caracteres.");
+        err.status = 400;
+        throw err;
+    }
     const codeProvider = normalizeAccountCodeProvider(
         body.codeProvider
         ?? body.code_provider
@@ -616,6 +673,7 @@ async function createAccountOne(conn, body) {
         emailValue,
         accountProf,
         password,
+        youtubeChannelName: isYouTubeChannel ? youtubeChannelName : null,
     });
     if (reusable) {
         const identityId = await upsertIdentity(conn, {
@@ -637,9 +695,12 @@ async function createAccountOne(conn, body) {
             twoFactorSecret,
             codeProvider,
             accountProf,
+            youtubeChannelName,
             exp,
             costModel,
         });
+
+        if (totpSecret) await saveTotpSecret(conn, emailValue, totpSecret);
 
         await propagatePassword(conn, { pid, emailValue, password, newId: reusedId });
         return { id: reusedId, platformId: pid, platformName: pname, reused: true };
@@ -650,6 +711,7 @@ async function createAccountOne(conn, body) {
         emailValue,
         accountProf,
         password,
+        youtubeChannelName: isYouTubeChannel ? youtubeChannelName : null,
     });
     if (exactDuplicate) {
         const payload = buildDuplicatePayload(exactDuplicate);
@@ -662,7 +724,12 @@ async function createAccountOne(conn, body) {
     }
 
     if (isScreenCostInput(costInput)) {
-        const duplicate = await findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accountProf });
+        const duplicate = await findActiveAssignedScreenDuplicate(conn, {
+            pid,
+            emailValue,
+            accountProf,
+            youtubeChannelName: isYouTubeChannel ? youtubeChannelName : null,
+        });
         if (duplicate) {
             const payload = buildDuplicatePayload(duplicate);
             const err = new Error(
@@ -693,9 +760,12 @@ async function createAccountOne(conn, body) {
         twoFactorSecret,
         codeProvider,
         accountProf,
+        youtubeChannelName,
         exp,
         costModel,
     });
+
+    if (totpSecret) await saveTotpSecret(conn, emailValue, totpSecret);
 
     await propagatePassword(conn, { pid, emailValue, password, newId });
 
@@ -763,6 +833,7 @@ function normalizeBulkRows(rows) {
                 ?? r["2FA"]
                 ?? r["2fa"]
             ),
+            youtubeChannelName: normalizeOptionalValue(r.youtubeChannelName ?? r.youtube_channel_name ?? r.youtube_channel ?? r.canalYoutube ?? r.canal_youtube ?? r.canalDeYoutube ?? r.canal_de_youtube ?? r.nombreCanalDeYoutube ?? r.nombre_del_canal_de_youtube ?? r.canal),
             codeProvider: firstNonEmpty(
                 r.codeProvider,
                 r.code_provider,
@@ -819,13 +890,26 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             continue;
         }
 
+        const isYouTubeChannel = isYouTubeChannelProduct({ platformName: platform.name, platformSlug: platform.slug });
+        if (isYouTubeChannel && !r.youtubeChannelName) {
+            const err = new Error(`Fila ${r.rowNumber || rowIndex + 2}: el nombre del canal de YouTube es obligatorio.`);
+            err.status = 400;
+            throw err;
+        }
+        if (r.youtubeChannelName && r.youtubeChannelName.length > 180) {
+            const err = new Error(`Fila ${r.rowNumber || rowIndex + 2}: el nombre del canal no puede superar 180 caracteres.`);
+            err.status = 400;
+            throw err;
+        }
+
         const codeProvider = normalizeAccountCodeProvider(r.codeProvider, {
             platformName: platform.name,
             platformSlug: platform.slug,
         });
 
-        const identityProf = normalizeProfileForIdentity(r.profileNumber);
-        const accountProf = normalizeProfileForAccount(r.profileNumber);
+        const profileNumber = isYouTubeChannel ? null : r.profileNumber;
+        const identityProf = normalizeProfileForIdentity(profileNumber);
+        const accountProf = normalizeProfileForAccount(profileNumber);
         const exp = r.expiresAt ? toSqlDateStart(r.expiresAt) : null;
         let accessUrl;
         try {
@@ -856,6 +940,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             String(r.email).trim().toLowerCase(),
             accountProf ?? "",
             r.password,
+            isYouTubeChannel ? String(r.youtubeChannelName || "").trim().toLowerCase() : "",
         ].join("|");
         const reusable = reloadedKeys.has(reloadKey)
             ? null
@@ -864,6 +949,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 emailValue: r.email,
                 accountProf,
                 password: r.password,
+                youtubeChannelName: isYouTubeChannel ? r.youtubeChannelName : null,
             });
         if (reusable) {
             const identityId = await upsertIdentity(conn, {
@@ -885,6 +971,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 twoFactorSecret: r.twoFactorSecret,
                 codeProvider,
                 accountProf,
+                youtubeChannelName: r.youtubeChannelName,
                 exp,
                 costModel,
             });
@@ -912,6 +999,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             emailValue: r.email,
             accountProf,
             password: r.password,
+            youtubeChannelName: isYouTubeChannel ? r.youtubeChannelName : null,
         });
         if (exactDuplicate) {
             duplicateExact.push(buildDuplicatePayload(exactDuplicate, r.rowNumber || rowIndex + 2));
@@ -923,6 +1011,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 pid,
                 emailValue: r.email,
                 accountProf,
+                youtubeChannelName: isYouTubeChannel ? r.youtubeChannelName : null,
             });
             if (duplicate) {
                 duplicateAssigned.push(buildDuplicatePayload(duplicate, r.rowNumber || rowIndex + 2));
@@ -949,6 +1038,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             twoFactorSecret: r.twoFactorSecret,
             codeProvider,
             accountProf,
+            youtubeChannelName: r.youtubeChannelName,
             exp,
             costModel,
         });

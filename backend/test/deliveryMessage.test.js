@@ -55,6 +55,44 @@ test("Canva correo uses WhatsApp activation instructions without credential link
     }
 });
 
+test("YouTube Music delivery names the exact channel instead of treating it as a profile", () => {
+    const message = buildSingleItemMessage({
+        platformName: "YouTube Music",
+        account: { youtube_channel_name: "Canal Familiar", profile_number: null },
+    });
+
+    assert.match(message, /Canal de YouTube: Canal Familiar/);
+    assert.doesNotMatch(message, /Perfil:/);
+});
+
+test("YouTube Music replacement delivery also includes the channel name", () => {
+    const message = buildAccountDeliveryMessage({
+        orderCode: "ORD-YT-MUSIC",
+        subscriptionId: 22,
+        platformName: "YouTube Music",
+        platformSlug: "youtube-music",
+        account: { email: "buyer@example.com", youtube_channel_name: "Canal Música" },
+        expiresAt: "2026-11-01",
+    });
+
+    assert.match(message, /Canal de YouTube: Canal Música/);
+    assert.doesNotMatch(message, /Perfil:/);
+});
+
+test("YouTube three-month delivery includes the channel name", () => {
+    const message = buildAccountDeliveryMessage({
+        orderCode: "ORD-YT-3M",
+        subscriptionId: 23,
+        platformName: "Youtube 3 meses",
+        platformSlug: "youtube-3-meses",
+        account: { email: "buyer@example.com", youtube_channel_name: "@Strbx-2", profile_number: null },
+        expiresAt: "2027-01-11",
+    });
+
+    assert.match(message, /Canal de YouTube: @Strbx-2/);
+    assert.doesNotMatch(message, /Perfil:/);
+});
+
 test("non-Canva correo products keep the generic credential link message", () => {
     const message = buildSingleItemMessage({
         platformName: "Chat Gpt a correo - Garantia Activacion",

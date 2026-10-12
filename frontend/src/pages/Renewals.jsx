@@ -360,7 +360,9 @@ export default function Renewals() {
                                         </div>
                                         <div style={{ marginTop: 6, fontSize: 12, color: item.renewal?.can_renew_now ? "#10b981" : "#f59e0b" }}>
                                             {item.renewal?.can_renew_now
-                                                ? `Disponible hasta el ${item.renewal?.eligible_until_date}`
+                                                ? item.renewal?.extended_renewal
+                                                    ? "Vencida, pero aún puedes renovar. Los días vencidos se descuentan del período."
+                                                    : `Disponible hasta el ${item.renewal?.eligible_until_date}`
                                                 : (item.renewal?.block_reason || "No disponible")}
                                         </div>
                                     </div>
@@ -459,8 +461,11 @@ export default function Renewals() {
                                 <div>{formatBogota(renewModal.subscription_expires_at)}</div>
                             </div>
                             <div>
-                                <div className="label">Límite para renovar</div>
-                                <div>{renewModal.renewal?.eligible_until_date} 23:59 Colombia</div>
+                                <div className="label">{renewModal.renewal?.extended_renewal ? "Vencimiento anterior" : "Límite para renovar"}</div>
+                                <div>
+                                    {renewModal.renewal?.eligible_until_date}
+                                    {renewModal.renewal?.extended_renewal ? "" : " 23:59 Colombia"}
+                                </div>
                             </div>
                             <div>
                                 <div className="label">Valor de la renovación</div>
@@ -480,7 +485,7 @@ export default function Renewals() {
                             <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "var(--text)" }}>
                                 <div style={{ fontWeight: 900 }}>¿Estás seguro de que deseas renovar esta cuenta?</div>
                                 <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 13 }}>
-                                    Se descontará el valor de tu saldo y el tiempo adicional se sumará desde el vencimiento actual, no desde hoy.
+                                    Se descontará el valor de tu saldo. El período se cuenta desde el vencimiento anterior; si ya venció, los días transcurridos se descuentan y no se reinicia desde hoy.
                                 </div>
                             </div>
                         ) : null}

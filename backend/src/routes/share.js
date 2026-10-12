@@ -9,6 +9,7 @@ const {
   isStoredDateOnlyExpired,
 } = require("../utils/date");
 const { isChatGPTPersonalProduct, isIptvProduct } = require("../utils/deliveryMessage");
+const { isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -122,6 +123,7 @@ async function loadCredentialByToken(token) {
        a.pin,
        a.two_factor_secret,
        a.profile_number,
+       a.youtube_channel_name,
        a.expires_at AS account_expires_at,
        NULLIF(TRIM(u.whatsapp), '') AS buyer_whatsapp,
        p.type AS platform_type
@@ -190,6 +192,10 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
       platformName: r.platform_name,
       platformSlug: r.platform_slug,
     });
+    const isYoutubeChannel = isYouTubeChannelProduct({
+      platformName: r.platform_name,
+      platformSlug: r.platform_slug,
+    });
     const rawWhatsappUrl = buildAccountHelpWhatsappUrl({
       platformName: r.platform_name,
       orderId: r.order_id,
@@ -210,6 +216,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         pin: r.pin,
         twoFactorSecret: r.two_factor_secret,
         profileNumber: r.profile_number,
+        youtubeChannelName: r.youtube_channel_name,
         expiresAt: displayExpiresAt,
         expiresLabel: exp,
         daysRemaining: remaining,
@@ -220,6 +227,8 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         isEmailMode,
         isChatGPTPersonal,
         isIptv,
+        isYoutubeChannel,
+        isYoutubeMusic: isYoutubeChannel,
       });
     }
 
@@ -249,6 +258,7 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
         <div class="row cred-row"><div class="label">Correo:</div><div class="value" id="cred-email">Cargando…</div></div>
         <div class="row cred-row"><div class="label">Contraseña:</div><div class="value" id="cred-pass">…</div></div>
         <div id="cred-2fa-row" class="row cred-row" style="display:none;"><div class="label">2FA:</div><div class="value" id="cred-2fa">…</div></div>
+        <div id="cred-channel-row" class="row cred-row" style="display:none;"><div class="label">Canal de YouTube:</div><div class="value" id="cred-channel">…</div></div>
         <div class="row cred-row"><div class="label">Perfil:</div><div class="value" id="cred-profile">…</div></div>
         <div class="row cred-row"><div class="label">Pin:</div><div class="value" id="cred-pin">…</div></div>
         <div id="cred-url-row" class="row cred-row" style="display:none;"><div class="label">URL:</div><div class="value" id="cred-url">...</div></div>
@@ -277,6 +287,13 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
                 set("cred-pass", d.password);
                 set("cred-profile", d.profileNumber);
                 set("cred-pin", d.pin);
+                if (d.isYoutubeChannel || d.isYoutubeMusic) {
+                  set("cred-channel", d.youtubeChannelName || "Pendiente de registrar");
+                  var channelRow = document.getElementById("cred-channel-row");
+                  if (channelRow) channelRow.style.display = "flex";
+                  var profileRow = document.getElementById("cred-profile");
+                  if (profileRow && profileRow.parentElement) profileRow.parentElement.style.display = "none";
+                }
                 if (d.isIptv) {
                   var emailRow = document.getElementById("cred-email");
                   var profileRow = document.getElementById("cred-profile");

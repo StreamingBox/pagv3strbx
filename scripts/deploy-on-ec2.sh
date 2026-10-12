@@ -4,15 +4,39 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 PM2_APP="${PM2_APP:-pagev3-api}"
 REPO_BRANCH="${REPO_BRANCH:-main}"
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/streaming-box}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/readiness}"
+FRONTEND_ROOT="${FRONTEND_ROOT:-/var/www/pageV3/frontend}"
+DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pagev3-deploy.lock}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
+exec 9>"$DEPLOY_LOCK_FILE"
+if ! flock -n 9; then
+  echo "Another deployment is already running." >&2
+  exit 1
+fi
+
 cd "$PROJECT_DIR"
+CURRENT_BRANCH="$(git branch --show-current)"
+if [[ "$CURRENT_BRANCH" != "$REPO_BRANCH" ]]; then
+  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+    echo "Hay cambios locales sin registrar. No se cambiará de rama ni se desplegará:" >&2
+    git status --short >&2
+    exit 1
+  fi
+  git switch "$REPO_BRANCH"
+fi
+
+if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+  echo "Hay cambios locales sin registrar. No se modificó el servidor; guarda y sube esos cambios a Git antes de desplegar:" >&2
+  git status --short >&2
+  exit 1
+fi
+
 PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 
 mkdir -p "$BACKUP_DIR"
@@ -31,7 +55,7 @@ fi
 
 rollback() {
   echo ">>> deployment failed; restoring $PREVIOUS_COMMIT"
-  git reset --hard "$PREVIOUS_COMMIT"
+  git switch --detach "$PREVIOUS_COMMIT"
   if [ -f "$BACKUP_DIR/frontend-dist.tgz" ]; then
     rm -rf frontend/dist
     tar -C frontend -xzf "$BACKUP_DIR/frontend-dist.tgz"
@@ -43,7 +67,11 @@ trap rollback ERR
 
 echo ">>> updating source"
 git fetch origin "$REPO_BRANCH"
-git reset --hard "origin/$REPO_BRANCH"
+if ! git merge-base --is-ancestor HEAD "origin/$REPO_BRANCH"; then
+  echo "La rama local tiene commits que no están publicados en origin/$REPO_BRANCH. No se desplegó." >&2
+  exit 1
+fi
+git merge --ff-only "origin/$REPO_BRANCH"
 
 echo ">>> backend checks"
 (cd backend && npm ci && npm run check && npm test)
@@ -52,7 +80,7 @@ echo ">>> database migrations"
 (cd backend && npm run migrate)
 
 echo ">>> frontend checks"
-(cd frontend && npm ci && npm run lint && npm test && npm run build)
+(cd frontend && npm ci && npm run lint && npm test && npm run build && node scripts/verify-release.mjs dist)
 
 echo ">>> dependency audits"
 npm audit --audit-level=high
@@ -70,8 +98,10 @@ fi
 echo ">>> readiness check"
 for attempt in $(seq 1 18); do
   if curl --fail --silent --show-error "$HEALTH_URL" >/dev/null; then
+    echo ">>> publishing verified frontend"
+    bash ops/ec2/publish-frontend.sh frontend/dist "$FRONTEND_ROOT"
     trap - ERR
-    echo ">>> deployment complete; backup: $BACKUP_DIR"
+    echo ">>> deployment complete; commit: $(git rev-parse --short HEAD); backup: $BACKUP_DIR"
     exit 0
   fi
   sleep 2

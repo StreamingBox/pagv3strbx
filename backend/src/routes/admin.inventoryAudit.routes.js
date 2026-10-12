@@ -9,7 +9,7 @@ router.get("/admin/inventory-audit", requireAuth, requireRole("admin"), async (r
     try {
         let rules;
         try {
-            rules = JSON.parse(String(req.query?.rules || ""));
+            rules = req.query?.rules ? JSON.parse(String(req.query.rules)) : undefined;
         } catch {
             return res.status(400).json({ message: "Las referencias de perfiles no son validas." });
         }

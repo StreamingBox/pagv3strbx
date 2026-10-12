@@ -2,14 +2,16 @@ const { makeOrderCode } = require("../utils/orderCode");
 const {
     addDaysBogotaDateOnly,
     bogotaDateOnlyToUtcEndOfDay,
+    currentBogotaDateOnly,
     formatStoredDateOnly,
     toSqlDateTime,
 } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
-const { getRenewalEligibility } = require("../utils/renewals");
+const { canRenewAfterExpiry, getRenewalEligibility } = require("../utils/renewals");
 const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
+const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
 
 async function renewSubscription({
     conn,
@@ -21,6 +23,7 @@ async function renewSubscription({
     note,
     newAccountId = null,
     allowAccountChange = false,
+    extendedRenewal = false,
 }) {
     const [rows] = await conn.query(
         `SELECT s.id, s.user_id, s.platform_id, s.platform_price_id, s.platform_account_id,
@@ -33,6 +36,7 @@ async function renewSubscription({
                 pa.expires_at AS account_expires_at,
                 pa.unit_cost AS account_unit_cost,
                 pa.unit_cost_currency AS account_unit_cost_currency,
+                (${strbxReportedNetflixAccountSql("pa")}) AS strbx_provider_reported,
                 pp.is_renewable,
                 pp.price AS renewable_price
          FROM subscriptions s
@@ -55,6 +59,12 @@ async function renewSubscription({
 
     const sub = rows[0];
 
+    if (Boolean(sub.strbx_provider_reported)) {
+        const err = new Error("Esta cuenta de Netflix fue reportada al proveedor y no admite renovaciones.");
+        err.status = 400;
+        throw err;
+    }
+
     const [[renewalStats]] = await conn.query(
         `SELECT COUNT(*) AS renewal_count
          FROM subscription_renewal_logs
@@ -73,6 +83,16 @@ async function renewSubscription({
     const effectiveExpiresAt = sub.expires_at;
     const effectiveExpiresAtIsDateOnly = true;
 
+    const previousExpiry = formatStoredDateOnly(effectiveExpiresAt);
+    const isPastExpiry = Boolean(previousExpiry && previousExpiry !== "-" && previousExpiry < currentBogotaDateOnly());
+    const isExtendedRenewal = canRenewAfterExpiry({
+        actorRole,
+        status: sub.status,
+        isAttended: sub.is_attended,
+        isPastExpiry,
+        extendedRenewal,
+    });
+
     const eligibility = getRenewalEligibility({
         expiresAt: effectiveExpiresAt,
         expiresAtIsDateOnly: effectiveExpiresAtIsDateOnly,
@@ -82,6 +102,7 @@ async function renewSubscription({
         renewalCount,
         platformSlug: sub.platform_slug,
         platformName: sub.platform_name,
+        allowExpired: isExtendedRenewal,
     });
 
     if (!eligibility.canRenew) {
@@ -121,7 +142,6 @@ async function renewSubscription({
         throw err;
     }
 
-    const previousExpiry = formatStoredDateOnly(effectiveExpiresAt);
     if (!previousExpiry || previousExpiry === "-") {
         const err = new Error("La suscripcion no tiene una fecha de vencimiento valida para renovar.");
         err.status = 400;
@@ -191,6 +211,11 @@ async function renewSubscription({
                 : normalizeCurrency(sub.currency, "COP");
         }
     }
+
+    const renewalNote = [
+        note,
+        isExtendedRenewal ? "Renovación extendida: días vencidos descontados desde el vencimiento anterior." : "",
+    ].filter(Boolean).join(" | ") || null;
 
     const [previousOrderRows] = await conn.query(
         `SELECT o.id, o.order_code
@@ -316,7 +341,7 @@ async function renewSubscription({
             `INSERT INTO wallet_transactions
                 (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
              VALUES (?, 'purchase', ?, ?, 'order', ?, ?)`,
-            [walletId, -amount, balanceAfter, renewalOrderId, note || `Renovación suscripción #${subscriptionId}`]
+            [walletId, -amount, balanceAfter, renewalOrderId, renewalNote || `Renovación suscripción #${subscriptionId}`]
         );
     }
 
@@ -348,14 +373,14 @@ async function renewSubscription({
             walletId,
             balanceBefore,
             balanceAfter,
-            note || null,
+            renewalNote,
         ]
     );
 
     let account = null;
     if (finalAccountId) {
         const [accountRows] = await conn.query(
-            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.access_url, pa.expires_at,
+            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.expires_at,
                     p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
              FROM platform_accounts pa
              LEFT JOIN platforms p ON p.id = pa.platform_id
@@ -423,6 +448,7 @@ async function renewSubscription({
         balanceBefore,
         walletId,
         eligibleUntilDate: eligibility.expiresOnDate,
+        extendedRenewal: isExtendedRenewal,
         token,
         deliveryMessage,
     };

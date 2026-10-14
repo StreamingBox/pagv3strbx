@@ -10,6 +10,7 @@ const {
 } = require("../utils/date");
 const { isChatGPTPersonalProduct, isIptvProduct } = require("../utils/deliveryMessage");
 const { isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
+const { isTransientDatabaseError } = require("../utils/databaseErrors");
 const router = express.Router();
 
 function escapeHtml(v) {
@@ -480,6 +481,14 @@ router.get("/s/:token", shareJsonCredentialLimiter, async (req, res) => {
 </html>`);
   } catch (err) {
     console.error(err);
+    if (isTransientDatabaseError(err)) {
+      const message = "Servicio temporalmente no disponible. Inténtalo de nuevo en unos segundos.";
+      res.set("Retry-After", "3");
+      if (wantsJson(req)) {
+        return res.status(503).json({ ok: false, error: message });
+      }
+      return res.status(503).type("text/plain; charset=utf-8").send(message);
+    }
     return res.status(500).send("Error interno.");
   }
 });

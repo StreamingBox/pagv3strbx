@@ -1,6 +1,7 @@
 const dns = require("node:dns");
 const mysql = require("mysql2/promise");
 const { buildDbConfig } = require("./utils/dbConfig");
+const { isTransientDatabaseError } = require("./utils/databaseErrors");
 
 dns.setDefaultResultOrder(process.env.DB_DNS_RESULT_ORDER || "ipv4first");
 
@@ -11,10 +12,6 @@ const originalQuery = pool.query.bind(pool);
 const strictSqlModeEnabled = String(
     process.env.DB_STRICT_SQL_MODE ?? (process.env.NODE_ENV === "production" ? "true" : "false")
 ).toLowerCase() !== "false";
-
-function isTransientDatabaseError(error) {
-    return ["ECONNRESET", "ETIMEDOUT", "PROTOCOL_CONNECTION_LOST", "ECONNREFUSED"].includes(error?.code);
-}
 
 function isReadOnlySql(sql) {
     return /^\s*(SELECT|SHOW|EXPLAIN|DESCRIBE)\b/i.test(String(sql || ""));

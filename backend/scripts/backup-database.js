@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-require("dotenv").config({ path: require("path").join(__dirname, "..", ".env"), override: false });
+require("../src/utils/backupEnvironment").loadBackupEnvironment(
+    require("node:path").join(__dirname, "..", ".env")
+);
 
 const fs = require("node:fs");
 const path = require("node:path");

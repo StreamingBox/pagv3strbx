@@ -88,7 +88,7 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, youtubeChannelName, exp, costModel }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, youtubeChannelName, exp, costModel, deferStockNotifications = false }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
      (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, code_provider, profile_number, youtube_channel_name, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
@@ -113,7 +113,9 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     );
     
     // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
-    await queueStockAvailabilityNotifications(conn, pid, pname);
+    if (!deferStockNotifications) {
+        await queueStockAvailabilityNotifications(conn, pid, pname);
+    }
     
     return ins.insertId;
 }
@@ -133,6 +135,7 @@ async function reloadExistingAccount(conn, {
     youtubeChannelName,
     exp,
     costModel,
+    deferStockNotifications = false,
 }) {
     const [result] = await conn.query(
         `UPDATE platform_accounts
@@ -182,7 +185,9 @@ async function reloadExistingAccount(conn, {
         throw err;
     }
 
-    await queueStockAvailabilityNotifications(conn, pid, pname);
+    if (!deferStockNotifications) {
+        await queueStockAvailabilityNotifications(conn, pid, pname);
+    }
     return accountId;
 }
 
@@ -877,6 +882,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     const duplicateExact = [];
     const reusedExisting = [];
     const reloadedKeys = new Set();
+    const platformsWithNewStock = new Map();
     const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
     for (const [rowIndex, r] of candidates.entries()) {
@@ -974,6 +980,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 youtubeChannelName: r.youtubeChannelName,
                 exp,
                 costModel,
+                deferStockNotifications: true,
             });
 
             await propagatePassword(conn, {
@@ -983,6 +990,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 newId: reusedId,
             });
             reloadedKeys.add(reloadKey);
+            platformsWithNewStock.set(pid, platform.name);
             reusedExisting.push({
                 rowNumber: r.rowNumber || rowIndex + 2,
                 accountId: reusedId,
@@ -1041,11 +1049,17 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             youtubeChannelName: r.youtubeChannelName,
             exp,
             costModel,
+            deferStockNotifications: true,
         });
 
         await propagatePassword(conn, { pid, emailValue: r.email, password: r.password, newId });
 
+        platformsWithNewStock.set(pid, platform.name);
         inserted += 1;
+    }
+
+    for (const [pid, platformName] of platformsWithNewStock) {
+        await queueStockAvailabilityNotifications(conn, pid, platformName);
     }
 
     return {

@@ -22,6 +22,7 @@ async function apiFetch(path, opts = {}) {
 }
 
 const LOGO_URL = "/api/branding/logo";
+const BULK_UPLOAD_TIMEOUT_MS = 240_000;
 
 function normalizeExcelKey(value) {
     return String(value || "")
@@ -329,6 +330,7 @@ export default function AdminAccounts() {
     const [excelLoading, setExcelLoading] = useState(false);
     const [excelMsg, setExcelMsg] = useState("");
     const [excelError, setExcelError] = useState(false);
+    const [excelUploadUncertain, setExcelUploadUncertain] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [excelPreview, setExcelPreview] = useState(null);
     const [forceConfirm, setForceConfirm] = useState(null);
@@ -455,6 +457,7 @@ export default function AdminAccounts() {
     function openExcelPicker() {
         setExcelMsg("");
         setExcelError(false);
+        setExcelUploadUncertain(false);
         setExcelPreview(null);
         fileExcelRef.current?.click();
     }
@@ -466,6 +469,7 @@ export default function AdminAccounts() {
         setError("");
         setExcelMsg("");
         setExcelError(false);
+        setExcelUploadUncertain(false);
 
         try {
             // 1) leer excel
@@ -525,6 +529,7 @@ export default function AdminAccounts() {
 
         return apiFetch(`/admin/accounts/bulk`, {
             method: "POST",
+            timeoutMs: BULK_UPLOAD_TIMEOUT_MS,
             body: JSON.stringify({
                 rows: duplicateRows,
                 allowAssignedDuplicateScreens: true,
@@ -533,7 +538,7 @@ export default function AdminAccounts() {
     }
 
     async function confirmExcelUpload() {
-        if (!excelPreview?.rows?.length) return;
+        if (!excelPreview?.rows?.length || excelUploadUncertain) return;
 
         setExcelLoading(true);
         setExcelMsg("");
@@ -541,6 +546,7 @@ export default function AdminAccounts() {
         try {
             const out = await apiFetch(`/admin/accounts/bulk`, {
                 method: "POST",
+                timeoutMs: BULK_UPLOAD_TIMEOUT_MS,
                 body: JSON.stringify({ rows: excelPreview.rows }),
             });
 
@@ -586,21 +592,34 @@ export default function AdminAccounts() {
                 );
             }
             setExcelMsg([...successLines, ...warnings].join("\n\n"));
+            setExcelUploadUncertain(false);
             setExcelPreview(null);
         } catch (err) {
+            if (err.status === 0) {
+                setExcelError(true);
+                setExcelUploadUncertain(true);
+                setExcelMsg("El servidor tardó demasiado en confirmar el resultado. La carga pudo haberse guardado; revisa el historial de cargas antes de volver a intentar este archivo.");
+                return;
+            }
             const duplicateAssigned = Array.isArray(err.data?.duplicateAssigned) ? err.data.duplicateAssigned : [];
             const duplicateExact = Array.isArray(err.data?.duplicateExact) ? err.data.duplicateExact : [];
             if (duplicateAssigned.length) {
-                let forcedOut = null;
+                let forcedOut;
                 try {
                     forcedOut = await confirmForceDuplicateAssignedUpload(excelPreview.rows, duplicateAssigned);
                 } catch (forceErr) {
                     setExcelError(true);
-                    setExcelMsg(forceErr.message || "No se pudo hacer la carga forzada.");
+                    if (forceErr.status === 0) {
+                        setExcelUploadUncertain(true);
+                        setExcelMsg("El servidor tardó demasiado en confirmar la carga forzada. La carga pudo haberse guardado; revisa el historial antes de volver a intentar este archivo.");
+                    } else {
+                        setExcelMsg(forceErr.message || "No se pudo hacer la carga forzada.");
+                    }
                     return;
                 }
                 if (forcedOut) {
                     setExcelError(false);
+                    setExcelUploadUncertain(false);
                     setExcelMsg(`Carga confirmada. Insertadas forzadas: ${forcedOut.inserted || 0}.`);
                     setExcelPreview(null);
                     return;
@@ -1005,6 +1024,18 @@ export default function AdminAccounts() {
                             }}
                         >
                             {excelMsg}
+                            {excelUploadUncertain && (
+                                <div style={{ marginTop: 10 }}>
+                                    <button
+                                        type="button"
+                                        className="btn-ghost"
+                                        onClick={() => navigate("/admin/upload-logs")}
+                                        style={{ height: 36, padding: "0 12px" }}
+                                    >
+                                        Revisar historial de cargas
+                                    </button>
+                                </div>
+                            )}
                         </MotionDiv>
                     )}
 
@@ -1106,11 +1137,11 @@ export default function AdminAccounts() {
                                 )}
 
                                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-                                    <button className="btn-ghost" onClick={() => setExcelPreview(null)} disabled={excelLoading} style={{ height: 40, padding: "0 16px" }}>
+                                    <button className="btn-ghost" onClick={() => { setExcelPreview(null); setExcelUploadUncertain(false); }} disabled={excelLoading} style={{ height: 40, padding: "0 16px" }}>
                                         Cancelar
                                     </button>
-                                    <button className="btn" onClick={confirmExcelUpload} disabled={excelLoading || !!excelPreview.summary.invalid || !!excelPreview.summary.invalidCost} style={{ height: 40, padding: "0 20px", fontWeight: 800 }}>
-                                        {excelLoading ? "Cargando..." : "Confirmar carga"}
+                                    <button className="btn" onClick={confirmExcelUpload} disabled={excelLoading || excelUploadUncertain || !!excelPreview.summary.invalid || !!excelPreview.summary.invalidCost} style={{ height: 40, padding: "0 20px", fontWeight: 800 }}>
+                                        {excelLoading ? "Cargando..." : excelUploadUncertain ? "Revisa el historial" : "Confirmar carga"}
                                     </button>
                                 </div>
                             </div>

@@ -177,6 +177,10 @@ test("bulk YouTube Music upload allows one Google login on separate channels", a
     const duplicateLookups = calls.filter(({ sql }) => sql.includes("has_replacement_history"));
     assert.equal(duplicateLookups.length, 4);
     assert.ok(duplicateLookups.every(({ sql }) => sql.includes("pa.youtube_channel_name")));
+    const stockNotificationChecks = calls.filter(({ sql }) =>
+        sql.includes("FROM stock_subscriptions ss") && sql.includes("ss.is_notified = FALSE")
+    );
+    assert.equal(stockNotificationChecks.length, 1);
     assert.deepEqual(duplicateLookups.map(({ params }) => params.at(-1)), [
         "Canal Principal",
         "Canal Principal",

@@ -406,3 +406,14 @@ Actualizado el 2026-06-23.
 8. **Evaluar COEP** en staging antes de activarlo en producción
 9. **Crear Breadcrumbs** para navegación admin
 10. **Agregar focus states** en elementos interactivos para accesibilidad
+
+## Registro operativo: depuración de carga Excel (2026-10-15)
+
+Este apartado deja trazabilidad de la revisión y limpieza puntual del inventario en producción. Es un registro histórico, no un script ni una instrucción para repetir la operación.
+
+- Se revisó una plantilla con 67 filas de cuentas; no se encontraron duplicados exactos dentro del archivo.
+- Los registros de las tres solicitudes de carga indicaron: 67 filas procesadas, 57 insertadas y 10 omitidas en el primer intento; 67 procesadas, 59 insertadas y 8 omitidas en cada uno de los dos intentos siguientes. Las omisiones estaban relacionadas con pantallas ya asignadas.
+- La comparación de las cuentas creadas con la plantilla y con el inventario previo identificó 24 filas nuevas que duplicaban credenciales existentes y no tenían asignaciones, suscripciones ni historial relacionado. Se eliminaron únicamente esas 24 filas; se comprobó después que sus IDs ya no existían y que las 61 cuentas históricas coincidentes seguían presentes.
+- IDs eliminados: `9078`, `9079`, `9081`–`9086` y `9092`–`9107`.
+- Antes de eliminar, se creó una copia recuperable de las 24 filas en almacenamiento privado del servidor y se verificó que se pudiera leer. Esa copia y los datos de acceso no se incluyen en Git. Los registros de las cargas se conservaron.
+- No se modificó ni desplegó código como parte de esta limpieza. Este commit registra la operación; no vuelve a ejecutarla ni altera producción.

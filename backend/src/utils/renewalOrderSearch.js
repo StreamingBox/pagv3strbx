@@ -14,16 +14,6 @@ function buildRenewalOrderSearch(query) {
         };
     }
 
-    if (/^\d+$/.test(term)) {
-        const orderId = Number(term);
-        if (Number.isSafeInteger(orderId)) {
-            return {
-                sql: "(o.id = ? OR o.order_code_suffix LIKE ? ESCAPE '!')",
-                params: [orderId, prefix],
-            };
-        }
-    }
-
     return {
         sql: "o.order_code_suffix LIKE ? ESCAPE '!'",
         params: [prefix],

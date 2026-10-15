@@ -2,10 +2,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const { buildRenewalOrderSearch } = require("../src/utils/renewalOrderSearch");
 
-test("renewal search matches only an exact order ID or an indexed order-code suffix", () => {
+test("numeric renewal search matches only an indexed order-code suffix, never an ID", () => {
     assert.deepEqual(buildRenewalOrderSearch("6910"), {
-        sql: "(o.id = ? OR o.order_code_suffix LIKE ? ESCAPE '!')",
-        params: [6910, "6910%"],
+        sql: "o.order_code_suffix LIKE ? ESCAPE '!'",
+        params: ["6910%"],
     });
 });
 

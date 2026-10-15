@@ -19,8 +19,9 @@ test("renewal history applies the order-only filter to count and result queries"
 
     assert.equal(calls.length, 2);
     for (const { sql, params } of calls) {
-        assert.match(sql, /o\.id = \? OR o\.order_code_suffix LIKE/);
+        assert.match(sql, /o\.order_code_suffix LIKE/);
+        assert.doesNotMatch(sql, /o\.id = \?/);
         assert.doesNotMatch(sql, /CAST\(s\.id AS CHAR\) LIKE|pa\.email LIKE|pa\.pin LIKE/);
-        assert.deepEqual(params.slice(0, 3), [42, 6910, "6910%"]);
+        assert.deepEqual(params.slice(0, 2), [42, "6910%"]);
     }
 });

@@ -47,6 +47,7 @@ export default function Renewals() {
         platformId: "",
         availability: "available",
     });
+    const [searchText, setSearchText] = useState("");
     const [renewModal, setRenewModal] = useState(null);
     const [renewSubmitting, setRenewSubmitting] = useState(false);
     const [renewError, setRenewError] = useState("");
@@ -108,6 +109,11 @@ export default function Renewals() {
         () => items.filter((item) => item.renewal?.can_renew_now).length,
         [items]
     );
+
+    function applySearch() {
+        setPage(1);
+        setFilters((prev) => ({ ...prev, q: searchText.trim() }));
+    }
 
     function openRenewModal(item) {
         setRenewModal(item);
@@ -178,23 +184,26 @@ export default function Renewals() {
                 <main className="main">
                     <h1 style={{ margin: 0 }}>Renovaciones</h1>
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
-                        Busca renovaciones por pedido, filtra por plataforma y decide si quieres ver solo las disponibles o también las bloqueadas.
+                        Busca renovaciones por código de pedido y filtra por plataforma y estado.
                     </p>
 
                     <div className="kpi" style={{ marginTop: 12 }}>
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                             <div style={{ flex: 1, minWidth: 220 }}>
-                                <div className="label">Pedido</div>
+                                <div className="label">Código del pedido</div>
                                 <input
                                     type="text"
                                     className="input"
-                                    placeholder="ID o código del pedido"
+                                    placeholder="Ej.: ORD-... o últimos 6 caracteres"
                                     maxLength={64}
-                                    aria-label="Buscar renovaciones por pedido"
-                                    value={filters.q}
-                                    onChange={(e) => {
-                                        setPage(1);
-                                        setFilters((prev) => ({ ...prev, q: e.target.value }));
+                                    aria-label="Buscar renovaciones por código del pedido"
+                                    value={searchText}
+                                    onChange={(e) => setSearchText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            applySearch();
+                                        }
                                     }}
                                 />
                             </div>
@@ -253,12 +262,9 @@ export default function Renewals() {
                             <div style={{ display: "flex", gap: 10 }}>
                                 <button
                                     className="btn"
-                                    onClick={() => {
-                                        setPage(1);
-                                        void loadRenewals(1, limit, filters);
-                                    }}
+                                    onClick={applySearch}
                                 >
-                                    Aplicar filtros
+                                    Buscar
                                 </button>
                                 <button
                                     className="btn-ghost"
@@ -268,10 +274,10 @@ export default function Renewals() {
                                             platformId: "",
                                             availability: "available",
                                         };
+                                        setSearchText("");
                                         setPage(1);
                                         setLimit(10);
                                         setFilters(nextFilters);
-                                        void loadRenewals(1, 10, nextFilters);
                                     }}
                                 >
                                     Limpiar

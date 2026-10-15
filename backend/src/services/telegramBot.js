@@ -13,6 +13,7 @@
  *   /ventas_dia   → Resumen de ventas del día en Colombia
  *   /saldo [@user] → Saldo de tus propios fondos o de un usuario
  *   /comprar <platform_slug> <duracion_días> @usuario → Registrar compra a un usuario
+ *   /servidor     → RAM y almacenamiento del servidor (administradores)
  */
 
 const axios = require("axios");
@@ -27,6 +28,7 @@ const {
     currentBogotaDateOnly,
 } = require("../utils/date");
 const { getStockSummary } = require("./stockSummary.service");
+const { getServerResources, buildServerResourcesMessage } = require("./serverResources.service");
 const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
 const {
     takeSupportTicketFromTelegram,
@@ -298,6 +300,10 @@ function isAuthorized(chatId) {
     return AUTHORIZED.has(Number(chatId));
 }
 
+function isConfiguredAdmin(chatId, authorizedIds = AUTHORIZED) {
+    return authorizedIds.size > 0 && authorizedIds.has(Number(chatId));
+}
+
 function getTopupStatusLabel(status) {
     const normalized = String(status || "").toLowerCase();
     if (normalized === "submitted") return "Enviada";
@@ -550,9 +556,9 @@ async function sendTopupProofPreview(chatId, item) {
 }
 
 /* ─── Guard de autorización ───────────────────────────────────── */
-function guard(handler) {
+function guard(handler, { strictAdmin = false } = {}) {
     return async (msg, match) => {
-        if (!isAuthorized(msg.chat.id)) {
+        if (strictAdmin ? !isConfiguredAdmin(msg.chat.id) : !isAuthorized(msg.chat.id)) {
             return bot.sendMessage(msg.chat.id, "🚫 No autorizado.");
         }
         try {
@@ -586,7 +592,10 @@ async function cmdStart(msg) {
                 [
                     { text: "💳 Consultar mi saldo", callback_data: "cmd_saldo" },
                     { text: "➕ Agregar Stock", callback_data: "cmd_addstock" }
-                ]
+                ],
+                ...(isConfiguredAdmin(msg.chat.id)
+                    ? [[{ text: "🖥️ Recursos del servidor", callback_data: "cmd_servidor" }]]
+                    : [])
             ]
         }
     };
@@ -596,6 +605,11 @@ async function cmdStart(msg) {
         `Soy el bot de *StreamingBox Admin*\\. ¿Qué deseas hacer hoy?`,
         opts
     );
+}
+
+async function cmdServerResources(msg) {
+    const resources = await getServerResources();
+    await bot.sendMessage(msg.chat.id, buildServerResourcesMessage(resources));
 }
 
 /** /stock — cuentas disponibles agrupadas por plataforma */
@@ -1046,7 +1060,8 @@ function setupCommands() {
         { command: "stock", description: "Ver stock disponible" },
         { command: "ventas", description: "Últimas ventas" },
         { command: "ventas_dia", description: "Resumen de ventas de hoy" },
-        { command: "saldo", description: "Consultar un saldo" }
+        { command: "saldo", description: "Consultar un saldo" },
+        { command: "servidor", description: "Ver RAM y almacenamiento" }
     ]).catch(err => console.error("[TelegramBot] Error setting commands:", err));
 
     bot.onText(/^\/start$/i, guard(cmdStart));
@@ -1055,6 +1070,7 @@ function setupCommands() {
     bot.onText(/^\/ventas(?:\s+(?:hoy|dia))$/i, guard(cmdVentasDia));
     bot.onText(/^\/(?:ventas_dia|ventas_hoy)$/i, guard(cmdVentasDia));
     bot.onText(/^\/saldo(?:\s+(.+))?$/i, guard(cmdSaldo));
+    bot.onText(/^\/servidor$/i, guard(cmdServerResources, { strictAdmin: true }));
     bot.onText(/^\/comprar/i, guard(cmdComprarStart));
     bot.onText(/^\/addstock/i, guard(cmdAddStockStart));
 
@@ -1085,7 +1101,7 @@ function setupCommands() {
             await handleStockMessage(msg);
             await handleBuyMessage(msg);
         } else {
-            const knownCmds = ["/start", "/stock", "/ventas", "/ventas_dia", "/ventas_hoy", "/saldo", "/comprar", "/addstock"];
+            const knownCmds = ["/start", "/stock", "/ventas", "/ventas_dia", "/ventas_hoy", "/saldo", "/servidor", "/comprar", "/addstock"];
             const cmd = msg.text.split(" ")[0].split("@")[0].toLowerCase().trim();
             if (!knownCmds.includes(cmd)) {
                 bot.sendMessage(msg.chat.id, `❓ Comando desconocido. Usa /start para ver los disponibles.`).catch(() => { });
@@ -1113,6 +1129,11 @@ function setupCommands() {
                 await cmdComprarStart(mockMsg, []);
             } else if (data === "cmd_addstock") {
                 await cmdAddStockStart(mockMsg, []);
+            } else if (data === "cmd_servidor") {
+                if (!isConfiguredAdmin(chatId)) {
+                    return bot.answerCallbackQuery(query.id, { text: "No autorizado" });
+                }
+                await cmdServerResources(mockMsg);
             } else {
                 const handledStock = await handleStockCallback(query);
                 if (handledStock) {
@@ -1672,4 +1693,5 @@ module.exports = {
     notifySupportTicketCreated,
     notifySupportTicketAutoNoStock,
     notifyMonthlyPurchaseEnforcement,
+    __testing: { isConfiguredAdmin },
 };

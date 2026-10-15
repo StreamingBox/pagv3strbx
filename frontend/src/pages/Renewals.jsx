@@ -178,17 +178,19 @@ export default function Renewals() {
                 <main className="main">
                     <h1 style={{ margin: 0 }}>Renovaciones</h1>
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
-                        Busca tus cuentas renovables, filtra por plataforma y decide si quieres ver solo las disponibles o también las bloqueadas.
+                        Busca renovaciones por pedido, filtra por plataforma y decide si quieres ver solo las disponibles o también las bloqueadas.
                     </p>
 
                     <div className="kpi" style={{ marginTop: 12 }}>
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                             <div style={{ flex: 1, minWidth: 220 }}>
-                                <div className="label">Buscar</div>
+                                <div className="label">Pedido</div>
                                 <input
                                     type="text"
                                     className="input"
-                                    placeholder="Orden, sub ID, correo o PIN"
+                                    placeholder="ID o código del pedido"
+                                    maxLength={64}
+                                    aria-label="Buscar renovaciones por pedido"
                                     value={filters.q}
                                     onChange={(e) => {
                                         setPage(1);

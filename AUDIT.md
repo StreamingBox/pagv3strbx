@@ -417,3 +417,12 @@ Este apartado deja trazabilidad de la revisión y limpieza puntual del inventari
 - IDs eliminados: `9078`, `9079`, `9081`–`9086` y `9092`–`9107`.
 - Antes de eliminar, se creó una copia recuperable de las 24 filas en almacenamiento privado del servidor y se verificó que se pudiera leer. Esa copia y los datos de acceso no se incluyen en Git. Los registros de las cargas se conservaron.
 - No se modificó ni desplegó código como parte de esta limpieza. Este commit registra la operación; no vuelve a ejecutarla ni altera producción.
+
+## Seguimiento: reversión completa de las tres cargas Excel (2026-10-15)
+
+- Se comparó el estado de producción con el respaldo de Drive `StreamingBoxBackups/production/scheduled/20261015T043001Z`, anterior a las cargas. El manifiesto y el MD5 de `database.sql.gz` coincidieron; el volcado se leyó y procesó sin errores.
+- La carga también había actualizado cuentas históricas: 428 filas fueron tocadas; 424 tenían campos de inventario distintos del respaldo y cuatro solo tenían cambiado `updated_at`. Se restauraron esas 428 filas a su estado previo. Se restauraron 41 identidades compartidas preexistentes y se retiraron 18 identidades nuevas sin referencias.
+- Se eliminaron las 18 cuentas nuevas restantes (`9066`–`9077`, `9080`, `9087`–`9091`). Sumadas a las 24 filas documentadas arriba, las 42 cuentas nuevas asociadas a los intentos ya no están en el inventario.
+- Se conservaron las 454 suscripciones históricas vinculadas a las cuentas restauradas y los tres logs de carga (`1793`–`1795`). No se borraron ventas, suscripciones, registros de carga ni respaldos de Drive. No se encontraron suscripciones nuevas, avisos de stock, notificaciones pendientes ni cambios TOTP del período de carga.
+- Antes de la transacción se creó y verificó una instantánea privada del estado actual en `/home/ubuntu/.strbx-data-recovery/excel-three-load-rollback-20261015T054226Z.json` (permisos `0600`, SHA-256 `b4fce3fcac1ae7ef0dd7db1a98b6c37fa45e1af46aaed5a97403d26f9b8abdd3`).
+- La reversión se ejecutó en una transacción en producción y se verificó contra el respaldo. No hubo despliegue de código; este registro no modifica ni elimina el histórico de Drive.

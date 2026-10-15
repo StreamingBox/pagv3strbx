@@ -1,28 +1,21 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
-const { buildRenewalOrderSearch } = require("../src/utils/renewalOrderSearch");
+const { buildRenewalSubscriptionSearch } = require("../src/utils/renewalOrderSearch");
 
-test("numeric renewal search matches only an indexed order-code suffix, never an ID", () => {
-    assert.deepEqual(buildRenewalOrderSearch("6910"), {
-        sql: "o.order_code_suffix LIKE ? ESCAPE '!'",
-        params: ["6910%"],
+test("renewal search matches only the exact subscription ID", () => {
+    assert.deepEqual(buildRenewalSubscriptionSearch(" 6910 "), {
+        sql: "s.id = ?",
+        params: ["6910"],
     });
 });
 
-test("renewal search matches an order-code prefix", () => {
-    assert.deepEqual(buildRenewalOrderSearch(" ord-mtxsxnvs "), {
-        sql: "o.order_code LIKE ? ESCAPE '!'",
-        params: ["ORD-MTXSXNVS%"],
-    });
-});
-
-test("renewal search normalizes suffixes and treats LIKE wildcards literally", () => {
-    assert.deepEqual(buildRenewalOrderSearch("ab%_!"), {
-        sql: "o.order_code_suffix LIKE ? ESCAPE '!'",
-        params: ["AB!%!_!!%"],
+test("renewal search never broadens to all results for a non-numeric query", () => {
+    assert.deepEqual(buildRenewalSubscriptionSearch("ORD-ABC"), {
+        sql: "1 = 0",
+        params: [],
     });
 });
 
 test("renewal search ignores an empty query", () => {
-    assert.equal(buildRenewalOrderSearch("  "), null);
+    assert.equal(buildRenewalSubscriptionSearch("  "), null);
 });

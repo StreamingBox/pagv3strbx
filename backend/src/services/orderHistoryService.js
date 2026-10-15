@@ -1,5 +1,5 @@
 const pool = require("../db");
-const { buildRenewalOrderSearch } = require("../utils/renewalOrderSearch");
+const { buildRenewalSubscriptionSearch } = require("../utils/renewalOrderSearch");
 const { getRenewalEligibility } = require("../utils/renewals");
 const { currentBogotaDateOnly } = require("../utils/date");
 const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
@@ -228,10 +228,10 @@ async function getRenewalsHistory({
         params.push(Number(platformId));
     }
 
-    const orderSearch = buildRenewalOrderSearch(q);
-    if (orderSearch) {
-        where.push(orderSearch.sql);
-        params.push(...orderSearch.params);
+    const subscriptionSearch = buildRenewalSubscriptionSearch(q);
+    if (subscriptionSearch) {
+        where.push(subscriptionSearch.sql);
+        params.push(...subscriptionSearch.params);
     }
 
     if (availability === "available") {

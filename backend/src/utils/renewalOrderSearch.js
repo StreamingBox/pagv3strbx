@@ -1,23 +1,15 @@
-function escapeLikePrefix(value) {
-    return `${value.replace(/[!%_]/g, "!$&")}%`;
-}
-
-function buildRenewalOrderSearch(query) {
-    const term = String(query ?? "").trim().toUpperCase();
+function buildRenewalSubscriptionSearch(query) {
+    const term = String(query ?? "").trim();
     if (!term) return null;
 
-    const prefix = escapeLikePrefix(term);
-    if (term.startsWith("ORD")) {
-        return {
-            sql: "o.order_code LIKE ? ESCAPE '!'",
-            params: [prefix],
-        };
+    if (!/^\d+$/.test(term)) {
+        return { sql: "1 = 0", params: [] };
     }
 
     return {
-        sql: "o.order_code_suffix LIKE ? ESCAPE '!'",
-        params: [prefix],
+        sql: "s.id = ?",
+        params: [term],
     };
 }
 
-module.exports = { buildRenewalOrderSearch };
+module.exports = { buildRenewalSubscriptionSearch };

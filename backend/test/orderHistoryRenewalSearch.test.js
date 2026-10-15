@@ -3,7 +3,7 @@ const test = require("node:test");
 const pool = require("../src/db");
 const { getRenewalsHistory } = require("../src/services/orderHistoryService");
 
-test("renewal history applies the order-only filter to count and result queries", async () => {
+test("renewal history applies the exact subscription-ID filter to count and results", async () => {
     const originalQuery = pool.query;
     const calls = [];
     pool.query = async (sql, params) => {
@@ -19,9 +19,8 @@ test("renewal history applies the order-only filter to count and result queries"
 
     assert.equal(calls.length, 2);
     for (const { sql, params } of calls) {
-        assert.match(sql, /o\.order_code_suffix LIKE/);
-        assert.doesNotMatch(sql, /o\.id = \?/);
-        assert.doesNotMatch(sql, /CAST\(s\.id AS CHAR\) LIKE|pa\.email LIKE|pa\.pin LIKE/);
-        assert.deepEqual(params.slice(0, 2), [42, "6910%"]);
+        assert.match(sql, /s\.id = \?/);
+        assert.doesNotMatch(sql, /order_code_suffix LIKE|o\.order_code LIKE|pa\.email LIKE|pa\.pin LIKE|CAST\(s\.id AS CHAR\) LIKE/);
+        assert.deepEqual(params.slice(0, 2), [42, "6910"]);
     }
 });

@@ -184,19 +184,20 @@ export default function Renewals() {
                 <main className="main">
                     <h1 style={{ margin: 0 }}>Renovaciones</h1>
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
-                        Busca renovaciones por código de pedido y filtra por plataforma y estado.
+                        Busca una suscripción por su ID y filtra por plataforma y estado.
                     </p>
 
                     <div className="kpi" style={{ marginTop: 12 }}>
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                             <div style={{ flex: 1, minWidth: 220 }}>
-                                <div className="label">Código del pedido</div>
+                                <div className="label">ID de suscripción</div>
                                 <input
                                     type="text"
                                     className="input"
-                                    placeholder="Ej.: ORD-... o últimos 6 caracteres"
-                                    maxLength={64}
-                                    aria-label="Buscar renovaciones por código del pedido"
+                                    inputMode="numeric"
+                                    placeholder="Ej.: 6910"
+                                    maxLength={20}
+                                    aria-label="Buscar por ID de suscripción"
                                     value={searchText}
                                     onChange={(e) => setSearchText(e.target.value)}
                                     onKeyDown={(e) => {

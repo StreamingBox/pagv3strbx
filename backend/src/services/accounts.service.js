@@ -308,6 +308,11 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
                     )
                     AND pa.expires_at IS NOT NULL
                     AND ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
+                    AND NOT EXISTS (
+                        SELECT 1
+                          FROM account_replacement_logs replaced
+                         WHERE replaced.old_account_id = pa.id
+                    )
                 )
            )
          ORDER BY pa.id DESC
@@ -384,6 +389,11 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
                         pa.expires_at IS NULL
                         OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
                     )
+                    AND NOT EXISTS (
+                        SELECT 1
+                          FROM account_replacement_logs replaced
+                         WHERE replaced.old_account_id = pa.id
+                    )
                 )
           )
         ORDER BY
@@ -451,6 +461,11 @@ async function findReusableAccountForReload(conn, { pid, emailValue, accountProf
           ${youtubeChannelSql}
           AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
           AND active_sub.id IS NULL
+          AND NOT EXISTS (
+                SELECT 1
+                  FROM account_replacement_logs replaced
+                 WHERE replaced.old_account_id = pa.id
+          )
         ORDER BY
             CASE WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned' THEN 0
                  WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'available' THEN 1

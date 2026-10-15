@@ -76,6 +76,7 @@ test("duplicate lookup filters by platform, email, profile and active assigned s
     assert.match(calls[0].sql, /active_sub\.id IS NOT NULL/);
     assert.match(calls[0].sql, /active_sub\.id IS NULL/);
     assert.match(calls[0].sql, /pa\.expires_at IS NOT NULL/);
+    assert.match(calls[0].sql, /replaced\.old_account_id = pa\.id/);
     assert.match(calls[0].sql, /DATE\(active_sub\.expires_at\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
     assert.match(calls[0].sql, /CAST\(pa\.profile_number AS CHAR\) = \?/);
 });
@@ -102,6 +103,7 @@ test("exact duplicate lookup ignores expired or down accounts", async () => {
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) NOT IN \('inactive', 'disabled', 'down', 'expired', 'legacy_review'\)/);
     assert.match(calls[0].sql, /pa\.expires_at IS NULL/);
+    assert.match(calls[0].sql, /replaced\.old_account_id = pa\.id/);
 });
 
 test("YouTube duplicate lookups compare the channel as well as Google credentials", async () => {
@@ -248,6 +250,7 @@ test("historical credential can be reused only without an active subscription", 
     assert.match(calls[0].sql, /active_sub\.id IS NULL/);
     assert.match(calls[0].sql, /LIMIT 1 FOR UPDATE/);
     assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
+    assert.match(calls[0].sql, /replaced\.old_account_id = pa\.id/);
     assert.match(calls[0].sql, /DATE\(CONVERT_TZ\(active_sub\.expires_at, '\+00:00', '-05:00'\)\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
 });
 

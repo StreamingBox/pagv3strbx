@@ -39,6 +39,34 @@ function fmtDate(str) {
     return formatBogotaDateTime(str, { month: "short" });
 }
 
+function describeUploadNote(note) {
+    const categories = [
+        ["Duplicadas asignadas vigentes:", "Omitida: perfil asignado"],
+        ["Credenciales duplicadas exactas:", "Omitida: credencial ya registrada"],
+        ["Plataformas no encontradas:", "Plataforma no reconocida"],
+        ["Credenciales históricas reutilizadas:", "Credenciales existentes reutilizadas"],
+        ["Carga forzada autorizada", "Confirmación de duplicado"],
+    ];
+    const category = categories.find(([prefix]) => note.startsWith(prefix));
+    if (!category) return { title: "Nota", detail: note };
+
+    const [prefix, title] = category;
+    return {
+        title,
+        detail: prefix.endsWith(":") ? note.slice(prefix.length).trim() : note,
+        hint: title === "Credenciales existentes reutilizadas"
+            ? "Estas filas se asociaron a cuentas históricas; no representan cuentas nuevas."
+            : "",
+    };
+}
+
+function getUploadNoteDetails(notes) {
+    return String(notes || "")
+        .split(/\s+\|\s+/)
+        .filter(Boolean)
+        .map(describeUploadNote);
+}
+
 export default function AdminUploadLogs() {
     const navigate   = useNavigate();
     const { user, setUser } = useAuth();
@@ -71,6 +99,7 @@ export default function AdminUploadLogs() {
     const [showClean, setShowClean] = useState(false);
     const [cleanDays, setCleanDays] = useState(30);
     const [cleaning, setCleaning]   = useState(false);
+    const [selectedLog, setSelectedLog] = useState(null);
 
     const fetchLogs = useCallback(async (p = 1) => {
         setLoading(true);
@@ -193,7 +222,7 @@ export default function AdminUploadLogs() {
                     >
                         {[
                             { icon: "📦", label: "Total registros", value: fmt(total), color: "#8b5cf6" },
-                            { icon: "✅", label: "Cuentas insertadas", value: fmt(logs.reduce((a, l) => a + (l.inserted || 0), 0)), color: "#10b981" },
+                            { icon: "✅", label: "Filas aceptadas", value: fmt(logs.reduce((a, l) => a + (l.inserted || 0), 0)), color: "#10b981" },
                             { icon: "⏭", label: "Omitidas", value: fmt(logs.reduce((a, l) => a + (l.skipped || 0), 0)), color: "#f59e0b" },
                             { icon: "❌", label: "Con error", value: fmt(logs.reduce((a, l) => a + (l.errors || 0), 0)), color: "#ef4444" },
                         ].map(s => (
@@ -277,7 +306,7 @@ export default function AdminUploadLogs() {
                             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                                 <thead>
                                     <tr style={{ background: "rgba(0,0,0,.25)", textAlign: "left" }}>
-                                        {["ID", "Tipo", "Admin", "Plataforma", "Total", "Insertadas", "Omitidas", "Errores", "Archivo", "Notas", "Fecha"].map(h => (
+                                        {["ID", "Tipo", "Admin", "Plataforma", "Total", "Aceptadas", "Omitidas", "Errores", "Archivo", "Detalle", "Fecha"].map(h => (
                                             <th key={h} style={{ padding: "12px 14px", fontSize: 10, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.7px", whiteSpace: "nowrap" }}>
                                                 {h}
                                             </th>
@@ -323,8 +352,17 @@ export default function AdminUploadLogs() {
                                                 <td style={{ padding: "12px 14px", fontSize: 11, color: "var(--muted)", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                                                     {log.source_filename || "—"}
                                                 </td>
-                                                <td style={{ padding: "12px 14px", fontSize: 11, color: "var(--muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                                    {log.notes || "—"}
+                                                <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                                                    {log.notes || log.skipped > 0 || log.errors > 0 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedLog(log)}
+                                                            title="Abrir el detalle completo de esta carga"
+                                                            style={{ background: "transparent", border: 0, padding: 0, color: "#38bdf8", font: "inherit", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                                                        >
+                                                            {log.skipped > 0 ? `Ver motivo (${fmt(log.skipped)} omitida${log.skipped === 1 ? "" : "s"})` : log.errors > 0 ? "Ver errores" : "Ver detalle"}
+                                                        </button>
+                                                    ) : "—"}
                                                 </td>
                                                 <td style={{ padding: "12px 14px", fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>
                                                     {fmtDate(log.created_at)}
@@ -360,6 +398,63 @@ export default function AdminUploadLogs() {
                     </motion.div>
                 </main>
             </div>
+
+            <AnimatePresence>
+                {selectedLog && (
+                    <motion.div
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                        onClick={(event) => event.target === event.currentTarget && setSelectedLog(null)}
+                        style={{ position: "fixed", inset: 0, zIndex: 10000, padding: 20, background: "rgba(0,0,0,.72)", display: "flex", justifyContent: "center", alignItems: "center" }}
+                    >
+                        <motion.section
+                            role="dialog" aria-modal="true" aria-labelledby="upload-log-detail-title"
+                            initial={{ opacity: 0, y: 12, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8 }}
+                            style={{ width: "min(720px, 100%)", maxHeight: "min(82vh, 760px)", overflowY: "auto", background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 14, padding: 22, boxShadow: "0 24px 80px rgba(0,0,0,.55)", color: "var(--text)" }}
+                        >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16, marginBottom: 16 }}>
+                                <div>
+                                    <h2 id="upload-log-detail-title" style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>Resultado de la carga #{selectedLog.id}</h2>
+                                    <p style={{ margin: "6px 0 0", color: "var(--muted)", fontSize: 13 }}>Resumen y motivos registrados por el servidor.</p>
+                                </div>
+                                <button type="button" className="btn-ghost" onClick={() => setSelectedLog(null)} style={{ height: 34, padding: "0 12px", flexShrink: 0 }}>Cerrar</button>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(115px, 1fr))", borderTop: "1px solid var(--stroke)", borderBottom: "1px solid var(--stroke)", marginBottom: 18 }}>
+                                {[
+                                    ["Filas del archivo", selectedLog.total_rows],
+                                    ["Aceptadas", selectedLog.inserted],
+                                    ["Omitidas", selectedLog.skipped],
+                                    ["Errores", selectedLog.errors],
+                                ].map(([label, value]) => (
+                                    <div key={label} style={{ padding: "12px 10px", borderRight: "1px solid var(--stroke)" }}>
+                                        <div style={{ color: "var(--muted)", fontSize: 11 }}>{label}</div>
+                                        <strong style={{ display: "block", marginTop: 4, fontSize: 17 }}>{fmt(value)}</strong>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <h3 style={{ margin: "0 0 10px", fontSize: 14 }}>Detalle</h3>
+                            {getUploadNoteDetails(selectedLog.notes).length ? (
+                                <div style={{ display: "grid", gap: 12 }}>
+                                    {getUploadNoteDetails(selectedLog.notes).map((item, index) => (
+                                        <section key={`${item.title}-${index}`} style={{ borderLeft: "3px solid #f59e0b", padding: "2px 0 2px 12px" }}>
+                                            <strong style={{ display: "block", fontSize: 13, marginBottom: 4 }}>{item.title}</strong>
+                                            {item.hint && <p style={{ margin: "0 0 6px", color: "var(--muted)", fontSize: 12 }}>{item.hint}</p>}
+                                            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, overflowWrap: "anywhere" }}>{item.detail}</p>
+                                        </section>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p style={{ margin: 0, color: "var(--muted)", fontSize: 13, lineHeight: 1.5 }}>
+                                    {selectedLog.skipped > 0 || selectedLog.errors > 0
+                                        ? "Este registro no guardó el detalle individual de las filas omitidas o con error."
+                                        : "Esta carga no tiene notas adicionales."}
+                                </p>
+                            )}
+                        </motion.section>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Modal: Limpiar logs */}
             <AnimatePresence>

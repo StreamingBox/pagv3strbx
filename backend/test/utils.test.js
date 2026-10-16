@@ -117,6 +117,23 @@ test("customers can extend only active unattended expired subscriptions; admins 
     assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user", isPastExpiry: false }), false);
 });
 
+test("admin self-service follows the customer overdue-renewal policy, while admin tools require approval", () => {
+    const expiredActive = {
+        status: "active",
+        isAttended: 0,
+        isPastExpiry: true,
+    };
+
+    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "admin" }), false);
+    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "admin", customerInitiated: true }), true);
+    assert.equal(canRenewAfterExpiry({
+        ...expiredActive,
+        actorRole: "admin",
+        customerInitiated: true,
+        isAttended: 1,
+    }), false);
+});
+
 test("a 90-day extended renewal stays anchored to the previous expiry", () => {
     const newExpiry = addDaysBogotaDateOnly(90, new Date("2026-10-10T12:00:00Z"));
     const daysFromToday = (Date.parse(`${newExpiry}T00:00:00Z`) - Date.parse("2026-10-12T00:00:00Z")) / 86_400_000;

@@ -5,24 +5,6 @@ import { useAuth } from "../context/AuthContext.jsx";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
 
-function isYoutubePremiumOrderItem(item) {
-    const compact = `${item?.platform_slug || ""} ${item?.platform_name || ""}`
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && compact.includes("premium") && !compact.includes("music");
-}
-
-function isYoutubeChannelOrderItem(item) {
-    const compact = `${item?.platform_slug || ""} ${item?.platform_name || ""}`
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && (compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
-}
-
 export default function Orders() {
     const { user } = useAuth();
     const navigate = useNavigate();
@@ -52,8 +34,6 @@ export default function Orders() {
     const [renewSuccess, setRenewSuccess] = useState("");
     const [renewDeliveryMessage, setRenewDeliveryMessage] = useState("");
     const [renewCopied, setRenewCopied] = useState(false);
-    const [totpBySubscription, setTotpBySubscription] = useState({});
-    const [totpClock, setTotpClock] = useState(Date.now());
 
     function formatBogota(dt) {
         if (!dt) return "-";
@@ -146,46 +126,6 @@ export default function Orders() {
 
     const canPrev = page > 1;
     const canNext = page * limit < total;
-
-    useEffect(() => {
-        if (!Object.values(totpBySubscription).some((entry) => entry.code)) return undefined;
-        const timer = window.setInterval(() => setTotpClock(Date.now()), 1000);
-        return () => window.clearInterval(timer);
-    }, [totpBySubscription]);
-
-    async function requestTotpCode(subscriptionId) {
-        const key = String(subscriptionId);
-        setTotpBySubscription((current) => ({
-            ...current,
-            [key]: { ...current[key], loading: true, error: "" },
-        }));
-        try {
-            const response = await apiGet(`/orders/${subscriptionId}/totp`);
-            if (!response.ok) throw new Error(response.data?.message || "No se pudo consultar el codigo.");
-            setTotpBySubscription((current) => ({
-                ...current,
-                [key]: {
-                    code: response.data.code,
-                    expiresAt: Number(response.data.expiresAt) || Date.now() + Number(response.data.validForSeconds || 0) * 1000,
-                    loading: false,
-                    error: "",
-                },
-            }));
-        } catch (requestError) {
-            setTotpBySubscription((current) => ({
-                ...current,
-                [key]: { ...current[key], loading: false, error: requestError.message || "No se pudo consultar el codigo." },
-            }));
-        }
-    }
-
-    async function copyTotpCode(code) {
-        try {
-            await navigator.clipboard.writeText(code);
-        } catch {
-            setError("No se pudo copiar el codigo. Puedes seleccionarlo manualmente.");
-        }
-    }
 
     async function openRenewModal(item) {
         setRenewModal(item);
@@ -446,10 +386,6 @@ export default function Orders() {
                                                         <span style={{ fontSize: 12, color: "#f59e0b" }}>
                                                             {it.renewal?.block_reason}
                                                         </span>
-                                                    ) : it.renewal?.extended_renewal ? (
-                                                        <span style={{ fontSize: 12, color: "#f59e0b" }}>
-                                                            Vencida, aún renovable; los días vencidos se descuentan.
-                                                        </span>
                                                     ) : (
                                                         <span style={{ fontSize: 12, color: "#10b981" }}>
                                                             Renovable hasta el {it.renewal?.eligible_until_date}
@@ -466,11 +402,9 @@ export default function Orders() {
                                                     <div>
                                                         <b>Contraseña:</b> {it.account.password}
                                                     </div>
-                                                    {isYoutubeChannelOrderItem(it) ? (
-                                                        <div><b>Canal de YouTube:</b> {it.account.youtube_channel_name || "Pendiente de registrar"}</div>
-                                                    ) : (
-                                                        <div><b>Perfil:</b> {it.account.profile_number ?? "-"}</div>
-                                                    )}
+                                                    <div>
+                                                        <b>Perfil:</b> {it.account.profile_number ?? "-"}
+                                                    </div>
                                                     <div>
                                                         <b>Pin:</b> {it.account.pin ?? "-"}
                                                     </div>
@@ -487,22 +421,6 @@ export default function Orders() {
                                                             </a>
                                                         </div>
                                                     ) : null}
-                                                    {isYoutubePremiumOrderItem(it) ? (() => {
-                                                            const totp = totpBySubscription[String(it.subscription_id)] || {};
-                                                            const remaining = totp.expiresAt ? Math.max(0, Math.ceil((totp.expiresAt - totpClock) / 1000)) : 0;
-                                                            return <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                                                                <button className="btn" type="button" disabled={totp.loading || it.subscription_status !== "active"} onClick={() => requestTotpCode(it.subscription_id)} style={{ width: "auto", padding: "7px 12px", fontSize: 12 }}>
-                                                                    {totp.loading ? "Consultando..." : totp.code && remaining > 0 ? "Actualizar codigo" : "Consultar codigo 2FA"}
-                                                                </button>
-                                                                {totp.code && remaining > 0 ? <>
-                                                                    <code style={{ fontSize: 19, fontWeight: 900, letterSpacing: 2 }}>{totp.code}</code>
-                                                                    <span style={{ color: "var(--muted)", fontSize: 12 }}>Vence en {remaining}s</span>
-                                                                    <button className="btn" type="button" onClick={() => copyTotpCode(totp.code)} style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}>Copiar</button>
-                                                                </> : null}
-                                                                {totp.code && remaining === 0 ? <span style={{ color: "#f59e0b", fontSize: 12 }}>Codigo vencido; consulta uno nuevo.</span> : null}
-                                                                {totp.error ? <span role="alert" style={{ color: "#fca5a5", fontSize: 12 }}>{totp.error}</span> : null}
-                                                            </div>;
-                                                        })() : null}
                                                 </div>
                                             ) : (
                                                 <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 13 }}>(Sin cuenta asignada)</div>
@@ -573,11 +491,8 @@ export default function Orders() {
                                 <div>{formatBogota(renewModal.subscription_expires_at)}</div>
                             </div>
                             <div>
-                                <div className="label">{renewModal.renewal?.extended_renewal ? "Vencimiento anterior" : "Límite para renovar"}</div>
-                                <div>
-                                    {renewModal.renewal?.eligible_until_date}
-                                    {renewModal.renewal?.extended_renewal ? "" : " 23:59 Colombia"}
-                                </div>
+                                <div className="label">Límite para renovar</div>
+                                <div>{renewModal.renewal?.eligible_until_date} 23:59 Colombia</div>
                             </div>
                             <div>
                                 <div className="label">Valor de la renovación</div>
@@ -601,7 +516,7 @@ export default function Orders() {
                             <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "var(--text)" }}>
                                 <div style={{ fontWeight: 900 }}>¿Estás seguro de que deseas renovar esta cuenta?</div>
                                 <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 13 }}>
-                                    Se descontará el valor de tu saldo. El período se cuenta desde el vencimiento anterior; si ya venció, los días transcurridos se descuentan y no se reinicia desde hoy.
+                                    Se descontará el valor de tu saldo y el tiempo adicional se sumará desde el vencimiento actual, no desde hoy.
                                 </div>
                             </div>
                         ) : null}

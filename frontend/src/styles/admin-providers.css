@@ -91,14 +91,6 @@
 }
 
 @media (max-width: 1100px) {
-    .admin-providers-summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-    .admin-providers-summary-grid > :first-child {
-        grid-column: 1 / -1;
-    }
-
     .admin-providers-management-grid {
         grid-template-columns: minmax(0, 1fr) !important;
     }
@@ -127,10 +119,6 @@
 @media (max-width: 980px) {
     .admin-providers-summary-grid {
         grid-template-columns: minmax(0, 1fr) !important;
-    }
-
-    .admin-providers-summary-grid > :first-child {
-        grid-column: auto;
     }
 }
 
@@ -265,88 +253,5 @@
     .admin-providers-renewal-row > div:last-child > button {
         flex: 1 1 112px;
         justify-content: center;
-    }
-}
-
-.admin-providers-module {
-    align-self: start;
-    overflow: hidden;
-    padding: 0 !important;
-}
-
-.admin-providers-module-summary {
-    display: flex;
-    min-height: 68px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 14px 18px;
-    color: var(--text);
-    cursor: pointer;
-    list-style: none;
-}
-
-.admin-providers-module-summary::-webkit-details-marker {
-    display: none;
-}
-
-.admin-providers-module-summary:focus-visible {
-    outline: 2px solid #22d3ee;
-    outline-offset: -3px;
-}
-
-.admin-providers-module-summary > svg:last-child {
-    flex: 0 0 auto;
-    color: var(--muted);
-    transition: transform .18s ease;
-}
-
-.admin-providers-module[open] > .admin-providers-module-summary > svg:last-child {
-    transform: rotate(180deg);
-}
-
-.admin-providers-module-title {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 10px;
-}
-
-.admin-providers-module-title > svg {
-    flex: 0 0 auto;
-}
-
-.admin-providers-module-title > span {
-    display: grid;
-    min-width: 0;
-    gap: 4px;
-}
-
-.admin-providers-module-title strong {
-    overflow-wrap: anywhere;
-    font-size: 14px;
-    font-weight: 850;
-}
-
-.admin-providers-module-title small {
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 500;
-    line-height: 1.4;
-}
-
-.admin-providers-module-content {
-    min-width: 0;
-    padding: 0 18px 18px;
-}
-
-@media (max-width: 720px) {
-    .admin-providers-module-summary {
-        min-height: 64px;
-        padding: 13px 14px;
-    }
-
-    .admin-providers-module-content {
-        padding: 0 14px 16px;
     }
 }

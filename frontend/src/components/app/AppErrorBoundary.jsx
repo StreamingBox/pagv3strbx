@@ -1,6 +1,4 @@
 import { Component } from "react";
-import { RefreshCw } from "lucide-react";
-import "./AppErrorBoundary.css";
 
 function isAssetLoadError(error) {
     const message = String(error?.message || error || "").toLowerCase();
@@ -11,7 +9,7 @@ function isAssetLoadError(error) {
 }
 
 export default class AppErrorBoundary extends Component {
-    state = { error: null, refreshing: false };
+    state = { error: null };
 
     static getDerivedStateFromError(error) {
         return { error };
@@ -23,8 +21,6 @@ export default class AppErrorBoundary extends Component {
     }
 
     async refreshApplication() {
-        if (this.state.refreshing) return;
-        this.setState({ refreshing: true });
         try {
             if ("caches" in window) {
                 const keys = await caches.keys();
@@ -46,27 +42,17 @@ export default class AppErrorBoundary extends Component {
 
         const assetError = isAssetLoadError(error);
         return (
-            <div className="page-shell app-error-boundary">
+            <div className="page-shell" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 24 }}>
                 <div className="page-shell-bg" aria-hidden="true"><div className="bg-grid" /></div>
-                <section className="app-error-boundary__card" role="alert" aria-labelledby="app-error-title">
-                    <div className="app-error-boundary__icon" aria-hidden="true"><RefreshCw size={22} /></div>
-                    <p className="app-error-boundary__eyebrow">Actualización disponible</p>
-                    <h1 id="app-error-title" className="app-error-boundary__title">No se pudo cargar esta vista</h1>
-                    <p className="app-error-boundary__message">
+                <section style={{ position: "relative", zIndex: 1, width: "min(100%, 520px)", padding: 28, border: "1px solid var(--stroke)", borderRadius: 12, background: "var(--card)", boxShadow: "var(--shadow)" }}>
+                    <p style={{ margin: "0 0 8px", color: "var(--cyan)", fontWeight: 800, fontSize: 12, textTransform: "uppercase" }}>Actualizacion disponible</p>
+                    <h1 style={{ margin: "0 0 10px", color: "var(--text)", fontSize: 24 }}>No se pudo cargar esta vista</h1>
+                    <p style={{ margin: "0 0 22px", color: "var(--muted)", lineHeight: 1.55 }}>
                         {assetError
-                            ? "Esta página tenía una versión anterior en memoria. Actualízala para cargar los archivos más recientes."
-                            : "Ocurrió un error inesperado al abrir esta vista. Actualiza la aplicación para volver a intentarlo."}
+                            ? "La pagina tenia una version anterior en memoria. Actualizala para cargar los archivos nuevos."
+                            : "Ocurrio un error inesperado al abrir esta vista. Puedes intentar actualizar la aplicacion."}
                     </p>
-                    <button
-                        className="app-error-boundary__button"
-                        type="button"
-                        onClick={() => this.refreshApplication()}
-                        disabled={this.state.refreshing}
-                        aria-busy={this.state.refreshing}
-                    >
-                        <RefreshCw size={17} className={this.state.refreshing ? "app-error-boundary__spin" : undefined} aria-hidden="true" />
-                        {this.state.refreshing ? "Actualizando..." : "Actualizar aplicación"}
-                    </button>
+                    <button className="btn-primary" type="button" onClick={() => this.refreshApplication()}>Actualizar aplicacion</button>
                 </section>
             </div>
         );

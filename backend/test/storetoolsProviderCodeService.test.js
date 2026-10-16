@@ -10,21 +10,6 @@ const {
     __test: storetoolsTest,
 } = require("../src/services/storetoolsProviderCodeService");
 
-function storetoolsConfig(overrides = {}) {
-    return {
-        enabled: true,
-        baseUrl: "https://storetools.co",
-        userId: "user-id",
-        timeoutMs: 5000,
-        validateIdPath: "/api/consultar/validar-id",
-        queryPath: "/api/consultar",
-        platform: "netflix",
-        platformId: "1",
-        language: "es",
-        ...overrides,
-    };
-}
-
 test("StoreTools solo se habilita cuando la cuenta fue marcada como ese proveedor", () => {
     const disabled = getStoretoolsProviderConfigForProvider("strbx", {
         STORETOOLS_PROVIDER_USER_ID: "user-id",
@@ -37,33 +22,27 @@ test("StoreTools solo se habilita cuando la cuenta fue marcada como ese proveedo
     assert.equal(disabled.enabled, false);
     assert.equal(enabled.requested, true);
     assert.equal(enabled.enabled, true);
-    assert.equal(enabled.validateIdPath, "/api/consultar/validar-id");
-    assert.equal(enabled.queryPath, "/api/consultar");
+    assert.equal(enabled.loginPath, "/funciones/validarID.php");
+    assert.equal(enabled.queryPath, "/funciones/get_email.php");
 });
 
 test("elige el último correo de inicio de Netflix y extrae cuatro dígitos", () => {
     assert.ok(storetoolsTest.parseStoretoolsDate("29-Aug-2026 17:29:12") > 0);
-    assert.ok(
-        storetoolsTest.parseStoretoolsDate("23/9/2026, 9:45:07 a. m.")
-        > storetoolsTest.parseStoretoolsDate("23/9/2026, 9:31:25 a. m.")
-    );
 
     const selected = storetoolsTest.selectLatestStoretoolsCode([
         {
-            fecha: "23/9/2026, 9:31:25 a. m.",
+            fecha: "29-Aug-2026 17:20:00",
             asunto: "Netflix: Tu código de inicio de sesión",
-            para: "pullnetflix16+h dbeatty3@gmail.com",
-            mensaje: "Ingresa este código: <strong>7020</strong>",
+            mensaje: "Ingresa este código: <strong>1094</strong>",
         },
         {
-            fecha: "23/9/2026, 9:45:07 a. m.",
+            fecha: "29-Aug-2026 17:29:12",
             asunto: "Netflix: Tu código de inicio de sesión",
-            para: "pullnetflix16+tumak@gmail.com",
-            mensaje: "Ingresa este código: <strong>5662</strong>",
+            mensaje: "Ingresa este código: <strong>8245</strong>",
         },
-    ], "pullnetflix16+tumak@gmail.com");
+    ]);
 
-    assert.equal(selected.code, "5662");
+    assert.equal(selected.code, "8245");
 });
 
 test("elige el último correo temporal de Netflix y encuentra el enlace Obtener código", () => {
@@ -106,32 +85,28 @@ test("decodifica el HTML escapado que StoreTools entrega en el correo temporal",
     );
 });
 
-test("valida el ID en StoreTools, conserva el token y consulta Netflix", async () => {
+test("inicia sesión en StoreTools, consulta Netflix y conserva la cookie", async () => {
     const originalRequest = axios.request;
     const calls = [];
     axios.request = async (options) => {
         calls.push(options);
-        if (options.method === "POST" && options.url.endsWith("/validar-id")) {
-            assert.equal(options.headers["Content-Type"], "application/json");
-            assert.deepEqual(JSON.parse(options.data), { idUsuarioConsulta: "user-id" });
+        if (options.method === "GET" && options.url.endsWith("/consultar")) {
             return {
                 status: 200,
-                headers: {},
-                data: { respuesta: "exito", token: "provider-token", datos: { idConsulta: "validated-id" } },
+                headers: { "set-cookie": ["PHPSESSID=test-session; Path=/; HttpOnly"] },
+                data: "<html>StoreTools</html>",
             };
         }
-        if (options.method === "POST" && options.url.endsWith("/api/consultar")) {
-            assert.equal(options.headers.Authorization, "Bearer provider-token");
-            assert.deepEqual(JSON.parse(options.data), {
-                plataforma: "netflix",
-                idPlataforma: "1",
-                correoConsultar: "cliente@ejemplo.com",
-                modo: "correo",
-                tipoConsulta: "correo",
-                token: "provider-token",
-                idUsuarioConsulta: "validated-id",
-                language: "es",
-            });
+        if (options.method === "POST" && options.url.endsWith("/validarID.php")) {
+            assert.match(options.data, /tipo=login/);
+            assert.match(options.data, /idUsuarioConsulta=user-id/);
+            return { status: 200, headers: {}, data: { respuesta: "exito" } };
+        }
+        if (options.method === "POST" && options.url.endsWith("/get_email.php")) {
+            assert.match(options.headers.Cookie, /PHPSESSID=test-session/);
+            assert.match(options.data, /plataforma=netflix/);
+            assert.match(options.data, /idPlataforma=1/);
+            assert.match(options.data, /correoConsultar=cliente%40ejemplo.com/);
             return {
                 status: 200,
                 headers: {},
@@ -158,7 +133,18 @@ test("valida el ID en StoreTools, conserva el token y consulta Netflix", async (
     try {
         const result = await fetchCodeFromStoretoolsProvider({
             email: "cliente@ejemplo.com",
-            config: storetoolsConfig(),
+            config: {
+                enabled: true,
+                baseUrl: "https://storetools.co",
+                userId: "user-id",
+                timeoutMs: 5000,
+                pagePath: "/consultar",
+                loginPath: "/funciones/validarID.php",
+                queryPath: "/funciones/get_email.php",
+                platform: "netflix",
+                platformId: "1",
+                language: "es",
+            },
         });
 
         assert.deepEqual(result, {
@@ -167,36 +153,9 @@ test("valida el ID en StoreTools, conserva el token y consulta Netflix", async (
             code: "8245",
             source: "storetools_provider",
         });
-        assert.equal(calls.length, 2);
-        assert.equal(calls[0].url, "https://storetools.co/api/consultar/validar-id");
-        assert.equal(calls[1].url, "https://storetools.co/api/consultar");
-    } finally {
-        axios.request = originalRequest;
-    }
-});
-
-test("muestra un error de autenticación neutral cuando StoreTools rechaza el ID", async () => {
-    const originalRequest = axios.request;
-    axios.request = async (options) => {
-        assert.equal(options.url, "https://storetools.co/api/consultar/validar-id");
-        return {
-            status: 400,
-            headers: {},
-            data: { respuesta: "error", mensaje: "ID no encontrado" },
-        };
-    };
-
-    try {
-        const result = await fetchCodeFromStoretoolsProvider({
-            email: "cliente@ejemplo.com",
-            config: storetoolsConfig(),
-        });
-
-        assert.deepEqual(result, {
-            ok: false,
-            status: "provider_auth_error",
-            message: "No se pudo validar el acceso configurado.",
-        });
+        assert.equal(calls.length, 3);
+        assert.equal(calls[0].url, "https://storetools.co/consultar");
+        assert.match(calls[2].headers.Cookie, /PHPSESSID=test-session/);
     } finally {
         axios.request = originalRequest;
     }
@@ -206,10 +165,17 @@ test("reintenta la consulta cuando el correo todavía no aparece en la primera r
     const originalRequest = axios.request;
     let queryCalls = 0;
     axios.request = async (options) => {
-        if (options.method === "POST" && options.url.endsWith("/validar-id")) {
-            return { status: 200, headers: {}, data: { respuesta: "exito", token: "retry-token" } };
+        if (options.method === "GET" && options.url.endsWith("/consultar")) {
+            return {
+                status: 200,
+                headers: { "set-cookie": ["PHPSESSID=retry-session; Path=/; HttpOnly"] },
+                data: "<html>StoreTools</html>",
+            };
         }
-        if (options.method === "POST" && options.url.endsWith("/api/consultar")) {
+        if (options.method === "POST" && options.url.endsWith("/validarID.php")) {
+            return { status: 200, headers: {}, data: { respuesta: "exito" } };
+        }
+        if (options.method === "POST" && options.url.endsWith("/get_email.php")) {
             queryCalls += 1;
             return {
                 status: 200,
@@ -232,7 +198,18 @@ test("reintenta la consulta cuando el correo todavía no aparece en la primera r
     try {
         const result = await fetchCodeFromStoretoolsProvider({
             email: "cliente@ejemplo.com",
-            config: storetoolsConfig(),
+            config: {
+                enabled: true,
+                baseUrl: "https://storetools.co",
+                userId: "user-id",
+                timeoutMs: 5000,
+                pagePath: "/consultar",
+                loginPath: "/funciones/validarID.php",
+                queryPath: "/funciones/get_email.php",
+                platform: "netflix",
+                platformId: "1",
+                language: "es",
+            },
         });
 
         assert.deepEqual(result, {
@@ -252,10 +229,17 @@ test("StoreTools abre Obtener código y extrae los cuatro dígitos temporales", 
     const calls = [];
     axios.request = async (options) => {
         calls.push(options);
-        if (options.method === "POST" && options.url.endsWith("/validar-id")) {
-            return { status: 200, headers: {}, data: { respuesta: "exito", token: "temporary-token" } };
+        if (options.method === "GET" && options.url.endsWith("/consultar")) {
+            return {
+                status: 200,
+                headers: { "set-cookie": ["PHPSESSID=temp-session; Path=/; HttpOnly"] },
+                data: "<html>StoreTools</html>",
+            };
         }
-        if (options.method === "POST" && options.url.endsWith("/api/consultar")) {
+        if (options.method === "POST" && options.url.endsWith("/validarID.php")) {
+            return { status: 200, headers: {}, data: { respuesta: "exito" } };
+        }
+        if (options.method === "POST" && options.url.endsWith("/get_email.php")) {
             return {
                 status: 200,
                 headers: {},
@@ -289,7 +273,18 @@ test("StoreTools abre Obtener código y extrae los cuatro dígitos temporales", 
         const result = await fetchCodeFromStoretoolsProvider({
             email: "cliente@ejemplo.com",
             action: "temporary",
-            config: storetoolsConfig(),
+            config: {
+                enabled: true,
+                baseUrl: "https://storetools.co",
+                userId: "user-id",
+                timeoutMs: 5000,
+                pagePath: "/consultar",
+                loginPath: "/funciones/validarID.php",
+                queryPath: "/funciones/get_email.php",
+                platform: "netflix",
+                platformId: "1",
+                language: "es",
+            },
         });
 
         assert.deepEqual(result, {
@@ -298,8 +293,8 @@ test("StoreTools abre Obtener código y extrae los cuatro dígitos temporales", 
             code: "3856",
             source: "storetools_provider",
         });
-        assert.equal(calls.length, 3);
-        assert.match(calls[2].url, /nf_token=temp-token/);
+        assert.equal(calls.length, 4);
+        assert.match(calls[3].url, /nf_token=temp-token/);
     } finally {
         axios.request = originalRequest;
     }

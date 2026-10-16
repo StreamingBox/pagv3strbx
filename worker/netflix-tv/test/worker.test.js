@@ -10,7 +10,6 @@ test("worker detects Netflix success without treating the informational reCAPTCH
     assert.equal(__test.detectPageFailure("Verifica que eres humano para continuar.")?.status, "captcha_required");
     assert.equal(__test.detectPageFailure("El código no es válido.")?.status, "invalid_tv_code");
     assert.equal(__test.detectPageFailure("El código no es válido.", "login")?.status, "login_code_rejected");
-    assert.equal(__test.detectPageFailure("El código es incorrecto. Reinténtalo.", "login")?.status, "login_code_rejected");
     assert.equal(__test.isSuccessText("¡Tu TV está lista para ver Netflix!"), true);
 });
 
@@ -28,7 +27,7 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /continueButton\.click\(\)/);
     assert.match(source, /account_email_continue_clicked/);
     assert.doesNotMatch(source, /account_email_enter_fallback|emailInput\.press\("Enter"\)/);
-    assert.match(source, /const normalizedLabels = labels\.map\(\(label\) => normalizeText/);
+    assert.match(source, /const normalizedLabels = labels\.map\(normalizeText\)/);
     assert.match(source, /nonGetRequestCount: nonGetRequests\.length/);
     assert.match(source, /requestPaths: \[\.\.\.new Set\(nonGetRequests\)\]/);
     assert.match(source, /responseSummaries: responseSummaries/);
@@ -46,7 +45,7 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /waitForLoginCodeScreen\(page, 8000\)/);
     assert.match(source, /\}, undefined, \{ timeout \}\)/);
     assert.match(source, /NETFLIX_TV_URL = "https:\/\/www\.netflix\.com\/tv2"/);
-    assert.match(source, /async function startRun\(\{ tvCode, accountEmail, accountPassword \}\)/);
+    assert.match(source, /async function startRun\(\{ tvCode, accountEmail \}\)/);
     assert.doesNotMatch(source, /NETFLIX_LOGIN_URL/);
     const startRunSource = source.slice(source.indexOf("async function startRun"), source.indexOf("async function completeRun"));
     assert.ok(startRunSource.indexOf("const codeStep = await submitTvCode(page, normalizedTvCode)")
@@ -58,8 +57,8 @@ test("worker verifies the filled email and records the Netflix submit request sa
     assert.match(source, /async function waitForTvCompletion\(page/);
     assert.match(source, /const tvCompleted = await waitForTvCompletion/);
     assert.doesNotMatch(source, /await submitTvCode\(session\.page/);
-    assert.match(source, /submitAccountPassword\(page, accountPassword\)/);
-    assert.match(source, /account_password_submitted/);
+    assert.doesNotMatch(source, /submitAccountPassword|accountPassword|passwordInput\.fill/);
+    assert.doesNotMatch(source, /account_password_submitted/);
     assert.match(source, /if \(!hasLoginCodePrompt && hasPasswordInput && !hasValidationError\)/);
     assert.match(source, /buildEmailDiagnostics/);
     assert.match(source, /key: "continue_clicked", state: continueClicked \? "completed"/);
@@ -120,10 +119,10 @@ test("worker closes its per-run isolated context without explicitly clearing its
     assert.match(source, /if \(!keepSession\) await closeBrowserSession\(\{ browser, context, page \}\)/);
 });
 
-test("TV setup submits the TV code before authentication and uses only the assigned account password", () => {
+test("TV setup submits the TV code before the provider sign-in code and never sends the password", () => {
     const setupService = fs.readFileSync(require.resolve("../../../backend/src/services/netflixTvSetupService"), "utf8");
-    assert.match(setupService, /accountPassword: typeof accountPassword/);
-    assert.match(source, /passwordInput\.fill\(accountPassword\)/);
+    assert.doesNotMatch(setupService, /accountPassword/);
+    assert.doesNotMatch(source, /accountPassword|passwordInput\.fill/);
     assert.match(setupService, /await requestLoginCode\(\)/);
     assert.match(source, /login_code_typed/);
     const startRunSource = source.slice(source.indexOf("async function startRun"), source.indexOf("async function completeRun"));

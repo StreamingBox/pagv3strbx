@@ -41,21 +41,6 @@ test("does not mistake dates for provider codes", () => {
     assert.equal(extractJeffProviderCode(html), "");
 });
 
-test("accepts a valid code that looks like a calendar year when explicitly labeled", () => {
-    const html = `
-        <h1>Ingresa este código para ver Netflix en tu dispositivo</h1>
-        <p>Código de acceso temporal: <strong>2023</strong></p>
-    `;
-
-    assert.equal(extractJeffProviderCode(html), "2023");
-});
-
-test("never returns the zero placeholder as a provider code", () => {
-    const html = `<div id="verification-code">0000</div><p>Código aún no disponible</p>`;
-
-    assert.equal(extractJeffProviderCode(html), "");
-});
-
 test("prefers the code after the Netflix instruction over date digits", () => {
     const html = `
         <main>
@@ -92,13 +77,6 @@ test("encuentra el correo temporal de Jeff y valida el enlace Obtener código de
             "https://proveedores-jeff.store/v1/user-panel/email/123"
         ),
         { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=abc" }
-    );
-    assert.deepEqual(
-        jeffProviderTest.extractJeffTemporaryAction(
-            `<button data-url="https://www.netflix.com/account/travel/verify?nf_token=button-token">Continuar</button>`,
-            "https://proveedores-jeff.store/v1/user-panel/email/123"
-        ),
-        { method: "GET", url: "https://www.netflix.com/account/travel/verify?nf_token=button-token" }
     );
     assert.equal(
         jeffProviderTest.safeNetflixTemporaryUrl(

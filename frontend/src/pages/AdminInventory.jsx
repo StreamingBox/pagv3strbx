@@ -38,16 +38,7 @@ function isYoutubeTotpInventoryAccount(item) {
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && (compact.includes("premium") || compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
-}
-
-function isYoutubeChannelInventoryAccount(item) {
-    const compact = `${item?.platform_slug || ""} ${item?.platform_name || ""}`
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && (compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
+    return compact.includes("youtube") && (compact.includes("premium") || compact.includes("music"));
 }
 
 export default function AdminInventory() {
@@ -93,7 +84,6 @@ export default function AdminInventory() {
         clear_totp_secret: false,
         pin: "",
         profile_number: "",
-        youtube_channel_name: "",
         expiresAt: "",
         status: "available",
         costMode: "screen",
@@ -132,7 +122,6 @@ export default function AdminInventory() {
     const isChatGPTPersonalEditing = isChatGPTPersonalInventoryAccount(editModal.item);
     const isIptvEditing = isIptvInventoryAccount(editModal.item);
     const isYoutubeTotpEditing = isYoutubeTotpInventoryAccount(editModal.item);
-    const isYoutubeChannelEditing = isYoutubeChannelInventoryAccount(editModal.item);
     const hasCompactCredentialsEditing = isChatGPTPersonalEditing || isIptvEditing;
 
     async function logout() {
@@ -342,7 +331,6 @@ export default function AdminInventory() {
             clear_totp_secret: false,
             pin: item.pin || "",
             profile_number: item.profile_number ?? "",
-            youtube_channel_name: item.youtube_channel_name || "",
             expiresAt: normalizeDateOnly(item.display_expires_at || item.expires_at),
             status: item.status || "available",
             costMode: hasAccountCost ? "account" : "screen",
@@ -386,8 +374,7 @@ export default function AdminInventory() {
                     clear_totp_secret: editData.clear_totp_secret,
                 } : {}),
                 pin: editData.pin,
-                profile_number: isYoutubeChannelEditing ? null : editData.profile_number,
-                ...(isYoutubeChannelEditing ? { youtube_channel_name: editData.youtube_channel_name } : {}),
+                profile_number: editData.profile_number,
                 expiresAt: editData.expiresAt,
                 status: editData.status,
                 costMode: editData.costMode,
@@ -1123,7 +1110,7 @@ export default function AdminInventory() {
                                             onChange={(e) => setEditData((prev) => ({ ...prev, totp_secret: e.target.value, totp_confirmation_code: "", clear_totp_secret: false }))}
                                         />
                                         <small style={{ display: "block", color: "var(--muted)", marginTop: 6 }}>
-                                            La clave se guarda cifrada y se comparte con las cuentas YouTube que usan este mismo correo de Google.
+                                            Se guarda cifrada y se comparte con las cuentas YouTube que usan este mismo correo de Google. Deja vacío para conservarla.
                                         </small>
                                         {String(editData.totp_secret || "").trim() && (
                                             <div style={{ marginTop: 12 }}>
@@ -1142,7 +1129,7 @@ export default function AdminInventory() {
                                                     onChange={(e) => setEditData((prev) => ({ ...prev, totp_confirmation_code: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
                                                 />
                                                 <small style={{ display: "block", color: "var(--muted)", marginTop: 6 }}>
-                                                    Escribe el código de 6 dígitos que muestra Authenticator para esta misma clave. Solo se usa para validar y no se guarda.
+                                                    Se usa solo para validar la clave y no se guarda.
                                                 </small>
                                             </div>
                                         )}
@@ -1156,19 +1143,6 @@ export default function AdminInventory() {
                                         </label>
                                     </div>
                                 )}
-                                {isYoutubeChannelEditing && (
-                                    <div style={{ gridColumn: "1 / -1" }}>
-                                        <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Nombre del canal de YouTube</label>
-                                        <input
-                                            type="text"
-                                            maxLength={180}
-                                            style={inputStyle}
-                                            placeholder="Nombre exacto que debe seleccionar el cliente"
-                                            value={editData.youtube_channel_name}
-                                            onChange={(e) => setEditData((prev) => ({ ...prev, youtube_channel_name: e.target.value }))}
-                                        />
-                                    </div>
-                                )}
                                 <div style={{ display: hasCompactCredentialsEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>PIN</label>
                                     <input
@@ -1179,7 +1153,7 @@ export default function AdminInventory() {
                                         onChange={(e) => setEditData((prev) => ({ ...prev, pin: e.target.value }))}
                                     />
                                 </div>
-                                <div style={{ display: hasCompactCredentialsEditing || isYoutubeChannelEditing ? "none" : "block" }}>
+                                <div style={{ display: hasCompactCredentialsEditing ? "none" : "block" }}>
                                     <label style={{ display: "block", fontSize: 12, color: "var(--muted)", marginBottom: 8, fontWeight: 700, textTransform: "uppercase" }}>Perfil / pantalla</label>
                                     <input
                                         type="number"
@@ -1286,9 +1260,7 @@ export default function AdminInventory() {
                             </div>
 
                             <div style={{ marginTop: 18, background: "rgba(13,166,242,0.08)", border: "1px solid rgba(13,166,242,0.22)", borderRadius: 14, padding: "12px 14px", color: "var(--muted)", fontSize: 12, lineHeight: 1.45 }}>
-                                {isYoutubeChannelEditing
-                                    ? "Registra el nombre exacto del canal que debe seleccionar el cliente. Para seguir vendiendo la cuenta, deja el estado en Disponible."
-                                    : "Para quitar perfil, PIN, fecha o costo, deja el campo vacío y guarda. Para seguir vendiendo la cuenta, deja el estado en Disponible."}
+                                Para quitar perfil, PIN, fecha o costo, deja el campo vacío y guarda. Para seguir vendiendo la cuenta, deja el estado en Disponible.
                             </div>
 
                             <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 22, flexWrap: "wrap" }}>

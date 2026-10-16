@@ -88,7 +88,7 @@ async function upsertIdentity(conn, { pid, emailValue, identityProf, password, p
     return identityId;
 }
 
-async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, youtubeChannelName, exp, costModel, deferStockNotifications = false }) {
+async function insertAccount(conn, { identityId, pid, pname, emailValue, password, accessUrl, pin, twoFactorSecret, codeProvider, accountProf, youtubeChannelName, exp, costModel }) {
     const [ins] = await conn.query(
         `INSERT INTO platform_accounts
      (identity_id, platform_id, platform_name, email, password, access_url, pin, two_factor_secret, code_provider, profile_number, youtube_channel_name, status, expires_at, parent_account_cost_total, parent_profiles_total, unit_cost)
@@ -113,9 +113,7 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     );
     
     // Al añadir stock nuevo a esta plataforma, resolvemos las notificaciones pendientes de stock
-    if (!deferStockNotifications) {
-        await queueStockAvailabilityNotifications(conn, pid, pname);
-    }
+    await queueStockAvailabilityNotifications(conn, pid, pname);
     
     return ins.insertId;
 }
@@ -135,7 +133,6 @@ async function reloadExistingAccount(conn, {
     youtubeChannelName,
     exp,
     costModel,
-    deferStockNotifications = false,
 }) {
     const [result] = await conn.query(
         `UPDATE platform_accounts
@@ -185,9 +182,7 @@ async function reloadExistingAccount(conn, {
         throw err;
     }
 
-    if (!deferStockNotifications) {
-        await queueStockAvailabilityNotifications(conn, pid, pname);
-    }
+    await queueStockAvailabilityNotifications(conn, pid, pname);
     return accountId;
 }
 
@@ -308,11 +303,6 @@ async function findActiveAssignedScreenDuplicate(conn, { pid, emailValue, accoun
                     )
                     AND pa.expires_at IS NOT NULL
                     AND ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
-                    AND NOT EXISTS (
-                        SELECT 1
-                          FROM account_replacement_logs replaced
-                         WHERE replaced.old_account_id = pa.id
-                    )
                 )
            )
          ORDER BY pa.id DESC
@@ -389,11 +379,6 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
                         pa.expires_at IS NULL
                         OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
                     )
-                    AND NOT EXISTS (
-                        SELECT 1
-                          FROM account_replacement_logs replaced
-                         WHERE replaced.old_account_id = pa.id
-                    )
                 )
           )
         ORDER BY
@@ -461,11 +446,6 @@ async function findReusableAccountForReload(conn, { pid, emailValue, accountProf
           ${youtubeChannelSql}
           AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
           AND active_sub.id IS NULL
-          AND NOT EXISTS (
-                SELECT 1
-                  FROM account_replacement_logs replaced
-                 WHERE replaced.old_account_id = pa.id
-          )
         ORDER BY
             CASE WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned' THEN 0
                  WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'available' THEN 1
@@ -897,7 +877,6 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     const duplicateExact = [];
     const reusedExisting = [];
     const reloadedKeys = new Set();
-    const platformsWithNewStock = new Map();
     const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
     for (const [rowIndex, r] of candidates.entries()) {
@@ -995,7 +974,6 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 youtubeChannelName: r.youtubeChannelName,
                 exp,
                 costModel,
-                deferStockNotifications: true,
             });
 
             await propagatePassword(conn, {
@@ -1005,7 +983,6 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
                 newId: reusedId,
             });
             reloadedKeys.add(reloadKey);
-            platformsWithNewStock.set(pid, platform.name);
             reusedExisting.push({
                 rowNumber: r.rowNumber || rowIndex + 2,
                 accountId: reusedId,
@@ -1064,17 +1041,11 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             youtubeChannelName: r.youtubeChannelName,
             exp,
             costModel,
-            deferStockNotifications: true,
         });
 
         await propagatePassword(conn, { pid, emailValue: r.email, password: r.password, newId });
 
-        platformsWithNewStock.set(pid, platform.name);
         inserted += 1;
-    }
-
-    for (const [pid, platformName] of platformsWithNewStock) {
-        await queueStockAvailabilityNotifications(conn, pid, platformName);
     }
 
     return {

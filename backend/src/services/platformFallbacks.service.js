@@ -99,9 +99,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     const candidatePlaceholders = candidatePlatformIds.map(() => "?").join(",");
     const replacementFilters = [];
     const replacementParams = [];
-    if (options.allowStrbxReported !== true) {
-        replacementFilters.push(`NOT (${strbxReportedNetflixAccountSql("pa")})`);
-    }
+    replacementFilters.push(`NOT (${strbxReportedNetflixAccountSql("pa")})`);
     if (excludeInactiveMasterAccounts) {
         replacementFilters.push(excludeInactiveMasterAccountByEmailSql({ accountAlias: "pa" }));
     }

@@ -30,26 +30,4 @@ describe("profile availability exports and filters", () => {
         const filtered = filterAvailabilityRows([row(1), row(2), row(3, { accountActive: false })], { providerFilter: "2" });
         expect(availabilityTotals(filtered)).toEqual({ accounts: 1, withFree: 1, full: 0, review: 0, free: 1, occupied: 1 });
     });
-    it("exports duplicate profiles with the account IDs, buyers, and review reason", () => {
-        const duplicateRow = row(44, {
-            availability: "full",
-            classification: "exception",
-            freeProfiles: [],
-            occupiedProfiles: [1, 2],
-            duplicateProfiles: [2],
-            reviewProfiles: [],
-            reviewReasons: ["perfiles duplicados"],
-            profiles: [
-                { number: 1, state: "occupied", accountIds: [44], buyerEmails: ["first@example.com"] },
-                { number: 2, state: "occupied", accountIds: [145, 246], buyerEmails: ["first@example.com", "second@example.com"] },
-            ],
-        });
-        const sheets = availabilitySheets([duplicateRow]);
-
-        expect(sheets.Cuentas[0]["Perfiles duplicados"]).toBe("2");
-        expect(sheets.Cuentas[0]["Motivo de revisión"]).toBe("perfiles duplicados");
-        expect(sheets.Perfiles[1].Estado).toBe("Duplicado");
-        expect(sheets.Perfiles[1]["Detalle de revisión"]).toContain("#145, #246");
-        expect(sheets.Perfiles[1]["Detalle de revisión"]).toContain("second@example.com");
-    });
 });

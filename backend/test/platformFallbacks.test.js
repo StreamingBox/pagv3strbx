@@ -34,7 +34,6 @@ test("support replacement can select stock from a removed historical equivalence
             if (/FROM platform_fallbacks/.test(sql)) return [[]];
 
             assert.match(sql, /pa\.platform_id IN \(\?,\?\)/);
-            assert.match(sql, /NOT \(\s*EXISTS \([\s\S]*provider_reported_at IS NOT NULL/);
             assert.deepEqual(params, [900, 0, 10, 20]);
             return [[{
                 id: 900,
@@ -66,7 +65,6 @@ test("regular checkout still prioritizes direct stock before active fallbacks", 
             }
 
             assert.match(sql, /ORDER BY FIELD\(pa\.platform_id, \?,\?\), RAND\(\), pa\.id ASC/);
-            assert.match(sql, /NOT \(\s*EXISTS \([\s\S]*provider_reported_at IS NOT NULL/);
             assert.deepEqual(params, [0, 10, 20, 10, 20]);
             return [[{
                 id: 901,

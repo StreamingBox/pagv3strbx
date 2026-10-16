@@ -14,15 +14,6 @@ function DetailStat({ label, value, mono = false, tone = "default" }) {
     );
 }
 
-function isYoutubeChannelAccount(account = {}) {
-    const compact = `${account.platform_slug || ""} ${account.platform_name || ""}`
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && (compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
-}
-
 function MiniPill({ label, tone = "default" }) {
     const styles = tone === "accent"
         ? { color: "#0da6f2", background: "rgba(13,166,242,0.12)", border: "1px solid rgba(13,166,242,0.28)" }
@@ -328,14 +319,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                 onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)"}
             >
                 <td style={{ padding: "14px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)" }}>#{it.id}</td>
-                <td style={{ padding: "14px 16px", fontWeight: 600 }}>
-                    <div>{it.platform_name}</div>
-                    {it.strbx_provider_reported && (
-                        <span style={{ display: "inline-flex", marginTop: 5, padding: "3px 7px", borderRadius: 6, background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", color: "#fbbf24", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>
-                            Reportada · prioridad de venta
-                        </span>
-                    )}
-                </td>
+                <td style={{ padding: "14px 16px", fontWeight: 600 }}>{it.platform_name}</td>
                 <td style={{ padding: "14px 16px", fontWeight: 500 }}>{it.email}</td>
                 <td style={{ padding: "14px 16px" }}>
                     <span style={{ background: badgeBg, color: badgeColor, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 800, border: `1px solid ${badgeColor}40`, display: "inline-flex", alignItems: "center", whiteSpace: "nowrap" }}>
@@ -404,7 +388,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                         <div style={{ gridColumn: "1 / -1", minWidth: 0 }}>
                                             <AccountCurrentState account={detail?.account || it} detail={detail} />
                                         </div>
-                                        {!isYoutubeChannelAccount(it) && <AccountProfilesSummary account={detail?.account || it} profiles={detail?.profiles || []} />}
+                                        <AccountProfilesSummary account={detail?.account || it} profiles={detail?.profiles || []} />
                                         <div className="inventory-detail-column" style={{ minWidth: 0 }}>
                                             <div style={{ fontSize: 12, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 700, marginBottom: 14 }}>Datos de la cuenta</div>
                                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 10 }}>
@@ -412,8 +396,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                                 <DetailStat label="Contraseña" value={it.password} mono />
                                                 {it.two_factor_secret ? <DetailStat label="2FA" value={it.two_factor_secret} mono tone="accent" /> : null}
                                                 <DetailStat label="Pin" value={it.pin} mono />
-                                                {it.youtube_channel_name ? <DetailStat label="Canal de YouTube" value={it.youtube_channel_name} /> : null}
-                                                {!isYoutubeChannelAccount(it) ? <DetailStat label="Perfil" value={it.profile_number ?? "—"} /> : null}
+                                                <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
                                                 <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />
                                                 <DetailStat label="ID venta" value={it.sale_id ? `#${it.sale_id}` : "—"} mono tone="accent" />
                                                 <DetailStat label="Asignada a" value={it.assigned_user_email || "—"} />
@@ -592,7 +575,7 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                                         <DetailStat label="Contraseña" value={it.password} mono />
                                         {it.two_factor_secret ? <DetailStat label="2FA" value={it.two_factor_secret} mono tone="accent" /> : null}
                                         <DetailStat label="Pin" value={it.pin} mono />
-                                        {!isYoutubeChannelAccount(it) ? <DetailStat label="Perfil" value={it.profile_number ?? "—"} /> : null}
+                                        <DetailStat label="Perfil" value={it.profile_number ?? "—"} />
                                         <DetailStat label="Costo unitario" value={Number(it.unit_cost || 0) > 0 ? `$${Number(it.unit_cost).toLocaleString("es-CO", { maximumFractionDigits: 2 })} COP` : "Sin costo"} tone="warning" />
                                         <DetailStat label="ID venta" value={it.sale_id ? `#${it.sale_id}` : "—"} mono tone="accent" />
                                         <DetailStat label="Asignada a" value={it.assigned_user_email || "—"} />

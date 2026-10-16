@@ -61,7 +61,6 @@ const adminAdvertisingRoutes = require("./routes/admin.advertising");
 const advertisingRoutes = require("./routes/advertising");
 const manualTopupsRoutes = require("./routes/manualTopups");
 const notifaceRoutes = require("./routes/notiface");
-const telegramStockRoutes = require("./routes/telegramStock");
 const { initBot } = require("./services/telegramBot");
 const pool = require("./db");
 const { runMigrations } = require("./migrations/runner");
@@ -354,6 +353,7 @@ app.use("/api/auth", authRoutes);
 // Codes — con rate limit de 500/hr
 app.use("/api/codes", codesRateLimit, codesRoutes);
 app.get("/api/codes/_ping", (req, res) => res.json({ ok: true, mounted: true }));
+
 app.use("/api", tvSetupRoutes);
 
 // Code Logs (solo admin, ruta interna en su router)
@@ -417,7 +417,6 @@ app.use("/api", advertisingRoutes);
 
 app.use("/api", manualTopupsRoutes);
 app.use("/api", notifaceRoutes);
-app.use("/api", telegramStockRoutes);
 
 app.use((req, res) => {
     return res.status(404).json({ ok: false, message: "Ruta no encontrada." });

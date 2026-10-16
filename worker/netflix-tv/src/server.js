@@ -99,7 +99,6 @@ function detectPageFailure(text, codeKind = "tv") {
         || normalized.includes("this code is invalid")
         || normalized.includes("code expired")
         || normalized.includes("codigo incorrecto")
-        || normalized.includes("el codigo es incorrecto")
         || normalized.includes("codigo no valido")) {
         return codeKind === "login"
             ? result("login_code_rejected", "Netflix rechazó el código de Inicio recibido por correo.")

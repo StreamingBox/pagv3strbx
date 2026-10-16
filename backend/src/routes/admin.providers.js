@@ -408,17 +408,17 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
 
     try {
         const [existingRows] = await pool.query(
-            `SELECT provider_id AS providerId, provider.name AS providerName,
-                    platform_id AS platformId, platform.name AS platformName,
-                    account_email AS accountEmail, account_password AS accountPassword,
-                    DATE_FORMAT(purchase_date, '%Y-%m-%d') AS purchaseDate,
-                    DATE_FORMAT(expires_at, '%Y-%m-%d') AS expiresAt,
-                    DATE_FORMAT(card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
-                    provider_reported_at AS providerReportedAt,
-                    ip_address AS ipAddress, amount, currency, status
+            `SELECT pa.provider_id AS providerId, provider_record.name AS providerName,
+                    pa.platform_id AS platformId, platform_record.name AS platformName,
+                    pa.account_email AS accountEmail, pa.account_password AS accountPassword,
+                    DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
+                    DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
+                    DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
+                    pa.provider_reported_at AS providerReportedAt,
+                    pa.ip_address AS ipAddress, pa.amount, pa.currency, pa.status
              FROM provider_accounts pa
-             JOIN providers provider ON provider.id = pa.provider_id
-             JOIN platforms platform ON platform.id = pa.platform_id
+             JOIN providers provider_record ON provider_record.id = pa.provider_id
+             JOIN platforms platform_record ON platform_record.id = pa.platform_id
              WHERE pa.id = ? LIMIT 1`,
             [id]
         );
@@ -429,11 +429,10 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
         const renewalRequested = body.renew === true
             || body.renew === "true"
             || String(body.action || "").trim().toLowerCase() === "renew";
-        const protectedReportedAccount = isStrbxReportedNetflixProviderAccount(existing);
-        if (renewalRequested && protectedReportedAccount) {
+        if (renewalRequested && isStrbxReportedNetflixProviderAccount(existing)) {
             return res.status(409).json({ message: "Esta cuenta Netflix de Streaming Box está reportada y no se puede renovar." });
         }
-        if (protectedReportedAccount && (
+        if (isStrbxReportedNetflixProviderAccount(existing) && (
             (body.providerId !== undefined && Number(body.providerId) !== Number(existing.providerId))
             || (body.provider_id !== undefined && Number(body.provider_id) !== Number(existing.providerId))
             || (body.platformId !== undefined && Number(body.platformId) !== Number(existing.platformId))

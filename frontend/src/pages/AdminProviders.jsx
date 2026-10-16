@@ -110,11 +110,6 @@ function matchesCardRenewalFilter(account, filter) {
     return true;
 }
 
-function isNetflixPlatform(platformName) {
-    const name = String(platformName || "").trim().toLowerCase();
-    return name.includes("netflix") || name === "promo";
-}
-
 function CountryPicker({ value, onChange }) {
     const wrapperRef = useRef(null);
     const inputRef = useRef(null);
@@ -239,7 +234,6 @@ export default function AdminProviders() {
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
     const [renewalProviderFilter, setRenewalProviderFilter] = useState("");
-    const [cardRenewalProviderFilter, setCardRenewalProviderFilter] = useState("");
     const [cardRenewalFilter, setCardRenewalFilter] = useState("all");
     const [providerReportFilter, setProviderReportFilter] = useState("all");
     const [accountSearch, setAccountSearch] = useState("");
@@ -265,9 +259,6 @@ export default function AdminProviders() {
     const [success, setSuccess] = useState("");
     const topRankingRef = useRef(null);
     const renewalListRef = useRef(null);
-    const accountTableRef = useRef(null);
-    const providerFormModuleRef = useRef(null);
-    const accountFormModuleRef = useRef(null);
 
     function updateAccountFilter(setter, value) {
         setAccountPage(1);
@@ -452,10 +443,7 @@ export default function AdminProviders() {
             codePagePassword: "",
             notes: provider.notes || "",
         });
-        window.requestAnimationFrame(() => {
-            if (providerFormModuleRef.current) providerFormModuleRef.current.open = true;
-            document.getElementById("provider-form")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-        });
+        window.requestAnimationFrame(() => document.getElementById("provider-form")?.scrollIntoView({ behavior: "smooth", block: "center" }));
     }
 
     function cancelEditProvider() {
@@ -499,10 +487,7 @@ export default function AdminProviders() {
             amount: account.amount ?? "",
             currency: account.currency || "COP",
         });
-        window.requestAnimationFrame(() => {
-            if (accountFormModuleRef.current) accountFormModuleRef.current.open = true;
-            document.getElementById("provider-account-form")?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-        });
+        window.requestAnimationFrame(() => document.getElementById("provider-account-form")?.scrollIntoView({ behavior: "smooth", block: "center" }));
     }
 
     function cancelEditAccount() {
@@ -656,33 +641,7 @@ export default function AdminProviders() {
     const filteredUpcomingRenewals = useMemo(() => upcomingRenewals.filter((account) => (
         !renewalProviderFilter || String(account.providerId) === String(renewalProviderFilter)
     )), [upcomingRenewals, renewalProviderFilter]);
-    const netflixCardRenewals = useMemo(() => {
-        const activeProviderIds = new Set(providers.filter((provider) => Number(provider.isActive) === 1).map((provider) => Number(provider.id)));
-        return accounts
-            .filter((account) => account.status === "active"
-                && !isStrbxReportedNetflixAccount(account)
-                && activeProviderIds.has(Number(account.providerId)))
-            .filter((account) => Boolean(account.cardRenewalDate) && isNetflixPlatform(account.platformName))
-            .map((account) => ({ ...account, cardDaysRemaining: getDaysRemaining(account.cardRenewalDate) }))
-            .filter((account) => account.cardDaysRemaining !== null)
-            .sort((left, right) => left.cardDaysRemaining - right.cardDaysRemaining || left.accountEmail.localeCompare(right.accountEmail));
-    }, [accounts, providers]);
-    const filteredNetflixCardRenewals = useMemo(() => netflixCardRenewals.filter((account) => (
-        !cardRenewalProviderFilter || String(account.providerId) === String(cardRenewalProviderFilter)
-    )), [netflixCardRenewals, cardRenewalProviderFilter]);
-    const cardRenewalProviderOptions = useMemo(() => [...new Map(netflixCardRenewals.map((account) => (
-        [String(account.providerId), account.providerName]
-    ))).entries()].sort((left, right) => left[1].localeCompare(right[1], "es")), [netflixCardRenewals]);
     const topProviderMax = Math.max(1, ...topProviders.map((provider) => Number(provider.activeAccountCount || 0)));
-
-    function showProviderAccount(account) {
-        setAccountSearch(account.accountEmail);
-        setFilterProviderId(String(account.providerId));
-        setCardRenewalFilter("all");
-        setProviderReportFilter("all");
-        setAccountPage(1);
-        window.requestAnimationFrame(() => accountTableRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" }));
-    }
 
     useEffect(() => {
         const root = topRankingRef.current;
@@ -741,144 +700,6 @@ export default function AdminProviders() {
         return () => scope.revert();
     }, [filteredUpcomingRenewals]);
 
-    function renderAccountsTable() {
-        return <section ref={accountTableRef} className="admin-providers-panel admin-providers-table-panel admin-providers-account-table-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-                <div>
-                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Cuentas de proveedor</h2>
-                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca, exporta y controla las cuentas por proveedor.</p>
-                </div>
-                <div className="admin-providers-export-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button className="btn-ghost" type="button" onClick={() => exportAccounts("filtered")} disabled={Boolean(exporting)} title="Exportar la vista actual con sus filtros" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
-                        <Download size={15} aria-hidden /> {exporting === "filtered" ? "Generando..." : "Exportar vista"}
-                    </button>
-                    <button className="btn" type="button" onClick={() => exportAccounts("all")} disabled={Boolean(exporting)} title="Exportar todas las cuentas de proveedores" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
-                        <FileSpreadsheet size={15} aria-hidden /> {exporting === "all" ? "Generando..." : "Exportar todas"}
-                    </button>
-                </div>
-            </div>
-            {replacementSourceAccount && <div style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(13,166,242,.09)", border: "1px solid rgba(34,211,238,.35)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                        <div style={{ color: "#67e8f9", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Nuevo reemplazo</div>
-                        <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Reemplazar cuenta #{replacementSourceAccount.id}</h3>
-                        <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>La cuenta anterior quedará como reemplazada y se conservará la cadena histórica.</p>
-                    </div>
-                    <button className="btn-ghost" type="button" onClick={closeReplacement} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
-                </div>
-                <div className="admin-providers-replacement-form" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.2fr) minmax(220px, 1fr) auto", gap: 10, alignItems: "end", marginTop: 13 }}>
-                    <div>
-                        <label style={labelStyle}>Cuenta nueva *</label>
-                        <select style={inputStyle} value={replacementTargetId} onChange={(event) => setReplacementTargetId(event.target.value)} disabled={replacingAccountId === replacementSourceAccount.id}>
-                            <option value="">Selecciona una cuenta activa</option>
-                            {replacementCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>#{candidate.id} · {candidate.providerName} · {candidate.accountEmail}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label style={labelStyle}>Motivo</label>
-                        <input style={inputStyle} value={replacementReason} onChange={(event) => setReplacementReason(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} />
-                    </div>
-                    <button className="btn" type="button" onClick={replaceAccount} disabled={replacingAccountId === replacementSourceAccount.id || !replacementCandidates.length} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>
-                        <ArrowRightLeft size={15} aria-hidden /> {replacingAccountId === replacementSourceAccount.id ? "Guardando..." : "Confirmar reemplazo"}
-                    </button>
-                </div>
-                {!replacementCandidates.length && <div style={{ marginTop: 9, color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>No hay otra cuenta activa de la misma plataforma disponible para reemplazarla.</div>}
-            </div>}
-            {providerReportAccount && <div className="admin-providers-report-form" style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(245,158,11,.09)", border: "1px solid rgba(245,158,11,.38)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-                    <div>
-                        <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Seguimiento al proveedor</div>
-                        <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Cuenta #{providerReportAccount.id} · {providerReportAccount.providerName}</h3>
-                        <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>{isProviderReported(providerReportAccount) ? `Reportada el ${shortDate(providerReportAccount.providerReportedAt)}.` : "Aún no has registrado el reporte al proveedor."}</p>
-                    </div>
-                    <button className="btn-ghost" type="button" onClick={closeProviderReport} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
-                </div>
-                <div className="admin-providers-report-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: 10, alignItems: "end", marginTop: 13 }}>
-                    <div>
-                        <label style={labelStyle}>Nota del reporte</label>
-                        <input style={inputStyle} value={providerReportNote} onChange={(event) => setProviderReportNote(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} disabled={savingProviderReport} />
-                    </div>
-                    <button className="btn" type="button" onClick={() => saveProviderReport(true)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>🚩 {savingProviderReport ? "Guardando..." : isProviderReported(providerReportAccount) ? "Actualizar reporte" : "Marcar reportada"}</button>
-                    {isProviderReported(providerReportAccount) && <button className="btn-ghost" type="button" onClick={() => saveProviderReport(false)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>✅ Cerrar reporte</button>}
-                </div>
-            </div>}
-            <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr) minmax(170px, .9fr)", gap: 10, marginBottom: 10 }}>
-                <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => updateAccountFilter(setAccountSearch, event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
-                <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => updateAccountFilter(setFilterProviderId, event.target.value)} aria-label="Filtrar cuentas por proveedor">
-                    <option value="">Todos los proveedores</option>
-                    {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-                </select>
-                <select style={{ ...inputStyle, minHeight: 38 }} value={accountOrder} onChange={(event) => updateAccountFilter(setAccountOrder, event.target.value)} aria-label="Orden de cuentas">
-                    <option value="desc">ID descendente</option>
-                    <option value="asc">ID ascendente</option>
-                </select>
-                <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => updateAccountFilter(setAccountLimit, event.target.value)} aria-label="Cantidad de cuentas visibles">
-                    {[5, 10, 15, 20].map((amount) => <option key={amount} value={amount}>Últimos {amount}</option>)}
-                </select>
-                <select style={{ ...inputStyle, minHeight: 38 }} value={cardRenewalFilter} onChange={(event) => updateAccountFilter(setCardRenewalFilter, event.target.value)} aria-label="Filtrar vencimientos de renovación de tarjeta">
-                    <option value="all">Renovación: todas</option>
-                    <option value="expired">Renovación: vencidas</option>
-                    <option value="next7">Renovación: próximos 7 días</option>
-                    <option value="next30">Renovación: próximos 30 días</option>
-                    <option value="active">Renovación: vigentes</option>
-                    <option value="missing">Renovación: sin fecha</option>
-                </select>
-                <select style={{ ...inputStyle, minHeight: 38 }} value={providerReportFilter} onChange={(event) => updateAccountFilter(setProviderReportFilter, event.target.value)} aria-label="Filtrar reportes al proveedor">
-                    <option value="all">Reporte: todos</option>
-                    <option value="reported">Reporte: reportadas</option>
-                    <option value="pending">Reporte: pendientes</option>
-                </select>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>
-                <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
-                <span>Mostrando <strong style={{ color: "var(--text)" }}>{firstVisibleAccount}–{lastVisibleAccount}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
-            </div>
-            <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
-                    <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Reporte", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
-                    <tbody>
-                        {visibleAccounts.map((account) => {
-                            const active = account.status === "active";
-                            const replaced = isReplacedProviderAccount(account);
-                            const canReplace = active && !replaced;
-                            const canToggle = !replaced;
-                            const historyLabel = providerHistoryLabel(account);
-                            const reported = isProviderReported(account);
-                            const days = active ? getDaysRemaining(account.expiresAt) : null;
-                            const country = findCountry(account.ipAddress);
-                            return <tr key={account.id}>
-                                <td style={{ padding: "13px 11px", color: "#67e8f9", fontWeight: 900, fontSize: 12 }}>#{account.id}</td>
-                                <td title={historyLabel} style={{ padding: "13px 11px", minWidth: 135, maxWidth: 190 }}><div style={{ color: account.historyTotal > 1 ? "#67e8f9" : "var(--muted)", fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{historyLabel}</div><div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{account.historyTotal > 1 ? `Paso ${account.historySequence} de ${account.historyTotal}` : "Original"}</div></td>
-                                <td style={{ padding: "13px 11px" }}><div style={{ color: "var(--text)", fontWeight: 800 }}>{account.providerName}</div><div style={{ color: "#a78bfa", fontSize: 12, marginTop: 3 }}>{account.platformName}</div></td>
-                                <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
-                                <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
-                                <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: !active ? "var(--muted)" : days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{!active || days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
-                                <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
-                                <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
-                                <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{providerAmount(account.amount)} {account.currency}</td>
-                                <td title={account.providerReportNote || "Sin nota de seguimiento"} style={{ padding: "13px 11px", minWidth: 115, whiteSpace: "nowrap" }}><div style={{ color: reported ? "#fbbf24" : "var(--muted)", fontWeight: 800, fontSize: 12 }}>{reported ? "Reportada" : "Pendiente"}</div>{reported && <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{shortDate(account.providerReportedAt)}</div>}</td>
-                                <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Desactivada por reemplazo" : active ? "Activo" : "Desactivada"}</td>
-                                <td style={{ padding: "13px 11px", minWidth: 210, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => editAccount(account)} title="Editar cuenta" aria-label={`Editar cuenta ${account.id}`}>✏️</button>{canReplace && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openReplacement(account)} title="Reemplazar cuenta y conservar el historial" aria-label={`Reemplazar cuenta ${account.id}`}>🔄</button>}{canToggle && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => toggleAccount(account)} title={active ? "Desactivar cuenta" : "Activar cuenta"} aria-label={`${active ? "Desactivar" : "Activar"} cuenta ${account.id}`}>{active ? "⏸️" : "▶️"}</button>}<button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openProviderReport(account)} title={reported ? "Ver y actualizar el reporte al proveedor" : "Marcar cuenta como reportada al proveedor"} aria-label={`${reported ? "Ver reporte de" : "Reportar"} cuenta ${account.id}`}>{reported ? "✅" : "🚩"}</button><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`}>🗑️</button></div></td>
-                            </tr>;
-                        })}
-                        {!visibleAccounts.length && <tr><td colSpan="12" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
-                    </tbody>
-                </table>
-            </div>
-            <div className="admin-providers-pagination">
-                <span>Página <strong>{currentAccountPage}</strong> de <strong>{accountPageCount}</strong></span>
-                <div>
-                    <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.max(1, currentAccountPage - 1))} disabled={currentAccountPage <= 1} aria-label="Página anterior">
-                        <ChevronLeft size={16} aria-hidden /> Anterior
-                    </button>
-                    <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.min(accountPageCount, currentAccountPage + 1))} disabled={currentAccountPage >= accountPageCount} aria-label="Página siguiente">
-                        Siguiente <ChevronRight size={16} aria-hidden />
-                    </button>
-                </div>
-            </div>
-        </section>;
-    }
-
     return (
         <div className="page-shell admin-providers-page">
             <div className="page-shell-bg" aria-hidden>
@@ -917,41 +738,16 @@ export default function AdminProviders() {
 
                     {error && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#fca5a5", background: "rgba(239,68,68,.11)", border: "1px solid rgba(239,68,68,.35)", fontSize: 13, fontWeight: 700 }}>{error}</div>}
                     {success && <div style={{ marginBottom: 16, padding: "12px 15px", borderRadius: 10, color: "#86efac", background: "rgba(16,185,129,.11)", border: "1px solid rgba(16,185,129,.35)", fontSize: 13, fontWeight: 700 }}>{success}</div>}
-                    <details className="admin-providers-module admin-providers-panel" style={{ background: "var(--card)", border: "1px solid rgba(139,92,246,.38)", borderRadius: 16, marginBottom: 18, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-                        <summary className="admin-providers-module-summary">
-                            <span className="admin-providers-module-title"><Factory size={18} color="#a78bfa" aria-hidden /><span><strong>Proveedores registrados</strong><small>{providers.length} proveedor(es) · {activeProviders.length} activo(s)</small></span></span>
-                            <ChevronDown size={17} aria-hidden />
-                        </summary>
-                        <div className="admin-providers-module-content">
-                            <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
-                                    <thead><tr>{["Proveedor", "WhatsApp", "Página de códigos", "Cuentas Netflix", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 12px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)" }}>{title}</th>)}</tr></thead>
-                                    <tbody>
-                                        {providers.map((provider) => {
-                                            const active = Number(provider.isActive) === 1;
-                                            return <tr key={provider.id}>
-                                                <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 800 }}>{provider.name}</td>
-                                                <td style={{ padding: "13px 12px", color: "var(--muted)", fontSize: 13, whiteSpace: "nowrap" }}>{provider.whatsappNumber || "-"}</td>
-                                                <td style={{ padding: "13px 12px", maxWidth: 260 }}><a href={provider.codePageUrl || "#"} target="_blank" rel="noreferrer" style={{ color: "#67e8f9", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{provider.codePageUrl || "-"}</a></td>
-                                                <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 700 }}>{provider.activeAccountCount || 0} activas <span style={{ color: "var(--muted)", fontWeight: 500 }}>({provider.accountCount || 0} total)</span></td>
-                                                <td style={{ padding: "13px 12px" }}><span style={{ color: active ? "#86efac" : "#fca5a5", fontWeight: 800, fontSize: 13 }}>{active ? "Activo" : "Inactivo"}</span></td>
-                                                <td style={{ padding: "13px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><button className="btn-ghost" type="button" onClick={() => editProvider(provider)} style={{ height: 34, padding: "0 10px" }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleProvider(provider)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 10px" }}>{active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} {active ? "Desactivar" : "Activar"}</button></div></td>
-                                            </tr>;
-                                        })}
-                                        {!providers.length && <tr><td colSpan="6" style={{ padding: 22, textAlign: "center", color: "var(--muted)" }}>Aún no hay proveedores registrados.</td></tr>}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </details>
 
-                    <section className="admin-providers-summary-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) repeat(2, minmax(250px, .9fr))", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
-                        <details className="admin-providers-module admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-                            <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><Crown size={19} color="#fbbf24" aria-hidden /><span><strong>Top 5 proveedores</strong><small>Ranking por cuentas activas de Netflix.</small></span></span>
-                                <ChevronDown size={17} aria-hidden />
-                            </summary>
-                            <div className="admin-providers-module-content">
+                    <section className="admin-providers-summary-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) minmax(360px, .85fr)", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+                                <Crown size={19} color="#fbbf24" aria-hidden />
+                                <div>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Top 5 proveedores</h2>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Ranking por cuentas activas de Netflix.</p>
+                                </div>
+                            </div>
                             {topProviders.length ? (
                                 <div ref={topRankingRef} style={{ display: "grid", gap: 10 }}>
                                     {topProviders.map((provider, index) => {
@@ -973,21 +769,22 @@ export default function AdminProviders() {
                                     })}
                                 </div>
                             ) : <div style={{ padding: "18px 0 6px", color: "var(--muted)", fontSize: 13 }}>Aún no hay proveedores para mostrar.</div>}
-                            </div>
-                        </details>
+                        </div>
 
-                        <details className="admin-providers-module admin-providers-panel admin-providers-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-                            <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#fbbf24" aria-hidden /><span><strong>Recordatorio de renovación</strong><small>{filteredUpcomingRenewals.length} cuenta(s) activas que vencen en 7 días o menos.</small></span></span>
-                                <ChevronDown size={17} aria-hidden />
-                            </summary>
-                            <div className="admin-providers-module-content">
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                        <div className="admin-providers-panel admin-providers-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(245,158,11,.38)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <CalendarClock size={19} color="#fbbf24" aria-hidden />
+                                    <div>
+                                        <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Recordatorio de renovación</h2>
+                                        <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Cuentas activas que vencen en 7 días o menos.</p>
+                                    </div>
+                                </div>
                                 <select className="admin-providers-renewal-filter" style={{ ...inputStyle, width: 220, minHeight: 38 }} value={renewalProviderFilter} onChange={(event) => setRenewalProviderFilter(event.target.value)} aria-label="Filtrar recordatorio por proveedor">
                                     <option value="">Todos los proveedores</option>
                                     {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
                                 </select>
-                                </div>
+                            </div>
                             {filteredUpcomingRenewals.length ? (
                                 <div ref={renewalListRef} style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#fbbf24 rgba(148,163,184,.14)" }}>
                                     {filteredUpcomingRenewals.map((account) => {
@@ -1007,51 +804,18 @@ export default function AdminProviders() {
                                     })}
                                 </div>
                             ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "#86efac", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {renewalProviderFilter ? "Este proveedor no tiene cuentas próximas a vencer." : "No hay cuentas próximas a vencer."}</div>}
-                            </div>
-                        </details>
-
-                        <details className="admin-providers-module admin-providers-panel admin-providers-card-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(34,211,238,.35)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
-                            <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#22d3ee" aria-hidden /><span><strong>Renovación de tarjeta · Netflix</strong><small>{netflixCardRenewals.length} cuenta(s) activa(s) con fecha registrada.</small></span></span>
-                                <ChevronDown size={17} aria-hidden />
-                            </summary>
-                            <div className="admin-providers-module-content">
-                                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                                <select className="admin-providers-renewal-filter" style={{ ...inputStyle, width: 220, minHeight: 38 }} value={cardRenewalProviderFilter} onChange={(event) => setCardRenewalProviderFilter(event.target.value)} aria-label="Filtrar renovación de tarjeta por proveedor">
-                                    <option value="">Todos los proveedores</option>
-                                    {cardRenewalProviderOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-                                </select>
-                                </div>
-                            {filteredNetflixCardRenewals.length ? (
-                                <div className="admin-providers-renewal-list" style={{ display: "grid", gap: 9, maxHeight: 330, overflowY: "auto", paddingRight: 7, scrollbarWidth: "thin", scrollbarColor: "#22d3ee rgba(148,163,184,.14)" }}>
-                                    {filteredNetflixCardRenewals.map((account) => {
-                                        const days = account.cardDaysRemaining;
-                                        const dueLabel = days < 0 ? `Vencida hace ${Math.abs(days)} d` : days === 0 ? "Vence hoy" : `En ${days} d`;
-                                        const dueColor = days < 0 ? "#fca5a5" : days <= 7 ? "#fbbf24" : "#86efac";
-                                        return <div key={account.id} className="admin-providers-renewal-row" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "10px 0", borderBottom: "1px solid var(--stroke)" }}>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)", fontSize: 12, fontWeight: 800 }}>{account.accountEmail}</div>
-                                                <div style={{ marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--muted)", fontSize: 11 }}>{account.providerName} · {account.platformName} · tarjeta {shortDate(account.cardRenewalDate)}</div>
-                                            </div>
-                                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                                <span style={{ color: dueColor, fontSize: 11, fontWeight: 900, whiteSpace: "nowrap" }}>{dueLabel}</span>
-                                                <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => showProviderAccount(account)} title="Ver cuenta en el listado" aria-label={`Ver cuenta ${account.id} en el listado`}><Search size={15} aria-hidden /></button>
-                                            </div>
-                                        </div>;
-                                    })}
-                                </div>
-                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "var(--muted)", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {cardRenewalProviderFilter ? "Este proveedor no tiene renovaciones de tarjeta Netflix." : "No hay cuentas Netflix activas con fecha de tarjeta."}</div>}
-                            </div>
-                        </details>
+                        </div>
                     </section>
 
                     <section className="admin-providers-management-grid" style={{ display: "grid", gridTemplateColumns: "minmax(280px, .82fr) minmax(480px, 1.5fr)", gap: 18, alignItems: "start", marginBottom: 18 }}>
-                        <details ref={providerFormModuleRef} className="admin-providers-module admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
-                            <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><ShieldCheck size={18} color="#22d3ee" aria-hidden /><span><strong>{editingProviderId ? "Editar proveedor" : "Nuevo proveedor"}</strong><small>Datos de contacto y acceso a su página de códigos.</small></span></span>
-                                <ChevronDown size={17} aria-hidden />
-                            </summary>
-                            <div className="admin-providers-module-content">
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                                <ShieldCheck size={18} color="#22d3ee" aria-hidden />
+                                <div>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>{editingProviderId ? "Editar proveedor" : "Nuevo proveedor"}</h2>
+                                    <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 12 }}>Datos de contacto y acceso a su página de códigos.</p>
+                                </div>
+                            </div>
                             <form id="provider-form" onSubmit={saveProvider} style={{ display: "grid", gap: 13 }}>
                                 <div>
                                     <label style={labelStyle}>Nombre del proveedor *</label>
@@ -1088,15 +852,16 @@ export default function AdminProviders() {
                                     {editingProviderId && <button className="btn-ghost" type="button" onClick={cancelEditProvider} style={{ minHeight: 42, padding: "0 18px" }}>Cancelar edición</button>}
                                 </div>
                             </form>
-                            </div>
-                        </details>
+                        </div>
 
-                        <details ref={accountFormModuleRef} className="admin-providers-module admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
-                            <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><Factory size={18} color="#a78bfa" aria-hidden /><span><strong>{editingAccountId ? "Editar cuenta de proveedor" : "Nueva cuenta de proveedor"}</strong><small>Proveedor, plataforma, vencimiento y renovación de tarjeta.</small></span></span>
-                                <ChevronDown size={17} aria-hidden />
-                            </summary>
-                            <div className="admin-providers-module-content">
+                        <div className="admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.16)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                                <Factory size={18} color="#a78bfa" aria-hidden />
+                                <div>
+                                    <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Nueva cuenta de proveedor</h2>
+                                    <p style={{ margin: "3px 0 0", color: "var(--muted)", fontSize: 12 }}>La plataforma se lee únicamente entre las plataformas activas.</p>
+                                </div>
+                            </div>
                             <form id="provider-account-form" onSubmit={saveAccount} style={{ display: "grid", gap: 13 }}>
                                 <div className="admin-providers-form-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                                     <div>
@@ -1161,11 +926,172 @@ export default function AdminProviders() {
                                     {editingAccountId && <button className="btn-ghost" type="button" onClick={cancelEditAccount} style={{ minHeight: 42, padding: "0 18px" }}>Cancelar edición</button>}
                                 </div>
                             </form>
-                            </div>
-                        </details>
+                        </div>
                     </section>
 
-                    {renderAccountsTable()}
+                    <section className="admin-providers-panel admin-providers-table-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, marginBottom: 18, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                            <div>
+                                <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Proveedores registrados</h2>
+                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>{providers.length} proveedor(es) · {activeProviders.length} activo(s)</p>
+                            </div>
+                        </div>
+                        <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
+                                <thead><tr>{["Proveedor", "WhatsApp", "Página de códigos", "Cuentas Netflix", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 12px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)" }}>{title}</th>)}</tr></thead>
+                                <tbody>
+                                    {providers.map((provider) => {
+                                        const active = Number(provider.isActive) === 1;
+                                        return <tr key={provider.id}>
+                                            <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 800 }}>{provider.name}</td>
+                                            <td style={{ padding: "13px 12px", color: "var(--muted)", fontSize: 13, whiteSpace: "nowrap" }}>{provider.whatsappNumber || "-"}</td>
+                                            <td style={{ padding: "13px 12px", maxWidth: 260 }}><a href={provider.codePageUrl || "#"} target="_blank" rel="noreferrer" style={{ color: "#67e8f9", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{provider.codePageUrl || "-"}</a></td>
+                                            <td style={{ padding: "13px 12px", color: "var(--text)", fontWeight: 700 }}>{provider.activeAccountCount || 0} activas <span style={{ color: "var(--muted)", fontWeight: 500 }}>({provider.accountCount || 0} total)</span></td>
+                                            <td style={{ padding: "13px 12px" }}><span style={{ color: active ? "#86efac" : "#fca5a5", fontWeight: 800, fontSize: 13 }}>{active ? "Activo" : "Inactivo"}</span></td>
+                                            <td style={{ padding: "13px 12px" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}><button className="btn-ghost" type="button" onClick={() => editProvider(provider)} style={{ height: 34, padding: "0 10px" }}>Editar</button><button className="btn-ghost" type="button" onClick={() => toggleProvider(provider)} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 34, padding: "0 10px" }}>{active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />} {active ? "Desactivar" : "Activar"}</button></div></td>
+                                        </tr>;
+                                    })}
+                                    {!providers.length && <tr><td colSpan="6" style={{ padding: 22, textAlign: "center", color: "var(--muted)" }}>Aún no hay proveedores registrados.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section className="admin-providers-panel admin-providers-table-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, padding: 22, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+                            <div>
+                                <h2 style={{ margin: 0, color: "var(--text)", fontSize: 16, fontWeight: 850 }}>Cuentas de proveedor</h2>
+                                <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>Organiza, busca, exporta y controla las cuentas por proveedor.</p>
+                            </div>
+                            <div className="admin-providers-export-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                <button className="btn-ghost" type="button" onClick={() => exportAccounts("filtered")} disabled={Boolean(exporting)} title="Exportar la vista actual con sus filtros" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                    <Download size={15} aria-hidden /> {exporting === "filtered" ? "Generando..." : "Exportar vista"}
+                                </button>
+                                <button className="btn" type="button" onClick={() => exportAccounts("all")} disabled={Boolean(exporting)} title="Exportar todas las cuentas de proveedores" style={{ minHeight: 38, display: "inline-flex", alignItems: "center", gap: 7 }}>
+                                    <FileSpreadsheet size={15} aria-hidden /> {exporting === "all" ? "Generando..." : "Exportar todas"}
+                                </button>
+                            </div>
+                        </div>
+                        {replacementSourceAccount && <div style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(13,166,242,.09)", border: "1px solid rgba(34,211,238,.35)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                    <div style={{ color: "#67e8f9", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Nuevo reemplazo</div>
+                                    <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Reemplazar cuenta #{replacementSourceAccount.id}</h3>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>La cuenta anterior quedará como reemplazada y se conservará la cadena histórica.</p>
+                                </div>
+                                <button className="btn-ghost" type="button" onClick={closeReplacement} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
+                            </div>
+                            <div className="admin-providers-replacement-form" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.2fr) minmax(220px, 1fr) auto", gap: 10, alignItems: "end", marginTop: 13 }}>
+                                <div>
+                                    <label style={labelStyle}>Cuenta nueva *</label>
+                                    <select style={inputStyle} value={replacementTargetId} onChange={(event) => setReplacementTargetId(event.target.value)} disabled={replacingAccountId === replacementSourceAccount.id}>
+                                        <option value="">Selecciona una cuenta activa</option>
+                                        {replacementCandidates.map((candidate) => <option key={candidate.id} value={candidate.id}>#{candidate.id} · {candidate.providerName} · {candidate.accountEmail}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={labelStyle}>Motivo</label>
+                                    <input style={inputStyle} value={replacementReason} onChange={(event) => setReplacementReason(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} />
+                                </div>
+                                <button className="btn" type="button" onClick={replaceAccount} disabled={replacingAccountId === replacementSourceAccount.id || !replacementCandidates.length} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>
+                                    <ArrowRightLeft size={15} aria-hidden /> {replacingAccountId === replacementSourceAccount.id ? "Guardando..." : "Confirmar reemplazo"}
+                                </button>
+                            </div>
+                            {!replacementCandidates.length && <div style={{ marginTop: 9, color: "#fbbf24", fontSize: 12, fontWeight: 700 }}>No hay otra cuenta activa de la misma plataforma disponible para reemplazarla.</div>}
+                        </div>}
+                        {providerReportAccount && <div className="admin-providers-report-form" style={{ marginBottom: 14, padding: 16, borderRadius: 12, background: "rgba(245,158,11,.09)", border: "1px solid rgba(245,158,11,.38)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                                <div>
+                                    <div style={{ color: "#fbbf24", fontSize: 11, fontWeight: 900, textTransform: "uppercase" }}>Seguimiento al proveedor</div>
+                                    <h3 style={{ margin: "4px 0 0", color: "var(--text)", fontSize: 15 }}>Cuenta #{providerReportAccount.id} · {providerReportAccount.providerName}</h3>
+                                    <p style={{ margin: "4px 0 0", color: "var(--muted)", fontSize: 12 }}>{isProviderReported(providerReportAccount) ? `Reportada el ${shortDate(providerReportAccount.providerReportedAt)}.` : "Aún no has registrado el reporte al proveedor."}</p>
+                                </div>
+                                <button className="btn-ghost" type="button" onClick={closeProviderReport} style={{ height: 32, padding: "0 10px" }}>Cancelar</button>
+                            </div>
+                            <div className="admin-providers-report-form-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) auto auto", gap: 10, alignItems: "end", marginTop: 13 }}>
+                                <div>
+                                    <label style={labelStyle}>Nota del reporte</label>
+                                    <input style={inputStyle} value={providerReportNote} onChange={(event) => setProviderReportNote(event.target.value)} placeholder="Ej. credenciales inválidas" maxLength={255} disabled={savingProviderReport} />
+                                </div>
+                                <button className="btn" type="button" onClick={() => saveProviderReport(true)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>🚩 {savingProviderReport ? "Guardando..." : isProviderReported(providerReportAccount) ? "Actualizar reporte" : "Marcar reportada"}</button>
+                                {isProviderReported(providerReportAccount) && <button className="btn-ghost" type="button" onClick={() => saveProviderReport(false)} disabled={savingProviderReport} style={{ minHeight: 42, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, whiteSpace: "nowrap" }}>✅ Cerrar reporte</button>}
+                            </div>
+                        </div>}
+                        <div className="admin-providers-account-filters" style={{ display: "grid", gridTemplateColumns: "minmax(220px, 1.5fr) minmax(180px, 1fr) minmax(160px, .8fr) 130px minmax(190px, 1fr) minmax(170px, .9fr)", gap: 10, marginBottom: 10 }}>
+                            <input style={{ ...inputStyle, minHeight: 38 }} value={accountSearch} onChange={(event) => updateAccountFilter(setAccountSearch, event.target.value)} placeholder="Buscar cuenta, proveedor o plataforma" aria-label="Buscar cuenta de proveedor" />
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={filterProviderId} onChange={(event) => updateAccountFilter(setFilterProviderId, event.target.value)} aria-label="Filtrar cuentas por proveedor">
+                                <option value="">Todos los proveedores</option>
+                                {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountOrder} onChange={(event) => updateAccountFilter(setAccountOrder, event.target.value)} aria-label="Orden de cuentas">
+                                <option value="desc">ID descendente</option>
+                                <option value="asc">ID ascendente</option>
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={accountLimit} onChange={(event) => updateAccountFilter(setAccountLimit, event.target.value)} aria-label="Cantidad de cuentas visibles">
+                                {[5, 10, 15, 20].map((amount) => <option key={amount} value={amount}>Últimos {amount}</option>)}
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={cardRenewalFilter} onChange={(event) => updateAccountFilter(setCardRenewalFilter, event.target.value)} aria-label="Filtrar vencimientos de renovación de tarjeta">
+                                <option value="all">Renovación: todas</option>
+                                <option value="expired">Renovación: vencidas</option>
+                                <option value="next7">Renovación: próximos 7 días</option>
+                                <option value="next30">Renovación: próximos 30 días</option>
+                                <option value="active">Renovación: vigentes</option>
+                                <option value="missing">Renovación: sin fecha</option>
+                            </select>
+                            <select style={{ ...inputStyle, minHeight: 38 }} value={providerReportFilter} onChange={(event) => updateAccountFilter(setProviderReportFilter, event.target.value)} aria-label="Filtrar reportes al proveedor">
+                                <option value="all">Reporte: todos</option>
+                                <option value="reported">Reporte: reportadas</option>
+                                <option value="pending">Reporte: pendientes</option>
+                            </select>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 12, color: "var(--muted)", fontSize: 11 }}>
+                            <span>Orden actual: <strong style={{ color: "#67e8f9" }}>{accountOrder === "desc" ? "más recientes primero" : "más antiguas primero"}</strong></span>
+                            <span>Mostrando <strong style={{ color: "var(--text)" }}>{firstVisibleAccount}–{lastVisibleAccount}</strong> de <strong style={{ color: "var(--text)" }}>{filteredAccounts.length}</strong> resultado(s)</span>
+                        </div>
+                        <div className="admin-providers-table-scroll" style={{ overflowX: "auto" }}>
+                            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1160 }}>
+                                <thead><tr>{["ID", "Histórico", "Proveedor / plataforma", "Cuenta", "Compra", "Vencimiento", "Renovación tarjeta", "País", "Valor", "Reporte", "Estado", "Acción"].map((title) => <th key={title} style={{ textAlign: "left", padding: "10px 11px", color: "var(--muted)", fontSize: 10, textTransform: "uppercase", borderBottom: "1px solid var(--stroke)", whiteSpace: "nowrap" }}>{title}</th>)}</tr></thead>
+                                <tbody>
+                                    {visibleAccounts.map((account) => {
+                                        const active = account.status === "active";
+                                        const replaced = isReplacedProviderAccount(account);
+                                        const canReplace = active && !replaced;
+                                        const canToggle = !replaced;
+                                        const historyLabel = providerHistoryLabel(account);
+                                        const reported = isProviderReported(account);
+                                        const days = active ? getDaysRemaining(account.expiresAt) : null;
+                                        const country = findCountry(account.ipAddress);
+                                        return <tr key={account.id}>
+                                            <td style={{ padding: "13px 11px", color: "#67e8f9", fontWeight: 900, fontSize: 12 }}>#{account.id}</td>
+                                            <td title={historyLabel} style={{ padding: "13px 11px", minWidth: 135, maxWidth: 190 }}><div style={{ color: account.historyTotal > 1 ? "#67e8f9" : "var(--muted)", fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{historyLabel}</div><div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{account.historyTotal > 1 ? `Paso ${account.historySequence} de ${account.historyTotal}` : "Original"}</div></td>
+                                            <td style={{ padding: "13px 11px" }}><div style={{ color: "var(--text)", fontWeight: 800 }}>{account.providerName}</div><div style={{ color: "#a78bfa", fontSize: 12, marginTop: 3 }}>{account.platformName}</div></td>
+                                            <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 13 }}>{account.accountEmail}</td>
+                                            <td style={{ padding: "13px 11px", color: "var(--muted)", whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.purchaseDate)}</td>
+                                            <td style={{ padding: "13px 11px", whiteSpace: "nowrap" }}><div style={{ color: !active ? "var(--muted)" : days !== null && days < 0 ? "#fca5a5" : "#86efac", fontWeight: 800, fontSize: 12 }}>{shortDate(account.expiresAt)}</div><div style={{ color: "var(--muted)", fontSize: 11, marginTop: 3 }}>{!active || days === null ? "-" : days < 0 ? `Vencida hace ${Math.abs(days)} día(s)` : `${days} día(s)`}</div></td>
+                                            <td style={{ padding: "13px 11px", color: account.cardRenewalDate ? "#fbbf24" : "var(--muted)", fontWeight: account.cardRenewalDate ? 800 : 500, whiteSpace: "nowrap", fontSize: 12 }}>{shortDate(account.cardRenewalDate)}</td>
+                                            <td style={{ padding: "13px 11px", color: "var(--muted)", fontSize: 12, whiteSpace: "nowrap" }}>{country ? `${country.flag} ${country.code}` : account.ipAddress || "-"}</td>
+                                            <td style={{ padding: "13px 11px", color: "var(--text)", fontSize: 12, whiteSpace: "nowrap" }}>{providerAmount(account.amount)} {account.currency}</td>
+                                            <td title={account.providerReportNote || "Sin nota de seguimiento"} style={{ padding: "13px 11px", minWidth: 115, whiteSpace: "nowrap" }}><div style={{ color: reported ? "#fbbf24" : "var(--muted)", fontWeight: 800, fontSize: 12 }}>{reported ? "Reportada" : "Pendiente"}</div>{reported && <div style={{ color: "var(--muted)", fontSize: 10, marginTop: 3 }}>{shortDate(account.providerReportedAt)}</div>}</td>
+                                            <td style={{ padding: "13px 11px", color: replaced ? "#fbbf24" : active ? "#86efac" : "#fca5a5", fontSize: 12, fontWeight: 800 }}>{replaced ? "Desactivada por reemplazo" : active ? "Activo" : "Desactivada"}</td>
+                                            <td style={{ padding: "13px 11px", minWidth: 210, whiteSpace: "nowrap", verticalAlign: "top" }}><div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "nowrap" }}><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => editAccount(account)} title="Editar cuenta" aria-label={`Editar cuenta ${account.id}`}>✏️</button>{canReplace && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openReplacement(account)} title="Reemplazar cuenta y conservar el historial" aria-label={`Reemplazar cuenta ${account.id}`}>🔄</button>}{canToggle && <button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => toggleAccount(account)} title={active ? "Desactivar cuenta" : "Activar cuenta"} aria-label={`${active ? "Desactivar" : "Activar"} cuenta ${account.id}`}>{active ? "⏸️" : "▶️"}</button>}<button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => openProviderReport(account)} title={reported ? "Ver y actualizar el reporte al proveedor" : "Marcar cuenta como reportada al proveedor"} aria-label={`${reported ? "Ver reporte de" : "Reportar"} cuenta ${account.id}`}>{reported ? "✅" : "🚩"}</button><button className="btn-ghost admin-providers-icon-action" type="button" onClick={() => deleteAccount(account)} disabled={deletingAccountId === account.id || account.historyTotal > 1} title={account.historyTotal > 1 ? "Las cuentas con historial no se pueden eliminar" : "Eliminar cuenta duplicada"} aria-label={`Eliminar cuenta ${account.id}`}>🗑️</button></div></td>
+                                        </tr>;
+                                    })}
+                                    {!visibleAccounts.length && <tr><td colSpan="12" style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>No hay cuentas de proveedor para este filtro.</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="admin-providers-pagination">
+                            <span>Página <strong>{currentAccountPage}</strong> de <strong>{accountPageCount}</strong></span>
+                            <div>
+                                <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.max(1, currentAccountPage - 1))} disabled={currentAccountPage <= 1} aria-label="Página anterior">
+                                    <ChevronLeft size={16} aria-hidden /> Anterior
+                                </button>
+                                <button className="btn-ghost" type="button" onClick={() => setAccountPage(Math.min(accountPageCount, currentAccountPage + 1))} disabled={currentAccountPage >= accountPageCount} aria-label="Página siguiente">
+                                    Siguiente <ChevronRight size={16} aria-hidden />
+                                </button>
+                            </div>
+                        </div>
+                    </section>
                 </main>
             </div>
         </div>

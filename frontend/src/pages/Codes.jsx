@@ -12,7 +12,7 @@ const PLATFORMS = [
     { slug: "spotify", logoSlug: "spotify-3-meses", label: "Spotify", icon: "🎵", accent: "#1db954", bg: "rgba(29,185,84,0.12)", border: "rgba(29,185,84,0.3)" },
     { slug: "netflix", logoSlug: "netflix", label: "Netflix", icon: "🎬", accent: "#e50914", bg: "rgba(229,9,20,0.12)", border: "rgba(229,9,20,0.3)" },
     { slug: "prime", logoSlug: "prime-video", label: "Prime Video", icon: "📦", accent: "#00a8e1", bg: "rgba(0,168,225,0.12)", border: "rgba(0,168,225,0.3)" },
-    { slug: "youtube-premium-totp", logoSlug: "youtube-music", label: "YouTube", icon: "▶", accent: "#ff0033", bg: "rgba(255,0,51,0.12)", border: "rgba(255,0,51,0.3)" },
+    { slug: "youtube-premium-totp", label: "YouTube Premium / Music", icon: "▶", accent: "#ff0033", bg: "rgba(255,0,51,0.12)", border: "rgba(255,0,51,0.3)" },
 ];
 
 const DISPLAY_PLATFORMS = PLATFORMS
@@ -216,15 +216,13 @@ function StatusCard({ d, onRetry }) {
 export default function Codes() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
-    const isAdmin = String(user?.role || "").toLowerCase() === "admin";
 
     const [orderNumber, setOrderNumber] = useState("");
     const [activePlatform, setActivePlatform] = useState(null);
     const [loadingSlug, setLoadingSlug] = useState(null);
     const [error, setError] = useState("");
     const [data, setData] = useState(null);
-    const [pendingYoutubeRequest, setPendingYoutubeRequest] = useState(null);
-    const [totpClock, setTotpClock] = useState(0);
+    const [totpClock, setTotpClock] = useState(Date.now());
     const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
     const feedbackRef = useRef(null);
 
@@ -261,17 +259,11 @@ export default function Codes() {
 
     const canSearch = orderNumber.trim().length > 0 && !loadingSlug;
     const totpRemaining = data?.type === "totp" && data.expiresAt
-        ? Math.min(30, Math.max(0, Math.ceil((data.expiresAt - totpClock) / 1000)))
+        ? Math.max(0, Math.ceil((data.expiresAt - totpClock) / 1000))
         : 0;
 
-    async function requestCode(slug, action = "code", confirmed = false) {
+    async function requestCode(slug, action = "code") {
         if (!canSearch) return;
-        if (slug === "youtube-premium-totp" && !confirmed) {
-            setActivePlatform(slug);
-            setPendingYoutubeRequest({ slug, action });
-            return;
-        }
-        setPendingYoutubeRequest(null);
         setError(""); setData(null);
         setActivePlatform(slug);
         setLoadingSlug(`${slug}:${action}`);
@@ -279,18 +271,19 @@ export default function Codes() {
             if (slug === "youtube-premium-totp") {
                 const subscriptionId = Number(orderNumber.trim().replace(/^#/, ""));
                 if (!Number.isSafeInteger(subscriptionId) || subscriptionId <= 0) {
-                    setData({ ok: false, status: "invalid_order", message: "Ingresa el ID numérico de tu suscripción de YouTube." });
+                    setData({ ok: false, status: "invalid_order", message: "Ingresa el ID numérico de la suscripción de YouTube Premium o YouTube Music." });
                     return;
                 }
-                const response = await apiGet(`/orders/${subscriptionId}/totp`, { timeoutMs: 60000 });
+                const response = await apiGet(`/orders/${subscriptionId}/totp`);
                 if (!response.ok) {
                     setData({ ok: false, status: "totp_error", message: response.data?.message || "No se pudo consultar el código temporal." });
                     return;
                 }
+                setTotpClock(Date.now());
                 setData({
                     ok: true,
                     type: "totp",
-                    platform: "YouTube",
+                    platform: "YouTube Premium / Music",
                     orderNumber: subscriptionId,
                     code: response.data.code,
                     expiresAt: Number(response.data.expiresAt),
@@ -407,9 +400,9 @@ export default function Codes() {
                                 <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 6 }}>
                                     {activePlatform === "youtube-premium-totp" ? "ID numérico de suscripción" : "Número de pedido"}
                                 </label>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-                                    <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
-                                        <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                        <div style={{ display: "flex", gap: 8 }}>
+                                            <div style={{ position: "relative", flex: 1 }}>
                                             <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", fontSize: 13, pointerEvents: "none", color: "var(--muted)" }}>🧾</span>
                                             <input
                                                 value={orderNumber}
@@ -429,12 +422,14 @@ export default function Codes() {
                                                 onBlur={e => { e.target.style.borderColor = "var(--stroke)"; e.target.style.boxShadow = "none"; }}
                                             />
                                         </div>
+                                        {activePlatform === "youtube-premium-totp" ? (
+                                            <div style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.45 }}>
+                                                Usa el ID de suscripción que aparece en Historial de Compras.
+                                            </div>
+                                        ) : null}
                                     </div>
-                                    {activePlatform === "youtube-premium-totp" ? (
-                                        <div style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.45 }}>
-                                            Usa el ID de suscripción que aparece en Historial de Compras.
-                                        </div>
-                                    ) : null}
+
+                                    
                                 </div>
                             </div>
 
@@ -477,7 +472,7 @@ export default function Codes() {
                                                 }}>
                                                     {p.logoSlug ? (
                                                         <img src={`/platform-logos/${p.logoSlug}.png`} alt={p.label}
-                                                            style={{ width: "100%", height: "100%", objectFit: isYoutubeTotp ? "contain" : "cover", mixBlendMode: "normal", background: isYoutubeTotp ? "#000" : "transparent", borderRadius: isYoutubeTotp ? 8 : 0 }}
+                                                            style={{ width: "100%", height: "100%", objectFit: "cover", mixBlendMode: "normal" }}
                                                             onError={e => { e.target.style.display = "none"; e.target.parentElement.textContent = p.icon; }}
                                                         />
                                                     ) : <span aria-hidden="true" style={{ fontSize: 24, fontWeight: 900, color: p.accent }}>{p.icon}</span>}
@@ -523,6 +518,11 @@ export default function Codes() {
                                                 {isNetflix ? (
                                                     <span style={{ fontSize: 9, color: "var(--muted)", textAlign: "center", lineHeight: 1.35 }}>
                                                         Inicio = codigo por correo | Temporal = acceso temporal
+                                                    </span>
+                                                ) : null}
+                                                {isYoutubeTotp ? (
+                                                    <span style={{ fontSize: 9, color: "var(--muted)", textAlign: "center", lineHeight: 1.35 }}>
+                                                        Código temporal de Google Authenticator
                                                     </span>
                                                 ) : null}
                                                 {isLoading && <span style={{ width: 10, height: 10, borderRadius: "50%", border: `2px solid ${p.accent}40`, borderTopColor: p.accent, display: "block", animation: "spin 0.7s linear infinite", position: "absolute", bottom: 12 }} />}
@@ -587,9 +587,7 @@ export default function Codes() {
                                     >
                                         {/* Badge plataforma */}
                                         <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12, flexWrap: "wrap" }}>
-                                            <div style={{ width: 22, height: 22, borderRadius: 6, background: `${activeMeta?.accent}20`, border: `1px solid ${activeMeta?.border || "rgba(13,166,242,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>
-                                                {data.type === "totp" ? <img src="/platform-logos/youtube-music.png" alt="" style={{ width: 18, height: 18, objectFit: "contain", background: "#000", borderRadius: 4 }} /> : activeMeta?.icon}
-                                            </div>
+                                            <div style={{ width: 22, height: 22, borderRadius: 6, background: `${activeMeta?.accent}20`, border: `1px solid ${activeMeta?.border || "rgba(13,166,242,0.3)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{activeMeta?.icon}</div>
                                             <span style={{ fontSize: 10, fontWeight: 800, color: activeMeta?.accent || "var(--accent)", textTransform: "uppercase", letterSpacing: "0.8px" }}>{data.platform || activeMeta?.label}</span>
                                             <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--muted)", fontFamily: "monospace", fontWeight: 600 }}>#{data.orderNumber}</span>
                                         </div>
@@ -622,9 +620,7 @@ export default function Codes() {
                                 <span style={{ fontSize: 13, flexShrink: 0, color: "#8b5cf6" }}>ℹ</span>
                                 <p style={{ margin: 0, fontSize: 11, color: "var(--muted)", lineHeight: 1.65 }}>
                                     {activePlatform === "youtube-premium-totp"
-                                        ? (isAdmin
-                                            ? <>Como administrador, puedes volver a solicitar el código cuando lo necesites. El código cambia cada 30 segundos.</>
-                                            : <>El código cambia cada 30 segundos. Solo puedes consultarlo con una suscripción activa asignada a ti.</>)
+                                        ? <>El código de Google Authenticator cambia cada 30 segundos y es compartido por la cuenta. Solo puedes consultarlo con una suscripción activa asignada a ti.</>
                                         : <>Los códigos tienen validez mientras su suscripción esté activa. <span style={{ color: "var(--text)", fontWeight: 800 }}>1 código por pedido</span>. Si la clave cambia, podrás solicitarlo nuevamente.</>}
                                 </p>
                             </div>
@@ -704,57 +700,6 @@ export default function Codes() {
                         </motion.div>
                     </motion.div>
                 </main>
-                <AnimatePresence>
-                    {pendingYoutubeRequest ? (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onMouseDown={(event) => {
-                                if (event.target === event.currentTarget) setPendingYoutubeRequest(null);
-                            }}
-                            style={{ position: "fixed", inset: 0, zIndex: 1100, display: "grid", placeItems: "center", padding: 16, background: "rgba(7,10,18,0.78)" }}
-                        >
-                            <motion.div
-                                role="dialog"
-                                aria-modal="true"
-                                aria-labelledby="youtube-code-confirm-title"
-                                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                                style={{ width: "min(420px, 100%)", padding: 20, borderRadius: 14, background: "var(--card)", border: "1px solid var(--stroke)", boxShadow: "var(--shadow)" }}
-                            >
-                                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                                    <img src="/platform-logos/youtube-music.png" alt="" style={{ width: 28, height: 28, objectFit: "contain", background: "#000", borderRadius: 6 }} />
-                                    <h2 id="youtube-code-confirm-title" style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "var(--text)" }}>¿Solicitar el código?</h2>
-                                </div>
-                                <p style={{ margin: "0 0 18px", fontSize: 13, lineHeight: 1.55, color: "var(--muted)" }}>
-                                    El código es válido por 30 segundos. Confirma solo cuando estés listo para ingresarlo.
-                                </p>
-                                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
-                                    <button
-                                        type="button"
-                                        onClick={() => setPendingYoutubeRequest(null)}
-                                        style={{ minHeight: 40, padding: "8px 14px", borderRadius: 9, border: "1px solid var(--stroke)", background: "transparent", color: "var(--text)", font: "inherit", fontWeight: 700, cursor: "pointer" }}
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const request = pendingYoutubeRequest;
-                                            setPendingYoutubeRequest(null);
-                                            if (request) requestCode(request.slug, request.action, true);
-                                        }}
-                                        style={{ minHeight: 40, padding: "8px 14px", borderRadius: 9, border: "1px solid #ff0033", background: "#ff0033", color: "#fff", font: "inherit", fontWeight: 800, cursor: "pointer" }}
-                                    >
-                                        Sí, solicitar
-                                    </button>
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    ) : null}
-                </AnimatePresence>
             </div>
         </div>
     );

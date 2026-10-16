@@ -7,7 +7,6 @@ import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import "../styles/special-effects.css";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { loadXlsx } from "../utils/loadXlsx.js";
-import { generateTotpCode } from "../utils/youtubeTotp.js";
 const MotionDiv = motion.div;
 
 async function apiFetch(path, opts = {}) {
@@ -22,7 +21,6 @@ async function apiFetch(path, opts = {}) {
 }
 
 const LOGO_URL = "/api/branding/logo";
-const BULK_UPLOAD_TIMEOUT_MS = 240_000;
 
 function normalizeExcelKey(value) {
     return String(value || "")
@@ -90,13 +88,13 @@ function isNetflixPlatform(platform) {
     return compact.includes("netflix");
 }
 
-function isYouTubeChannelPlatform(platform) {
-    const compact = `${platform?.slug || ""} ${platform?.name || platform || ""}`
+function isYouTubeMusicPlatform(platform) {
+    const compact = String(platform?.slug || platform?.name || platform || "")
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube") && (compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
+    return compact.includes("youtube") && compact.includes("music");
 }
 
 function isYouTubeTotpPlatform(platform) {
@@ -105,8 +103,7 @@ function isYouTubeTotpPlatform(platform) {
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
-    return compact.includes("youtube")
-        && (compact.includes("premium") || compact.includes("music") || /youtube(?:premium)?3(?:meses|months)/.test(compact));
+    return compact.includes("youtube") && (compact.includes("premium") || compact.includes("music"));
 }
 
 function summarizeExcelRows(rows, platforms = []) {
@@ -119,7 +116,6 @@ function summarizeExcelRows(rows, platforms = []) {
         withoutCost: 0,
         invalidCost: 0,
         invalidIptvRows: [],
-        invalidYouTubeMusicRows: [],
     };
 
     for (const [index, row] of rows.entries()) {
@@ -129,20 +125,14 @@ function summarizeExcelRows(rows, platforms = []) {
         const accessUrl = readExcelValue(row, ["url", "accessurl", "access_url"]);
         const platformById = platforms.find((item) => String(item?.id) === String(platform).trim());
         const requiresIptvAccess = isIptvPlatform(platformById || platform);
-        const requiresYoutubeChannel = isYouTubeChannelPlatform(platformById || platform);
-        const youtubeChannel = readExcelValue(row, ["youtubechannelname", "nombrecanalyoutube", "nombredelcanaldeyoutube", "youtubechannel", "canalyoutube", "canaldeyoutube", "canal"]);
         const valid = !!String(platform).trim()
             && !!String(email).trim()
             && !!String(password).trim()
-            && (!requiresIptvAccess || !!String(accessUrl).trim())
-            && (!requiresYoutubeChannel || !!String(youtubeChannel).trim());
+            && (!requiresIptvAccess || !!String(accessUrl).trim());
         if (!valid) {
             summary.invalid += 1;
             if (requiresIptvAccess && (!String(email).trim() || !String(password).trim() || !String(accessUrl).trim())) {
                 summary.invalidIptvRows.push(index + 2);
-            }
-            if (requiresYoutubeChannel && !String(youtubeChannel).trim()) {
-                summary.invalidYouTubeMusicRows.push(index + 2);
             }
             continue;
         }
@@ -315,11 +305,6 @@ export default function AdminAccounts() {
     const [youtubeChannelName, setYoutubeChannelName] = useState("");
     const [youtubeTotpSecret, setYoutubeTotpSecret] = useState("");
     const [youtubeTotpConfirmationCode, setYoutubeTotpConfirmationCode] = useState("");
-    const [youtubeTotpPreview, setYoutubeTotpPreview] = useState(null);
-    const [youtubeTotpClock, setYoutubeTotpClock] = useState(0);
-    const [youtubeTotpLoading, setYoutubeTotpLoading] = useState(false);
-    const [youtubeTotpCopied, setYoutubeTotpCopied] = useState(false);
-    const [youtubeTotpError, setYoutubeTotpError] = useState("");
     const [costMode, setCostMode] = useState("screen");
     const [motherCostTotal, setMotherCostTotal] = useState("");
     const [motherProfilesTotal, setMotherProfilesTotal] = useState("");
@@ -330,7 +315,6 @@ export default function AdminAccounts() {
     const [excelLoading, setExcelLoading] = useState(false);
     const [excelMsg, setExcelMsg] = useState("");
     const [excelError, setExcelError] = useState(false);
-    const [excelUploadUncertain, setExcelUploadUncertain] = useState(false);
     const [dragActive, setDragActive] = useState(false);
     const [excelPreview, setExcelPreview] = useState(null);
     const [forceConfirm, setForceConfirm] = useState(null);
@@ -342,11 +326,8 @@ export default function AdminAccounts() {
     const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
     const isIptv = isIptvPlatform(selectedPlatform);
     const isNetflix = isNetflixPlatform(selectedPlatform);
-    const isYouTubeChannel = isYouTubeChannelPlatform(selectedPlatform);
+    const isYouTubeMusic = isYouTubeMusicPlatform(selectedPlatform);
     const isYouTubeTotp = isYouTubeTotpPlatform(selectedPlatform);
-    const youtubeTotpSecondsLeft = youtubeTotpPreview
-        ? Math.max(0, Math.ceil((youtubeTotpPreview.expiresAt - youtubeTotpClock) / 1000))
-        : 0;
     const hasCompactCredentials = isChatGPTPersonal || isIptv;
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
@@ -355,7 +336,7 @@ export default function AdminAccounts() {
         : manualCostAmount;
     const manualCostIncomplete = costMode === "account" && manualCostAmount > 0 && manualProfiles <= 0;
     const manualProfileList = useMemo(() => parseManualProfiles(profileNumber), [profileNumber]);
-    const manualCreateCount = hasCompactCredentials || isYouTubeChannel ? 1 : Math.max(1, manualProfileList.length);
+    const manualCreateCount = hasCompactCredentials || isYouTubeMusic ? 1 : Math.max(1, manualProfileList.length);
     const manualProfileSummary = manualProfileList.length > 1
         ? `Se crearan ${manualProfileList.length} registros con los perfiles: ${manualProfileList.join(", ")}.`
         : "Para crear varios perfiles con los mismos datos, escribe: 1,2,3,4.";
@@ -380,8 +361,8 @@ export default function AdminAccounts() {
     }
 
     async function createAccount() {
-        if (isYouTubeChannel && !youtubeChannelName.trim()) {
-            setError("Indica el nombre exacto del canal de YouTube que debe usar el cliente.");
+        if (isYouTubeMusic && !youtubeChannelName.trim()) {
+            setError("Indica el nombre exacto del canal de YouTube Music que debe usar el cliente.");
             return;
         }
         if (manualCostIncomplete) {
@@ -409,8 +390,8 @@ export default function AdminAccounts() {
                     twoFactorSecret: isChatGPTPersonal ? (twoFactorSecret || null) : null,
                     codeProvider: isNetflix ? codeProvider : "strbx",
                     pin: pin || null,
-                    profileNumber: isYouTubeChannel ? null : (profileNumber || null),
-                    youtubeChannelName: isYouTubeChannel ? youtubeChannelName.trim() : null,
+                    profileNumber: isYouTubeMusic ? null : (profileNumber || null),
+                    youtubeChannelName: isYouTubeMusic ? youtubeChannelName.trim() : null,
                     ...(isYouTubeTotp && youtubeTotpSecret.trim() ? {
                         totpSecret: youtubeTotpSecret.trim(),
                         totpConfirmationCode: youtubeTotpConfirmationCode.trim(),
@@ -432,8 +413,6 @@ export default function AdminAccounts() {
                 setYoutubeChannelName("");
                 setYoutubeTotpSecret("");
                 setYoutubeTotpConfirmationCode("");
-                setYoutubeTotpPreview(null);
-                setYoutubeTotpError("");
                 setMotherCostTotal("");
                 setMotherProfilesTotal("");
                 setExcelError(false);
@@ -457,7 +436,6 @@ export default function AdminAccounts() {
     function openExcelPicker() {
         setExcelMsg("");
         setExcelError(false);
-        setExcelUploadUncertain(false);
         setExcelPreview(null);
         fileExcelRef.current?.click();
     }
@@ -469,7 +447,6 @@ export default function AdminAccounts() {
         setError("");
         setExcelMsg("");
         setExcelError(false);
-        setExcelUploadUncertain(false);
 
         try {
             // 1) leer excel
@@ -482,9 +459,6 @@ export default function AdminAccounts() {
             const summary = summarizeExcelRows(rows, platforms);
             if (summary.invalidIptvRows.length) {
                 throw new Error(`IPTV requiere Usuario, Contrase\u00f1a y URL. Revisa las filas: ${summary.invalidIptvRows.join(", ")}.`);
-            }
-            if (summary.invalidYouTubeMusicRows.length) {
-                throw new Error(`YouTube Music y YouTube 3 meses requieren la columna "Nombre del canal de YouTube". Revisa las filas: ${summary.invalidYouTubeMusicRows.join(", ")}.`);
             }
             if (!summary.valid) throw new Error("El archivo no tiene cuentas validas.");
 
@@ -529,7 +503,6 @@ export default function AdminAccounts() {
 
         return apiFetch(`/admin/accounts/bulk`, {
             method: "POST",
-            timeoutMs: BULK_UPLOAD_TIMEOUT_MS,
             body: JSON.stringify({
                 rows: duplicateRows,
                 allowAssignedDuplicateScreens: true,
@@ -538,7 +511,7 @@ export default function AdminAccounts() {
     }
 
     async function confirmExcelUpload() {
-        if (!excelPreview?.rows?.length || excelUploadUncertain) return;
+        if (!excelPreview?.rows?.length) return;
 
         setExcelLoading(true);
         setExcelMsg("");
@@ -546,7 +519,6 @@ export default function AdminAccounts() {
         try {
             const out = await apiFetch(`/admin/accounts/bulk`, {
                 method: "POST",
-                timeoutMs: BULK_UPLOAD_TIMEOUT_MS,
                 body: JSON.stringify({ rows: excelPreview.rows }),
             });
 
@@ -592,34 +564,21 @@ export default function AdminAccounts() {
                 );
             }
             setExcelMsg([...successLines, ...warnings].join("\n\n"));
-            setExcelUploadUncertain(false);
             setExcelPreview(null);
         } catch (err) {
-            if (err.status === 0) {
-                setExcelError(true);
-                setExcelUploadUncertain(true);
-                setExcelMsg("El servidor tardó demasiado en confirmar el resultado. La carga pudo haberse guardado; revisa el historial de cargas antes de volver a intentar este archivo.");
-                return;
-            }
             const duplicateAssigned = Array.isArray(err.data?.duplicateAssigned) ? err.data.duplicateAssigned : [];
             const duplicateExact = Array.isArray(err.data?.duplicateExact) ? err.data.duplicateExact : [];
             if (duplicateAssigned.length) {
-                let forcedOut;
+                let forcedOut = null;
                 try {
                     forcedOut = await confirmForceDuplicateAssignedUpload(excelPreview.rows, duplicateAssigned);
                 } catch (forceErr) {
                     setExcelError(true);
-                    if (forceErr.status === 0) {
-                        setExcelUploadUncertain(true);
-                        setExcelMsg("El servidor tardó demasiado en confirmar la carga forzada. La carga pudo haberse guardado; revisa el historial antes de volver a intentar este archivo.");
-                    } else {
-                        setExcelMsg(forceErr.message || "No se pudo hacer la carga forzada.");
-                    }
+                    setExcelMsg(forceErr.message || "No se pudo hacer la carga forzada.");
                     return;
                 }
                 if (forcedOut) {
                     setExcelError(false);
-                    setExcelUploadUncertain(false);
                     setExcelMsg(`Carga confirmada. Insertadas forzadas: ${forcedOut.inserted || 0}.`);
                     setExcelPreview(null);
                     return;
@@ -674,7 +633,6 @@ export default function AdminAccounts() {
             "url",
             "2FA",
             "perfil",
-            "nombreCanalYoutube",
             "pin",
             "tipoCosto",
             "valorCosto",
@@ -692,7 +650,6 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "1",
-                nombreCanalYoutube: "",
                 pin: "1234",
                 tipoCosto: "CUENTA",
                 valorCosto: 54000,
@@ -709,7 +666,6 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "2",
-                nombreCanalYoutube: "",
                 pin: "2345",
                 tipoCosto: "CUENTA",
                 valorCosto: 54000,
@@ -726,7 +682,6 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "",
                 perfil: "1",
-                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: 9000,
@@ -743,7 +698,6 @@ export default function AdminAccounts() {
                 url: "",
                 "2FA": "Clave o código 2FA opcional",
                 perfil: "",
-                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: "",
@@ -760,7 +714,6 @@ export default function AdminAccounts() {
                 url: "http://red4tv.lat",
                 "2FA": "",
                 perfil: "",
-                nombreCanalYoutube: "",
                 pin: "",
                 tipoCosto: "PANTALLA",
                 valorCosto: "",
@@ -773,7 +726,7 @@ export default function AdminAccounts() {
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
             { wch: 13 }, { wch: 22 }, { wch: 20 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
-            { wch: 28 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
+            { wch: 28 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
         wsExamples["!cols"] = wsCuentas["!cols"];
@@ -880,39 +833,6 @@ export default function AdminAccounts() {
     useEffect(() => {
         if (!isNetflix) setCodeProvider("strbx");
     }, [isNetflix]);
-
-    useEffect(() => {
-        if (!youtubeTotpPreview) return undefined;
-        const timer = window.setInterval(() => setYoutubeTotpClock(Date.now()), 1000);
-        return () => window.clearInterval(timer);
-    }, [youtubeTotpPreview]);
-
-    async function consultYoutubeTotpCode() {
-        setYoutubeTotpLoading(true);
-        setYoutubeTotpError("");
-        setYoutubeTotpCopied(false);
-        try {
-            const result = await generateTotpCode(youtubeTotpSecret);
-            setYoutubeTotpPreview(result);
-            setYoutubeTotpClock(Date.now());
-            setYoutubeTotpConfirmationCode(result.code);
-        } catch (err) {
-            setYoutubeTotpError(err?.message || "No se pudo generar el código.");
-        } finally {
-            setYoutubeTotpLoading(false);
-        }
-    }
-
-    async function copyYoutubeTotpCode() {
-        if (!youtubeTotpPreview?.code) return;
-        try {
-            await navigator.clipboard.writeText(youtubeTotpPreview.code);
-            setYoutubeTotpCopied(true);
-            window.setTimeout(() => setYoutubeTotpCopied(false), 1800);
-        } catch {
-            setYoutubeTotpError("No se pudo copiar automáticamente. Selecciona el código y cópialo.");
-        }
-    }
 
     const inputStyle = {
         appearance: "none", WebkitAppearance: "none",
@@ -1024,18 +944,6 @@ export default function AdminAccounts() {
                             }}
                         >
                             {excelMsg}
-                            {excelUploadUncertain && (
-                                <div style={{ marginTop: 10 }}>
-                                    <button
-                                        type="button"
-                                        className="btn-ghost"
-                                        onClick={() => navigate("/admin/upload-logs")}
-                                        style={{ height: 36, padding: "0 12px" }}
-                                    >
-                                        Revisar historial de cargas
-                                    </button>
-                                </div>
-                            )}
                         </MotionDiv>
                     )}
 
@@ -1137,11 +1045,11 @@ export default function AdminAccounts() {
                                 )}
 
                                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
-                                    <button className="btn-ghost" onClick={() => { setExcelPreview(null); setExcelUploadUncertain(false); }} disabled={excelLoading} style={{ height: 40, padding: "0 16px" }}>
+                                    <button className="btn-ghost" onClick={() => setExcelPreview(null)} disabled={excelLoading} style={{ height: 40, padding: "0 16px" }}>
                                         Cancelar
                                     </button>
-                                    <button className="btn" onClick={confirmExcelUpload} disabled={excelLoading || excelUploadUncertain || !!excelPreview.summary.invalid || !!excelPreview.summary.invalidCost} style={{ height: 40, padding: "0 20px", fontWeight: 800 }}>
-                                        {excelLoading ? "Cargando..." : excelUploadUncertain ? "Revisa el historial" : "Confirmar carga"}
+                                    <button className="btn" onClick={confirmExcelUpload} disabled={excelLoading || !!excelPreview.summary.invalid || !!excelPreview.summary.invalidCost} style={{ height: 40, padding: "0 20px", fontWeight: 800 }}>
+                                        {excelLoading ? "Cargando..." : "Confirmar carga"}
                                     </button>
                                 </div>
                             </div>
@@ -1260,7 +1168,7 @@ export default function AdminAccounts() {
                                 </div>
                             )}
 
-                            {isYouTubeChannel && (
+                            {isYouTubeMusic && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                     <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                         Nombre del canal de YouTube *
@@ -1293,41 +1201,15 @@ export default function AdminAccounts() {
                                         onChange={(e) => {
                                             setYoutubeTotpSecret(e.target.value);
                                             setYoutubeTotpConfirmationCode("");
-                                            setYoutubeTotpPreview(null);
-                                            setYoutubeTotpError("");
                                         }}
                                     />
                                     <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
-                                        Pulsa «Consultar código» para generar el código actual a partir de esta clave. Puedes copiarlo para iniciar sesión en Google. La clave se guarda cifrada y se comparte con las cuentas YouTube del mismo correo.
+                                        Se guarda cifrada y se comparte automáticamente con las cuentas YouTube que usen este mismo correo de Google. No ingreses aquí el código de 6 dígitos.
                                     </div>
                                     {youtubeTotpSecret.trim() && (
                                         <>
-                                            <button
-                                                className="btn-ghost"
-                                                type="button"
-                                                onClick={consultYoutubeTotpCode}
-                                                disabled={youtubeTotpLoading}
-                                                style={{ width: "fit-content", minHeight: 40, padding: "0 16px" }}
-                                            >
-                                                {youtubeTotpLoading ? "Generando código..." : "Consultar código"}
-                                            </button>
-                                            {youtubeTotpPreview && (
-                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 14px", border: "1px solid var(--stroke)", borderRadius: 12, background: "var(--bg0)" }}>
-                                                    <div>
-                                                        <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>Código actual</div>
-                                                        <code style={{ fontSize: 24, fontWeight: 800, letterSpacing: 3, color: "var(--text)" }}>{youtubeTotpPreview.code}</code>
-                                                        <div style={{ fontSize: 11, color: youtubeTotpSecondsLeft > 0 ? "#10b981" : "#f59e0b", marginTop: 4 }}>
-                                                            {youtubeTotpSecondsLeft > 0 ? `Vence en ${youtubeTotpSecondsLeft} s` : "Código vencido; consulta uno nuevo."}
-                                                        </div>
-                                                    </div>
-                                                    <button className="btn-ghost" type="button" onClick={copyYoutubeTotpCode} style={{ minHeight: 38, padding: "0 14px" }}>
-                                                        {youtubeTotpCopied ? "Copiado" : "Copiar código"}
-                                                    </button>
-                                                </div>
-                                            )}
-                                            {youtubeTotpError && <div role="alert" style={{ fontSize: 12, color: "#f87171" }}>{youtubeTotpError}</div>}
                                             <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px", marginTop: 4 }}>
-                                                Código para confirmar la clave
+                                                Código actual para confirmar
                                             </label>
                                             <input
                                                 style={inputStyle}
@@ -1340,14 +1222,14 @@ export default function AdminAccounts() {
                                                 onChange={(e) => setYoutubeTotpConfirmationCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                                             />
                                             <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
-                                                Al consultar, este campo se completa con el código generado. También puedes escribir el código actual de tu Authenticator. No se guarda.
+                                                Se usa solo para comprobar la clave y no se guarda.
                                             </div>
                                         </>
                                     )}
                                 </div>
                             )}
 
-                            <div style={{ display: hasCompactCredentials || isYouTubeChannel ? "none" : "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: hasCompactCredentials || isYouTubeMusic ? "none" : "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                                     Perfil(es) <span style={{ opacity: 0.5, fontWeight: 400 }}>(Opcional)</span>
                                 </label>
@@ -1462,7 +1344,7 @@ export default function AdminAccounts() {
                                 className="btn"
                                 style={{ width: "100%", maxWidth: 320, fontSize: 14, fontWeight: 800, height: 48 }}
                                 onClick={createAccount}
-                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || (isYouTubeChannel && !youtubeChannelName.trim()) || manualCostIncomplete}
+                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || (isYouTubeMusic && !youtubeChannelName.trim()) || manualCostIncomplete}
                             >
                                 {saving ? "Guardando..." : "✅ Agregar Cuenta"}
                             </button>

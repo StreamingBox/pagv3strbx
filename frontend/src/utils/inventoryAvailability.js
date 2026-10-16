@@ -1,5 +1,5 @@
 export const PROFILE_LABELS = {
-    free: "Libre", occupied: "Ocupado", duplicate: "Duplicado", missing: "Sin cargar", replaced: "Reemplazado", unavailable: "No disponible", review: "Por revisar",
+    free: "Libre", occupied: "Ocupado", missing: "Sin cargar", replaced: "Reemplazado", unavailable: "No disponible", review: "Por revisar",
 };
 
 export function filterAvailabilityRows(rows, { providerFilter = "all", platformFilter = "all", search = "", availability = "all" } = {}) {
@@ -41,9 +41,7 @@ export function availabilitySheets(rows) {
             "Perfiles libres": row.freeProfiles.join(", "),
             "Cantidad ocupados": row.occupiedProfiles.length,
             "Perfiles ocupados": row.occupiedProfiles.join(", "),
-            "Perfiles duplicados": (row.duplicateProfiles || []).join(", "),
             "Perfiles por revisar": row.reviewProfiles.join(", "),
-            "Motivo de revisión": (row.reviewReasons || []).join("; "),
             "Vencimiento proveedor": row.providerExpiresAt || "",
             "Renovación tarjeta": row.cardRenewalDate || "",
             Estado: "Activa",
@@ -53,10 +51,7 @@ export function availabilitySheets(rows) {
             Plataforma: row.platformName,
             "Correo de cuenta": row.accountEmail,
             Perfil: profile.number,
-            Estado: (row.duplicateProfiles || []).includes(profile.number) ? PROFILE_LABELS.duplicate : PROFILE_LABELS[profile.state],
-            "Detalle de revisión": (row.duplicateProfiles || []).includes(profile.number)
-                ? `Varias asignaciones activas · Inventario ${profile.accountIds.map((id) => `#${id}`).join(", ")} · Clientes ${profile.buyerEmails.join(", ")}`
-                : "",
+            Estado: PROFILE_LABELS[profile.state],
             "IDs de inventario": profile.accountIds.join(", "),
             "Correo de cliente": profile.buyerEmails.join(", "),
             "Fecha del perfil": profile.expiresAt || "",

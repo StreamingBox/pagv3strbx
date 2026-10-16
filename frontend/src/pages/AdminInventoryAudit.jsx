@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Plus, RefreshCcw, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Download, Plus, RefreshCcw, Search, SlidersHorizontal, Trash2, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { apiGet } from "../api/api.js";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
@@ -26,20 +26,10 @@ function storedRules(key = STORAGE_KEY) {
     } catch { return []; }
 }
 
-function ProfileBadge({ profile, duplicate = false }) {
-    const label = duplicate ? PROFILE_LABELS.duplicate : PROFILE_LABELS[profile.state];
-    const inventoryIds = profile.accountIds?.map((id) => `#${id}`).join(", ");
-    return <span className={`availability-profile ${profile.state}${duplicate ? " duplicate" : ""}`} title={duplicate ? `Perfil ${profile.number} duplicado en inventarios ${inventoryIds}` : `Perfil ${profile.number}: ${label}`}>
-        <b>{profile.number}</b><span>{label}</span>
+function ProfileBadge({ profile }) {
+    return <span className={`availability-profile ${profile.state}`} title={`Perfil ${profile.number}: ${PROFILE_LABELS[profile.state]}`}>
+        <b>{profile.number}</b><span>{PROFILE_LABELS[profile.state]}</span>
     </span>;
-}
-
-function duplicateProfileSummary(row) {
-    const duplicates = row.duplicateProfiles || [];
-    if (!duplicates.length) return "";
-    const profileIds = duplicates.map((number) => row.profiles.find((profile) => profile.number === number)?.accountIds || []).flat();
-    const inventory = [...new Set(profileIds)].map((id) => `#${id}`).join(", ");
-    return `Perfil${duplicates.length > 1 ? "es" : ""} ${duplicates.join(", ")} duplicado${duplicates.length > 1 ? "s" : ""}${inventory ? ` · inventario ${inventory}` : ""}`;
 }
 
 export default function AdminInventoryAudit() {
@@ -220,18 +210,13 @@ export default function AdminInventoryAudit() {
                 <div className="availability-results-meta"><span>{visibleRows.length} cuenta{visibleRows.length !== 1 ? "s" : ""}{providerFilter !== "all" ? ` · ${providerOptions.find(([id]) => id === providerFilter)?.[1] || ""}` : ""}</span>{excluded > 0 && <span>{excluded} excluidas por desactivación, caída o vencimiento</span>}</div>
                 {loading ? <div className="availability-empty" role="status">Cargando disponibilidad...</div> : !pageRows.length ? <div className="availability-empty"><Users size={32} /><h2>{availability === "with_free" ? "No hay perfiles libres con estos filtros" : "No hay cuentas con estos filtros"}</h2><button className="availability-button" onClick={() => { setAvailability("all"); setProviderFilter("all"); setPlatformFilter("all"); setSearch(""); setPage(1); }}>Ver todas las activas</button></div> : <div className="availability-table-wrap"><table className="availability-table"><thead><tr><th>Cuenta / proveedor</th><th>Disponibilidad</th><th>Perfiles</th><th>Vencimiento proveedor</th><th><span className="availability-sr-only">Acciones</span></th></tr></thead><tbody>{pageRows.map((row) => {
                     const key = `${row.platformId}:${row.accountEmail}`;
-                    const duplicates = new Set(row.duplicateProfiles || []);
-                    const duplicateSummary = duplicateProfileSummary(row);
                     return <Fragment key={key}><tr>
                         <td data-label="Cuenta"><strong className="availability-email">{row.accountEmail}</strong><span className="availability-platform">{row.platformName}</span><small>{row.providerName}{row.providerAccountId ? ` · #${row.providerAccountId}` : ""}</small></td>
-                        <td data-label="Disponibilidad"><strong className={`availability-count ${row.freeProfiles.length ? "free" : ""}`}>{row.freeProfiles.length} libre{row.freeProfiles.length !== 1 ? "s" : ""}</strong><small>{row.occupiedProfiles.length} ocupado{row.occupiedProfiles.length !== 1 ? "s" : ""}{row.reviewProfiles.length ? ` · ${row.reviewProfiles.length} por revisar` : ""}{duplicates.size ? ` · ${duplicates.size} duplicado${duplicates.size !== 1 ? "s" : ""}` : ""}</small>{duplicateSummary && <span className="availability-duplicate-summary"><AlertTriangle size={13} aria-hidden="true" />{duplicateSummary}</span>}{row.freeProfiles.length > 0 && <span className="availability-free-list">Perfil{row.freeProfiles.length !== 1 ? "es" : ""} {row.freeProfiles.join(", ")}</span>}</td>
-                        <td data-label="Perfiles"><div className="availability-profile-list">{row.profiles.map((profile) => <ProfileBadge key={profile.number} profile={profile} duplicate={duplicates.has(profile.number)} />)}</div></td>
+                        <td data-label="Disponibilidad"><strong className={`availability-count ${row.freeProfiles.length ? "free" : ""}`}>{row.freeProfiles.length} libre{row.freeProfiles.length !== 1 ? "s" : ""}</strong><small>{row.occupiedProfiles.length} ocupado{row.occupiedProfiles.length !== 1 ? "s" : ""}{row.reviewProfiles.length ? ` · ${row.reviewProfiles.length} por revisar` : ""}</small>{row.freeProfiles.length > 0 && <span className="availability-free-list">Perfil{row.freeProfiles.length !== 1 ? "es" : ""} {row.freeProfiles.join(", ")}</span>}</td>
+                        <td data-label="Perfiles"><div className="availability-profile-list">{row.profiles.map((profile) => <ProfileBadge key={profile.number} profile={profile} />)}</div></td>
                         <td data-label="Vencimiento"><span>{row.providerExpiresAt ? formatDateOnlyDisplay(row.providerExpiresAt, { day: "2-digit", month: "2-digit", year: "numeric" }) : "Sin fecha de proveedor"}</span>{row.cardRenewalDate && <small>Tarjeta: {formatDateOnlyDisplay(row.cardRenewalDate, { day: "2-digit", month: "2-digit", year: "numeric" })}</small>}</td>
                         <td className="availability-row-actions"><button className="availability-icon" title="Copiar correo" aria-label={`Copiar correo ${row.accountEmail}`} onClick={() => copyEmail(row.accountEmail)}>{copied === row.accountEmail ? <Check size={16} /> : <Copy size={16} />}</button><button className="availability-icon" title={expanded === key ? "Cerrar detalle de perfiles" : "Ver detalle de perfiles"} aria-label={`Detalle de ${row.accountEmail}`} aria-expanded={expanded === key} onClick={() => setExpanded(expanded === key ? null : key)}><ChevronDown size={18} className={expanded === key ? "availability-rotated" : ""} /></button></td>
-                    </tr>{expanded === key && <tr className="availability-detail"><td colSpan={5}><div className="availability-detail-heading"><h2>Perfiles de {row.accountEmail}</h2>{row.classification === "exception" && <span>{row.reviewReasons.join(" · ")}</span>}</div><div className="availability-detail-grid">{row.profiles.map((profile) => {
-                        const duplicate = duplicates.has(profile.number);
-                        return <article key={profile.number} className={`${profile.state}${duplicate ? " duplicate" : ""}`}><h3>Perfil {profile.number}<span>{duplicate ? PROFILE_LABELS.duplicate : PROFILE_LABELS[profile.state]}</span></h3>{duplicate ? <p>Hay varias asignaciones activas en este perfil. Verifica cuál cliente debe conservarlo antes de volver a ofrecerlo.</p> : profile.state === "free" ? <p>Disponible para vender.</p> : profile.state === "occupied" ? <p>{profile.buyerEmails.join(", ") || "Cliente asignado"}</p> : profile.state === "missing" ? <p>No tiene un registro cargado en inventario.</p> : profile.state === "replaced" ? <p>El cliente fue trasladado a otra cuenta. Pendiente de revisión para volver a usarlo.</p> : <p>Necesita revisión antes de venderse.</p>}{profile.accountIds.length > 0 && <small>Inventario: {profile.accountIds.map((id) => `#${id}`).join(", ")}</small>}{duplicate && profile.buyerEmails.length > 0 && <small>Clientes: {profile.buyerEmails.join(", ")}</small>}{profile.expiresAt && <small>Fecha del perfil: {formatDateOnlyDisplay(profile.expiresAt)}</small>}</article>;
-                    })}</div></td></tr>}</Fragment>;
+                    </tr>{expanded === key && <tr className="availability-detail"><td colSpan={5}><div className="availability-detail-heading"><h2>Perfiles de {row.accountEmail}</h2>{row.classification === "exception" && <span>{row.reviewReasons.join(" · ")}</span>}</div><div className="availability-detail-grid">{row.profiles.map((profile) => <article key={profile.number} className={profile.state}><h3>Perfil {profile.number}<span>{PROFILE_LABELS[profile.state]}</span></h3>{profile.state === "free" ? <p>Disponible para vender.</p> : profile.state === "occupied" ? <p>{profile.buyerEmails.join(", ") || "Cliente asignado"}</p> : profile.state === "missing" ? <p>No tiene un registro cargado en inventario.</p> : profile.state === "replaced" ? <p>El cliente fue trasladado a otra cuenta. Pendiente de revisión para volver a usarlo.</p> : <p>Necesita revisión antes de venderse.</p>}{profile.accountIds.length > 0 && <small>Inventario: {profile.accountIds.map((id) => `#${id}`).join(", ")}</small>}{profile.expiresAt && <small>Fecha del perfil: {formatDateOnlyDisplay(profile.expiresAt)}</small>}</article>)}</div></td></tr>}</Fragment>;
                 })}</tbody></table></div>}
                 <footer className="availability-pagination"><label>Por página <select aria-label="Cuentas por página" value={pageSize} onChange={(event) => changeFilter(setPageSize, Number(event.target.value))}>{[10, 20, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}</select></label><span>{visibleRows.length ? `${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, visibleRows.length)}` : "0"} de {visibleRows.length}</span><div><button className="availability-icon" title="Página anterior" aria-label="Página anterior" disabled={currentPage === 1 || loading} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={18} /></button><span>{currentPage} / {pageCount}</span><button className="availability-icon" title="Página siguiente" aria-label="Página siguiente" disabled={currentPage >= pageCount || loading} onClick={() => setPage(currentPage + 1)}><ChevronRight size={18} /></button></div></footer>
             </main>

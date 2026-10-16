@@ -7,15 +7,13 @@ const {
     sameCurrency,
 } = require("../src/utils/currency");
 const {
-    addDaysBogotaDateOnly,
     addDaysExact,
-    bogotaMonthUtcRange,
     formatDateOnlyBogota,
     isStoredDateOnlyExpired,
     parseDateOnly,
     toSqlDateTime,
 } = require("../src/utils/date");
-const { canRenewAfterExpiry, getRenewalEligibility } = require("../src/utils/renewals");
+const { getRenewalEligibility } = require("../src/utils/renewals");
 const { toCodeSlug } = require("../src/utils/platformSlugMap");
 const { extractFallbackCode } = require("../src/utils/codeExtraction");
 const { allowInsecureTls, getImapConfig } = require("../src/utils/imapConfig");
@@ -48,22 +46,6 @@ test("date utilities convert datetimes and calculate expiry safely", () => {
     assert.equal(isStoredDateOnlyExpired("2026-06-02", new Date("2026-06-01T12:00:00Z")), false);
 });
 
-test("Bogota month ranges use inclusive UTC start and exclusive next-month boundary", () => {
-    assert.deepEqual(bogotaMonthUtcRange(2026, 10), {
-        startUtc: "2026-10-01 05:00:00",
-        endUtc: "2026-11-01 05:00:00",
-        startDate: "2026-10-01",
-        endDate: "2026-11-01",
-    });
-    assert.deepEqual(bogotaMonthUtcRange(2026, 12), {
-        startUtc: "2026-12-01 05:00:00",
-        endUtc: "2027-01-01 05:00:00",
-        startDate: "2026-12-01",
-        endDate: "2027-01-01",
-    });
-    assert.throws(() => bogotaMonthUtcRange(2026, 13), RangeError);
-});
-
 test("renewal eligibility keeps stored date-only expirations available through the displayed day", () => {
     const eligibility = getRenewalEligibility({
         expiresAt: new Date("2026-06-10T00:00:00Z"),
@@ -76,53 +58,6 @@ test("renewal eligibility keeps stored date-only expirations available through t
 
     assert.equal(eligibility.canRenew, true);
     assert.equal(eligibility.expiresOnDate, "2026-06-10");
-});
-
-test("renewal eligibility can allow an expired subscription only when explicitly requested", () => {
-    const params = {
-        expiresAt: "2026-06-10",
-        expiresAtIsDateOnly: true,
-        isRenewable: true,
-        status: "active",
-        isAttended: 0,
-        now: new Date("2026-06-12T17:00:00Z"),
-    };
-
-    assert.equal(getRenewalEligibility(params).canRenew, false);
-    assert.equal(getRenewalEligibility({ ...params, allowExpired: true }).canRenew, true);
-    assert.equal(getRenewalEligibility({ ...params, allowExpired: true, isAttended: 1 }).canRenew, false);
-    assert.equal(getRenewalEligibility({ ...params, allowExpired: true, status: "cancelled" }).canRenew, false);
-    assert.equal(getRenewalEligibility({ ...params, allowExpired: true, isRenewable: false }).canRenew, false);
-    assert.equal(getRenewalEligibility({
-        ...params,
-        allowExpired: true,
-        renewalCount: 2,
-        platformSlug: "youtube-music",
-    }).canRenew, false);
-});
-
-test("customers can extend only active unattended expired subscriptions; admins still need explicit approval", () => {
-    const expiredActive = {
-        status: "active",
-        isAttended: 0,
-        isPastExpiry: true,
-    };
-
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user" }), true);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "admin" }), false);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "admin", extendedRenewal: true }), true);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user", isAttended: 1 }), false);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user", status: "cancelled" }), false);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user", status: "pending" }), false);
-    assert.equal(canRenewAfterExpiry({ ...expiredActive, actorRole: "user", isPastExpiry: false }), false);
-});
-
-test("a 90-day extended renewal stays anchored to the previous expiry", () => {
-    const newExpiry = addDaysBogotaDateOnly(90, new Date("2026-10-10T12:00:00Z"));
-    const daysFromToday = (Date.parse(`${newExpiry}T00:00:00Z`) - Date.parse("2026-10-12T00:00:00Z")) / 86_400_000;
-
-    assert.equal(newExpiry, "2027-01-08");
-    assert.equal(daysFromToday, 88);
 });
 
 test("renewal eligibility uses Bogota day for real account datetimes", () => {

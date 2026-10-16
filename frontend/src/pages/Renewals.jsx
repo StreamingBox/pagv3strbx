@@ -47,7 +47,6 @@ export default function Renewals() {
         platformId: "",
         availability: "available",
     });
-    const [searchText, setSearchText] = useState("");
     const [renewModal, setRenewModal] = useState(null);
     const [renewSubmitting, setRenewSubmitting] = useState(false);
     const [renewError, setRenewError] = useState("");
@@ -109,11 +108,6 @@ export default function Renewals() {
         () => items.filter((item) => item.renewal?.can_renew_now).length,
         [items]
     );
-
-    function applySearch() {
-        setPage(1);
-        setFilters((prev) => ({ ...prev, q: searchText.trim() }));
-    }
 
     function openRenewModal(item) {
         setRenewModal(item);
@@ -184,27 +178,21 @@ export default function Renewals() {
                 <main className="main">
                     <h1 style={{ margin: 0 }}>Renovaciones</h1>
                     <p style={{ marginTop: 6, color: "var(--muted)" }}>
-                        Busca una suscripción por su ID y filtra por plataforma y estado.
+                        Busca tus cuentas renovables, filtra por plataforma y decide si quieres ver solo las disponibles o también las bloqueadas.
                     </p>
 
                     <div className="kpi" style={{ marginTop: 12 }}>
                         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
                             <div style={{ flex: 1, minWidth: 220 }}>
-                                <div className="label">ID de suscripción</div>
+                                <div className="label">Buscar</div>
                                 <input
                                     type="text"
                                     className="input"
-                                    inputMode="numeric"
-                                    placeholder="Ej.: 6910"
-                                    maxLength={20}
-                                    aria-label="Buscar por ID de suscripción"
-                                    value={searchText}
-                                    onChange={(e) => setSearchText(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                            e.preventDefault();
-                                            applySearch();
-                                        }
+                                    placeholder="Orden, sub ID, correo o PIN"
+                                    value={filters.q}
+                                    onChange={(e) => {
+                                        setPage(1);
+                                        setFilters((prev) => ({ ...prev, q: e.target.value }));
                                     }}
                                 />
                             </div>
@@ -263,9 +251,12 @@ export default function Renewals() {
                             <div style={{ display: "flex", gap: 10 }}>
                                 <button
                                     className="btn"
-                                    onClick={applySearch}
+                                    onClick={() => {
+                                        setPage(1);
+                                        void loadRenewals(1, limit, filters);
+                                    }}
                                 >
-                                    Buscar
+                                    Aplicar filtros
                                 </button>
                                 <button
                                     className="btn-ghost"
@@ -275,10 +266,10 @@ export default function Renewals() {
                                             platformId: "",
                                             availability: "available",
                                         };
-                                        setSearchText("");
                                         setPage(1);
                                         setLimit(10);
                                         setFilters(nextFilters);
+                                        void loadRenewals(1, 10, nextFilters);
                                     }}
                                 >
                                     Limpiar
@@ -369,9 +360,7 @@ export default function Renewals() {
                                         </div>
                                         <div style={{ marginTop: 6, fontSize: 12, color: item.renewal?.can_renew_now ? "#10b981" : "#f59e0b" }}>
                                             {item.renewal?.can_renew_now
-                                                ? item.renewal?.extended_renewal
-                                                    ? "Vencida, pero aún puedes renovar. Los días vencidos se descuentan del período."
-                                                    : `Disponible hasta el ${item.renewal?.eligible_until_date}`
+                                                ? `Disponible hasta el ${item.renewal?.eligible_until_date}`
                                                 : (item.renewal?.block_reason || "No disponible")}
                                         </div>
                                     </div>
@@ -470,11 +459,8 @@ export default function Renewals() {
                                 <div>{formatBogota(renewModal.subscription_expires_at)}</div>
                             </div>
                             <div>
-                                <div className="label">{renewModal.renewal?.extended_renewal ? "Vencimiento anterior" : "Límite para renovar"}</div>
-                                <div>
-                                    {renewModal.renewal?.eligible_until_date}
-                                    {renewModal.renewal?.extended_renewal ? "" : " 23:59 Colombia"}
-                                </div>
+                                <div className="label">Límite para renovar</div>
+                                <div>{renewModal.renewal?.eligible_until_date} 23:59 Colombia</div>
                             </div>
                             <div>
                                 <div className="label">Valor de la renovación</div>
@@ -494,7 +480,7 @@ export default function Renewals() {
                             <div style={{ marginTop: 14, padding: 12, borderRadius: 12, background: "rgba(245,158,11,0.12)", border: "1px solid rgba(245,158,11,0.28)", color: "var(--text)" }}>
                                 <div style={{ fontWeight: 900 }}>¿Estás seguro de que deseas renovar esta cuenta?</div>
                                 <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 13 }}>
-                                    Se descontará el valor de tu saldo. El período se cuenta desde el vencimiento anterior; si ya venció, los días transcurridos se descuentan y no se reinicia desde hoy.
+                                    Se descontará el valor de tu saldo y el tiempo adicional se sumará desde el vencimiento actual, no desde hoy.
                                 </div>
                             </div>
                         ) : null}

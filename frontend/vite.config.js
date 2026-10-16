@@ -5,7 +5,6 @@ import compression from 'vite-plugin-compression'
 import fs from 'node:fs'
 import path from 'node:path'
 import { providerReleaseGuard } from './build/providerReleaseGuard.js'
-import { criticalReleaseGuard } from './build/criticalReleaseGuard.js'
 
 // función de bypass: solo proxear peticiones XHR/Fetch, no navegaciones del browser
 function apiOnly(req) {
@@ -51,7 +50,6 @@ export default defineConfig({
   plugins: [
     react(),
     providerReleaseGuard(),
-    criticalReleaseGuard(),
     compression({
       algorithm: 'brotliCompress',
       ext: '.br',

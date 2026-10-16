@@ -11,6 +11,7 @@ RELEASE_DIR="$RELEASES_DIR/$RELEASE_ID"
 STAGING_DIR="$RELEASES_DIR/.staging-$RELEASE_ID"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERIFY_SCRIPT="$SCRIPT_DIR/../../frontend/scripts/verify-release.mjs"
+PRESERVE_ASSETS_SCRIPT="$SCRIPT_DIR/../../frontend/scripts/carry-forward-release-assets.mjs"
 SMOKE_URL="${FRONTEND_SMOKE_URL:-https://strbx.com.co/admin}"
 SMOKE_HOST="${FRONTEND_SMOKE_HOST:-strbx.com.co}"
 
@@ -24,9 +25,23 @@ SMOKE_HOST="${FRONTEND_SMOKE_HOST:-strbx.com.co}"
   exit 1
 }
 
+[[ -f "$PRESERVE_ASSETS_SCRIPT" ]] || {
+  echo "The frontend asset-retention script is missing: $PRESERVE_ASSETS_SCRIPT" >&2
+  exit 1
+}
+
 if [[ -e "$CURRENT_LINK" && ! -L "$CURRENT_LINK" ]]; then
   echo "Refusing to replace a non-symlink frontend path: $CURRENT_LINK" >&2
   exit 1
+fi
+
+PREVIOUS_RELEASE=""
+if [[ -L "$CURRENT_LINK" ]]; then
+  PREVIOUS_RELEASE="$(readlink -f -- "$CURRENT_LINK" 2>/dev/null || true)"
+  [[ -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE/assets" ]] || {
+    echo "The current frontend release or its assets cannot be resolved safely: $CURRENT_LINK" >&2
+    exit 1
+  }
 fi
 
 mkdir -p "$RELEASES_DIR"
@@ -38,6 +53,9 @@ mkdir -p "$RELEASES_DIR"
 trap 'if [[ -d "$STAGING_DIR" ]]; then rm -rf -- "$STAGING_DIR"; fi' EXIT
 mkdir "$STAGING_DIR"
 cp -a "$SOURCE_DIR/." "$STAGING_DIR/"
+if [[ -n "$PREVIOUS_RELEASE" ]]; then
+  node "$PRESERVE_ASSETS_SCRIPT" "$PREVIOUS_RELEASE/assets" "$STAGING_DIR/assets"
+fi
 
 # nginx normally runs as www-data. Directories must be traversable and files
 # readable after every deployment, regardless of the deploy user's umask.
@@ -53,7 +71,6 @@ ENTRY_ASSET="$(grep -oE '/assets/index-[^\" ]+\.js' "$STAGING_DIR/index.html" | 
 }
 
 mv "$STAGING_DIR" "$RELEASE_DIR"
-PREVIOUS_RELEASE="$(readlink -f -- "$CURRENT_LINK" 2>/dev/null || true)"
 NEXT_LINK="$FRONTEND_ROOT/.current-$RELEASE_ID"
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
 mv -Tf "$NEXT_LINK" "$CURRENT_LINK"
@@ -78,6 +95,20 @@ fi
 
 if ! grep -Fq "$ENTRY_ASSET" <<< "$SERVED_HTML"; then
   echo "Nginx did not serve the new frontend entry asset; restoring the previous release." >&2
+  rollback_frontend
+  exit 1
+fi
+
+MISSING_ASSET_SMOKE_URL="https://$SMOKE_HOST/assets/__strbx_missing_asset_probe__.js"
+if ! MISSING_ASSET_STATUS="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 \
+  --resolve "$SMOKE_HOST:443:127.0.0.1" "$MISSING_ASSET_SMOKE_URL")"; then
+  echo "Missing-asset smoke request failed; restoring the previous release." >&2
+  rollback_frontend
+  exit 1
+fi
+
+if [[ "$MISSING_ASSET_STATUS" != "404" ]]; then
+  echo "Missing assets must return HTTP 404 (received $MISSING_ASSET_STATUS); restoring the previous release." >&2
   rollback_frontend
   exit 1
 fi

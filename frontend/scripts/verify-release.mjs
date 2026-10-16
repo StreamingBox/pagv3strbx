@@ -14,11 +14,12 @@ function fail(message) {
 if (!fs.existsSync(indexPath)) fail(`missing ${indexPath}`);
 
 const indexHtml = fs.readFileSync(indexPath, "utf8");
-const entryScript = indexHtml.match(/(?:src|href)="([^"]*\/assets\/index-[^"]+\.(?:js|css))"/);
-if (!entryScript) fail("index.html does not reference a hashed Vite entry asset");
+const entryScript = indexHtml.match(/<script\b[^>]*\bsrc="([^"]*\/assets\/index-[^"]+\.js)"/);
+if (!entryScript) fail("index.html does not reference a hashed Vite entry script");
 if (!fs.existsSync(path.join(distDir, entryScript[1].replace(/^\//, "")))) {
     fail(`entry asset is missing: ${entryScript[1]}`);
 }
+const entrySource = fs.readFileSync(path.join(distDir, entryScript[1].replace(/^\//, "")), "utf8");
 
 const assetsDir = path.join(distDir, "assets");
 const requiredChunks = [
@@ -43,7 +44,8 @@ const requiredChunks = [
 if (!fs.existsSync(assetsDir)) fail("missing assets directory");
 const assetNames = fs.readdirSync(assetsDir);
 for (const chunk of requiredChunks) {
-    const filename = assetNames.find((name) => name.startsWith(chunk.prefix) && name.endsWith(".js"));
+    const referencedChunks = [...new Set(entrySource.match(new RegExp(chunk.prefix + "[A-Za-z0-9_-]+\\.js", "g")) || [])];
+    const filename = referencedChunks.find((name) => assetNames.includes(name));
     if (!filename) fail(`missing required chunk ${chunk.prefix}*.js`);
 
     const source = fs.readFileSync(path.join(assetsDir, filename), "utf8");

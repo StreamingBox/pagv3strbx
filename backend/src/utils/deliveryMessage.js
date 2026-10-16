@@ -225,6 +225,7 @@ function buildAccountDeliveryMessage({
     const safeAccount = account || {};
     const lines = [];
     const url = token ? credentialUrl(baseUrl, token) : "";
+    const isYouTubeProduct = isYouTubeChannelProduct({ platformName, platformSlug });
 
     if (String(intro || "").trim()) {
         lines.push(String(intro).trim());
@@ -278,7 +279,7 @@ function buildAccountDeliveryMessage({
         lines.push(`📅 Expira: ${formatDateOnlyBogota(expiresAt)}`);
     }
 
-    if (url && !isSpotifyProduct({ platformName, platformSlug })) {
+    if (url && !isSpotifyProduct({ platformName, platformSlug }) && !isYouTubeProduct) {
         lines.push("");
         lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
     }
@@ -323,6 +324,13 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
             platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
         });
     };
+    const isYouTubeResult = (result) => {
+        const plan = result?.plan || {};
+        return isYouTubeChannelProduct({
+            platformName: result?.purchasedPlatformName || result?.platformName || plan.platform_name,
+            platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
+        });
+    };
     const isEventLinkResult = (result) => isEventLinkPlan(result?.plan || {})
         || Boolean(result?.eventLink?.url || result?.event_link_url);
 
@@ -333,6 +341,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
             && !isDisneyCodeTvResult(result)
             && !isMicrosoftOfficeResult(result)
             && !isSpotifyResult(result)
+            && !isYouTubeResult(result)
             && !isEventLinkResult(result)
             && !isEmailDelivery(plan)
             && shouldShowDeviceUsageRule(plan);
@@ -444,7 +453,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         }
 
         lines.push(`📅 Expira: ${formatDateOnlyBogota(result?.expiresAt)}`);
-        if (!isSpotifyResult(result)) {
+        if (!isSpotifyResult(result) && !isYouTubeResult(result)) {
             lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
         }
         markOrderPlatform36Notice(platformId);

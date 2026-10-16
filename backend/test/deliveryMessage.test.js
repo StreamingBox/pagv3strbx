@@ -63,6 +63,8 @@ test("YouTube Music delivery names the exact channel instead of treating it as a
 
     assert.match(message, /Canal de YouTube: Canal Familiar/);
     assert.doesNotMatch(message, /Perfil:/);
+    assert.doesNotMatch(message, /strbx\.com\.co\/s\/TOKEN123/);
+    assert.doesNotMatch(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
 });
 
 test("YouTube Music replacement delivery also includes the channel name", () => {
@@ -91,6 +93,22 @@ test("YouTube three-month delivery includes the channel name", () => {
 
     assert.match(message, /Canal de YouTube: @Strbx-2/);
     assert.doesNotMatch(message, /Perfil:/);
+    assert.doesNotMatch(message, /strbx\.com\.co\/s\/TOKEN123/);
+    assert.doesNotMatch(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
+});
+
+test("YouTube Music and three-month orders omit the old password link and one-device rule", () => {
+    for (const platformName of ["YouTube Music", "Youtube 3 meses"]) {
+        const message = buildSingleItemMessage({
+            platformName,
+            account: { youtube_channel_name: "Canal del pedido" },
+        });
+
+        assert.match(message, /Canal de YouTube: Canal del pedido/);
+        assert.doesNotMatch(message, /Debido a que en ocasiones se bloquea o cambia la clave/u);
+        assert.doesNotMatch(message, /Regla de uso: 1 pantalla = 1 dispositivo/u);
+        assert.doesNotMatch(message, /TOKEN123/u);
+    }
 });
 
 test("non-Canva correo products keep the generic credential link message", () => {

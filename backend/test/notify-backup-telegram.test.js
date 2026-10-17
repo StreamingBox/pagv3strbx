@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createBackupMessage, getRecipients, notifyBackup } = require("../scripts/notify-backup-telegram");
+const { createBackupMessage, getRecipients, notifyBackup, notifyBackupFailure } = require("../scripts/notify-backup-telegram");
 
 test("backup notification lists the verified Drive destination", () => {
     const message = createBackupMessage("20261011T144219Z", "gdrive:StreamingBoxBackups/production/scheduled/20261011T144219Z");
@@ -52,4 +52,12 @@ test("Telegram API rejection is reported as a failed notification", async () => 
         }),
         /failed for 1 of 1 recipient/,
     );
+});
+
+test("failed Drive copies are reported as pending, never confirmed", async () => {
+    const calls = [];
+    await notifyBackupFailure({ count: 2, env: { TELEGRAM_BOT_TOKEN: "test-token", TELEGRAM_CHAT_IDS: "123" }, post: async (...args) => calls.push(args) });
+    assert.match(calls[0][1].text, /2 copia\(s\) pendientes/);
+    assert.doesNotMatch(calls[0][1].text, /confirmado en Google Drive/);
+    assert.doesNotMatch(createBackupMessage("fictional", "gdrive:fictional"), /diario/);
 });

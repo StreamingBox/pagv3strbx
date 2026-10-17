@@ -16,7 +16,8 @@ swap y carga del CPU. La ocupacion de memoria no equivale a carga del CPU.
   respaldos, uploads y nombres desconocidos.
 - Copia a `~/.strbx-server-relief/<fecha-id>/`, privado y fuera de tmpfs.
   Verifica SHA-256, lectura e integridad de cada copia; sincroniza las copias y
-  su manifiesto antes de retirar los originales, archivo por archivo.
+  su manifiesto, sube a Google Drive y verifica SHA-256 descargando la copia
+  antes de retirar los originales, archivo por archivo.
 - Conserva todos los archivos archivados. Los manifiestos incluyen ruta
   original, tamano y SHA-256 para comprobar y recuperar cada archivo.
 - Mantiene al menos 512 MiB libres en el disco de destino y limita cada pasada
@@ -48,3 +49,7 @@ Los archivos de historial no se publican ni se agregan a Git. Antes de recuperar
 verificar cada hash contra el manifiesto. Copiar a un destino nuevo en disco,
 nunca sobre un checkout o release activo. Una pasada incompleta conserva las
 copias y los archivos pendientes para revision. No borrar el historial.
+
+Todas las copias, tambien las extraordinarias, requieren Drive. Si la subida o
+su verificacion falla, no se retiran los originales y la copia local queda en
+la cola de reintentos. `sync-backup-drive.js` revisa esa cola cada 15 minutos.

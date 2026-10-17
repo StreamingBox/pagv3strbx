@@ -12,6 +12,7 @@ function buildServerReliefMessage(result, before, after) {
     return [
         result.releasedBytes ? "Limpieza del servidor completada." : "Revision completada: no se liberaron temporales.",
         `Temporales archivados: ${result.archived}`,
+        `Copias verificadas en Drive: ${result.driveVerified || 0}`,
         `Retirado de /tmp: ${formatMiB(result.releasedBytes)}`,
         `RAM disponible: ${formatMiB(before?.memory?.availableBytes)} -> ${formatMiB(after?.memory?.availableBytes)}`,
         before?.swap && after?.swap ? `Swap utilizada: ${formatMiB(before.swap.usedBytes)} -> ${formatMiB(after.swap.usedBytes)}` : "",
@@ -20,7 +21,8 @@ function buildServerReliefMessage(result, before, after) {
         result.skipped ? `Temporales omitidos por proteccion o limites: ${result.skipped}` : "",
         result.failed ? `Temporales conservados al no poder completar la verificacion: ${result.failed}` : "",
         result.diskLimited ? "Falta espacio en disco para conservar mas temporales. Se mantuvieron los originales." : "",
-        "Se conservaron los archivos en disco. Cuentas, respaldos y servicios permanecen intactos.",
+        result.failed ? "Las copias pendientes se conservan localmente para reintentar su subida a Drive." : "Las copias completadas se conservan en disco y verificadas en Drive.",
+        "Cuentas, respaldos anteriores y servicios permanecen intactos.",
         "La memoria disponible puede variar con la actividad del servidor.",
     ].filter(Boolean).join("\n");
 }

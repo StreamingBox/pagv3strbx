@@ -6,9 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKUP_DIR="${1:?Usage: backup-production.sh /absolute/backup-directory}"
-RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-21}"
-
-mkdir -p "$BACKUP_DIR"
+[[ "$BACKUP_DIR" = /* && ! -e "$BACKUP_DIR" ]] || { echo "Use a new absolute backup directory; existing backups are preserved" >&2; exit 1; }
+mkdir -p "$(dirname "$BACKUP_DIR")"
+mkdir "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 
 node "$PROJECT_DIR/backend/scripts/backup-database.js" "$BACKUP_DIR/database.sql.gz"
@@ -28,8 +28,11 @@ else
 fi
 
 chmod 600 "$BACKUP_DIR/database.sql.gz" "$BACKUP_DIR/user-assets.tgz"
+gzip -t "$BACKUP_DIR/database.sql.gz"
+tar -tzf "$BACKUP_DIR/user-assets.tgz" >/dev/null
 
-BACKUP_ROOT="$(dirname "$BACKUP_DIR")"
-find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -mtime "+$RETENTION_DAYS" -exec rm -rf {} +
+RECEIPT="$(node "$PROJECT_DIR/backend/scripts/upload-backup-drive.js" "$BACKUP_DIR" production)"
+DRIVE_TARGET="$(printf '%s' "$RECEIPT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const r=JSON.parse(s);if(!r.verified)process.exit(1);console.log(r.driveTarget);})')"
 
-echo "Production backup complete: $BACKUP_DIR"
+echo "Production backup verified in Drive: $DRIVE_TARGET (local copy preserved: $BACKUP_DIR)"
+node "$PROJECT_DIR/backend/scripts/notify-backup-telegram.js" "$(date -u +%Y%m%dT%H%M%SZ)" "$DRIVE_TARGET" || echo "WARNING: Drive verified; Telegram notification pending" >&2

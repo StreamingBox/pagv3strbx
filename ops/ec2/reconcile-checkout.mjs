@@ -2,6 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+const { uploadBackup } = createRequire(import.meta.url)("../../backend/src/services/backupDrive.service.js");
 
 const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
 const normalize = (value) => value.includes(0) ? value : Buffer.from(value.toString("utf8").replace(/\r\n/g, "\n"));
@@ -61,7 +65,7 @@ function createPlan(rootDirectory, target, planPath) {
     console.log(JSON.stringify({ target, previousHead, writes: writes.map((item) => ({ path: item.path, action: item.before ? "update" : "create" })) }, null, 2));
 }
 
-function applyPlan(planPath, backupDirectory) {
+async function applyPlan(planPath, backupDirectory, { upload = uploadBackup } = {}) {
     const plan = JSON.parse(fs.readFileSync(planPath, "utf8"));
     assertRepository(plan.root, plan.previousHead);
     if (plan.target !== text(plan.root, ["rev-parse", "refs/remotes/origin/main"])) throw new Error("origin/main changed after review.");
@@ -93,6 +97,13 @@ function applyPlan(planPath, backupDirectory) {
         fs.chmodSync(saved, 0o600);
         if (currentHash(saved) !== item.before) throw new Error(`Backup verification failed: ${item.path}`);
     }
+    const receipt = await upload(backup, { kind: "source" });
+    if (!receipt?.verified) throw new Error("Source backup is not verified in Drive; checkout preserved.");
+    assertRepository(plan.root, plan.previousHead);
+    if (plan.target !== text(plan.root, ["rev-parse", "refs/remotes/origin/main"])) throw new Error("origin/main changed during backup upload.");
+    for (const item of plan.writes) {
+        if (currentHash(path.join(plan.root, item.path)) !== item.before) throw new Error(`Source changed during backup upload: ${item.path}`);
+    }
     for (const item of plan.writes) {
         const destination = path.join(plan.root, item.path);
         fs.mkdirSync(path.dirname(destination), { recursive: true });
@@ -107,15 +118,21 @@ function applyPlan(planPath, backupDirectory) {
     git(plan.root, ["update-ref", "refs/heads/main", plan.target, plan.previousHead]);
     git(plan.root, ["diff", "--exit-code"]);
     git(plan.root, ["diff", "--cached", "--exit-code"]);
-    console.log(JSON.stringify({ commit: plan.target, updatedFiles: plan.writes.length, backup }));
+    const result = { commit: plan.target, updatedFiles: plan.writes.length, backup, driveTarget: receipt.driveTarget };
+    console.log(JSON.stringify(result));
+    return result;
 }
 
-try {
-    const [mode, ...args] = process.argv.slice(2);
-    if (mode === "plan" && args.length === 3) createPlan(...args);
-    else if (mode === "apply" && args.length === 2) applyPlan(...args);
-    else throw new Error("Usage: node reconcile-checkout.mjs plan <checkout> <target-sha> <new-plan.json> | apply <reviewed-plan.json> <new-backup-directory>");
-} catch (error) {
-    console.error(error.message);
-    process.exitCode = 1;
+export { createPlan, applyPlan };
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+    try {
+        const [mode, ...args] = process.argv.slice(2);
+        if (mode === "plan" && args.length === 3) createPlan(...args);
+        else if (mode === "apply" && args.length === 2) await applyPlan(...args);
+        else throw new Error("Usage: node reconcile-checkout.mjs plan <checkout> <target-sha> <new-plan.json> | apply <reviewed-plan.json> <new-backup-directory>");
+    } catch (error) {
+        console.error(error.message);
+        process.exitCode = 1;
+    }
 }

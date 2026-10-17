@@ -36,6 +36,8 @@ Antes de cada cambio, vuelve a consultar este archivo, incluso si el cambio es u
 - Mantén la lógica de YouTube, el nombre del canal, la consulta de códigos, los límites y ventanas por pedido, y los estados del inventario coherentes entre alta manual, Excel, edición, venta y consulta. Añade o actualiza pruebas para las rutas afectadas.
 - Trata semillas TOTP, códigos de un solo uso, contraseñas, datos de clientes y credenciales AWS como secretos. No los imprimas en logs, capturas, commits, respuestas ni archivos de ejemplo reales. Usa variables de entorno y datos de prueba ficticios.
 - Para respaldos, verifica por separado creación, integridad, subida a Drive, notificación y recuperación. Una carpeta visible o una notificación enviada no demuestra por sí sola que el respaldo sea válido.
+- Toda copia real, diaria o extraordinaria, manual, previa a un cambio, de fuentes, base de datos o limpieza, debe quedar en Google Drive. Usa `backend/scripts/upload-backup-drive.js` para las copias fuera del flujo diario. No declares éxito ni retires originales hasta observar la verificación remota. Si Drive falla, conserva la copia local, registra el pendiente y detén la operación que dependía de ese respaldo. Las pruebas con datos ficticios usan transporte simulado.
+- Conserva todo el histórico de Drive. No uses sincronizaciones con borrado, no reemplaces copias verificadas y no desactives la subida mediante flags locales. Comprueba también las copias pendientes de `sync-backup-drive.js` antes de cerrar trabajos de respaldo.
 
 ## Cierre obligatorio de cada tarea
 

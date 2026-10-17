@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-require("dotenv").config({ path: require("node:path").join(__dirname, "..", ".env"), override: false });
+require("dotenv").config({ path: require("node:path").join(__dirname, "..", ".env"), override: false, quiet: true });
 
 const axios = require("axios");
 
@@ -9,21 +9,20 @@ function getRecipients(rawIds) {
 
 function createBackupMessage(timestamp, driveTarget) {
     return [
-        "✅ Respaldo diario confirmado en Google Drive.",
+        "✅ Respaldo confirmado en Google Drive.",
         `Fecha (UTC): ${timestamp}`,
-        `Carpeta: ${driveTarget}`,
+        `Destino: ${driveTarget}`,
         "La carga y la verificación de integridad finalizaron correctamente.",
     ].join("\n");
 }
 
-async function notifyBackup({ timestamp, driveTarget, env = process.env, post = axios.post }) {
+async function sendBackupNotification(text, { env = process.env, post = axios.post } = {}) {
     const token = String(env.TELEGRAM_BOT_TOKEN || "").trim();
     const recipients = getRecipients(env.TELEGRAM_CHAT_IDS);
     if (!token || recipients.length === 0) {
         throw new Error("Telegram backup notification is not configured (token or chat IDs missing)");
     }
 
-    const text = createBackupMessage(timestamp, driveTarget);
     const results = await Promise.allSettled(recipients.map(async (chatId) => {
         const response = await post(
             `https://api.telegram.org/bot${token}/sendMessage`,
@@ -40,6 +39,14 @@ async function notifyBackup({ timestamp, driveTarget, env = process.env, post = 
     return { sent: recipients.length };
 }
 
+async function notifyBackup({ timestamp, driveTarget, ...options }) {
+    return sendBackupNotification(createBackupMessage(timestamp, driveTarget), options);
+}
+
+async function notifyBackupFailure({ count, ...options }) {
+    return sendBackupNotification(`Hay ${Number(count)} copia(s) pendientes de verificar en Google Drive. Las copias locales se conservan y se reintentaran automaticamente. No se consideran respaldos completados.`, options);
+}
+
 if (require.main === module) {
     const [timestamp, driveTarget] = process.argv.slice(2);
     if (!timestamp || !driveTarget) {
@@ -47,7 +54,7 @@ if (require.main === module) {
         process.exit(2);
     }
 
-    notifyBackup({ timestamp, driveTarget })
+    (timestamp === "--pending" ? notifyBackupFailure({ count: Number(driveTarget) || 1 }) : notifyBackup({ timestamp, driveTarget }))
         .then(({ sent }) => console.log(`Telegram backup notification sent to ${sent} recipient(s)`))
         .catch((error) => {
             console.error(`Telegram backup notification error: ${error.message}`);
@@ -55,4 +62,4 @@ if (require.main === module) {
         });
 }
 
-module.exports = { createBackupMessage, getRecipients, notifyBackup };
+module.exports = { createBackupMessage, getRecipients, notifyBackup, notifyBackupFailure };

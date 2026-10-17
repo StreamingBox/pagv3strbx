@@ -1,0 +1,14 @@
+[Unit]
+Description=Verify every manual and scheduled recovery copy in Google Drive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/pageV3/backend
+ExecStart=/usr/bin/node /var/www/pageV3/backend/scripts/sync-backup-drive.js --backfill
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=40%
+MemoryMax=192M
+TimeoutStartSec=45min

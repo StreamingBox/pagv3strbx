@@ -5,11 +5,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/streaming-box/scheduled}"
-TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
 if [[ "${BACKUP_DRIVE_UPLOAD:-true}" != "true" ]]; then
-  exec bash "$SCRIPT_DIR/backup-production.sh" "$BACKUP_DIR"
+  echo "Drive upload is mandatory for every backup; local-only mode is disabled" >&2
+  exit 1
 fi
 
 RCLONE_BIN="${RCLONE_BIN:-/home/ubuntu/.local/bin/rclone}"
@@ -41,14 +42,18 @@ export MYSQLDUMP_BIN
 
 VERIFY_DIR="$(mktemp -d "${TMPDIR:-/tmp}/streaming-box-backup.XXXXXX")"
 chmod 700 "$VERIFY_DIR"
-trap 'rm -rf -- "$VERIFY_DIR"' EXIT
+finish_backup() {
+  local status=$?
+  if (( status != 0 )); then
+    node "$PROJECT_DIR/backend/scripts/notify-backup-telegram.js" --pending 1 || echo "WARNING: backup failure notification pending" >&2
+  fi
+  rm -rf -- "$VERIFY_DIR"
+  return "$status"
+}
+trap finish_backup EXIT
 
 if [[ "${BACKUP_REMOVE_LOCAL_AFTER_DRIVE_VERIFY:-true}" != "true" ]]; then
   bash "$SCRIPT_DIR/backup-production.sh" "$BACKUP_DIR"
-  "$RCLONE_BIN" copy "$BACKUP_DIR" "$DRIVE_TARGET" --transfers 1 --checkers 2
-  "$RCLONE_BIN" check "$BACKUP_DIR" "$DRIVE_TARGET" --one-way
-  echo "Verified Drive copy; kept local backup: $BACKUP_DIR"
-  notify_drive_backup
   exit 0
 fi
 

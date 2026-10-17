@@ -5,6 +5,7 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
+import { applyPlan } from "./reconcile-checkout.mjs";
 
 const script = fileURLToPath(new URL("./reconcile-checkout.mjs", import.meta.url));
 const fixtures = [];
@@ -38,14 +39,21 @@ function repository() {
 const run = (...args) => spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
 afterEach(() => fixtures.splice(0).forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
 
-test("archives local source and Git before aligning, preserving private files", () => {
+test("archives local source and Git in Drive before aligning, preserving private files", async () => {
     const fixture = repository();
     fs.writeFileSync(path.join(fixture.root, "app.js"), "// production-only edit\n");
     fs.writeFileSync(path.join(fixture.root, ".env"), "FICTIONAL_SECRET=test-only\n");
     assert.equal(run("plan", fixture.root, fixture.target, fixture.plan).status, 0);
     assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.previous);
-    const applied = run("apply", fixture.plan, fixture.backup);
-    assert.equal(applied.status, 0, applied.stderr);
+    let verified = false;
+    await applyPlan(fixture.plan, fixture.backup, { upload: async backup => {
+        assert.equal(backup, fixture.backup);
+        assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.previous);
+        assert.equal(fs.existsSync(path.join(backup, "history.bundle")), true);
+        verified = true;
+        return { verified: true, driveTarget: "gdrive:fictional-source-copy" };
+    } });
+    assert.equal(verified, true);
     assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.target);
     assert.equal(git(fixture.root, "status", "--porcelain"), "");
     assert.equal(fs.readFileSync(path.join(fixture.backup, "files/app.js"), "utf8"), "// production-only edit\n");
@@ -55,13 +63,31 @@ test("archives local source and Git before aligning, preserving private files", 
     git(fixture.root, "bundle", "verify", path.join(fixture.backup, "history.bundle"));
 });
 
-test("refuses concurrent source edits before making a backup or updating the checkout", () => {
+test("refuses concurrent source edits before making a backup or updating the checkout", async () => {
     const fixture = repository();
     assert.equal(run("plan", fixture.root, fixture.target, fixture.plan).status, 0);
     fs.writeFileSync(path.join(fixture.root, "app.js"), "// a new user edit\n");
-    const applied = run("apply", fixture.plan, fixture.backup);
-    assert.notEqual(applied.status, 0);
-    assert.match(applied.stderr, /Source changed after review/);
+    await assert.rejects(applyPlan(fixture.plan, fixture.backup, { upload: () => assert.fail("must not upload") }), /Source changed after review/);
     assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.previous);
     assert.equal(fs.existsSync(fixture.backup), false);
+});
+
+test("Drive failure preserves the checkout and its local recovery copy", async () => {
+    const fixture = repository();
+    assert.equal(run("plan", fixture.root, fixture.target, fixture.plan).status, 0);
+    await assert.rejects(applyPlan(fixture.plan, fixture.backup, { upload: async () => { throw new Error("Drive offline"); } }), /Drive offline/);
+    assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.previous);
+    assert.equal(fs.existsSync(path.join(fixture.backup, "history.bundle")), true);
+    assert.equal(fs.existsSync(path.join(fixture.root, "new.js")), false);
+});
+
+test("rechecks source files after the Drive transfer", async () => {
+    const fixture = repository();
+    assert.equal(run("plan", fixture.root, fixture.target, fixture.plan).status, 0);
+    await assert.rejects(applyPlan(fixture.plan, fixture.backup, { upload: async () => {
+        fs.writeFileSync(path.join(fixture.root, "app.js"), "// concurrent fictional edit\n");
+        return { verified: true };
+    } }), /Source changed during backup upload/);
+    assert.equal(git(fixture.root, "rev-parse", "HEAD"), fixture.previous);
+    assert.equal(fs.readFileSync(path.join(fixture.root, "app.js"), "utf8"), "// concurrent fictional edit\n");
 });

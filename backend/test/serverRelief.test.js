@@ -13,7 +13,7 @@ async function fixture(t) {
     const tempRoot = path.join(base, "tmp");
     const archiveRoot = path.join(base, "history");
     await fs.mkdir(tempRoot);
-    return { base, tempRoot, archiveRoot, now: () => Date.now() + 2 * 60 * 60 * 1000, reserveBytes: 0 };
+    return { base, tempRoot, archiveRoot, now: () => Date.now() + 2 * 60 * 60 * 1000, reserveBytes: 0, upload: async () => ({ verified: true, driveTarget: "gdrive:fixture" }) };
 }
 
 async function build(root, name = "pageV3-provider-renewals-abcdef1") {
@@ -32,6 +32,7 @@ test("archives reviewed temporaries, verifies readable copies and removes only o
     const result = await relieve();
     assert.equal(result.archived, 2, JSON.stringify(result));
     assert.equal(result.failed, 0);
+    assert.equal(result.driveVerified, 2);
     assert.ok(result.releasedBytes > 0);
     await assert.rejects(fs.stat(source), { code: "ENOENT" });
     const saved = path.join(options.archiveRoot, result.archiveId, path.basename(source));
@@ -67,6 +68,17 @@ test("does not remove files when destination verification fails", async t => {
     const result = await createServerRelief({ ...options, hash: async filename => filename.startsWith(options.archiveRoot) ? "wrong-copy" : "original" })();
     assert.equal(result.archived, 0);
     assert.equal(result.releasedBytes, 0);
+    assert.equal(result.failed, 1);
+    assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
+    assert.equal((await fs.readdir(options.archiveRoot)).length, 1);
+});
+
+test("Drive upload failure preserves originals and the local recovery copy", async t => {
+    const options = await fixture(t);
+    const source = await build(options.tempRoot);
+    const result = await createServerRelief({ ...options, upload: async () => { throw Object.assign(new Error("offline"), { code: "backup_drive_upload_failed" }); } })();
+    assert.equal(result.releasedBytes, 0);
+    assert.equal(result.driveVerified, 0);
     assert.equal(result.failed, 1);
     assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
     assert.equal((await fs.readdir(options.archiveRoot)).length, 1);

@@ -8,6 +8,9 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { pipeline } = require("node:stream/promises");
 const { createGzip } = require("node:zlib");
+const { createGunzip } = require("node:zlib");
+const { Writable } = require("node:stream");
+const { uploadBackup } = require("../src/services/backupDrive.service");
 
 function resolveExecutable(command) {
     if (path.isAbsolute(command) || command.includes(path.sep)) {
@@ -59,6 +62,10 @@ if (!dumpBinary) {
 }
 
 const streamToStdout = output === "-";
+if (!streamToStdout && fs.existsSync(output)) {
+    console.error("Backup destination already exists; existing backup preserved.");
+    process.exit(2);
+}
 if (!streamToStdout) fs.mkdirSync(path.dirname(output), { recursive: true });
 const args = [
     "--single-transaction",
@@ -76,28 +83,22 @@ const dump = spawn(dumpBinary, args, {
 });
 const outputStream = streamToStdout
     ? process.stdout
-    : fs.createWriteStream(output, { mode: 0o600 });
+    : fs.createWriteStream(output, { mode: 0o600, flags: "wx" });
 const gzip = createGzip({ level: 9 });
-let stderr = "";
-
-dump.stderr.on("data", (chunk) => {
-    stderr += chunk.toString();
-});
+dump.stderr.resume();
 
 Promise.all([
     new Promise((resolve, reject) => dump.once("error", reject).once("close", (code) => {
         if (code === 0) resolve();
-        else reject(new Error(stderr.trim() || `mysqldump exited with ${code}`));
+        else reject(new Error(`Database dump client exited with ${code}`));
     })),
     pipeline(dump.stdout, gzip, outputStream),
-]).then(() => {
-    const message = `Database backup completed: ${output}`;
-    if (streamToStdout) console.error(message);
-    else console.log(message);
+]).then(async () => {
+    if (streamToStdout) { console.error("Database dump streamed; caller must verify its Drive destination."); return; }
+    await pipeline(fs.createReadStream(output), createGunzip(), new Writable({ write(chunk, encoding, callback) { callback(); } }));
+    const receipt = await uploadBackup(output, { kind: "database" });
+    console.log(`Database backup verified in Drive: ${receipt.driveTarget}`);
 }).catch((error) => {
-    if (!streamToStdout) {
-        try { fs.unlinkSync(output); } catch { /* no partial backup left behind */ }
-    }
-    console.error(`Database backup failed: ${error.message}`);
+    console.error(`Database backup failed or pending in Drive: ${error.code || "backup_generation_failed"}. Local files preserved.`);
     process.exitCode = 1;
 });

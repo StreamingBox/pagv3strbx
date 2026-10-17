@@ -3,6 +3,7 @@ const { constants, createReadStream } = require("node:fs");
 const { createHash, randomUUID } = require("node:crypto");
 const os = require("node:os");
 const path = require("node:path");
+const { uploadBackup } = require("./backupDrive.service");
 
 const MiB = 1024 ** 2;
 // These are reviewed deployment snapshots, never the running app or its backups.
@@ -88,6 +89,7 @@ function createServerRelief({
     now = Date.now,
     hash = hashFile,
     inUse = hasOpenReferences,
+    upload = uploadBackup,
 } = {}) {
     let running = false;
     let lastRun = null;
@@ -96,7 +98,7 @@ function createServerRelief({
         if (lastRun !== null && now() - lastRun < cooldownMs) return { status: "cooldown" };
         running = true;
         lastRun = now();
-        const result = { status: "completed", archived: 0, releasedBytes: 0, skipped: 0, failed: 0, diskLimited: false, failureCodes: {} };
+        const result = { status: "completed", archived: 0, releasedBytes: 0, skipped: 0, failed: 0, diskLimited: false, failureCodes: {}, driveVerified: 0 };
         try {
             const temp = await fs.realpath(tempRoot);
             const archive = path.resolve(archiveRoot);
@@ -150,6 +152,11 @@ function createServerRelief({
                     for (const dir of [...candidate.directories].reverse()) await syncDirectory(path.join(targetRoot, dir));
                     await syncDirectory(destination);
                     await syncDirectory(archive);
+                    const receipt = await upload(targetRoot, { kind: "server-relief", companions: [`${targetRoot}.manifest.json`] });
+                    if (!receipt?.verified) throw new Error("backup_drive_verification_failed");
+                    result.driveVerified++;
+                    const afterUpload = await inventory(source, uid, maxBytes);
+                    if (JSON.stringify(candidate) !== JSON.stringify(afterUpload) || await inUse(source)) throw new Error("source_changed");
                     // Only verified, unchanged individual files may leave tmpfs. Unknown files are never recursively removed.
                     for (const item of candidate.files) {
                         const original = item.relative ? path.join(source, item.relative) : source;
@@ -162,7 +169,7 @@ function createServerRelief({
                 } catch (error) {
                     result.failed++;
                     const reason = /^[A-Z][A-Z0-9_]+$/.test(error.code || "") ? error.code
-                        : ["too_many_files", "protected_entry", "size_limit", "unrecognized_entry", "source_changed", "source_in_use", "copy_verification_failed"].includes(error.message) ? error.message : "io_error";
+                        : /^(?:backup_[a-z_]+|too_many_files|protected_entry|size_limit|unrecognized_entry|source_changed|source_in_use|copy_verification_failed)$/.test(error.code || error.message) ? (error.code || error.message) : "io_error";
                     result.failureCodes[reason] = (result.failureCodes[reason] || 0) + 1;
                     // Keep both the original and any partial archive for inspection/recovery.
                 }

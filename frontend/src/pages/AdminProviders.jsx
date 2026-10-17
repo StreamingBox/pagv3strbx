@@ -239,6 +239,8 @@ export default function AdminProviders() {
     const [accountForm, setAccountForm] = useState(initialAccount);
     const [filterProviderId, setFilterProviderId] = useState("");
     const [renewalProviderFilter, setRenewalProviderFilter] = useState("");
+    const [cashRenewalDate, setCashRenewalDate] = useState(localToday);
+    const [cashRenewalProviderFilter, setCashRenewalProviderFilter] = useState("");
     const [cardRenewalProviderFilter, setCardRenewalProviderFilter] = useState("");
     const [cardRenewalFilter, setCardRenewalFilter] = useState("all");
     const [providerReportFilter, setProviderReportFilter] = useState("all");
@@ -656,6 +658,32 @@ export default function AdminProviders() {
     const filteredUpcomingRenewals = useMemo(() => upcomingRenewals.filter((account) => (
         !renewalProviderFilter || String(account.providerId) === String(renewalProviderFilter)
     )), [upcomingRenewals, renewalProviderFilter]);
+    const cashRenewalAccounts = useMemo(() => accounts.filter((account) => (
+        account.status === "active"
+        && String(account.expiresAt || "").slice(0, 10) === cashRenewalDate
+        && !isStrbxReportedNetflixAccount(account)
+        && (!cashRenewalProviderFilter || String(account.providerId) === String(cashRenewalProviderFilter))
+    )), [accounts, cashRenewalDate, cashRenewalProviderFilter]);
+    const cashRenewalSummary = useMemo(() => {
+        const groups = new Map();
+        for (const account of cashRenewalAccounts) {
+            const currency = String(account.currency || "COP").toUpperCase();
+            const key = `${currency}:${account.platformId || account.platformName || "unknown"}`;
+            const group = groups.get(key) || {
+                currency,
+                platformId: account.platformId || account.platformName || "unknown",
+                platformName: account.platformName || "Plataforma sin nombre",
+                count: 0,
+                amount: 0,
+            };
+            group.count += 1;
+            const amount = Number(account.amount);
+            if (Number.isFinite(amount) && amount >= 0) group.amount += amount;
+            groups.set(key, group);
+        }
+        return [...groups.values()].sort((left, right) => left.platformName.localeCompare(right.platformName, "es")
+            || left.currency.localeCompare(right.currency));
+    }, [cashRenewalAccounts]);
     const netflixCardRenewals = useMemo(() => {
         const activeProviderIds = new Set(providers.filter((provider) => Number(provider.isActive) === 1).map((provider) => Number(provider.id)));
         return accounts
@@ -664,7 +692,7 @@ export default function AdminProviders() {
                 && activeProviderIds.has(Number(account.providerId)))
             .filter((account) => Boolean(account.cardRenewalDate) && isNetflixPlatform(account.platformName))
             .map((account) => ({ ...account, cardDaysRemaining: getDaysRemaining(account.cardRenewalDate) }))
-            .filter((account) => account.cardDaysRemaining !== null)
+            .filter((account) => account.cardDaysRemaining !== null && account.cardDaysRemaining <= 0 && account.cardDaysRemaining >= -7)
             .sort((left, right) => left.cardDaysRemaining - right.cardDaysRemaining || left.accountEmail.localeCompare(right.accountEmail));
     }, [accounts, providers]);
     const filteredNetflixCardRenewals = useMemo(() => netflixCardRenewals.filter((account) => (
@@ -945,7 +973,7 @@ export default function AdminProviders() {
                         </div>
                     </details>
 
-                    <section className="admin-providers-summary-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.15fr) repeat(2, minmax(250px, .9fr))", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
+                    <section className="admin-providers-summary-grid" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 18, marginBottom: 18, alignItems: "stretch" }}>
                         <details className="admin-providers-module admin-providers-panel" style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                             <summary className="admin-providers-module-summary">
                                 <span className="admin-providers-module-title"><Crown size={19} color="#fbbf24" aria-hidden /><span><strong>Top 5 proveedores</strong><small>Ranking por cuentas activas de Netflix.</small></span></span>
@@ -973,6 +1001,44 @@ export default function AdminProviders() {
                                     })}
                                 </div>
                             ) : <div style={{ padding: "18px 0 6px", color: "var(--muted)", fontSize: 13 }}>Aún no hay proveedores para mostrar.</div>}
+                            </div>
+                        </details>
+
+                        <details className="admin-providers-module admin-providers-panel admin-providers-cash-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(16,185,129,.38)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
+                            <summary className="admin-providers-module-summary">
+                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#34d399" aria-hidden /><span><strong>Caja para renovaciones</strong><small>{cashRenewalAccounts.length} cuenta(s) activas · {shortDate(cashRenewalDate)}</small></span></span>
+                                <ChevronDown size={17} aria-hidden />
+                            </summary>
+                            <div className="admin-providers-module-content">
+                                <div className="admin-providers-cash-renewal-filters">
+                                    <label>
+                                        <span>Fecha de vencimiento</span>
+                                        <input style={inputStyle} type="date" value={cashRenewalDate} onChange={(event) => setCashRenewalDate(event.target.value)} aria-label="Fecha de vencimiento para preparar caja" />
+                                    </label>
+                                    <label>
+                                        <span>Proveedor</span>
+                                        <select style={inputStyle} value={cashRenewalProviderFilter} onChange={(event) => setCashRenewalProviderFilter(event.target.value)} aria-label="Filtrar caja por proveedor">
+                                            <option value="">Todos los proveedores</option>
+                                            {providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+                                        </select>
+                                    </label>
+                                </div>
+                                {cashRenewalAccounts.length ? (
+                                    <>
+                                        <div className="admin-providers-cash-renewal-totals" aria-label="Total estimado para renovar">
+                                            {cashRenewalSummary.length ? [...new Set(cashRenewalSummary.map((group) => group.currency))].map((currency) => {
+                                                const total = cashRenewalSummary.filter((group) => group.currency === currency).reduce((sum, group) => sum + group.amount, 0);
+                                                return <div key={currency}><span>Total estimado · {currency}</span><strong>{providerAmount(total)} {currency}</strong></div>;
+                                            }) : null}
+                                        </div>
+                                        <div className="admin-providers-cash-renewal-breakdown">
+                                            {cashRenewalSummary.map((group) => <div key={`${group.currency}:${group.platformId}:${group.platformName}`}>
+                                                <span>{group.platformName} · {group.count} cuenta(s)</span>
+                                                <strong>{providerAmount(group.amount)} {group.currency}</strong>
+                                            </div>)}
+                                        </div>
+                                    </>
+                                ) : <div style={{ padding: "14px 0 4px", color: "var(--muted)", fontSize: 13 }}>No hay cuentas activas para renovar en esa fecha.</div>}
                             </div>
                         </details>
 
@@ -1012,7 +1078,7 @@ export default function AdminProviders() {
 
                         <details className="admin-providers-module admin-providers-panel admin-providers-card-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(34,211,238,.35)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                             <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#22d3ee" aria-hidden /><span><strong>Renovación de tarjeta · Netflix</strong><small>{netflixCardRenewals.length} cuenta(s) activa(s) con fecha registrada.</small></span></span>
+                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#22d3ee" aria-hidden /><span><strong>Renovación de tarjeta · Netflix</strong><small>{netflixCardRenewals.length} cuenta(s) con vencimiento en los últimos 7 días.</small></span></span>
                                 <ChevronDown size={17} aria-hidden />
                             </summary>
                             <div className="admin-providers-module-content">
@@ -1040,7 +1106,7 @@ export default function AdminProviders() {
                                         </div>;
                                     })}
                                 </div>
-                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "var(--muted)", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {cardRenewalProviderFilter ? "Este proveedor no tiene renovaciones de tarjeta Netflix." : "No hay cuentas Netflix activas con fecha de tarjeta."}</div>}
+                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "var(--muted)", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {cardRenewalProviderFilter ? "Este proveedor no tiene renovaciones de tarjeta Netflix en los últimos 7 días." : "No hay renovaciones de tarjeta Netflix en los últimos 7 días."}</div>}
                             </div>
                         </details>
                     </section>

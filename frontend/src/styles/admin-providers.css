@@ -340,6 +340,64 @@
     padding: 0 18px 18px;
 }
 
+.admin-providers-cash-renewal-filters {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.admin-providers-cash-renewal-filters label {
+    display: grid;
+    min-width: 0;
+    gap: 5px;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.admin-providers-cash-renewal-totals,
+.admin-providers-cash-renewal-breakdown {
+    display: grid;
+    gap: 7px;
+}
+
+.admin-providers-cash-renewal-totals > div,
+.admin-providers-cash-renewal-breakdown > div {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--bg0);
+}
+
+.admin-providers-cash-renewal-totals > div {
+    border: 1px solid rgba(16, 185, 129, .26);
+}
+
+.admin-providers-cash-renewal-totals span,
+.admin-providers-cash-renewal-breakdown span {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+.admin-providers-cash-renewal-totals strong {
+    color: #34d399;
+    font-size: 15px;
+    text-align: right;
+}
+
+.admin-providers-cash-renewal-breakdown strong {
+    color: var(--text);
+    font-size: 12px;
+    text-align: right;
+}
+
 @media (max-width: 720px) {
     .admin-providers-module-summary {
         min-height: 64px;
@@ -348,5 +406,9 @@
 
     .admin-providers-module-content {
         padding: 0 14px 16px;
+    }
+
+    .admin-providers-cash-renewal-filters {
+        grid-template-columns: minmax(0, 1fr);
     }
 }

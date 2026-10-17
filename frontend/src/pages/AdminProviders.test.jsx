@@ -27,6 +27,13 @@ async function loadedPage() {
     return screen.getByRole("button", { name: "Exportar todas" }).closest("section");
 }
 
+function dateWithOffset(days) {
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
 describe("saved provider account interface", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -56,14 +63,49 @@ describe("saved provider account interface", () => {
         expect(within(section).getByText("account12@example.com")).toBeInTheDocument();
     });
 
+    it("estimates renewal cash for a selected day and provider", async () => {
+        const expiringAccounts = [
+            { ...accounts[1], id: 13, expiresAt: dateWithOffset(0), amount: 33000 },
+            { ...accounts[2], id: 14, expiresAt: dateWithOffset(0), amount: 33000 },
+            { ...accounts[3], id: 15, providerId: 2, providerName: "Proveedor B", expiresAt: dateWithOffset(0), amount: 50000 },
+            { ...accounts[4], id: 16, providerName: "Streaming Box", expiresAt: dateWithOffset(0), amount: 100000, providerReportedAt: "2026-10-12 10:00" },
+            { ...accounts[5], id: 17, status: "inactive", expiresAt: dateWithOffset(0), amount: 70000 },
+            { ...accounts[6], id: 18, expiresAt: dateWithOffset(1), amount: 90000 },
+        ];
+        apiFetch.mockImplementation(async (path) => ({
+            ok: true,
+            data: path === "/admin/providers"
+                ? [{ id: 1, name: "Proveedor A", isActive: 1 }, { id: 2, name: "Proveedor B", isActive: 1 }, { id: 4, name: "Streaming Box", isActive: 1 }]
+                : path === "/admin/provider-platforms" ? [{ id: 18, name: "Netflix Internacional" }]
+                    : [...accounts, ...expiringAccounts],
+        }));
+        render(<AdminProviders />);
+
+        await screen.findByRole("button", { name: "Editar cuenta 12" });
+        const panel = document.querySelector(".admin-providers-cash-renewal-panel");
+        fireEvent.click(panel.querySelector("summary"));
+        expect(within(panel).getByLabelText("Fecha de vencimiento para preparar caja")).toHaveValue(dateWithOffset(0));
+        expect(within(panel).getByText(/Netflix Internacional · 3 cuenta\(s\)/)).toBeInTheDocument();
+        expect(within(panel).getAllByText("116.000 COP")).toHaveLength(2);
+        expect(within(panel).queryByText("100.000 COP")).not.toBeInTheDocument();
+
+        fireEvent.change(within(panel).getByLabelText("Filtrar caja por proveedor"), { target: { value: "2" } });
+        expect(within(panel).getByText(`1 cuenta(s) activas · ${dateWithOffset(0).split("-").reverse().join("/")}`)).toBeInTheDocument();
+        expect(within(panel).getAllByText("50.000 COP")).toHaveLength(2);
+        expect(within(panel).queryByText("66.000 COP")).not.toBeInTheDocument();
+    });
+
     it("lists card renewal dates for active Netflix accounts only and filters by provider", async () => {
+        const inWindowAccounts = accounts.map((account) => account.id === 12 ? { ...account, cardRenewalDate: dateWithOffset(0) } : account);
         const hboAccount = { ...accounts[1], id: 13, platformName: "HBO Max", accountEmail: "hbo@example.com" };
-        const promoAccount = { ...accounts[2], id: 14, providerId: 2, providerName: "Proveedor B", platformName: "Promo", accountEmail: "netflix-promo@example.com", cardRenewalDate: "2026-10-10" };
+        const promoAccount = { ...accounts[2], id: 14, providerId: 2, providerName: "Proveedor B", platformName: "Promo", accountEmail: "netflix-promo@example.com", cardRenewalDate: dateWithOffset(-7) };
+        const outOfWindowAccount = { ...accounts[3], id: 15, accountEmail: "netflix-outside@example.com", cardRenewalDate: dateWithOffset(-8) };
+        const futureAccount = { ...accounts[4], id: 16, accountEmail: "netflix-future@example.com", cardRenewalDate: dateWithOffset(1) };
         apiFetch.mockImplementation(async (path) => ({
             ok: true,
             data: path === "/admin/providers" ? [{ id: 1, name: "Proveedor A", isActive: 1 }, { id: 2, name: "Proveedor B", isActive: 1 }]
                 : path === "/admin/provider-platforms" ? [{ id: 18, name: "Netflix Internacional" }]
-                    : [...accounts, hboAccount, promoAccount],
+                    : [...inWindowAccounts, hboAccount, promoAccount, outOfWindowAccount, futureAccount],
         }));
         render(<AdminProviders />);
 
@@ -71,13 +113,15 @@ describe("saved provider account interface", () => {
         const panel = document.querySelector(".admin-providers-card-renewal-panel");
         fireEvent.click(panel.querySelector("summary"));
         expect(within(panel).getByText("account12@example.com")).toBeInTheDocument();
-        expect(within(panel).getAllByText(/Vencida hace/)).toHaveLength(2);
         expect(within(panel).getByText("netflix-promo@example.com")).toBeInTheDocument();
         expect(within(panel).queryByText("hbo@example.com")).not.toBeInTheDocument();
+        expect(within(panel).queryByText("netflix-outside@example.com")).not.toBeInTheDocument();
+        expect(within(panel).queryByText("netflix-future@example.com")).not.toBeInTheDocument();
 
         fireEvent.change(within(panel).getByLabelText("Filtrar renovación de tarjeta por proveedor"), { target: { value: "2" } });
         expect(within(panel).getByText("netflix-promo@example.com")).toBeInTheDocument();
         expect(within(panel).queryByText("account12@example.com")).not.toBeInTheDocument();
+        expect(within(panel).queryByText("netflix-outside@example.com")).not.toBeInTheDocument();
     });
 
     it("excludes reported Streaming Box Netflix accounts from both renewal modules", async () => {
@@ -116,7 +160,7 @@ describe("saved provider account interface", () => {
     it("starts with the modules collapsed while keeping the accounts table available", async () => {
         const section = await loadedPage();
         const modules = [...document.querySelectorAll(".admin-providers-module")];
-        expect(modules).toHaveLength(6);
+        expect(modules).toHaveLength(7);
         expect(modules.every((module) => !module.open)).toBe(true);
         expect(section).toBeVisible();
         expect(document.querySelector(".admin-providers-management-grid").compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -132,7 +176,7 @@ describe("saved provider account interface", () => {
         expect(within(ranking).getByText("Aún no hay proveedores para mostrar.")).toBeVisible();
 
         fireEvent.click(screen.getByRole("button", { name: "Editar" }));
-        await waitFor(() => expect(modules[4].open).toBe(true));
+        await waitFor(() => expect(modules[5].open).toBe(true));
     });
 
     it("shows additional pages and does not count overdue days for inactive accounts", async () => {

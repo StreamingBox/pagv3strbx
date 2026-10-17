@@ -14,6 +14,32 @@ DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pagev3-deploy.lock}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
+is_preserved_untracked() {
+  local candidate="$1" item
+  local -a preserved=()
+  IFS=',' read -r -a preserved <<< "${DEPLOY_PRESERVED_UNTRACKED:-}"
+  for item in "${preserved[@]}"; do
+    [[ "$item" == "$candidate" ]] && return 0
+  done
+  return 1
+}
+
+assert_clean_checkout() {
+  local entry status path
+  while IFS= read -r entry; do
+    [[ -z "$entry" ]] && continue
+    status="${entry:0:2}"
+    path="${entry:3}"
+    if [[ "$status" == "??" ]] && is_preserved_untracked "$path"; then
+      echo "Preserving explicitly allowlisted untracked file: $path"
+      continue
+    fi
+    echo "Hay cambios locales sin registrar. No se desplegará:" >&2
+    git status --short >&2
+    return 1
+  done < <(git status --porcelain --untracked-files=all)
+}
+
 exec 9>"$DEPLOY_LOCK_FILE"
 if ! flock -n 9; then
   echo "Another deployment is already running." >&2
@@ -23,19 +49,11 @@ fi
 cd "$PROJECT_DIR"
 CURRENT_BRANCH="$(git branch --show-current)"
 if [[ "$CURRENT_BRANCH" != "$REPO_BRANCH" ]]; then
-  if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
-    echo "Hay cambios locales sin registrar. No se cambiará de rama ni se desplegará:" >&2
-    git status --short >&2
-    exit 1
-  fi
+  assert_clean_checkout || exit 1
   git switch "$REPO_BRANCH"
 fi
 
-if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
-  echo "Hay cambios locales sin registrar. No se modificó el servidor; guarda y sube esos cambios a Git antes de desplegar:" >&2
-  git status --short >&2
-  exit 1
-fi
+assert_clean_checkout || exit 1
 
 PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 

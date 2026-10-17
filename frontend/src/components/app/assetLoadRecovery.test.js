@@ -4,6 +4,8 @@ import {
     claimAutomaticAssetRecovery,
     isAssetLoadError,
     refreshApplicationAssets,
+    shouldRecoverStartupRenderError,
+    STARTUP_RENDER_RECOVERY_ATTEMPT_KEY,
 } from "./assetLoadRecovery.js";
 
 describe("asset load recovery", () => {
@@ -20,6 +22,28 @@ describe("asset load recovery", () => {
 
         expect(claimAutomaticAssetRecovery(storage)).toBe(true);
         expect(claimAutomaticAssetRecovery(storage)).toBe(false);
+    });
+
+    it("allows only one separate startup render recovery per tab session", () => {
+        const storage = window.sessionStorage;
+        storage.removeItem(STARTUP_RENDER_RECOVERY_ATTEMPT_KEY);
+
+        expect(claimAutomaticAssetRecovery(storage, STARTUP_RENDER_RECOVERY_ATTEMPT_KEY)).toBe(true);
+        expect(claimAutomaticAssetRecovery(storage, STARTUP_RENDER_RECOVERY_ATTEMPT_KEY)).toBe(false);
+    });
+
+    it("limits startup render recovery to initial admin, codes, and support loads", () => {
+        const error = new Error("Unexpected application render error");
+        const context = { elapsedMs: 1000, userInteracted: false };
+
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/admin" })).toBe(true);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/admin/providers" })).toBe(true);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/codes" })).toBe(true);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/support" })).toBe(true);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/dashboard" })).toBe(false);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/support", userInteracted: true })).toBe(false);
+        expect(shouldRecoverStartupRenderError(error, { ...context, pathname: "/codes", elapsedMs: 12_001 })).toBe(false);
+        expect(shouldRecoverStartupRenderError(new Error("Loading chunk 4 failed"), { ...context, pathname: "/admin" })).toBe(false);
     });
 
     it("does not claim recovery when session storage is unavailable", () => {

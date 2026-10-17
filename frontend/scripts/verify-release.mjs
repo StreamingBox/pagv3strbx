@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateModuleGraph } from "./validate-module-graph.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(process.argv[2] || path.join(scriptDir, "..", "dist"));
@@ -20,6 +21,12 @@ if (!fs.existsSync(path.join(distDir, entryScript[1].replace(/^\//, "")))) {
     fail(`entry asset is missing: ${entryScript[1]}`);
 }
 const entrySource = fs.readFileSync(path.join(distDir, entryScript[1].replace(/^\//, "")), "utf8");
+try {
+    const graph = await validateModuleGraph(distDir, entryScript[1]);
+    console.log(`Module graph validated: ${graph.modules} modules, one application bootstrap`);
+} catch (error) {
+    fail(error.message);
+}
 
 const assetsDir = path.join(distDir, "assets");
 const requiredChunks = [

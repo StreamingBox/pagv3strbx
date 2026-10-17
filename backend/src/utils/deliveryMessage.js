@@ -8,6 +8,12 @@ const {
     normalizeProductName,
 } = require("./productDeliveryProfile");
 const { formatBogotaDateTime, isEventLinkPlan } = require("./eventLinks");
+const { YOUTUBE_CHANNEL_ACCESS_CONDITIONS } = require("./youtubeMusic");
+
+function appendYouTubeChannelInstructions(lines) {
+    lines.push("📖 PASO A PASO PARA INGRESAR A YOUTUBE");
+    lines.push(...YOUTUBE_CHANNEL_ACCESS_CONDITIONS);
+}
 
 function credentialUrl(baseUrl, token) {
     const cleanBaseUrl = String(baseUrl || "").replace(/\/+$/, "");
@@ -279,6 +285,11 @@ function buildAccountDeliveryMessage({
         lines.push(`📅 Expira: ${formatDateOnlyBogota(expiresAt)}`);
     }
 
+    if (isYouTubeProduct) {
+        lines.push("");
+        appendYouTubeChannelInstructions(lines);
+    }
+
     if (url && !isSpotifyProduct({ platformName, platformSlug }) && !isYouTubeProduct) {
         lines.push("");
         lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
@@ -350,6 +361,7 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     let platform36NoticeAdded = false;
     let disneyCodeTvNoticeAdded = false;
     let microsoftOfficeNoticeAdded = false;
+    let youtubeInstructionsAdded = false;
     const markOrderPlatform36Notice = (platformId) => {
         if (Number(platformId) === 36) {
             platform36NoticeAdded = true;
@@ -453,11 +465,19 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
         }
 
         lines.push(`📅 Expira: ${formatDateOnlyBogota(result?.expiresAt)}`);
+        if (isYouTubeResult(result)) {
+            youtubeInstructionsAdded = true;
+        }
         if (!isSpotifyResult(result) && !isYouTubeResult(result)) {
             lines.push(`🔗⚠️ Debido a que en ocasiones se bloquea o cambia la clave, en este enlace ${url} puedes consultar la contraseña hasta tu último día contratado. 💻🔑:`);
         }
         markOrderPlatform36Notice(platformId);
         lines.push("");
+    }
+
+    if (youtubeInstructionsAdded) {
+        lines.push("");
+        appendYouTubeChannelInstructions(lines);
     }
 
     // Las instrucciones de ChatGPT van una sola vez, despues de todas las cuentas.

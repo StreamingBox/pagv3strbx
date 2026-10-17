@@ -62,6 +62,11 @@ test("YouTube Music delivery names the exact channel instead of treating it as a
     });
 
     assert.match(message, /Canal de YouTube: Canal Familiar/);
+    assert.match(message, /PASO A PASO PARA INGRESAR A YOUTUBE/);
+    assert.match(message, /Después de ingresar la contraseña, Google solicitará Google Authenticator/u);
+    assert.match(message, /Probar otra manera/u);
+    assert.match(message, /contacta al soporte por el medio indicado en tu pedido/u);
+    assert.match(message, /cambia cada 30 segundos/u);
     assert.doesNotMatch(message, /Perfil:/);
     assert.doesNotMatch(message, /strbx\.com\.co\/s\/TOKEN123/);
     assert.doesNotMatch(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
@@ -78,6 +83,8 @@ test("YouTube Music replacement delivery also includes the channel name", () => 
     });
 
     assert.match(message, /Canal de YouTube: Canal Música/);
+    assert.match(message, /PASO A PASO PARA INGRESAR A YOUTUBE/);
+    assert.match(message, /contacta al soporte por el medio indicado en tu pedido/u);
     assert.doesNotMatch(message, /Perfil:/);
 });
 
@@ -92,9 +99,33 @@ test("YouTube three-month delivery includes the channel name", () => {
     });
 
     assert.match(message, /Canal de YouTube: @Strbx-2/);
+    assert.match(message, /PASO A PASO PARA INGRESAR A YOUTUBE/);
+    assert.match(message, /Google Authenticator/u);
     assert.doesNotMatch(message, /Perfil:/);
     assert.doesNotMatch(message, /strbx\.com\.co\/s\/TOKEN123/);
     assert.doesNotMatch(message, /Regla de uso: 1 pantalla = 1 dispositivo/);
+});
+
+test("YouTube multi-item delivery includes the login instructions once after the account details", () => {
+    const message = buildDeliveryMessage({
+        orderCode: "ORD-YT-MULTI",
+        results: [1, 2].map((subscriptionId) => ({
+            subscriptionId,
+            purchasedPlatformName: "Youtube 3 meses",
+            plan: { platform_name: "Youtube 3 meses" },
+            account: {
+                email: `youtube${subscriptionId}@example.com`,
+                password: "fake-password",
+                youtube_channel_name: `Canal ${subscriptionId}`,
+            },
+            expiresAt: "2027-01-15",
+        })),
+    });
+
+    assert.match(message, /Canal de YouTube: Canal 1/);
+    assert.match(message, /Canal de YouTube: Canal 2/);
+    assert.equal((message.match(/PASO A PASO PARA INGRESAR A YOUTUBE/g) || []).length, 1);
+    assert.ok(message.indexOf("PASO A PASO PARA INGRESAR A YOUTUBE") > message.indexOf("Canal de YouTube: Canal 2"));
 });
 
 test("YouTube Music and three-month orders omit the old password link and one-device rule", () => {

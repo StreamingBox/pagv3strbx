@@ -55,7 +55,15 @@ fi
 
 assert_clean_checkout || exit 1
 
-PREVIOUS_COMMIT="$(git rev-parse HEAD)"
+PREVIOUS_COMMIT="${DEPLOY_ROLLBACK_COMMIT:-$(git rev-parse HEAD)}"
+if [[ ! "$PREVIOUS_COMMIT" =~ ^[a-f0-9]{40}$ ]] || ! git cat-file -e "${PREVIOUS_COMMIT}^{commit}"; then
+  echo "DEPLOY_ROLLBACK_COMMIT must identify an existing commit." >&2
+  exit 1
+fi
+if ! git merge-base --is-ancestor "$PREVIOUS_COMMIT" HEAD; then
+  echo "DEPLOY_ROLLBACK_COMMIT must be an ancestor of the deployment source." >&2
+  exit 1
+fi
 
 umask 077
 [[ ! -e "$BACKUP_DIR" ]] || { echo "Backup destination already exists; history preserved" >&2; exit 1; }

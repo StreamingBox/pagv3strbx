@@ -7,7 +7,8 @@ const { createHash } = require("node:crypto");
 const { createServerRelief } = require("../src/services/serverRelief.service");
 
 async function fixture(t) {
-    const base = await fs.mkdtemp(path.join(os.tmpdir(), "strbx-relief-test-"));
+    const parent = process.platform === "linux" ? os.homedir() : os.tmpdir();
+    const base = await fs.mkdtemp(path.join(parent, "strbx-relief-test-"));
     t.after(() => fs.rm(base, { recursive: true, force: true }));
     const tempRoot = path.join(base, "tmp");
     const archiveRoot = path.join(base, "history");

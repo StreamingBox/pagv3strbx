@@ -64,3 +64,25 @@ build/
 *.tgz
 *.tar.gz
 /tmp/
+
+# Private server state, historical releases, and local diagnostic artifacts
+**/backups/
+**/.deploy-backups/
+/deploy-backups/
+/frontend/releases/
+/frontend/current
+/frontend/current.*
+/frontend/dist-*/
+/backend/env
+**/.env.backup-*
+**/.env.bak*
+**/.env.before-*
+**/*.bak-*
+**/*.bak.*
+**/*.before-*
+**/*.orig
+/.codex-*/
+/.providers-*
+/.tv-*
+/frontend/.build-*/
+/frontend/.codex-*/

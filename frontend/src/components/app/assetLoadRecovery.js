@@ -1,6 +1,4 @@
 export const ASSET_RECOVERY_ATTEMPT_KEY = "strbx-asset-recovery-attempted";
-export const STARTUP_RENDER_RECOVERY_ATTEMPT_KEY = "strbx-startup-render-recovery-attempted";
-export const STARTUP_RENDER_RECOVERY_WINDOW_MS = 12_000;
 const APP_CACHE_PREFIX = "strbx-pwa-";
 
 export function isAssetLoadError(error) {
@@ -16,27 +14,16 @@ export function isAssetLoadError(error) {
         || message.includes("importing a module script failed");
 }
 
-export function claimAutomaticAssetRecovery(storage, key = ASSET_RECOVERY_ATTEMPT_KEY) {
+export function claimAutomaticAssetRecovery(storage) {
     if (!storage) return null;
 
     try {
-        if (storage.getItem(key)) return false;
-        storage.setItem(key, "1");
+        if (storage.getItem(ASSET_RECOVERY_ATTEMPT_KEY)) return false;
+        storage.setItem(ASSET_RECOVERY_ATTEMPT_KEY, "1");
         return true;
     } catch {
         return null;
     }
-}
-
-export function shouldRecoverStartupRenderError(error, { pathname, elapsedMs, userInteracted }) {
-    const route = String(pathname || "");
-    if (isAssetLoadError(error) || userInteracted) return false;
-    if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs > STARTUP_RENDER_RECOVERY_WINDOW_MS) return false;
-
-    return route === "/admin"
-        || route.startsWith("/admin/")
-        || route === "/codes"
-        || route === "/support";
 }
 
 export async function refreshApplicationAssets({ cacheStorage, serviceWorkerContainer, origin }) {

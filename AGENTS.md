@@ -26,6 +26,9 @@ Antes de cada cambio, vuelve a consultar este archivo, incluso si el cambio es u
 - Comprueba que exista un respaldo recuperable y que su contenido se pueda leer antes de una operación que pueda afectar datos. Nunca borres histórico de Google Drive: el histórico debe conservarse. No elimines respaldos o releases antiguos sin autorización explícita.
 - Usa únicamente procedimientos de despliegue revisados que preserven datos y permitan recuperación. No ejecutes `reset --hard`, `clean`, borrados de base de datos, reemplazos recursivos ni migraciones destructivas como atajo.
 - Después del despliegue, verifica commit/release activo, endpoints, recursos estáticos y las pantallas afectadas con pruebas funcionales. Si no se pudo verificar, dilo claramente y no presentes el cambio como completado en producción.
+- No renombres ni parches aisladamente el JavaScript compilado: sus módulos comparten imports, React y Router. Publica una compilación completa y ejecuta `frontend/scripts/verify-release.mjs`, que debe comprobar un único arranque de la aplicación y todas las dependencias importadas.
+- Comprueba Admin, Códigos y Soporte en un navegador, además de HTTP: ninguna vista de error, ningún error de Router y una sola entrada de la aplicación. Para las pruebas usa datos ficticios y nunca imprimas credenciales.
+- La referencia de código operativo es `origin/main`. Antes de actualizar un checkout antiguo conserva sus fuentes y estado de Git; usa el plan revisable de `ops/ec2/reconcile-checkout.mjs` y su respaldo, sin borrar datos ni ocultar diferencias de código.
 
 ## Funciones sensibles del producto
 

@@ -14,6 +14,19 @@ VERIFY_SCRIPT="$SCRIPT_DIR/../../frontend/scripts/verify-release.mjs"
 PRESERVE_ASSETS_SCRIPT="$SCRIPT_DIR/../../frontend/scripts/carry-forward-release-assets.mjs"
 SMOKE_URL="${FRONTEND_SMOKE_URL:-https://strbx.com.co/admin}"
 SMOKE_HOST="${FRONTEND_SMOKE_HOST:-strbx.com.co}"
+SOURCE_COMMIT="${FRONTEND_SOURCE_COMMIT:-}"
+if [[ -z "$SOURCE_COMMIT" ]]; then
+  SOURCE_REPO="$(git -C "$SCRIPT_DIR/../.." rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$SOURCE_REPO" && -z "$(git -C "$SOURCE_REPO" status --porcelain --untracked-files=normal)" ]] || {
+    echo "Publish from a clean checkout, or supply the exact commit of a reviewed external build." >&2
+    exit 1
+  }
+  SOURCE_COMMIT="$(git -C "$SOURCE_REPO" rev-parse HEAD)"
+fi
+[[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "A full source commit SHA is required for release traceability." >&2
+  exit 1
+}
 
 [[ -f "$SOURCE_DIR/index.html" ]] || {
   echo "The build is missing index.html: $SOURCE_DIR" >&2
@@ -70,6 +83,14 @@ ENTRY_ASSET="$(grep -oE '/assets/index-[^\" ]+\.js' "$STAGING_DIR/index.html" | 
   exit 1
 }
 
+node - "$STAGING_DIR/release.json" "$SOURCE_COMMIT" "$RELEASE_ID" "$STAGING_DIR$ENTRY_ASSET" "$ENTRY_ASSET" <<'NODE'
+const fs = require("node:fs");
+const crypto = require("node:crypto");
+const [manifest, sourceCommit, release, entryFile, entry] = process.argv.slice(2);
+const entrySha256 = crypto.createHash("sha256").update(fs.readFileSync(entryFile)).digest("hex");
+fs.writeFileSync(manifest, `${JSON.stringify({ sourceCommit, release, entry, entrySha256 }, null, 2)}\n`, { mode: 0o644 });
+NODE
+
 mv "$STAGING_DIR" "$RELEASE_DIR"
 NEXT_LINK="$FRONTEND_ROOT/.current-$RELEASE_ID"
 ln -s "$RELEASE_DIR" "$NEXT_LINK"
@@ -113,4 +134,4 @@ if [[ "$MISSING_ASSET_STATUS" != "404" ]]; then
   exit 1
 fi
 
-echo "Published frontend release $RELEASE_ID"
+echo "Published frontend release $RELEASE_ID from $SOURCE_COMMIT"

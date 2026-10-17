@@ -408,14 +408,14 @@ router.patch("/admin/provider-accounts/:id", requireAuth, requireRole("admin"), 
 
     try {
         const [existingRows] = await pool.query(
-            `SELECT provider_id AS providerId, provider.name AS providerName,
-                    platform_id AS platformId, platform.name AS platformName,
-                    account_email AS accountEmail, account_password AS accountPassword,
-                    DATE_FORMAT(purchase_date, '%Y-%m-%d') AS purchaseDate,
-                    DATE_FORMAT(expires_at, '%Y-%m-%d') AS expiresAt,
-                    DATE_FORMAT(card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
-                    provider_reported_at AS providerReportedAt,
-                    ip_address AS ipAddress, amount, currency, status
+            `SELECT pa.provider_id AS providerId, provider.name AS providerName,
+                    pa.platform_id AS platformId, platform.name AS platformName,
+                    pa.account_email AS accountEmail, pa.account_password AS accountPassword,
+                    DATE_FORMAT(pa.purchase_date, '%Y-%m-%d') AS purchaseDate,
+                    DATE_FORMAT(pa.expires_at, '%Y-%m-%d') AS expiresAt,
+                    DATE_FORMAT(pa.card_renewal_date, '%Y-%m-%d') AS cardRenewalDate,
+                    pa.provider_reported_at AS providerReportedAt,
+                    pa.ip_address AS ipAddress, pa.amount, pa.currency, pa.status
              FROM provider_accounts pa
              JOIN providers provider ON provider.id = pa.provider_id
              JOIN platforms platform ON platform.id = pa.platform_id

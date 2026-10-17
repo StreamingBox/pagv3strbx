@@ -71,6 +71,17 @@ function transplantBoundary(activeBundle, rebuiltBundle) {
     const [, sourceClaim, sourceRecoveryKey] = claimMatch;
     const sourceRefresh = matchAlias(nextBoundary, /await ([A-Za-z_$][\w$]*)\(\{cacheStorage:/, "asset refresh");
     const sourceReload = matchAlias(nextBoundary, /catch\{\}([A-Za-z_$][\w$]*)\(\)\}\}/, "page reload");
+    const activeRefresh = matchAlias(activeBoundary, /await ([A-Za-z_$][\w$]*)\(\{cacheStorage:/, "active asset refresh");
+    const activeReload = matchAlias(activeBoundary, /catch\{\}([A-Za-z_$][\w$]*)\(\)\}/, "active page reload");
+
+    for (const symbol of ["UA", activeRefresh, activeReload]) {
+        if (!activeBundle.includes(`function ${symbol}(`)) {
+            throw new Error(`The active production bundle is missing required helper ${symbol}.`);
+        }
+    }
+    if (!activeBundle.includes("$strbxAssetRecoveryAttemptKey")) {
+        throw new Error("The active production bundle is missing the asset-recovery storage key.");
+    }
 
     nextBoundary = replaceIdentifier(nextBoundary, sourceClass[1], "kA");
     nextBoundary = replaceIdentifier(nextBoundary, sourceClass[2], "T");
@@ -80,8 +91,8 @@ function transplantBoundary(activeBundle, rebuiltBundle) {
     nextBoundary = replaceIdentifier(nextBoundary, sourceStartupCheck, "$strbxShouldRecoverStartupRenderError");
     nextBoundary = replaceIdentifier(nextBoundary, sourceClaim, "$strbxClaimAutomaticAssetRecovery");
     nextBoundary = replaceIdentifier(nextBoundary, sourceRecoveryKey, "$strbxStartupRenderRecoveryAttemptKey");
-    nextBoundary = replaceIdentifier(nextBoundary, sourceRefresh, "$strbxRefreshApplicationAssets");
-    nextBoundary = replaceIdentifier(nextBoundary, sourceReload, "$strbxReloadCurrentPage");
+    nextBoundary = replaceIdentifier(nextBoundary, sourceRefresh, activeRefresh);
+    nextBoundary = replaceIdentifier(nextBoundary, sourceReload, activeReload);
 
     const oldClass = activeBundle.slice(activeStart, activeEnd);
     let output = activeBundle.slice(0, activeStart) + nextBoundary + activeBundle.slice(activeEnd);

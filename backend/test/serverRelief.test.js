@@ -147,13 +147,17 @@ test("Drive upload failure preserves originals and the local recovery copy", asy
     const readOnlyDirectory = path.join(source, "assets");
     await fs.chmod(readOnlyDirectory, 0o500);
     const originalMode = (await fs.stat(readOnlyDirectory)).mode & 0o7777;
-    const result = await createServerRelief({ ...options, upload: async () => { throw Object.assign(new Error("offline"), { code: "backup_drive_upload_failed" }); } })();
-    assert.equal(result.releasedBytes, 0);
-    assert.equal(result.driveVerified, 0);
-    assert.equal(result.failed, 1);
-    assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
-    assert.equal((await fs.stat(readOnlyDirectory)).mode & 0o7777, originalMode);
-    assert.equal((await fs.readdir(options.archiveRoot)).length, 1);
+    try {
+        const result = await createServerRelief({ ...options, upload: async () => { throw Object.assign(new Error("offline"), { code: "backup_drive_upload_failed" }); } })();
+        assert.equal(result.releasedBytes, 0);
+        assert.equal(result.driveVerified, 0);
+        assert.equal(result.failed, 1);
+        assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
+        assert.equal((await fs.stat(readOnlyDirectory)).mode & 0o7777, originalMode);
+        assert.equal((await fs.readdir(options.archiveRoot)).length, 1);
+    } finally {
+        await fs.chmod(readOnlyDirectory, originalMode);
+    }
 });
 
 test("keeps originals when disk reserve would be breached", async t => {

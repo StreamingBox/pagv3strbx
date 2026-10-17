@@ -44,6 +44,18 @@ describe("AppErrorBoundary", () => {
         await waitFor(() => expect(reloadCurrentPage).toHaveBeenCalledTimes(1));
     });
 
+    it("automatically retries when a stale module is missing the requested export", async () => {
+        render(
+            <AppErrorBoundary>
+                <FailingView message="The requested module './index.js' does not provide an export named 'default'" />
+            </AppErrorBoundary>
+        );
+
+        expect(screen.getByText(/Estamos actualizando la aplicación/)).toBeInTheDocument();
+        expect(refreshApplicationAssets).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(reloadCurrentPage).toHaveBeenCalledTimes(1));
+    });
+
     it("shows a clear manual retry after the automatic attempt has already been used", async () => {
         window.sessionStorage.setItem(ASSET_RECOVERY_ATTEMPT_KEY, "1");
 

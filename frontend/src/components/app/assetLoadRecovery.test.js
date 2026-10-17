@@ -10,6 +10,7 @@ describe("asset load recovery", () => {
     it("recognizes lazy chunk failures without treating ordinary errors as stale assets", () => {
         expect(isAssetLoadError(new Error("Failed to fetch dynamically imported module"))).toBe(true);
         expect(isAssetLoadError(new Error("Loading chunk 42 failed"))).toBe(true);
+        expect(isAssetLoadError(new Error("The requested module './index.js' does not provide an export named 'default'"))).toBe(true);
         expect(isAssetLoadError(new Error("User data is invalid"))).toBe(false);
     });
 

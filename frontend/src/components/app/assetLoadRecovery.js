@@ -3,7 +3,11 @@ const APP_CACHE_PREFIX = "strbx-pwa-";
 
 export function isAssetLoadError(error) {
     const message = String(error?.message || error || "").toLowerCase();
-    return message.includes("dynamically imported module")
+    const staleModuleExport = message.includes("requested module")
+        && message.includes("does not provide an export named");
+
+    return staleModuleExport
+        || message.includes("dynamically imported module")
         || message.includes("loading chunk")
         || message.includes("chunkloaderror")
         || message.includes("failed to fetch")

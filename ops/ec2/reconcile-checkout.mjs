@@ -45,7 +45,7 @@ function createPlan(rootDirectory, target, planPath) {
     const writes = [];
     for (const record of tree) {
         const [header, filename] = record.split("\t");
-        assertSourcePath(filename);
+        if (path.isAbsolute(filename) || filename.split("/").includes("..")) throw new Error(`Invalid repository path: ${filename}`);
         const [mode, type, object] = header.split(" ");
         if (type !== "blob" || !["100644", "100755"].includes(mode)) throw new Error(`Unsupported source entry: ${filename}`);
         const destination = path.join(root, filename);
@@ -53,6 +53,7 @@ function createPlan(rootDirectory, target, planPath) {
         const desired = git(root, ["cat-file", "blob", object]);
         const modeMatches = process.platform === "win32" || !stat || Boolean(stat.mode & 0o111) === (mode === "100755");
         if (stat && modeMatches && digest(normalize(fs.readFileSync(destination))) === digest(normalize(desired))) continue;
+        assertSourcePath(filename);
         writes.push({ path: filename, object, mode, before: currentHash(destination), after: digest(desired) });
     }
     const plan = { root, target, previousHead, createdAt: new Date().toISOString(), writes };

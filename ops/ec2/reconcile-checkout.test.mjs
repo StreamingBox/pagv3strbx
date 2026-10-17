@@ -20,7 +20,9 @@ function repository() {
     git(root, "config", "core.autocrlf", "false");
     fs.writeFileSync(path.join(root, ".gitignore"), ".env\nprivate-backup/\n");
     fs.writeFileSync(path.join(root, "app.js"), "export const version = 1;\n");
-    git(root, "add", "--", ".gitignore", "app.js");
+    fs.mkdirSync(path.join(root, "frontend"));
+    fs.writeFileSync(path.join(root, "frontend/.env.production"), "VITE_API_BASE=/api\n");
+    git(root, "add", "--", ".gitignore", "app.js", "frontend/.env.production");
     git(root, "commit", "-m", "initial source");
     const previous = git(root, "rev-parse", "HEAD");
     git(root, "switch", "-c", "target");
@@ -48,6 +50,7 @@ test("archives local source and Git before aligning, preserving private files", 
     assert.equal(git(fixture.root, "status", "--porcelain"), "");
     assert.equal(fs.readFileSync(path.join(fixture.backup, "files/app.js"), "utf8"), "// production-only edit\n");
     assert.equal(fs.readFileSync(path.join(fixture.root, ".env"), "utf8"), "FICTIONAL_SECRET=test-only\n");
+    assert.equal(fs.readFileSync(path.join(fixture.root, "frontend/.env.production"), "utf8"), "VITE_API_BASE=/api\n");
     assert.equal(fs.existsSync(path.join(fixture.backup, "index")), true);
     git(fixture.root, "bundle", "verify", path.join(fixture.backup, "history.bundle"));
 });

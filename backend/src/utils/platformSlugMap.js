@@ -33,6 +33,9 @@ function toCodeSlug(platformSlugFromDBOrRequest) {
     // ✅ NETFLIX
     if (key.includes("netflix")) return "netflix";
 
+    // Disney products share the same one-time-code delivery flow.
+    if (key.includes("disney")) return "disney";
+
     return ALIASES[key] || key.replace(/\s/g, "");
 }
 

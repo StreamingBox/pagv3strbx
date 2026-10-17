@@ -1,6 +1,6 @@
 // BACKEND: pagv2strbx/src/services/codesService.js
 
-const { fetchCodeFromGmail } = require("./gmailCodeService");
+const { fetchCodeFromGmail, fetchDisneyCodeFromGmail } = require("./gmailCodeService");
 const { fetchNetflixFlow } = require("./netflixFlowService");
 const { credFingerprint } = require("../utils/credFingerprint");
 const {
@@ -8,6 +8,7 @@ const {
     getSubscriptionWithAccount,
     getProviderForNetflixAccountEmail,
     countDeliveredByFingerprint,
+    countDisneyDeliveredForPurchase,
     getLastCodeReset,
 } = require("./codeQueries");
 const { reserveCodeRequest } = require("./codeRequestReservation.service");
@@ -27,6 +28,7 @@ const { fetchCodeFromLiveonixProvider } = require("./liveonixProviderCodeService
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const { isStoredDateOnlyExpired } = require("../utils/date");
+const { checkDisneyPurchaseWindow } = require("./disneyCodePolicy");
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
@@ -79,6 +81,9 @@ function resolvePolicyPlatform({ requestPlatformSlug, subPlatformIdentity }) {
     if (combined.includes("netflix")) {
         return "netflix";
     }
+    if (combined.includes("disney")) {
+        return "disney";
+    }
 
     return toCodeSlug(requestPlatformSlug || subPlatformIdentity || "");
 }
@@ -110,6 +115,15 @@ function getRequestLimitRule({ policyPlatform, action }) {
             maxRequests: 1,
             countOnlyDeliveredCodes: true,
             message: "Prime Video permite 1 solicitud por pedido mientras la contraseña actual siga siendo la misma.",
+        };
+    }
+
+    if (policyPlatform === "disney" && normalizedAction === "code") {
+        return {
+            limited: true,
+            maxRequests: 1,
+            countOnlyDeliveredCodes: true,
+            message: "Disney permite un solo código por compra. Si ya fue entregado, contacta a Soporte.",
         };
     }
 
@@ -243,6 +257,9 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     if (!plat && requestedSlug === "netflix") {
         plat = { slug: "netflix", gmail_from: "netflix.com", is_active: 1, max_age_minutes: 15 };
     }
+    if (!plat && requestedSlug === "disney") {
+        plat = { slug: "disney", gmail_from: "disneyplus.com", code_regex: "([0-9]{6})", is_active: 1, max_age_minutes: 10 };
+    }
 
     if (!plat || Number(plat.is_active) !== 1) {
         console.error(`[requestCode] Plataforma no encontrada o inactiva: ${requestedSlug}`);
@@ -314,6 +331,14 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         };
     }
 
+    if (requestedSlug === "disney" && normalizedAction !== "code") {
+        return {
+            http: 400,
+            body: { ok: false, status: "wrong_action", message: "Disney solo permite solicitar el código de acceso." },
+            meta: { sub, plat, fingerprint, soldAccountEmail },
+        };
+    }
+
     const isActive = String(sub.status || "").toLowerCase() === "active";
     const notExpired = !sub.expires_at || !isStoredDateOnlyExpired(sub.expires_at);
     if (!isActive || !notExpired) {
@@ -322,6 +347,46 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             body: { ok: false, status: "subscription_inactive", message: "Pedido/cuenta no activa o vencida" },
             meta: { sub, fingerprint, soldAccountEmail },
         };
+    }
+
+    let disneyPurchaseTimestamp = null;
+    if (requestedSlug === "disney") {
+        const purchaseWindow = checkDisneyPurchaseWindow(sub.purchaseCreatedAt);
+        if (!sub.purchaseOrderId || !purchaseWindow.allowed) {
+            const expired = purchaseWindow.status === "purchase_window_expired";
+            return {
+                http: expired ? 410 : 409,
+                body: {
+                    ok: false,
+                    status: purchaseWindow.status,
+                    message: expired
+                        ? "Ya pasaron más de 10 minutos desde la compra. El código de Disney ya no se entrega desde esta página; contacta a Soporte."
+                        : "No se pudo validar la fecha de compra de esta suscripción. Contacta a Soporte para revisar tu acceso.",
+                },
+                meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform },
+            };
+        }
+        disneyPurchaseTimestamp = sub.purchaseCreatedAt;
+    }
+
+    if (requestedSlug === "disney") {
+        const deliveredCount = await countDisneyDeliveredForPurchase({
+            subscriptionId: orderNumber,
+            purchasedAt: disneyPurchaseTimestamp,
+        });
+        if (deliveredCount >= 1) {
+            return {
+                http: 429,
+                body: {
+                    ok: false,
+                    status: "code_already_delivered",
+                    message: "Ya se entregó el único código permitido para esta compra de Disney. Si no pudiste usarlo, contacta a Soporte.",
+                    limit: 1,
+                    deliveredCount,
+                },
+                meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform, deliveredCount },
+            };
+        }
     }
 
     // El administrador necesita poder revisar nuevamente una cuenta para soporte.
@@ -352,7 +417,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     const limitRule = isAdmin
         ? { limited: false, maxRequests: null, countOnlyDeliveredCodes: false, message: null }
         : getRequestLimitRule({ policyPlatform, action: normalizedAction });
-    if (limitRule.limited && requestedSlug !== "netflix") {
+    if (limitRule.limited && requestedSlug !== "netflix" && requestedSlug !== "disney") {
         const deliveredCount = await countDeliveredByFingerprint({
             orderId: orderNumber,
             platformSlugLower: requestedSlug,
@@ -450,15 +515,17 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     });
     // No bloqueamos la revisión administrativa con la reserva de una solicitud
     // del cliente. La consulta del admin queda registrada, pero no consume cupo.
-    const reservation = isAdmin
+    const reservation = isAdmin && requestedSlug !== "disney"
         ? null
         : await reserveCodeRequest({
             orderId: orderNumber,
             platformSlug: requestedSlug,
             action: normalizedAction,
-            credentialFingerprint: fingerprint,
-            resetMarker: lastReset?.id || 0,
-            allowCompletedReuse: requestedSlug !== "netflix" && !limitRule.limited,
+            credentialFingerprint: requestedSlug === "disney"
+                ? credFingerprint(`disney-purchase-${sub.purchaseOrderId}`, "")
+                : fingerprint,
+            resetMarker: requestedSlug === "disney" ? Number(sub.purchaseOrderId) : lastReset?.id || 0,
+            allowCompletedReuse: requestedSlug !== "netflix" && requestedSlug !== "disney" && !limitRule.limited,
         });
     if (reservation?.inProgress) {
         return {
@@ -541,6 +608,16 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 20000,
                 "Tiempo de espera agotado consultando Netflix/Gmail."
             );
+        } else if (requestedSlug === "disney") {
+            fetchingResult = await withTimeout(
+                fetchDisneyCodeFromGmail({
+                    toEmail: soldAccountEmail,
+                    gmailFromContains: plat.gmail_from || "disneyplus.com",
+                    purchasedAt: disneyPurchaseTimestamp,
+                }),
+                20000,
+                "Tiempo de espera agotado consultando Disney/Gmail."
+            );
         } else {
             fetchingResult = await withTimeout(
                 fetchCodeFromGmail({
@@ -585,8 +662,14 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             "imap_timeout",
             "imap_tls_error",
         ]);
+        const disneyBlockedStatuses = new Set([
+            "device_already_entered",
+            "purchase_window_expired",
+            "purchase_time_unavailable",
+            "code_already_delivered",
+        ]);
         return {
-            http: serviceUnavailableStatuses.has(fetchStatus) ? 503 : 404,
+            http: serviceUnavailableStatuses.has(fetchStatus) ? 503 : disneyBlockedStatuses.has(fetchStatus) ? 409 : 404,
             body: {
                 ok: false,
                 status: fetchStatus,

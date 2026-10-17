@@ -12,6 +12,7 @@ const PLATFORMS = [
     { slug: "spotify", logoSlug: "spotify-3-meses", label: "Spotify", icon: "🎵", accent: "#1db954", bg: "rgba(29,185,84,0.12)", border: "rgba(29,185,84,0.3)" },
     { slug: "netflix", logoSlug: "netflix", label: "Netflix", icon: "🎬", accent: "#e50914", bg: "rgba(229,9,20,0.12)", border: "rgba(229,9,20,0.3)" },
     { slug: "prime", logoSlug: "prime-video", label: "Prime Video", icon: "📦", accent: "#00a8e1", bg: "rgba(0,168,225,0.12)", border: "rgba(0,168,225,0.3)" },
+    { slug: "disney", logoSlug: "disney", label: "Disney+", icon: "✨", accent: "#1d4ed8", bg: "rgba(29,78,216,0.12)", border: "rgba(29,78,216,0.3)" },
     { slug: "youtube-premium-totp", logoSlug: "youtube-music", label: "YouTube", icon: "▶", accent: "#ff0033", bg: "rgba(255,0,51,0.12)", border: "rgba(255,0,51,0.3)" },
 ];
 
@@ -169,6 +170,10 @@ function StatusCard({ d, onRetry }) {
     const cfg = {
         wrong_action: { icon: "!", title: "Accion de Netflix incorrecta", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
         expired: { icon: "⏱️", title: "Vencido", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        purchase_window_expired: { icon: "⏱️", title: "Ventana de Disney vencida", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        purchase_time_unavailable: { icon: "🧾", title: "No se pudo validar la compra", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        device_already_entered: { icon: "📺", title: "Disney detectó un nuevo inicio de sesión", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
+        code_already_delivered: { icon: "🚫", title: "Código de Disney ya entregado", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" },
         blocked: { icon: "🚫", title: "Límite alcanzado", color: "#ef4444", bg: "rgba(239,68,68,0.1)", border: "rgba(239,68,68,0.3)" },
         no_account: { icon: "🧾", title: "Sin cuenta asignada", color: "var(--accent)", bg: "rgba(13,166,242,0.07)", border: "rgba(13,166,242,0.25)" },
         provider_code_not_found: { icon: "📨", title: "Código aún no disponible", color: "#f59e0b", bg: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.3)" },
@@ -621,7 +626,9 @@ export default function Codes() {
                             <div style={{ background: "rgba(99,51,255,0.08)", border: "1px solid rgba(99,51,255,0.22)", borderRadius: 9, padding: "10px 12px", display: "flex", gap: 8, alignItems: "flex-start" }}>
                                 <span style={{ fontSize: 13, flexShrink: 0, color: "#8b5cf6" }}>ℹ</span>
                                 <p style={{ margin: 0, fontSize: 11, color: "var(--muted)", lineHeight: 1.65 }}>
-                                    {activePlatform === "youtube-premium-totp"
+                                    {activePlatform === "disney"
+                                        ? <>Disney+: solicita el código dentro de los primeros 10 minutos. Se entrega <span style={{ color: "var(--text)", fontWeight: 800 }}>uno por compra</span> y se bloquea si Disney detecta un nuevo inicio de sesión. Si no aplica, contacta a Soporte.</>
+                                        : activePlatform === "youtube-premium-totp"
                                         ? (isAdmin
                                             ? <>Como administrador, puedes volver a solicitar el código cuando lo necesites. El código cambia cada 30 segundos.</>
                                             : <>El código cambia cada 30 segundos. Solo puedes consultarlo con una suscripción activa asignada a ti.</>)

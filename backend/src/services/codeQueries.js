@@ -32,9 +32,25 @@ async function getSubscriptionWithAccount(orderId) {
             FROM order_items oi
             JOIN orders o ON o.id = oi.order_id
             WHERE oi.subscription_id = s.id
-            ORDER BY o.created_at DESC, o.id DESC
+            ORDER BY o.created_at DESC, o.id DESC, oi.id DESC
             LIMIT 1
-        ) AS orderCode
+        ) AS orderCode,
+        (
+            SELECT o.id
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.subscription_id = s.id
+            ORDER BY o.created_at DESC, o.id DESC, oi.id DESC
+            LIMIT 1
+        ) AS purchaseOrderId,
+        (
+            SELECT o.created_at
+            FROM order_items oi
+            JOIN orders o ON o.id = oi.order_id
+            WHERE oi.subscription_id = s.id
+            ORDER BY o.created_at DESC, o.id DESC, oi.id DESC
+            LIMIT 1
+        ) AS purchaseCreatedAt
      FROM subscriptions s
      JOIN users u ON u.id = s.user_id
      JOIN platforms p ON p.id = s.platform_id
@@ -147,6 +163,21 @@ async function countDeliveredByFingerprint({
     return Number(row?.total || 0);
 }
 
+async function countDisneyDeliveredForPurchase({ subscriptionId, purchasedAt }) {
+    const [[row]] = await pool.query(
+        `SELECT COUNT(*) AS total
+           FROM code_deliveries cd
+          WHERE cd.order_id = ?
+            AND LOWER(cd.platform_slug) = 'disney'
+            AND cd.status = 'delivered'
+            AND cd.delivered_code IS NOT NULL
+            AND cd.delivered_code <> ''
+            AND cd.created_at >= ?`,
+        [Number(subscriptionId), purchasedAt]
+    );
+    return Number(row?.total || 0);
+}
+
 async function getDeliveryCountersByFingerprint({ orderId, platformSlugLower, credentialFingerprint }) {
     const id = Number(orderId);
     const slug = String(platformSlugLower || "").toLowerCase();
@@ -228,6 +259,7 @@ module.exports = {
     getProviderForNetflixAccountEmail,
     getLastDelivered,
     countDeliveredByFingerprint,
+    countDisneyDeliveredForPurchase,
     getDeliveryCountersByFingerprint,
     getLastCodeReset,
 };

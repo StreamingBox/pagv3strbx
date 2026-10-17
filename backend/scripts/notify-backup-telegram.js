@@ -44,7 +44,7 @@ async function notifyBackup({ timestamp, driveTarget, ...options }) {
 }
 
 async function notifyBackupFailure({ count, ...options }) {
-    return sendBackupNotification(`Hay ${Number(count)} copia(s) pendientes de verificar en Google Drive. Las copias locales se conservan y se reintentaran automaticamente. No se consideran respaldos completados.`, options);
+    return sendBackupNotification(`Hay ${Number(count)} copia(s) pendientes de verificar en Google Drive. Las copias locales disponibles se conservan. Los pendientes registrados se reintentaran automaticamente. No se consideran respaldos completados.`, options);
 }
 
 if (require.main === module) {

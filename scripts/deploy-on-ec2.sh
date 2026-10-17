@@ -11,7 +11,7 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/streaming-box}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/readiness}"
 FRONTEND_ROOT="${FRONTEND_ROOT:-/var/www/pageV3/frontend}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pagev3-deploy.lock}"
-TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
 exec 9>"$DEPLOY_LOCK_FILE"
@@ -39,7 +39,10 @@ fi
 
 PREVIOUS_COMMIT="$(git rev-parse HEAD)"
 
-mkdir -p "$BACKUP_DIR"
+umask 077
+[[ ! -e "$BACKUP_DIR" ]] || { echo "Backup destination already exists; history preserved" >&2; exit 1; }
+mkdir -p "$BACKUP_ROOT"
+mkdir -m 700 "$BACKUP_DIR"
 printf '%s\n' "$PREVIOUS_COMMIT" > "$BACKUP_DIR/previous-commit"
 if [ -d frontend/dist ]; then
   tar -C frontend -czf "$BACKUP_DIR/frontend-dist.tgz" dist
@@ -50,8 +53,11 @@ find backend -maxdepth 1 -type f -name '.env*.bak*' -exec chmod 600 {} \; 2>/dev
 
 if [ "${SKIP_DB_BACKUP:-false}" != "true" ]; then
   echo ">>> production backup"
-  bash scripts/backup-production.sh "$BACKUP_DIR"
+  bash scripts/backup-production.sh "$BACKUP_DIR/production"
 fi
+
+# The rollback files also require Drive, even when no database dump is requested.
+node backend/scripts/upload-backup-drive.js "$BACKUP_DIR" deployment
 
 rollback() {
   echo ">>> deployment failed; restoring $PREVIOUS_COMMIT"

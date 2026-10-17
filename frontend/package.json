@@ -31,9 +31,9 @@
     "vite-plugin-compression": "^0.5.1"
   },
   "overrides": {
-    "brace-expansion": "5.0.9",
+    "brace-expansion": "5.0.12",
     "glob": {
-      "brace-expansion": "5.0.9"
+      "brace-expansion": "5.0.12"
     },
     "esbuild": "0.28.1",
     "js-yaml": "^5.2.1",
@@ -57,6 +57,6 @@
     "globals": "^16.5.0",
     "jsdom": "^29.1.1",
     "vite": "^7.2.4",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.11"
   }
 }

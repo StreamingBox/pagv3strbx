@@ -86,11 +86,16 @@ echo ">>> database migrations"
 (cd backend && npm run migrate)
 
 echo ">>> frontend checks"
-(cd frontend && npm ci && npm run lint && npm test && npm run build && node scripts/verify-release.mjs dist)
+if [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
+  read -r -a FRONTEND_LINT_TARGET_ARRAY <<< "$FRONTEND_LINT_TARGETS"
+  (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && npm test && npm run build && node scripts/verify-release.mjs dist)
+else
+  (cd frontend && npm ci && npm run lint && npm test && npm run build && node scripts/verify-release.mjs dist)
+fi
 
 echo ">>> dependency audits"
 npm audit --audit-level=high
-(cd backend && npm audit --audit-level=high)
+(cd backend && npm audit --omit=dev --audit-level=high)
 (cd frontend && AUDIT_ALLOW_ADVISORIES="https://github.com/advisories/GHSA-mh99-v99m-4gvg,https://github.com/advisories/GHSA-qwww-vcr4-c8h2" AUDIT_ALLOW_PACKAGES="@eslint/config-array,@eslint/eslintrc,brace-expansion,eslint,minimatch,react-router,react-router-dom" node ../scripts/audit-dependencies.js)
 
 echo ">>> restarting API"

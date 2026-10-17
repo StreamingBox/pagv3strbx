@@ -11,6 +11,8 @@ BACKUP_ROOT="${BACKUP_ROOT:-/var/backups/streaming-box}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3000/api/readiness}"
 FRONTEND_ROOT="${FRONTEND_ROOT:-/var/www/pageV3/frontend}"
 DEPLOY_LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/pagev3-deploy.lock}"
+FRONTEND_PREBUILT_DIR="${FRONTEND_PREBUILT_DIR:-}"
+FRONTEND_PUBLISH_DIR="frontend/dist"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)-$(node -e 'process.stdout.write(require("node:crypto").randomUUID())')"
 BACKUP_DIR="$BACKUP_ROOT/$TIMESTAMP"
 
@@ -112,7 +114,29 @@ echo ">>> database migrations"
 (cd backend && npm run migrate)
 
 echo ">>> frontend checks"
-if [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
+if [[ -n "$FRONTEND_PREBUILT_DIR" ]]; then
+  [[ "$FRONTEND_PREBUILT_DIR" = /* && -d "$FRONTEND_PREBUILT_DIR" && -f "$FRONTEND_PREBUILT_DIR/index.html" ]] || {
+    echo "FRONTEND_PREBUILT_DIR must be an absolute directory containing index.html." >&2
+    exit 1
+  }
+  FRONTEND_PREBUILT_DIR="$(realpath "$FRONTEND_PREBUILT_DIR")"
+  PROJECT_REAL="$(realpath "$PROJECT_DIR")"
+  case "$FRONTEND_PREBUILT_DIR/" in
+    "$PROJECT_REAL/"*) echo "The prebuilt frontend must be outside the source checkout." >&2; exit 1 ;;
+  esac
+  [[ "${FRONTEND_SOURCE_COMMIT:-}" == "$(git rev-parse HEAD)" ]] || {
+    echo "The prebuilt frontend source commit must match the deployed checkout." >&2
+    exit 1
+  }
+  if [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
+    read -r -a FRONTEND_LINT_TARGET_ARRAY <<< "$FRONTEND_LINT_TARGETS"
+    (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && npm test)
+  else
+    (cd frontend && npm ci && npm run lint && npm test)
+  fi
+  node frontend/scripts/verify-release.mjs "$FRONTEND_PREBUILT_DIR"
+  FRONTEND_PUBLISH_DIR="$FRONTEND_PREBUILT_DIR"
+elif [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
   read -r -a FRONTEND_LINT_TARGET_ARRAY <<< "$FRONTEND_LINT_TARGETS"
   (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && npm test && npm run build && node scripts/verify-release.mjs dist)
 else
@@ -136,7 +160,7 @@ echo ">>> readiness check"
 for attempt in $(seq 1 18); do
   if curl --fail --silent --show-error "$HEALTH_URL" >/dev/null; then
     echo ">>> publishing verified frontend"
-    bash ops/ec2/publish-frontend.sh frontend/dist "$FRONTEND_ROOT"
+    bash ops/ec2/publish-frontend.sh "$FRONTEND_PUBLISH_DIR" "$FRONTEND_ROOT"
     trap - ERR
     echo ">>> deployment complete; commit: $(git rev-parse --short HEAD); backup: $BACKUP_DIR"
     exit 0

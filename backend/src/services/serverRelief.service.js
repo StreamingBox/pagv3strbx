@@ -68,7 +68,7 @@ async function inventory(root, uid, maxBytes) {
             throw new Error("protected_entry");
         }
         if (stat.isDirectory()) {
-            directories.push(relative);
+            directories.push({ relative, mode: stat.mode & 0o7777 });
             for (const name of (await fs.readdir(filename)).sort()) await visit(path.join(filename, name), relative ? `${relative}/${name}` : name);
         } else if (stat.isFile() && stat.nlink === 1 && BUILD_FILE.test(normalizedRelative || path.basename(root))) {
             bytes += stat.size;
@@ -122,7 +122,7 @@ function createServerRelief({
                 try {
                     const rootStat = await fs.lstat(source);
                     candidate = await inventory(source, uid, maxBytes - result.releasedBytes);
-                    if (!candidate.files.length || Math.max(rootStat.mtimeMs, ...candidate.files.map(f => f.mtimeMs)) > now() - minimumAgeMs) {
+                    if ((!candidate.files.length && !candidate.directories.length) || Math.max(rootStat.mtimeMs, ...candidate.files.map(f => f.mtimeMs)) > now() - minimumAgeMs) {
                         result.skipped++; continue;
                     }
                     if (await inUse(source)) { result.skipped++; continue; }
@@ -133,7 +133,7 @@ function createServerRelief({
                     await fs.mkdir(destination, { recursive: true, mode: 0o700 });
                     const targetRoot = path.join(destination, name);
                     const manifest = [];
-                    for (const dir of candidate.directories) await fs.mkdir(path.join(targetRoot, dir), { recursive: true, mode: 0o700 });
+                    for (const dir of candidate.directories) await fs.mkdir(path.join(targetRoot, dir.relative), { recursive: true, mode: 0o700 });
                     for (const item of candidate.files) {
                         const original = item.relative ? path.join(source, item.relative) : source;
                         const saved = item.relative ? path.join(targetRoot, item.relative) : targetRoot;
@@ -152,7 +152,7 @@ function createServerRelief({
                     const manifestPath = `${targetRoot}.manifest.json`;
                     const manifestContent = `${JSON.stringify({ source, createdAt: new Date(now()).toISOString(), files: manifest }, null, 2)}\n`;
                     await durableWrite(manifestPath, manifestContent);
-                    for (const dir of [...candidate.directories].reverse()) await syncDirectory(path.join(targetRoot, dir));
+                    for (const dir of [...candidate.directories].reverse()) await syncDirectory(path.join(targetRoot, dir.relative));
                     await syncDirectory(destination);
                     await syncDirectory(archive);
                     const receipt = await upload(targetRoot, { kind: "server-relief", companions: [`${targetRoot}.manifest.json`] });
@@ -166,13 +166,33 @@ function createServerRelief({
                     result.localCopiesRemoved++;
                     await syncDirectory(destination);
                     // Only verified, unchanged individual files may leave tmpfs. Unknown files are never recursively removed.
-                    for (const item of candidate.files) {
-                        const original = item.relative ? path.join(source, item.relative) : source;
-                        if (signature(await fs.lstat(original)) !== item.signature) throw new Error("source_changed");
-                        await fs.unlink(original);
-                        result.releasedBytes += item.size;
+                    const changedDirectoryModes = [];
+                    try {
+                        for (const dir of candidate.directories) {
+                            const original = dir.relative ? path.join(source, dir.relative) : source;
+                            const stat = await fs.lstat(original);
+                            if ((stat.mode & 0o7777) !== dir.mode) throw new Error("source_changed");
+                            const writableMode = dir.mode | 0o700;
+                            if (writableMode !== dir.mode) {
+                                await fs.chmod(original, writableMode);
+                                changedDirectoryModes.push({ path: original, mode: dir.mode });
+                            }
+                        }
+                        for (const item of candidate.files) {
+                            const original = item.relative ? path.join(source, item.relative) : source;
+                            if (signature(await fs.lstat(original)) !== item.signature) throw new Error("source_changed");
+                            await fs.unlink(original);
+                            result.releasedBytes += item.size;
+                        }
+                        for (const dir of [...candidate.directories].reverse()) {
+                            await fs.rmdir(dir.relative ? path.join(source, dir.relative) : source);
+                        }
+                    } catch (error) {
+                        for (const dir of changedDirectoryModes.reverse()) {
+                            try { await fs.chmod(dir.path, dir.mode); } catch { /* Removed directories no longer need their mode restored. */ }
+                        }
+                        throw error;
                     }
-                    for (const dir of [...candidate.directories].reverse()) await fs.rmdir(path.join(source, dir));
                     result.archived++;
                 } catch (error) {
                     result.failed++;

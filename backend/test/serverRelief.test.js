@@ -79,6 +79,40 @@ test("recognizes common extensionless build metadata and stages it for Drive", a
     assert.deepEqual(await fs.readdir(options.archiveRoot), []);
 });
 
+test("removes read-only build directories only after verifying Drive", async t => {
+    const options = await fixture(t);
+    const source = await build(options.tempRoot);
+    await fs.chmod(path.join(source, "assets"), 0o500);
+    options.upload = async () => ({ verified: true });
+
+    const result = await createServerRelief(options)();
+
+    assert.equal(result.archived, 1, JSON.stringify(result));
+    assert.equal(result.failed, 0);
+    assert.equal(result.releasedBytes, Buffer.byteLength("<html>fictitious QA build</html>") + Buffer.byteLength("console.log('QA');"));
+    await assert.rejects(fs.stat(source), { code: "ENOENT" });
+});
+
+test("archives and removes empty stale build directories", async t => {
+    const options = await fixture(t);
+    const source = await build(options.tempRoot);
+    await fs.unlink(path.join(source, "index.html"));
+    await fs.unlink(path.join(source, "assets", "index-qa.js"));
+    let manifest;
+    options.upload = async (_target, { companions }) => {
+        manifest = JSON.parse(await fs.readFile(companions[0], "utf8"));
+        return { verified: true };
+    };
+
+    const result = await createServerRelief(options)();
+
+    assert.equal(result.archived, 1, JSON.stringify(result));
+    assert.equal(result.failed, 0);
+    assert.equal(result.releasedBytes, 0);
+    assert.deepEqual(manifest.files, []);
+    await assert.rejects(fs.stat(source), { code: "ENOENT" });
+});
+
 test("keeps secrets, unknown snapshots and fresh builds untouched", async t => {
     const options = await fixture(t);
     const protectedBuild = await build(options.tempRoot);
@@ -110,11 +144,15 @@ test("does not remove files when destination verification fails", async t => {
 test("Drive upload failure preserves originals and the local recovery copy", async t => {
     const options = await fixture(t);
     const source = await build(options.tempRoot);
+    const readOnlyDirectory = path.join(source, "assets");
+    await fs.chmod(readOnlyDirectory, 0o500);
+    const originalMode = (await fs.stat(readOnlyDirectory)).mode & 0o7777;
     const result = await createServerRelief({ ...options, upload: async () => { throw Object.assign(new Error("offline"), { code: "backup_drive_upload_failed" }); } })();
     assert.equal(result.releasedBytes, 0);
     assert.equal(result.driveVerified, 0);
     assert.equal(result.failed, 1);
     assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
+    assert.equal((await fs.stat(readOnlyDirectory)).mode & 0o7777, originalMode);
     assert.equal((await fs.readdir(options.archiveRoot)).length, 1);
 });
 

@@ -22,6 +22,9 @@ de memoria no equivale a carga del CPU.
   su manifiesto, sube a Google Drive y verifica SHA-256 descargando la copia
   antes de retirar los originales, archivo por archivo. Una vez verificado
   Drive, elimina el staging local de esa ejecucion y luego retira el original.
+  Si hay directorios de solo lectura, habilita temporalmente los permisos
+  necesarios despues de la verificacion; si la retirada falla, restaura los
+  permisos de los directorios que sigan presentes.
 - Conserva los archivos archivados en Drive. Los manifiestos incluyen ruta
   original, tamano y SHA-256 para comprobar y recuperar cada archivo.
 - Mantiene al menos 512 MiB libres en el disco de destino y limita cada pasada

@@ -15,6 +15,8 @@ const failureLabels = {
     backup_drive_verification_failed: "el SHA-256 de Drive no coincide",
     source_changed: "el temporal cambió durante la copia",
     source_in_use: "el temporal esta siendo utilizado",
+    EACCES: "sin permisos para retirar archivos o directorios",
+    EPERM: "operación no permitida al retirar el temporal",
     io_error: "error de lectura o escritura",
 };
 

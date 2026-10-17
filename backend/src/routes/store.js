@@ -333,6 +333,7 @@ router.post("/orders/:id/renew", requireAuth, async (req, res) => {
             actorRole: req.user.role || "user",
             deductWallet: true,
             allowAccountChange: false,
+            customerInitiated: true,
         });
 
         const [userRows] = await conn.query(

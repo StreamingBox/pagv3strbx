@@ -1,11 +1,11 @@
 const { currentBogotaDateOnly, formatExpiryDateOnly } = require("./date");
 
-function canRenewAfterExpiry({ actorRole, status, isAttended, isPastExpiry, extendedRenewal = false }) {
+function canRenewAfterExpiry({ actorRole, status, isAttended, isPastExpiry, extendedRenewal = false, customerInitiated = false }) {
     if (!isPastExpiry || String(status || "").toLowerCase() !== "active" || Number(isAttended) === 1) {
         return false;
     }
 
-    return actorRole === "admin" ? extendedRenewal === true : true;
+    return actorRole === "admin" && !customerInitiated ? extendedRenewal === true : true;
 }
 
 function getRenewalEligibility({

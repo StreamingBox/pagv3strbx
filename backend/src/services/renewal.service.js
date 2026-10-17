@@ -24,6 +24,7 @@ async function renewSubscription({
     newAccountId = null,
     allowAccountChange = false,
     extendedRenewal = false,
+    customerInitiated = false,
 }) {
     const [rows] = await conn.query(
         `SELECT s.id, s.user_id, s.platform_id, s.platform_price_id, s.platform_account_id,
@@ -73,7 +74,7 @@ async function renewSubscription({
     );
     const renewalCount = Number(renewalStats?.renewal_count || 0);
 
-    if (actorRole !== "admin" && Number(sub.user_id) !== Number(actorUserId)) {
+    if ((actorRole !== "admin" || customerInitiated) && Number(sub.user_id) !== Number(actorUserId)) {
         const err = new Error("No autorizado para renovar esta suscripción.");
         err.status = 403;
         throw err;
@@ -91,6 +92,7 @@ async function renewSubscription({
         isAttended: sub.is_attended,
         isPastExpiry,
         extendedRenewal,
+        customerInitiated,
     });
 
     const eligibility = getRenewalEligibility({

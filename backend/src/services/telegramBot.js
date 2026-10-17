@@ -14,6 +14,7 @@
  *   /saldo [@user] → Saldo de tus propios fondos o de un usuario
  *   /comprar <platform_slug> <duracion_días> @usuario → Registrar compra a un usuario
  *   /servidor     → RAM y almacenamiento del servidor (administradores)
+ *   /limpiar_servidor -> Archivar temporales de despliegues (administrador, chat privado)
  */
 
 const axios = require("axios");
@@ -29,6 +30,8 @@ const {
 } = require("../utils/date");
 const { getStockSummary } = require("./stockSummary.service");
 const { getServerResources, buildServerResourcesMessage } = require("./serverResources.service");
+const { relieveServer } = require("./serverRelief.service");
+const { isServerReliefAdmin, createServerReliefHandler } = require("./telegramServerRelief.service");
 const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
 const {
     takeSupportTicketFromTelegram,
@@ -56,6 +59,13 @@ const stockSessions = new Map();
 const supportReplySessions = new Map();
 let bot = null;
 let botDisabledByConflict = false;
+const cmdServerRelief = createServerReliefHandler({
+    authorizedIds: AUTHORIZED,
+    sendMessage: (...args) => bot.sendMessage(...args),
+    getResources: () => getServerResources({ includePressure: true }),
+    relieve: relieveServer,
+    logger,
+});
 
 class TelegramBotClient extends EventEmitter {
     constructor(token, { polling = false } = {}) {
@@ -595,6 +605,9 @@ async function cmdStart(msg) {
                 ],
                 ...(isConfiguredAdmin(msg.chat.id)
                     ? [[{ text: "🖥️ Recursos del servidor", callback_data: "cmd_servidor" }]]
+                    : []),
+                ...(isServerReliefAdmin(msg, AUTHORIZED)
+                    ? [[{ text: "Liberar recursos", callback_data: "cmd_limpiar_servidor" }]]
                     : [])
             ]
         }
@@ -608,7 +621,7 @@ async function cmdStart(msg) {
 }
 
 async function cmdServerResources(msg) {
-    const resources = await getServerResources();
+    const resources = await getServerResources({ includePressure: true });
     await bot.sendMessage(msg.chat.id, buildServerResourcesMessage(resources));
 }
 
@@ -1061,7 +1074,8 @@ function setupCommands() {
         { command: "ventas", description: "Últimas ventas" },
         { command: "ventas_dia", description: "Resumen de ventas de hoy" },
         { command: "saldo", description: "Consultar un saldo" },
-        { command: "servidor", description: "Ver RAM y almacenamiento" }
+        { command: "servidor", description: "Ver RAM, swap y almacenamiento" },
+        { command: "limpiar_servidor", description: "Archivar temporales y liberar recursos" }
     ]).catch(err => console.error("[TelegramBot] Error setting commands:", err));
 
     bot.onText(/^\/start$/i, guard(cmdStart));
@@ -1071,6 +1085,7 @@ function setupCommands() {
     bot.onText(/^\/(?:ventas_dia|ventas_hoy)$/i, guard(cmdVentasDia));
     bot.onText(/^\/saldo(?:\s+(.+))?$/i, guard(cmdSaldo));
     bot.onText(/^\/servidor$/i, guard(cmdServerResources, { strictAdmin: true }));
+    bot.onText(/^\/limpiar_servidor(?:@[a-z0-9_]+)?\s*$/i, guard(cmdServerRelief, { strictAdmin: true }));
     bot.onText(/^\/comprar/i, guard(cmdComprarStart));
     bot.onText(/^\/addstock/i, guard(cmdAddStockStart));
 
@@ -1101,7 +1116,7 @@ function setupCommands() {
             await handleStockMessage(msg);
             await handleBuyMessage(msg);
         } else {
-            const knownCmds = ["/start", "/stock", "/ventas", "/ventas_dia", "/ventas_hoy", "/saldo", "/servidor", "/comprar", "/addstock"];
+            const knownCmds = ["/start", "/stock", "/ventas", "/ventas_dia", "/ventas_hoy", "/saldo", "/servidor", "/limpiar_servidor", "/comprar", "/addstock"];
             const cmd = msg.text.split(" ")[0].split("@")[0].toLowerCase().trim();
             if (!knownCmds.includes(cmd)) {
                 bot.sendMessage(msg.chat.id, `❓ Comando desconocido. Usa /start para ver los disponibles.`).catch(() => { });
@@ -1134,6 +1149,10 @@ function setupCommands() {
                     return bot.answerCallbackQuery(query.id, { text: "No autorizado" });
                 }
                 await cmdServerResources(mockMsg);
+            } else if (data === "cmd_limpiar_servidor") {
+                await bot.answerCallbackQuery(query.id).catch(() => { });
+                await cmdServerRelief(mockMsg);
+                return;
             } else {
                 const handledStock = await handleStockCallback(query);
                 if (handledStock) {

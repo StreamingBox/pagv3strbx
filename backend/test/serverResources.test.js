@@ -77,3 +77,16 @@ test("server metrics require an explicitly configured authorized chat", () => {
     assert.equal(isConfiguredAdmin(789, configuredAdmins), false);
     assert.equal(isConfiguredAdmin(123456, new Set()), false);
 });
+
+test("pressure details expose swap and CPU load when explicitly requested", async () => {
+    const result = await getServerResources({
+        includePressure: true,
+        osInfo: { totalmem: () => GiB, freemem: () => GiB / 4, platform: () => "linux", availableParallelism: () => 2, loadavg: () => [0.25, 0, 0] },
+        fsPromises: { statfs: async () => ({ blocks: 4, bsize: GiB, bavail: 1 }) },
+        readFile: async () => "MemTotal: 1048576 kB\nMemAvailable: 262144 kB\nSwapTotal: 524288 kB\nSwapFree: 131072 kB\n",
+    });
+    assert.deepEqual(result.swap, { totalBytes: GiB / 2, usedBytes: GiB * 3 / 8 });
+    assert.deepEqual(result.load, { cores: 2, average1m: 0.25 });
+    assert.match(buildServerResourcesMessage(result), /Swap utilizada/);
+    assert.match(buildServerResourcesMessage(result), /Carga CPU \(1 min\): 0.25 \/ 2/);
+});

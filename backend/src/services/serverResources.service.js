@@ -28,7 +28,9 @@ async function getServerResources({
     osInfo = os,
     fsPromises = fs,
     readFile = fs.readFile,
+    includePressure = false,
 } = {}) {
+    let memoryContents = "";
     let systemMemory = {
         totalBytes: Number(osInfo.totalmem()),
         availableBytes: Number(osInfo.freemem()),
@@ -36,7 +38,8 @@ async function getServerResources({
 
     if (osInfo.platform() === "linux") {
         try {
-            systemMemory = parseLinuxMemory(await readFile("/proc/meminfo", "utf8")) || systemMemory;
+            memoryContents = await readFile("/proc/meminfo", "utf8");
+            systemMemory = parseLinuxMemory(memoryContents) || systemMemory;
         } catch {
             // Keep the portable OS memory values when procfs is unavailable.
         }
@@ -69,7 +72,15 @@ async function getServerResources({
         // A RAM snapshot is still useful when the app volume cannot be inspected.
     }
 
-    return { memory, storage };
+    if (!includePressure) return { memory, storage };
+    const swapTotal = String(memoryContents).match(/^SwapTotal:\s+(\d+)\s+kB$/m);
+    const swapFree = String(memoryContents).match(/^SwapFree:\s+(\d+)\s+kB$/m);
+    const swap = swapTotal && swapFree ? {
+        totalBytes: Number(swapTotal[1]) * 1024,
+        usedBytes: Math.max(0, Number(swapTotal[1]) - Number(swapFree[1])) * 1024,
+    } : null;
+    const load = { cores: osInfo.availableParallelism?.() || osInfo.cpus?.().length || 1, average1m: osInfo.loadavg?.()[0] || 0 };
+    return { memory, storage, swap, load };
 }
 
 function buildServerResourcesMessage(resources) {
@@ -87,6 +98,8 @@ function buildServerResourcesMessage(resources) {
         storage
             ? `• Total: ${formatGiB(storage.totalBytes)}\n• Ocupado: ${formatGiB(storage.usedBytes)}\n• Disponible: ${formatGiB(storage.availableBytes)}`
             : "• No se pudo consultar el almacenamiento.",
+        ...(resources?.swap ? ["", `Swap utilizada: ${formatGiB(resources.swap.usedBytes)} / ${formatGiB(resources.swap.totalBytes)}`] : []),
+        ...(resources?.load ? [`Carga CPU (1 min): ${Number(resources.load.average1m).toFixed(2)} / ${resources.load.cores} nucleo(s)`] : []),
     ].join("\n");
 }
 

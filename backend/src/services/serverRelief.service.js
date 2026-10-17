@@ -9,7 +9,7 @@ const MiB = 1024 ** 2;
 // These are reviewed deployment snapshots, never the running app or its backups.
 const LEGACY_BUILD = /^(?:pageV3-(?:frontend-(?:hotfix|recovery-baseline)-\d{8}|module-repair-[a-f0-9]{7,40}-\d{8}|startup-recovery-[a-f0-9]{7,40}-\d{8}-\d{2}|main-alignment-[a-f0-9]{7,40}|provider-renewals-[a-f0-9]{7,40})|codex-frontend-recovery-[a-f0-9]{7,40}|strbx-stale-recovery-[a-f0-9]{7,40}|strbx-frontend-stage-\d{14}-[a-f0-9]{7,40})(?:\.tgz)?$/;
 const PROTECTED = /(?:^|\/)(?:\.env(?:\.[^/]*)?|\.git|\.codex[^/]*|backups?|uploads?|storage|topup-proofs|credentials)(?:\/|$)|\.(?:pem|key|sql|sqlite|sqlite3|db|patch)(?:\.[^/]*)?$/i;
-const BUILD_FILE = /\.(?:js|mjs|cjs|ts|css|html|json|map|md|txt|sh|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|webmanifest|br|gz|tgz|apk)$/i;
+const BUILD_FILE = /(?:\.(?:js|mjs|cjs|ts|css|html|json|map|md|txt|sh|svg|png|jpe?g|webp|gif|ico|woff2?|ttf|webmanifest|br|gz|tgz|apk)|(?:^|\/)(?:LICENSE|NOTICE|README|COPYING|AUTHORS|CHANGELOG)(?:\.[a-z0-9.-]+)?)$/i;
 
 function contains(root, filename) {
     const relative = path.relative(root, filename);
@@ -63,13 +63,14 @@ async function inventory(root, uid, maxBytes) {
     async function visit(filename, relative) {
         if (files.length + directories.length >= 5000) throw new Error("too_many_files");
         const stat = await fs.lstat(filename);
-        if (stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || PROTECTED.test(relative)) {
+        const normalizedRelative = relative.split(path.sep).join("/");
+        if (stat.isSymbolicLink() || (uid !== undefined && stat.uid !== uid) || PROTECTED.test(normalizedRelative)) {
             throw new Error("protected_entry");
         }
         if (stat.isDirectory()) {
             directories.push(relative);
             for (const name of (await fs.readdir(filename)).sort()) await visit(path.join(filename, name), relative ? `${relative}/${name}` : name);
-        } else if (stat.isFile() && stat.nlink === 1 && BUILD_FILE.test(relative || path.basename(root))) {
+        } else if (stat.isFile() && stat.nlink === 1 && BUILD_FILE.test(normalizedRelative || path.basename(root))) {
             bytes += stat.size;
             if (bytes > maxBytes) throw new Error("size_limit");
             files.push({ relative, size: stat.size, mtimeMs: stat.mtimeMs, signature: signature(stat) });
@@ -98,7 +99,7 @@ function createServerRelief({
         if (lastRun !== null && now() - lastRun < cooldownMs) return { status: "cooldown" };
         running = true;
         lastRun = now();
-        const result = { status: "completed", archived: 0, releasedBytes: 0, skipped: 0, failed: 0, diskLimited: false, failureCodes: {}, driveVerified: 0 };
+        const result = { status: "completed", archived: 0, releasedBytes: 0, localCopiesRemoved: 0, skipped: 0, failed: 0, diskLimited: false, failureCodes: {}, driveVerified: 0 };
         try {
             const temp = await fs.realpath(tempRoot);
             const archive = path.resolve(archiveRoot);
@@ -148,7 +149,9 @@ function createServerRelief({
                     const current = await inventory(source, uid, maxBytes);
                     if (JSON.stringify(candidate) !== JSON.stringify(current)) throw new Error("source_changed");
                     if (await inUse(source)) throw new Error("source_in_use");
-                    await durableWrite(`${targetRoot}.manifest.json`, `${JSON.stringify({ source, createdAt: new Date(now()).toISOString(), files: manifest }, null, 2)}\n`);
+                    const manifestPath = `${targetRoot}.manifest.json`;
+                    const manifestContent = `${JSON.stringify({ source, createdAt: new Date(now()).toISOString(), files: manifest }, null, 2)}\n`;
+                    await durableWrite(manifestPath, manifestContent);
                     for (const dir of [...candidate.directories].reverse()) await syncDirectory(path.join(targetRoot, dir));
                     await syncDirectory(destination);
                     await syncDirectory(archive);
@@ -157,6 +160,11 @@ function createServerRelief({
                     result.driveVerified++;
                     const afterUpload = await inventory(source, uid, maxBytes);
                     if (JSON.stringify(candidate) !== JSON.stringify(afterUpload) || await inUse(source)) throw new Error("source_changed");
+                    if (path.dirname(targetRoot) !== destination || path.dirname(manifestPath) !== destination) throw new Error("unsafe_archive_path");
+                    await fs.rm(targetRoot, { recursive: true, force: false });
+                    await fs.unlink(manifestPath);
+                    result.localCopiesRemoved++;
+                    await syncDirectory(destination);
                     // Only verified, unchanged individual files may leave tmpfs. Unknown files are never recursively removed.
                     for (const item of candidate.files) {
                         const original = item.relative ? path.join(source, item.relative) : source;
@@ -173,6 +181,11 @@ function createServerRelief({
                     result.failureCodes[reason] = (result.failureCodes[reason] || 0) + 1;
                     // Keep both the original and any partial archive for inspection/recovery.
                 }
+            }
+            if (result.localCopiesRemoved) {
+                try { await fs.rmdir(destination); }
+                catch (error) { if (error.code !== "ENOTEMPTY" && error.code !== "ENOENT") throw error; }
+                await syncDirectory(archive);
             }
             if (result.archived || result.releasedBytes) result.archiveId = runId;
             return result;

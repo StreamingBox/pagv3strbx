@@ -24,25 +24,59 @@ async function build(root, name = "pageV3-provider-renewals-abcdef1") {
     return dir;
 }
 
-test("archives reviewed temporaries, verifies readable copies and removes only originals", async t => {
+test("verifies Drive archives before removing originals and local staging", async t => {
     const options = await fixture(t);
     const source = await build(options.tempRoot);
     await fs.writeFile(path.join(options.tempRoot, "pageV3-provider-renewals-abcdef1.tgz"), "fictitious package");
+    const uploaded = [];
+    options.upload = async (target, { companions }) => {
+        assert.equal(companions.length, 1);
+        const manifest = JSON.parse(await fs.readFile(companions[0], "utf8"));
+        const targetStat = await fs.stat(target);
+        const content = targetStat.isDirectory()
+            ? await fs.readFile(path.join(target, "assets", "index-qa.js"), "utf8")
+            : await fs.readFile(target, "utf8");
+        uploaded.push({ content, manifest });
+        return { verified: true, driveTarget: "gdrive:fixture" };
+    };
     const relieve = createServerRelief(options);
     const result = await relieve();
     assert.equal(result.archived, 2, JSON.stringify(result));
     assert.equal(result.failed, 0);
     assert.equal(result.driveVerified, 2);
+    assert.equal(result.localCopiesRemoved, 2);
     assert.ok(result.releasedBytes > 0);
     await assert.rejects(fs.stat(source), { code: "ENOENT" });
-    const saved = path.join(options.archiveRoot, result.archiveId, path.basename(source));
-    assert.equal(await fs.readFile(path.join(saved, "assets", "index-qa.js"), "utf8"), "console.log('QA');");
-    const manifest = JSON.parse(await fs.readFile(`${saved}.manifest.json`, "utf8"));
-    for (const item of manifest.files) {
-        const content = await fs.readFile(path.join(saved, item.path));
-        assert.equal(createHash("sha256").update(content).digest("hex"), item.sha256);
+    assert.deepEqual(uploaded.map(item => item.content).sort(), ["console.log('QA');", "fictitious package"].sort());
+    for (const item of uploaded) for (const file of item.manifest.files) {
+        assert.match(file.sha256, /^[a-f0-9]{64}$/);
     }
+    assert.deepEqual(await fs.readdir(options.archiveRoot), []);
     assert.equal((await relieve()).status, "cooldown");
+});
+
+test("recognizes common extensionless build metadata and stages it for Drive", async t => {
+    const options = await fixture(t);
+    const source = await build(options.tempRoot);
+    const licensePath = path.join(source, "tools", "node_modules", "es-module-lexer", "LICENSE");
+    await fs.mkdir(path.dirname(licensePath), { recursive: true });
+    await fs.writeFile(licensePath, "Fictitious package license metadata");
+    let manifest;
+    options.upload = async (target, { companions }) => {
+        assert.equal(await fs.readFile(path.join(target, "tools", "node_modules", "es-module-lexer", "LICENSE"), "utf8"), "Fictitious package license metadata");
+        manifest = JSON.parse(await fs.readFile(companions[0], "utf8"));
+        return { verified: true };
+    };
+
+    const result = await createServerRelief(options)();
+
+    assert.equal(result.failed, 0, JSON.stringify(result));
+    assert.equal(result.archived, 1);
+    assert.equal(result.driveVerified, 1);
+    assert.equal(result.localCopiesRemoved, 1);
+    assert.ok(manifest.files.some(file => file.path.endsWith("/LICENSE")));
+    await assert.rejects(fs.stat(source), { code: "ENOENT" });
+    assert.deepEqual(await fs.readdir(options.archiveRoot), []);
 });
 
 test("keeps secrets, unknown snapshots and fresh builds untouched", async t => {

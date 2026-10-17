@@ -19,8 +19,9 @@ test("reports Linux RAM from MemAvailable and the app volume capacity", async ()
         },
         fsPromises: {
             async statfs(path) {
-                assert.equal(path, "/srv/streamingbox/backend");
-                return { blocks: 4096, bsize: 1024 * 1024, bavail: 1024, bfree: 1500 };
+                if (path === "/srv/streamingbox/backend") return { blocks: 4096, bsize: 1024 * 1024, bavail: 1024, bfree: 1500 };
+                assert.equal(path, "/tmp");
+                return { type: 0x01021994, blocks: 512, bsize: 1024 * 1024, bavail: 400, bfree: 420 };
             },
         },
         async readFile(path, encoding) {
@@ -36,12 +37,21 @@ test("reports Linux RAM from MemAvailable and the app volume capacity", async ()
             totalBytes: 4 * GiB,
             availableBytes: GiB,
             usedBytes: 3 * GiB,
+            memoryBacked: false,
+        },
+        temporaryStorage: {
+            totalBytes: 512 * 1024 ** 2,
+            availableBytes: 400 * 1024 ** 2,
+            usedBytes: 112 * 1024 ** 2,
+            memoryBacked: true,
         },
     });
 
     const message = buildServerResourcesMessage(result);
     assert.match(message, /RAM del sistema/);
     assert.match(message, /Almacenamiento del volumen de la aplicación/);
+    assert.match(message, /Almacenamiento temporal \(\/tmp\)/);
+    assert.match(message, /memoria temporal \(tmpfs\), no el disco raíz/);
     assert.match(message, /Total: 8,0 GiB/);
     assert.match(message, /Disponible: 1,0 GiB/);
 });
@@ -66,8 +76,10 @@ test("falls back to OS RAM and reports unavailable disk without failing", async 
     assert.deepEqual(result, {
         memory: { totalBytes: 4 * GiB, availableBytes: GiB, usedBytes: 3 * GiB },
         storage: null,
+        temporaryStorage: null,
     });
     assert.match(buildServerResourcesMessage(result), /No se pudo consultar el almacenamiento/);
+    assert.match(buildServerResourcesMessage(result), /No se pudo consultar el almacenamiento temporal/);
 });
 
 test("server metrics require an explicitly configured authorized chat", () => {

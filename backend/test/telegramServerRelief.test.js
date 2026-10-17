@@ -31,8 +31,8 @@ test("admin receives progress and measured before/after with audit", async () =>
     const handler = createServerReliefHandler({
         authorizedIds: admins,
         sendMessage: async (...args) => messages.push(args),
-        getResources: async () => ({ memory: { availableBytes: (++sample === 1 ? 100 : 200) * MiB }, storage: { availableBytes: 1000 * MiB }, swap: { usedBytes: 400 * MiB } }),
-        relieve: async () => ({ status: "completed", archived: 2, releasedBytes: 80 * MiB, archiveId: "fictitious-run", skipped: 0, failed: 0 }),
+        getResources: async () => ({ memory: { availableBytes: (++sample === 1 ? 100 : 200) * MiB }, storage: { availableBytes: 1000 * MiB }, temporaryStorage: { availableBytes: sample * 10 * MiB, memoryBacked: true }, swap: { usedBytes: 400 * MiB } }),
+        relieve: async () => ({ status: "completed", archived: 2, releasedBytes: 80 * MiB, localCopiesRemoved: 2, driveVerified: 2, archiveId: "fictitious-run", skipped: 0, failed: 0 }),
         logger: { info: (...args) => audit.push(args), error: () => assert.fail("unexpected error") },
     });
     await handler(privateAdmin);
@@ -40,15 +40,18 @@ test("admin receives progress and measured before/after with audit", async () =>
     assert.match(messages[0][1], /Revisando recursos/);
     assert.match(messages[1][1], /100 MiB -> 200 MiB/);
     assert.match(messages[1][1], /80 MiB/);
+    assert.match(messages[1][1], /Copias de trabajo locales retiradas tras verificar Drive: 2/);
+    assert.match(messages[1][1], /tmp usa memoria temporal/);
     assert.equal(audit[0][1].actorId, 123456);
     assert.equal(audit[0][1].archived, 2);
 });
 
-test("busy, cooldown and incomplete passes are reported honestly", () => {
+test("busy, cooldown and partial passes report the concrete reason", () => {
     assert.match(buildServerReliefMessage({ status: "busy" }), /en curso/);
     assert.match(buildServerReliefMessage({ status: "cooldown" }), /5 minutos/);
-    const message = buildServerReliefMessage({ status: "completed", archived: 0, releasedBytes: 0, skipped: 1, failed: 1, diskLimited: true }, {}, {});
-    assert.match(message, /no se liberaron temporales/);
-    assert.match(message, /Falta espacio/);
-    assert.match(message, /no poder completar la verificacion: 1/);
+    const message = buildServerReliefMessage({ status: "completed", archived: 0, releasedBytes: 0, skipped: 0, failed: 1, diskLimited: false, failureCodes: { unrecognized_entry: 1 } }, {}, {});
+    assert.match(message, /Limpieza parcial/);
+    assert.match(message, /formato de archivo no permitido: 1/);
+    assert.match(message, /No se borro ningun original/);
+    assert.doesNotMatch(message, /fallo de verificacion/);
 });

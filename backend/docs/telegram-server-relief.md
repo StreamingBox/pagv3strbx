@@ -4,21 +4,25 @@
 solo para un administrador de `TELEGRAM_CHAT_IDS`, en su chat privado y con el
 mismo ID de remitente y chat. No ejecutan argumentos ni comandos del usuario.
 
-El bot muestra RAM, swap y disco antes y despues. `/servidor` tambien muestra
-swap y carga del CPU. La ocupacion de memoria no equivale a carga del CPU.
+El bot muestra RAM, swap, disco de la aplicacion y almacenamiento de `/tmp`
+antes y despues. `/servidor` tambien muestra swap y carga del CPU. La ocupacion
+de memoria no equivale a carga del CPU.
 
 ## Accion y limites
 
 - Examina exclusivamente `/tmp`: las familias de nombres de compilaciones y
   reparaciones revisadas estan enumeradas en `serverRelief.service.js`.
-- Acepta snapshots propios de mas de una hora y archivos reconocidos de builds.
+- Acepta snapshots propios de mas de una hora y archivos reconocidos de builds,
+  incluidos metadatos comunes sin extension como `LICENSE` y `NOTICE`.
   Omite snapshots en uso por procesos del mismo usuario, enlaces, archivos de otro propietario, secretos, bases de datos,
   respaldos, uploads y nombres desconocidos.
-- Copia a `~/.strbx-server-relief/<fecha-id>/`, privado y fuera de tmpfs.
+- Prepara una copia temporal en `~/.strbx-server-relief/<fecha-id>/`, privada y
+  fuera de tmpfs.
   Verifica SHA-256, lectura e integridad de cada copia; sincroniza las copias y
   su manifiesto, sube a Google Drive y verifica SHA-256 descargando la copia
-  antes de retirar los originales, archivo por archivo.
-- Conserva todos los archivos archivados. Los manifiestos incluyen ruta
+  antes de retirar los originales, archivo por archivo. Una vez verificado
+  Drive, elimina el staging local de esa ejecucion y luego retira el original.
+- Conserva los archivos archivados en Drive. Los manifiestos incluyen ruta
   original, tamano y SHA-256 para comprobar y recuperar cada archivo.
 - Mantiene al menos 512 MiB libres en el disco de destino y limita cada pasada
   a 256 MiB. Si no hay espacio para conservar una copia, mantiene el original.
@@ -27,10 +31,10 @@ swap y carga del CPU. La ocupacion de memoria no equivale a carga del CPU.
 - No reinicia servicios, no ejecuta swapoff, no vacia caches del kernel ni
   llama la limpieza diaria de systemd. Esa tarea tiene su propia politica.
 
-Un resultado sin archivos liberados es valido: el bot informa si faltan
-temporales reconocidos o si hubo omisiones. No promete reducir el consumo de
-procesos activos. El disco disponible puede disminuir al preservar archivos
-que antes estaban en RAM.
+Un resultado sin archivos liberados es valido: el bot informa la causa
+concreta, por ejemplo un formato desconocido, un archivo en uso o un limite.
+Si `/tmp` usa `tmpfs`, liberar temporales devuelve memoria temporal y no espacio
+al disco raiz. El disco de la aplicacion y `/tmp` se reportan por separado.
 
 Para nuevos despliegues, preparar los artefactos en disco, por ejemplo en un
 directorio privado bajo `~/.strbx-deploy-staging`, y publicar con el script
@@ -51,5 +55,6 @@ nunca sobre un checkout o release activo. Una pasada incompleta conserva las
 copias y los archivos pendientes para revision. No borrar el historial.
 
 Todas las copias, tambien las extraordinarias, requieren Drive. Si la subida o
-su verificacion falla, no se retiran los originales y la copia local queda en
-la cola de reintentos. `sync-backup-drive.js` revisa esa cola cada 15 minutos.
+su verificacion falla, no se retiran los originales y se conserva el staging
+local para recuperacion; `sync-backup-drive.js` revisa los recibos pendientes
+cada 15 minutos.

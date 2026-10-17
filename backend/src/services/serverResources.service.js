@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 
 const BYTES_PER_GIB = 1024 ** 3;
+const MEMORY_BACKED_FILESYSTEMS = new Set([0x01021994, 0x858458f6]);
 
 function parseLinuxMemory(contents) {
     const entries = new Map();
@@ -25,6 +26,7 @@ function formatGiB(bytes) {
 
 async function getServerResources({
     currentPath = process.cwd(),
+    temporaryPath = "/tmp",
     osInfo = os,
     fsPromises = fs,
     readFile = fs.readFile,
@@ -53,26 +55,34 @@ async function getServerResources({
         usedBytes: totalMemoryBytes - availableMemoryBytes,
     };
 
-    let storage = null;
-    try {
-        const stats = await fsPromises.statfs(currentPath);
-        const blockSize = Number(stats.bsize);
-        const totalBlocks = Number(stats.blocks);
-        const availableBlocks = Number(stats.bavail ?? stats.bfree);
-        if ([blockSize, totalBlocks, availableBlocks].every(Number.isFinite) && blockSize > 0 && totalBlocks >= 0) {
-            const totalBytes = totalBlocks * blockSize;
-            const availableBytes = Math.min(totalBytes, Math.max(0, availableBlocks * blockSize));
-            storage = {
-                totalBytes,
-                availableBytes,
-                usedBytes: totalBytes - availableBytes,
-            };
+    async function readStorage(location) {
+        try {
+            const stats = await fsPromises.statfs(location);
+            const blockSize = Number(stats.bsize);
+            const totalBlocks = Number(stats.blocks);
+            const availableBlocks = Number(stats.bavail ?? stats.bfree);
+            if ([blockSize, totalBlocks, availableBlocks].every(Number.isFinite) && blockSize > 0 && totalBlocks >= 0) {
+                const totalBytes = totalBlocks * blockSize;
+                const availableBytes = Math.min(totalBytes, Math.max(0, availableBlocks * blockSize));
+                return {
+                    totalBytes,
+                    availableBytes,
+                    usedBytes: totalBytes - availableBytes,
+                    memoryBacked: MEMORY_BACKED_FILESYSTEMS.has(Number(stats.type) >>> 0),
+                };
+            }
+        } catch {
+            // Resource reporting should remain useful if one volume is unavailable.
         }
-    } catch {
-        // A RAM snapshot is still useful when the app volume cannot be inspected.
+        return null;
     }
 
-    if (!includePressure) return { memory, storage };
+    const [storage, temporaryStorage] = await Promise.all([
+        readStorage(currentPath),
+        readStorage(temporaryPath),
+    ]);
+
+    if (!includePressure) return { memory, storage, temporaryStorage };
     const swapTotal = String(memoryContents).match(/^SwapTotal:\s+(\d+)\s+kB$/m);
     const swapFree = String(memoryContents).match(/^SwapFree:\s+(\d+)\s+kB$/m);
     const swap = swapTotal && swapFree ? {
@@ -80,7 +90,7 @@ async function getServerResources({
         usedBytes: Math.max(0, Number(swapTotal[1]) - Number(swapFree[1])) * 1024,
     } : null;
     const load = { cores: osInfo.availableParallelism?.() || osInfo.cpus?.().length || 1, average1m: osInfo.loadavg?.()[0] || 0 };
-    return { memory, storage, swap, load };
+    return { memory, storage, temporaryStorage, swap, load };
 }
 
 function buildServerResourcesMessage(resources) {
@@ -98,6 +108,11 @@ function buildServerResourcesMessage(resources) {
         storage
             ? `• Total: ${formatGiB(storage.totalBytes)}\n• Ocupado: ${formatGiB(storage.usedBytes)}\n• Disponible: ${formatGiB(storage.availableBytes)}`
             : "• No se pudo consultar el almacenamiento.",
+        "",
+        "🧺 Almacenamiento temporal (/tmp)",
+        resources?.temporaryStorage
+            ? `• Total: ${formatGiB(resources.temporaryStorage.totalBytes)}\n• Ocupado: ${formatGiB(resources.temporaryStorage.usedBytes)}\n• Disponible: ${formatGiB(resources.temporaryStorage.availableBytes)}${resources.temporaryStorage.memoryBacked ? "\n• Este espacio usa memoria temporal (tmpfs), no el disco raíz." : ""}`
+            : "• No se pudo consultar el almacenamiento temporal.",
         ...(resources?.swap ? ["", `Swap utilizada: ${formatGiB(resources.swap.usedBytes)} / ${formatGiB(resources.swap.totalBytes)}`] : []),
         ...(resources?.load ? [`Carga CPU (1 min): ${Number(resources.load.average1m).toFixed(2)} / ${resources.load.cores} nucleo(s)`] : []),
     ].join("\n");

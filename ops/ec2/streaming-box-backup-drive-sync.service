@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/var/www/pageV3/backend
-ExecStart=/usr/bin/node /var/www/pageV3/backend/scripts/sync-backup-drive.js --backfill
+ExecStart=/usr/local/bin/node /var/www/pageV3/backend/scripts/sync-backup-drive.js --backfill
 Nice=15
 IOSchedulingClass=idle
 CPUQuota=40%

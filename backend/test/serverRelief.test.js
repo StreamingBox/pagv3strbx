@@ -145,15 +145,16 @@ test("Drive upload failure preserves originals and the local recovery copy", asy
     const options = await fixture(t);
     const source = await build(options.tempRoot);
     const readOnlyDirectory = path.join(source, "assets");
-    await fs.chmod(readOnlyDirectory, 0o500);
     const originalMode = (await fs.stat(readOnlyDirectory)).mode & 0o7777;
+    await fs.chmod(readOnlyDirectory, 0o500);
+    const readOnlyMode = (await fs.stat(readOnlyDirectory)).mode & 0o7777;
     try {
         const result = await createServerRelief({ ...options, upload: async () => { throw Object.assign(new Error("offline"), { code: "backup_drive_upload_failed" }); } })();
         assert.equal(result.releasedBytes, 0);
         assert.equal(result.driveVerified, 0);
         assert.equal(result.failed, 1);
         assert.ok((await fs.stat(path.join(source, "index.html"))).isFile());
-        assert.equal((await fs.stat(readOnlyDirectory)).mode & 0o7777, originalMode);
+        assert.equal((await fs.stat(readOnlyDirectory)).mode & 0o7777, readOnlyMode);
         assert.equal((await fs.readdir(options.archiveRoot)).length, 1);
     } finally {
         await fs.chmod(readOnlyDirectory, originalMode);

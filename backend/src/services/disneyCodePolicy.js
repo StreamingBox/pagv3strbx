@@ -1,3 +1,5 @@
+const cheerio = require("cheerio");
+
 const DISNEY_CODE_WINDOW_MINUTES = 10;
 const DISNEY_CODE_WINDOW_MS = DISNEY_CODE_WINDOW_MINUTES * 60 * 1000;
 
@@ -8,6 +10,21 @@ function normalizeDisneyText(value) {
         .replace(/\s+/g, " ")
         .trim()
         .toLowerCase();
+}
+
+function getDisneyBodyText({ text, html } = {}) {
+    const parts = [];
+    if (text) parts.push(String(text));
+    if (html) {
+        try {
+            const $ = cheerio.load(String(html));
+            $("head, script, style, noscript").remove();
+            parts.push($("body").text() || $.text());
+        } catch {
+            parts.push(String(html).replace(/<[^>]*>/g, " "));
+        }
+    }
+    return parts.join("\n");
 }
 
 function isDisneySender(value) {
@@ -29,7 +46,7 @@ function isDisneyLoginNotice({ subject, text, html } = {}) {
     if (isDisneyOtpSubject(subject)) return false;
 
     const normalizedSubject = normalizeDisneyText(subject);
-    const normalizedBody = normalizeDisneyText(text || String(html || "").replace(/<[^>]*>/g, " "));
+    const normalizedBody = normalizeDisneyText(getDisneyBodyText({ text, html }));
     const loginNoticePattern = /(?:nuevo\s+inicio\s+de\s+sesion|new\s+(?:sign[ -]?in|login)(?:\s+activity)?)/;
     const bodyConfirmationPattern = /(?:identificamos|detectamos)\s+(?:un\s+)?nuevo\s+inicio\s+de\s+sesion\s+en\s+disney|we\s+(?:identified|detected)\s+(?:a\s+)?new\s+(?:sign[ -]?in|login)\s+(?:to|on)\s+disney/;
 
@@ -40,7 +57,7 @@ function isDisneyLoginNotice({ subject, text, html } = {}) {
 function extractDisneyOtpCode({ subject, text, html } = {}) {
     if (!isDisneyOtpSubject(subject)) return "";
 
-    const body = String(text || String(html || "").replace(/<[^>]*>/g, " "));
+    const body = getDisneyBodyText({ text, html });
     const codes = [...new Set([...body.matchAll(/(?:^|\D)(\d{6})(?!\d)/g)].map((match) => match[1]))];
     return codes.length === 1 ? codes[0] : "";
 }

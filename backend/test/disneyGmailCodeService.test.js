@@ -29,8 +29,23 @@ imapConfig.getImapConfig = () => ({ host: "imap.example.test" });
 imapConfig.connectImapWithTlsFallback = async () => connection;
 const { fetchDisneyCodeFromGmail } = require("../src/services/gmailCodeService");
 
-function makeEmail({ uid, subject, body, date }) {
+function makeEmail({ uid, subject, body, html, date }) {
     const dateHeader = date.toUTCString();
+    const mimeBody = html
+        ? [
+            'Content-Type: multipart/alternative; boundary="disney-test-boundary"',
+            "",
+            "--disney-test-boundary",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            body,
+            "--disney-test-boundary",
+            "Content-Type: text/html; charset=utf-8",
+            "",
+            html,
+            "--disney-test-boundary--",
+        ]
+        : ["Content-Type: text/plain; charset=utf-8", "", body];
     return {
         uid,
         date,
@@ -40,9 +55,7 @@ function makeEmail({ uid, subject, body, date }) {
             `Subject: ${subject}`,
             `Date: ${dateHeader}`,
             "MIME-Version: 1.0",
-            "Content-Type: text/plain; charset=utf-8",
-            "",
-            body,
+            ...mimeBody,
         ].join("\r\n"),
     };
 }
@@ -92,4 +105,53 @@ test("returns only an official Disney OTP when no new-login notice exists", asyn
 
     assert.equal(result.ok, true);
     assert.equal(result.code, "654321");
+});
+
+test("extracts the OTP from the HTML alternative when the text part omits it", async () => {
+    const now = Date.now();
+    mailboxMessages = [makeEmail({
+        uid: 4,
+        subject: "Tu código de acceso único para Disney+",
+        body: "Tu código de acceso vencerá en 15 minutos.",
+        html: "<html><body><p>Tu código de acceso único para Disney+</p><strong>246810</strong></body></html>",
+        date: new Date(now - 60 * 1000),
+    })];
+
+    const result = await fetchDisneyCodeFromGmail({
+        toEmail: "client@example.test",
+        gmailFromContains: "disneyplus.com",
+        purchasedAt: new Date(now - 3 * 60 * 1000),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.code, "246810");
+});
+
+test("blocks a new-login notice found only in the HTML alternative", async () => {
+    const now = Date.now();
+    mailboxMessages = [
+        makeEmail({
+            uid: 5,
+            subject: "Tu código de acceso único para Disney+",
+            body: "Tu código vence en 15 minutos.",
+            html: "<html><body><strong>135790</strong></body></html>",
+            date: new Date(now - 2 * 60 * 1000),
+        }),
+        makeEmail({
+            uid: 6,
+            subject: "Nuevo inicio de sesión",
+            body: "Revisa la actividad reciente de tu cuenta.",
+            html: "<html><body><p>Identificamos un nuevo inicio de sesión en Disney+.</p></body></html>",
+            date: new Date(now - 60 * 1000),
+        }),
+    ];
+
+    const result = await fetchDisneyCodeFromGmail({
+        toEmail: "client@example.test",
+        gmailFromContains: "disneyplus.com",
+        purchasedAt: new Date(now - 4 * 60 * 1000),
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "device_already_entered");
 });

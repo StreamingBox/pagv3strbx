@@ -46,6 +46,20 @@ test("extracts only one six-digit code from an official Disney OTP email", () =>
     }), "");
 });
 
+test("checks both MIME alternatives for the code and login notices", () => {
+    const subject = "Tu código de acceso único para Disney+";
+    assert.equal(extractDisneyOtpCode({
+        subject,
+        text: "Tu código vence en 15 minutos.",
+        html: "<html><body><p>Tu código de acceso:</p><strong>246810</strong></body></html>",
+    }), "246810");
+    assert.equal(isDisneyLoginNotice({
+        subject: "Actividad de tu cuenta Disney+",
+        text: "Revisa la actividad reciente de tu cuenta.",
+        html: "<html><body><p>Identificamos un nuevo inicio de sesión en Disney+.</p></body></html>",
+    }), true);
+});
+
 test("enforces the ten-minute purchase window and fails closed on missing/future dates", () => {
     const now = Date.UTC(2026, 9, 17, 12, 0, 0);
     assert.deepEqual(checkDisneyPurchaseWindow(new Date(now - 10 * 60 * 1000), now), {

@@ -109,7 +109,7 @@ describe("saved provider account interface", () => {
         }));
         render(<AdminProviders />);
 
-        await screen.findByText("Renovación de tarjeta · Netflix");
+        await screen.findByRole("button", { name: "Editar cuenta 12" });
         const panel = document.querySelector(".admin-providers-card-renewal-panel");
         fireEvent.click(panel.querySelector("summary"));
         expect(within(panel).getByText("account12@example.com")).toBeInTheDocument();

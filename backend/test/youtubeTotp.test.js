@@ -155,12 +155,48 @@ test("returns a current code for the authenticated user's active YouTube Premium
     }
     assert.deepEqual(calls.map(({ params }) => params), [[81, 17], [81, 17], [81, 17]]);
     assert.ok(calls.every(({ sql }) => /s\.id = \? AND s\.user_id = \?/.test(sql)));
-    assert.ok(calls.every(({ sql }) => /youtube_google_totp_secrets secret ON secret\.email_normalized = LOWER\(TRIM\(a\.email\)\)/.test(sql)));
+    assert.ok(calls.every(({ sql }) => /youtube_google_totp_secrets secret\s+ON secret\.email_normalized = CASE\s+WHEN LOCATE\('@', TRIM\(a\.email\)\) = 0 THEN CONCAT\(LOWER\(TRIM\(a\.email\)\), '@gmail\.com'\)\s+ELSE LOWER\(TRIM\(a\.email\)\)\s+END/.test(sql)));
 });
 
 test("normalizes Google account email for shared YouTube authenticator secrets", () => {
     assert.equal(normalizeGoogleEmail("  Ddsm29592@Gmail.com "), "ddsm29592@gmail.com");
     assert.throws(() => normalizeGoogleEmail("not-an-email"), { status: 400 });
+});
+
+test("matches a YouTube Gmail authenticator when the account email omits its domain", async () => {
+    const encrypted = encryptTotpSecret(RFC_SECRET, KEY);
+    const db = createTotpDb({
+        subscription_id: 84,
+        subscription_status: "active",
+        subscription_expired: 0,
+        platform_account_id: 58,
+        platform_name: "YouTube Music",
+        encrypted_secret: encrypted.ciphertext,
+        secret_iv: encrypted.iv,
+        secret_auth_tag: encrypted.authTag,
+    });
+    const originalQuery = db.query;
+    db.query = async (sql, params) => {
+        if (sql.includes("youtube_google_totp_secrets")) {
+            assert.match(sql, /WHEN LOCATE\('@', TRIM\(a\.email\)\) = 0 THEN CONCAT\(LOWER\(TRIM\(a\.email\)\), '@gmail\.com'\)/);
+            assert.deepEqual(params, [84, 17]);
+            return [[{
+                subscription_id: 84,
+                subscription_status: "active",
+                subscription_expired: 0,
+                platform_account_id: 58,
+                platform_name: "YouTube Music",
+                encrypted_secret: encrypted.ciphertext,
+                secret_iv: encrypted.iv,
+                secret_auth_tag: encrypted.authTag,
+            }]];
+        }
+        return originalQuery(sql, params);
+    };
+
+    const result = await getSubscriptionTotp({ subscriptionId: 84, userId: 17, now: 59_000, db, keyValue: KEY });
+
+    assert.equal(result.code, "287082");
 });
 
 test("allows five successful requests in the first ten minutes, then blocks the subscription", async () => {

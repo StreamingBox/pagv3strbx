@@ -231,7 +231,11 @@ async function getSubscriptionTotp({
            FROM subscriptions s
            JOIN platform_accounts a ON a.id = s.platform_account_id
            JOIN platforms p ON p.id = a.platform_id
-           LEFT JOIN youtube_google_totp_secrets secret ON secret.email_normalized = LOWER(TRIM(a.email))
+           LEFT JOIN youtube_google_totp_secrets secret
+             ON secret.email_normalized = CASE
+                    WHEN LOCATE('@', TRIM(a.email)) = 0 THEN CONCAT(LOWER(TRIM(a.email)), '@gmail.com')
+                    ELSE LOWER(TRIM(a.email))
+                END
           WHERE s.id = ?${ownershipFilter}
           LIMIT 1`,
         queryParams

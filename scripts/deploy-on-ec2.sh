@@ -130,17 +130,17 @@ if [[ -n "$FRONTEND_PREBUILT_DIR" ]]; then
   }
   if [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
     read -r -a FRONTEND_LINT_TARGET_ARRAY <<< "$FRONTEND_LINT_TARGETS"
-    (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && npm test)
+    (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && TZ=America/Bogota npm test)
   else
-    (cd frontend && npm ci && npm run lint && npm test)
+    (cd frontend && npm ci && npm run lint && TZ=America/Bogota npm test)
   fi
   node frontend/scripts/verify-release.mjs "$FRONTEND_PREBUILT_DIR"
   FRONTEND_PUBLISH_DIR="$FRONTEND_PREBUILT_DIR"
 elif [[ -n "${FRONTEND_LINT_TARGETS:-}" ]]; then
   read -r -a FRONTEND_LINT_TARGET_ARRAY <<< "$FRONTEND_LINT_TARGETS"
-  (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && npm test && npm run build && node scripts/verify-release.mjs dist)
+  (cd frontend && npm ci && npx eslint "${FRONTEND_LINT_TARGET_ARRAY[@]}" && TZ=America/Bogota npm test && npm run build && node scripts/verify-release.mjs dist)
 else
-  (cd frontend && npm ci && npm run lint && npm test && npm run build && node scripts/verify-release.mjs dist)
+  (cd frontend && npm ci && npm run lint && TZ=America/Bogota npm test && npm run build && node scripts/verify-release.mjs dist)
 fi
 
 echo ">>> dependency audits"

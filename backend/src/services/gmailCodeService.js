@@ -240,7 +240,7 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
     }
 }
 
-async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedAt }) {
+async function fetchDisneyCodeFromGmail({ toEmail, purchasedAt }) {
     const config = getImapConfig();
     if (!config) {
         return {
@@ -261,7 +261,6 @@ async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedA
 
     const sinceDate = new Date(purchaseDate.getTime() - 24 * 60 * 60 * 1000);
     const targetEmail = String(toEmail || "").trim().toLowerCase();
-    const fromNeedle = String(gmailFromContains || "disneyplus.com").toLowerCase().trim();
     const fetchOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false };
     let conn;
     let stage = "connect";
@@ -307,8 +306,7 @@ async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedA
             const headers = headerPart?.body || {};
             const fromHeader = Array.isArray(headers.from) ? headers.from.join(" ") : String(headers.from || "");
             const toHeader = Array.isArray(headers.to) ? headers.to.join(" ") : String(headers.to || "");
-            const normalizedFrom = fromHeader.toLowerCase();
-            if (!isDisneySender(fromHeader) || (fromNeedle && !normalizedFrom.includes(fromNeedle))) continue;
+            if (!isDisneySender(fromHeader)) continue;
 
             stage = "fetch_full_message";
             const fullMessages = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
@@ -320,7 +318,6 @@ async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedA
             const parsedFrom = (parsed?.from?.value || []).map((entry) => entry.address || "").join(" ") || fromHeader;
             const parsedTo = (parsed?.to?.value || []).map((entry) => entry.address || "").join(" ") || toHeader;
             if (!isDisneySender(parsedFrom)) continue;
-            if (fromNeedle && !parsedFrom.toLowerCase().includes(fromNeedle)) continue;
             if (targetEmail && parsedTo && !parsedTo.toLowerCase().includes(targetEmail)) continue;
             if (targetEmail && !matchedToSearch && !parsedTo.toLowerCase().includes(targetEmail)) continue;
 

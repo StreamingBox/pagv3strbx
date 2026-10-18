@@ -11,8 +11,11 @@ const {
 test("accepts Disney sender subdomains but rejects lookalike domains", () => {
     assert.equal(isDisneySender("Disney+ <disneyplus@trx.mail2.disneyplus.com>"), true);
     assert.equal(isDisneySender("Disney <alerts@disneyplus.com>"), true);
+    assert.equal(isDisneySender("MyDisney <verify@my.disney.com>"), true);
     assert.equal(isDisneySender("Disney <alerts@disneyplus.com.attacker.test>"), false);
     assert.equal(isDisneySender("Disney <alerts@notdisneyplus.com>"), false);
+    assert.equal(isDisneySender("MyDisney <verify@my.disney.com.attacker.test>"), false);
+    assert.equal(isDisneySender("MyDisney <verify@attacker-my.disney.com>"), false);
 });
 
 test("recognizes the Spanish and Swedish Disney one-time-code subjects", () => {

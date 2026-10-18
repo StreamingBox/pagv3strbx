@@ -17,7 +17,7 @@ const connection = {
             parts: [{
                 which: "HEADER.FIELDS (FROM TO SUBJECT DATE)",
                 body: {
-                    from: ["Disney+ <disneyplus@trx.mail2.disneyplus.com>"],
+                    from: [message.from || "Disney+ <disneyplus@trx.mail2.disneyplus.com>"],
                     to: ["Client <client@example.test>"],
                 },
             }],
@@ -29,7 +29,7 @@ imapConfig.getImapConfig = () => ({ host: "imap.example.test" });
 imapConfig.connectImapWithTlsFallback = async () => connection;
 const { fetchDisneyCodeFromGmail } = require("../src/services/gmailCodeService");
 
-function makeEmail({ uid, subject, body, html, date }) {
+function makeEmail({ uid, subject, body, html, date, from = "Disney+ <disneyplus@trx.mail2.disneyplus.com>" }) {
     const dateHeader = date.toUTCString();
     const mimeBody = html && body == null
         ? ["Content-Type: text/html; charset=utf-8", "", html]
@@ -52,7 +52,7 @@ function makeEmail({ uid, subject, body, html, date }) {
         uid,
         date,
         raw: [
-            "From: Disney+ <disneyplus@trx.mail2.disneyplus.com>",
+            `From: ${from}`,
             "To: Client <client@example.test>",
             `Subject: ${subject}`,
             `Date: ${dateHeader}`,
@@ -107,6 +107,26 @@ test("returns only an official Disney OTP when no new-login notice exists", asyn
 
     assert.equal(result.ok, true);
     assert.equal(result.code, "654321");
+});
+
+test("accepts the current MyDisney OTP sender with the legacy configured sender value", async () => {
+    const now = Date.now();
+    mailboxMessages = [makeEmail({
+        uid: 8,
+        from: "MyDisney <verify@my.disney.com>",
+        subject: "Your one-time passcode for Disney+",
+        html: "<html><body><h1>Here's your one-time passcode for Disney+</h1><p>It will expire in 15 minutes.</p><strong>482619</strong></body></html>",
+        date: new Date(now - 60 * 1000),
+    })];
+
+    const result = await fetchDisneyCodeFromGmail({
+        toEmail: "client@example.test",
+        gmailFromContains: "disneyplus.com",
+        purchasedAt: new Date(now - 3 * 60 * 1000),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.code, "482619");
 });
 
 test("extracts the OTP from the HTML alternative when the text part omits it", async () => {

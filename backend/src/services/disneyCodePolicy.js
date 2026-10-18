@@ -28,7 +28,9 @@ function getDisneyBodyText({ text, html } = {}) {
 }
 
 function isDisneySender(value) {
-    return /@(?:[a-z0-9-]+\.)*disneyplus\.com(?=$|[\s>,;])/i.test(String(value || ""));
+    const sender = String(value || "");
+    return /@(?:[a-z0-9-]+\.)*disneyplus\.com(?=$|[\s>,;])/i.test(sender)
+        || /@my\.disney\.com(?=$|[\s>,;])/i.test(sender);
 }
 
 function isDisneyOtpSubject(subject) {

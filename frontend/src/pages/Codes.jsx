@@ -472,19 +472,22 @@ export default function Codes() {
                                             >
                                                 {/* Contenedor del logo con neon glow */}
                                                 <div style={{
-                                                    width: p.slug === "disney" ? 50 : 44,
-                                                    height: p.slug === "disney" ? 50 : 44,
+                                                    width: p.slug === "disney" ? 72 : 44,
+                                                    height: p.slug === "disney" ? 42 : 44,
                                                     borderRadius: 12,
                                                     background: p.slug === "disney" ? "#000" : "var(--card)",
                                                     border: `1.5px solid ${p.accent}`,
                                                     boxShadow: `0 0 14px ${p.accent}70, inset 0 0 10px ${p.accent}25`,
                                                     display: "flex", alignItems: "center", justifyContent: "center",
                                                     overflow: "hidden",
-                                                    flexShrink: 0
+                                                    flexShrink: 0,
+                                                    position: p.slug === "disney" ? "relative" : undefined
                                                 }}>
                                                     {p.logoSlug ? (
                                                         <img src={`/platform-logos/${p.logoSlug}.png`} alt={p.label}
-                                                            style={{ width: "100%", height: "100%", objectFit: isYoutubeTotp ? "contain" : "cover", mixBlendMode: "normal", background: isYoutubeTotp || p.slug === "disney" ? "#000" : "transparent", borderRadius: isYoutubeTotp || p.slug === "disney" ? 8 : 0, transform: p.slug === "disney" ? "scale(1.5) translateY(6px)" : undefined }}
+                                                            style={p.slug === "disney"
+                                                                ? { position: "absolute", left: "50%", top: "50%", width: "142%", height: "auto", maxWidth: "none", objectFit: "contain", background: "#000", transform: "translate(-50%, -43%)" }
+                                                                : { width: "100%", height: "100%", objectFit: isYoutubeTotp ? "contain" : "cover", mixBlendMode: "normal", background: isYoutubeTotp ? "#000" : "transparent", borderRadius: isYoutubeTotp ? 8 : 0 }}
                                                             onError={e => { e.target.style.display = "none"; e.target.parentElement.textContent = p.icon; }}
                                                         />
                                                     ) : <span aria-hidden="true" style={{ fontSize: 24, fontWeight: 900, color: p.accent }}>{p.icon}</span>}

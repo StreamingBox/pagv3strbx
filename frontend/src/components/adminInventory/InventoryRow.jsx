@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Star } from "lucide-react";
 import { formatBogotaDate } from "../../utils/datetime.js";
 
 function DetailStat({ label, value, mono = false, tone = "default" }) {
@@ -330,9 +331,14 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                 <td style={{ padding: "14px 16px", fontFamily: "monospace", fontSize: 12, color: "var(--muted)" }}>#{it.id}</td>
                 <td style={{ padding: "14px 16px", fontWeight: 600 }}>
                     <div>{it.platform_name}</div>
+                    {it.sale_priority && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4, marginTop: 5, padding: "3px 7px", borderRadius: 6, background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", color: "#fbbf24", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>
+                            <Star size={11} fill="currentColor" /> Prioridad de venta
+                        </span>
+                    )}
                     {it.strbx_provider_reported && (
                         <span style={{ display: "inline-flex", marginTop: 5, padding: "3px 7px", borderRadius: 6, background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.3)", color: "#fbbf24", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>
-                            Reportada · prioridad de venta
+                            Incidencia reportada
                         </span>
                     )}
                 </td>
@@ -362,6 +368,18 @@ export default function InventoryRow({ it, detail, detailLoading, detailError, i
                         </button>
                         <button className="btn-ghost" disabled={saving} onClick={onEdit} style={{ ...rowBtnStyle, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.35)", fontWeight: 700 }}>
                             Editar
+                        </button>
+                        <button
+                            className="btn-ghost"
+                            type="button"
+                            disabled={saving}
+                            onClick={() => onUpdate({ sale_priority: !it.sale_priority })}
+                            aria-label={it.sale_priority ? "Quitar prioridad de venta" : "Priorizar cuenta en ventas automáticas"}
+                            aria-pressed={Boolean(it.sale_priority)}
+                            title={it.sale_priority ? "Quitar prioridad de venta" : "Priorizar primero en ventas automáticas"}
+                            style={{ ...rowBtnStyle, width: 30, height: 28, padding: 3, color: it.sale_priority ? "#f59e0b" : "var(--muted)", background: it.sale_priority ? "rgba(245,158,11,0.12)" : "var(--input-bg)", border: `1px solid ${it.sale_priority ? "rgba(245,158,11,0.35)" : "var(--stroke)"}` }}
+                        >
+                            <Star size={14} fill={it.sale_priority ? "currentColor" : "none"} />
                         </button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "available" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar disponible">🟢</button>
                         <button className="btn-ghost" disabled={saving} onClick={() => onUpdate({ status: "inactive" })} style={{ ...rowBtnStyle, background: "var(--input-bg)" }} title="Marcar inactiva">⚪</button>

@@ -83,6 +83,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     const specificAccountId = Number(options.accountId || 0);
     const excludeAccountEmail = String(options.excludeAccountEmail || "").trim().toLowerCase();
     const excludeInactiveMasterAccounts = options.excludeInactiveMasterAccounts === true;
+    const prioritizeSale = options.prioritizeSale === true;
 
     if (!Number.isInteger(requestedPlatformId) || requestedPlatformId <= 0) {
         const err = new Error("platformId invalido.");
@@ -150,7 +151,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
            AND pa.platform_id IN (${candidatePlaceholders})
            AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})
            ${replacementFilterSql}
-         ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), RAND(), pa.id ASC
+         ORDER BY FIELD(pa.platform_id, ${candidatePlaceholders}), ${prioritizeSale ? "pa.sale_priority DESC, " : ""}RAND(), pa.id ASC
          LIMIT 1
          FOR UPDATE`,
         [excludeAccountId || 0, ...candidatePlatformIds, ...candidatePlatformIds, ...replacementParams]

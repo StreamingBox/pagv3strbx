@@ -363,7 +363,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             }
             const needsAccount = requiresInventoryAccount(plan);
             const resolvedAccount = needsAccount
-                ? await findAvailableAccountForPlatform(conn, plan.platform_id)
+                ? await findAvailableAccountForPlatform(conn, plan.platform_id, { prioritizeSale: true })
                 : null;
 
             if (needsAccount && !resolvedAccount?.account) {

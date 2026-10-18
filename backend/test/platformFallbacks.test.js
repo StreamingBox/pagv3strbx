@@ -58,14 +58,14 @@ test("support replacement can select stock from a removed historical equivalence
     assert.equal(result.usedFallback, true);
 });
 
-test("regular checkout still prioritizes direct stock before active fallbacks", async () => {
+test("checkout prioritizes flagged accounts within each platform but keeps direct stock before fallbacks", async () => {
     const conn = {
         async query(sql, params) {
             if (/FROM platform_fallbacks/.test(sql)) {
                 return [[{ fallback_platform_id: 20 }]];
             }
 
-            assert.match(sql, /ORDER BY FIELD\(pa\.platform_id, \?,\?\), RAND\(\), pa\.id ASC/);
+            assert.match(sql, /ORDER BY FIELD\(pa\.platform_id, \?,\?\), pa\.sale_priority DESC, RAND\(\), pa\.id ASC/);
             assert.match(sql, /NOT \(\s*EXISTS \([\s\S]*provider_reported_at IS NOT NULL/);
             assert.deepEqual(params, [0, 10, 20, 10, 20]);
             return [[{
@@ -79,11 +79,34 @@ test("regular checkout still prioritizes direct stock before active fallbacks", 
         },
     };
 
-    const result = await findAvailableAccountForPlatform(conn, 10);
+    const result = await findAvailableAccountForPlatform(conn, 10, { prioritizeSale: true });
 
     assert.equal(result.account.id, 901);
     assert.equal(result.deliveredPlatformId, 10);
     assert.equal(result.usedFallback, false);
+});
+
+test("replacement and support stock do not opt into sale priority", async () => {
+    let selectionSql = "";
+    const conn = {
+        async query(sql) {
+            if (/FROM platform_fallbacks/.test(sql)) return [[]];
+            selectionSql = sql;
+            return [[{
+                id: 902,
+                platform_id: 10,
+                email: "ordinary@example.test",
+                password: "placeholder",
+                delivered_platform_name: "Plan original",
+                delivered_platform_slug: "plan-original",
+            }]];
+        },
+    };
+
+    await findAvailableAccountForPlatform(conn, 10);
+
+    assert.match(selectionSql, /ORDER BY FIELD\(pa\.platform_id, \?\), RAND\(\), pa\.id ASC/);
+    assert.doesNotMatch(selectionSql, /pa\.sale_priority/);
 });
 
 test("support replacement excludes accounts marked inactive in master accounts", async () => {

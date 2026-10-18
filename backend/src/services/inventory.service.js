@@ -437,6 +437,7 @@ async function getInventory(query = {}) {
       pa.parent_profiles_total,
       pa.unit_cost,
       pa.status,
+      pa.sale_priority,
       (${strbxReportedNetflixAccountSql("pa")}) AS strbx_provider_reported,
       pa.assigned_to_user_id,
       u.email AS assigned_user_email,
@@ -470,6 +471,7 @@ async function getInventory(query = {}) {
         ...r,
         platform_name: r.platform_name_ref || r.platform_name_raw || "",
         strbx_provider_reported: Boolean(r.strbx_provider_reported),
+        sale_priority: Boolean(r.sale_priority),
         sale_id: r.sale_id || null,
         is_replacement: !!r.replacement_log_id,
         replaced_from_account_id: r.replaced_from_account_id || null,
@@ -821,6 +823,8 @@ async function getInventoryAccountDetail(id) {
 async function patchInventory(id, body = {}, options = {}) {
     const {
         status,
+        sale_priority,
+        salePriority: salePriorityInput,
         email,
         password,
         access_url,
@@ -1083,6 +1087,19 @@ async function patchInventory(id, body = {}, options = {}) {
                     throw error;
                 }
             }
+        }
+
+        if (has("sale_priority") || has("salePriority")) {
+            const rawSalePriority = has("sale_priority") ? sale_priority : salePriorityInput;
+            const enabled = rawSalePriority === true || rawSalePriority === 1 || rawSalePriority === "1";
+            const disabled = rawSalePriority === false || rawSalePriority === 0 || rawSalePriority === "0";
+            if (!enabled && !disabled) {
+                const err = new Error("La prioridad de venta debe ser verdadera o falsa.");
+                err.status = 400;
+                throw err;
+            }
+            sets.push("sale_priority = ?");
+            params.push(enabled ? 1 : 0);
         }
 
         if (has("email")) {

@@ -112,6 +112,28 @@
     margin-top: 2px;
 }
 
+.codesDisneyLogoFrame{
+    width: 88px;
+    height: 54px;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid rgba(100,149,255,.72);
+    border-radius: 12px;
+    background: #03050a;
+    box-shadow: 0 4px 14px rgba(0,0,0,.28), 0 0 14px rgba(29,78,216,.18);
+}
+
+.codesDisneyLogo{
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+}
+
 .codesPlatformBtn{
     display:flex;
     align-items:center;

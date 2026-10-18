@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../context/AuthContext.jsx";
 import { apiGet, apiPost, apiLogout } from "../api/api";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
+import "../styles/codes.css";
 
 /* ─── Plataformas con colores de marca y nombres de archivo correctos ─── */
 const PLATFORMS = [
@@ -457,6 +458,7 @@ export default function Codes() {
                                         const isActive = activePlatform === p.slug;
                                         const isNetflix = p.slug === "netflix";
                                         const isYoutubeTotp = p.slug === "youtube-premium-totp";
+                                        const isDisney = p.slug === "disney";
                                         const isLoading = String(loadingSlug || "").startsWith(`${p.slug}:`);
                                         return (
                                             <motion.div key={p.slug}
@@ -474,24 +476,23 @@ export default function Codes() {
                                                     position: "relative"
                                                 }}
                                             >
-                                                {/* Contenedor del logo con neon glow */}
-                                                <div style={{
-                                                    width: p.slug === "disney" ? 72 : 44,
-                                                    height: p.slug === "disney" ? 42 : 44,
+                                                <div className={isDisney ? "codesDisneyLogoFrame" : undefined} style={!isDisney ? {
+                                                    width: 44,
+                                                    height: 44,
                                                     borderRadius: 12,
-                                                    background: p.slug === "disney" ? "#000" : "var(--card)",
+                                                    background: "var(--card)",
                                                     border: `1.5px solid ${p.accent}`,
                                                     boxShadow: `0 0 14px ${p.accent}70, inset 0 0 10px ${p.accent}25`,
                                                     display: "flex", alignItems: "center", justifyContent: "center",
                                                     overflow: "hidden",
                                                     flexShrink: 0,
-                                                    position: p.slug === "disney" ? "relative" : undefined
-                                                }}>
+                                                } : undefined}>
                                                     {p.logoSlug ? (
                                                         <img src={`/platform-logos/${p.logoSlug}.png`} alt={p.label}
-                                                            style={p.slug === "disney"
-                                                                ? { position: "absolute", left: "50%", top: "50%", width: "142%", height: "auto", maxWidth: "none", objectFit: "contain", background: "#000", transform: "translate(-50%, -43%)" }
-                                                                : { width: "100%", height: "100%", objectFit: isYoutubeTotp ? "contain" : "cover", mixBlendMode: "normal", background: isYoutubeTotp ? "#000" : "transparent", borderRadius: isYoutubeTotp ? 8 : 0 }}
+                                                            className={isDisney ? "codesDisneyLogo" : undefined}
+                                                            style={!isDisney
+                                                                ? { width: "100%", height: "100%", objectFit: isYoutubeTotp ? "contain" : "cover", mixBlendMode: "normal", background: isYoutubeTotp ? "#000" : "transparent", borderRadius: isYoutubeTotp ? 8 : 0 }
+                                                                : undefined}
                                                             onError={e => { e.target.style.display = "none"; e.target.parentElement.textContent = p.icon; }}
                                                         />
                                                     ) : <span aria-hidden="true" style={{ fontSize: 24, fontWeight: 900, color: p.accent }}>{p.icon}</span>}

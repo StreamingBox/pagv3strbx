@@ -692,7 +692,7 @@ export default function AdminProviders() {
                 && activeProviderIds.has(Number(account.providerId)))
             .filter((account) => Boolean(account.cardRenewalDate) && isNetflixPlatform(account.platformName))
             .map((account) => ({ ...account, cardDaysRemaining: getDaysRemaining(account.cardRenewalDate) }))
-            .filter((account) => account.cardDaysRemaining !== null && account.cardDaysRemaining <= 0 && account.cardDaysRemaining >= -7)
+            .filter((account) => account.cardDaysRemaining !== null && account.cardDaysRemaining <= 0)
             .sort((left, right) => left.cardDaysRemaining - right.cardDaysRemaining || left.accountEmail.localeCompare(right.accountEmail));
     }, [accounts, providers]);
     const filteredNetflixCardRenewals = useMemo(() => netflixCardRenewals.filter((account) => (
@@ -1078,7 +1078,7 @@ export default function AdminProviders() {
 
                         <details className="admin-providers-module admin-providers-panel admin-providers-card-renewal-panel" style={{ background: "var(--card)", border: "1px solid rgba(34,211,238,.35)", borderRadius: 16, boxShadow: "0 8px 32px rgba(0,0,0,.14)" }}>
                             <summary className="admin-providers-module-summary">
-                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#22d3ee" aria-hidden /><span><strong>Renovación de tarjeta · Netflix</strong><small>{netflixCardRenewals.length} cuenta(s) con vencimiento en los últimos 7 días.</small></span></span>
+                                <span className="admin-providers-module-title"><CalendarClock size={19} color="#22d3ee" aria-hidden /><span><strong>Renovación de tarjeta · Netflix</strong><small>{netflixCardRenewals.length} pendiente(s); siguen visibles hasta actualizar la fecha o desactivar la cuenta.</small></span></span>
                                 <ChevronDown size={17} aria-hidden />
                             </summary>
                             <div className="admin-providers-module-content">
@@ -1106,7 +1106,7 @@ export default function AdminProviders() {
                                         </div>;
                                     })}
                                 </div>
-                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "var(--muted)", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {cardRenewalProviderFilter ? "Este proveedor no tiene renovaciones de tarjeta Netflix en los últimos 7 días." : "No hay renovaciones de tarjeta Netflix en los últimos 7 días."}</div>}
+                            ) : <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "18px 0 6px", color: "var(--muted)", fontSize: 13, fontWeight: 700 }}><ShieldCheck size={17} aria-hidden /> {cardRenewalProviderFilter ? "Este proveedor no tiene renovaciones de tarjeta Netflix pendientes." : "No hay renovaciones de tarjeta Netflix pendientes."}</div>}
                             </div>
                         </details>
                     </section>

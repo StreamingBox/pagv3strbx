@@ -95,17 +95,18 @@ describe("saved provider account interface", () => {
         expect(within(panel).queryByText("66.000 COP")).not.toBeInTheDocument();
     });
 
-    it("lists card renewal dates for active Netflix accounts only and filters by provider", async () => {
+    it("keeps every overdue Netflix card renewal pending until its date is updated or account disabled", async () => {
         const inWindowAccounts = accounts.map((account) => account.id === 12 ? { ...account, cardRenewalDate: dateWithOffset(0) } : account);
         const hboAccount = { ...accounts[1], id: 13, platformName: "HBO Max", accountEmail: "hbo@example.com" };
         const promoAccount = { ...accounts[2], id: 14, providerId: 2, providerName: "Proveedor B", platformName: "Promo", accountEmail: "netflix-promo@example.com", cardRenewalDate: dateWithOffset(-7) };
-        const outOfWindowAccount = { ...accounts[3], id: 15, accountEmail: "netflix-outside@example.com", cardRenewalDate: dateWithOffset(-8) };
+        const overdueAccount = { ...accounts[3], id: 15, accountEmail: "netflix-overdue@example.com", cardRenewalDate: dateWithOffset(-8) };
         const futureAccount = { ...accounts[4], id: 16, accountEmail: "netflix-future@example.com", cardRenewalDate: dateWithOffset(1) };
+        const inactiveAccount = { ...accounts[5], id: 17, accountEmail: "netflix-inactive@example.com", status: "inactive", cardRenewalDate: dateWithOffset(-12) };
         apiFetch.mockImplementation(async (path) => ({
             ok: true,
             data: path === "/admin/providers" ? [{ id: 1, name: "Proveedor A", isActive: 1 }, { id: 2, name: "Proveedor B", isActive: 1 }]
                 : path === "/admin/provider-platforms" ? [{ id: 18, name: "Netflix Internacional" }]
-                    : [...inWindowAccounts, hboAccount, promoAccount, outOfWindowAccount, futureAccount],
+                    : [...inWindowAccounts, hboAccount, promoAccount, overdueAccount, futureAccount, inactiveAccount],
         }));
         render(<AdminProviders />);
 
@@ -114,14 +115,15 @@ describe("saved provider account interface", () => {
         fireEvent.click(panel.querySelector("summary"));
         expect(within(panel).getByText("account12@example.com")).toBeInTheDocument();
         expect(within(panel).getByText("netflix-promo@example.com")).toBeInTheDocument();
+        expect(within(panel).getByText("netflix-overdue@example.com")).toBeInTheDocument();
         expect(within(panel).queryByText("hbo@example.com")).not.toBeInTheDocument();
-        expect(within(panel).queryByText("netflix-outside@example.com")).not.toBeInTheDocument();
         expect(within(panel).queryByText("netflix-future@example.com")).not.toBeInTheDocument();
+        expect(within(panel).queryByText("netflix-inactive@example.com")).not.toBeInTheDocument();
 
         fireEvent.change(within(panel).getByLabelText("Filtrar renovación de tarjeta por proveedor"), { target: { value: "2" } });
         expect(within(panel).getByText("netflix-promo@example.com")).toBeInTheDocument();
         expect(within(panel).queryByText("account12@example.com")).not.toBeInTheDocument();
-        expect(within(panel).queryByText("netflix-outside@example.com")).not.toBeInTheDocument();
+        expect(within(panel).queryByText("netflix-overdue@example.com")).not.toBeInTheDocument();
     });
 
     it("excludes reported Streaming Box Netflix accounts from both renewal modules", async () => {

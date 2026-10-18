@@ -192,8 +192,9 @@ test("allows five successful requests in the first ten minutes, then blocks the 
     assert.equal(db.requestLimit.count, 5);
 });
 
-test("lets administrators request codes without consuming the customer request limit", async () => {
+test("lets administrators inspect another user's active YouTube subscription without consuming its request limit", async () => {
     const encrypted = encryptTotpSecret(RFC_SECRET, KEY);
+    const lookupCalls = [];
     const db = createTotpDb({
         subscription_id: 83,
         subscription_status: "active",
@@ -209,18 +210,34 @@ test("lets administrators request codes without consuming the customer request l
     db.getConnection = async () => {
         assert.fail("Administrator requests should not use the customer request counter");
     };
+    db.query = async (sql, params) => {
+        lookupCalls.push({ sql, params });
+        return [[{
+            subscription_id: 83,
+            subscription_status: "active",
+            subscription_expired: 0,
+            platform_account_id: 57,
+            platform_name: "YouTube Music",
+            encrypted_secret: encrypted.ciphertext,
+            secret_iv: encrypted.iv,
+            secret_auth_tag: encrypted.authTag,
+        }]];
+    };
 
     const result = await getSubscriptionTotp({
         subscriptionId: 83,
-        userId: 17,
+        userId: 999,
+        isAdmin: true,
         now: 59_000,
         db,
         keyValue: KEY,
-        bypassRequestLimit: true,
     });
 
     assert.equal(result.code, "287082");
     assert.equal(db.requestLimit.count, 5);
+    assert.deepEqual(lookupCalls[0].params, [83]);
+    assert.match(lookupCalls[0].sql, /WHERE s\.id = \?\s+LIMIT 1/);
+    assert.doesNotMatch(lookupCalls[0].sql, /s\.user_id/);
 });
 
 test("does not generate codes for expired subscriptions or other platforms", async () => {

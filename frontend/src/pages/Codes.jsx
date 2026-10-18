@@ -410,7 +410,9 @@ export default function Codes() {
                             {/* Input + botón inline */}
                             <div>
                                 <label style={{ display: "block", fontSize: 10, fontWeight: 800, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 6 }}>
-                                    {activePlatform === "youtube-premium-totp" ? "ID numérico de suscripción" : "Número de pedido"}
+                                    {activePlatform === "youtube-premium-totp"
+                                        ? (isAdmin ? "ID de venta / suscripción" : "ID numérico de suscripción")
+                                        : "Número de pedido"}
                                 </label>
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
                                     <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
@@ -437,7 +439,9 @@ export default function Codes() {
                                     </div>
                                     {activePlatform === "youtube-premium-totp" ? (
                                         <div style={{ color: "var(--muted)", fontSize: 10, lineHeight: 1.45 }}>
-                                            Usa el ID de suscripción que aparece en Historial de Compras.
+                                            {isAdmin
+                                                ? "Como administrador, usa el ID de venta que aparece en Inventario."
+                                                : "Usa el ID de suscripción que aparece en Historial de Compras."}
                                         </div>
                                     ) : null}
                                 </div>

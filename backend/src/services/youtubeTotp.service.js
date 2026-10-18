@@ -216,11 +216,13 @@ async function recordTotpRequest(subscriptionId, db = pool) {
 async function getSubscriptionTotp({
     subscriptionId,
     userId,
+    isAdmin = false,
     now,
     db = pool,
     keyValue = process.env.TOTP_ENCRYPTION_KEY,
-    bypassRequestLimit = false,
 }) {
+    const ownershipFilter = isAdmin ? "" : " AND s.user_id = ?";
+    const queryParams = isAdmin ? [subscriptionId] : [subscriptionId, userId];
     const [[row]] = await db.query(
         `SELECT s.id AS subscription_id, s.status AS subscription_status,
                 (s.expires_at IS NOT NULL AND DATE(CONVERT_TZ(s.expires_at, '+00:00', '-05:00')) < ${BOGOTA_TODAY_SQL}) AS subscription_expired,
@@ -230,9 +232,9 @@ async function getSubscriptionTotp({
            JOIN platform_accounts a ON a.id = s.platform_account_id
            JOIN platforms p ON p.id = a.platform_id
            LEFT JOIN youtube_google_totp_secrets secret ON secret.email_normalized = LOWER(TRIM(a.email))
-          WHERE s.id = ? AND s.user_id = ?
+          WHERE s.id = ?${ownershipFilter}
           LIMIT 1`,
-        [subscriptionId, userId]
+        queryParams
     );
 
     if (!row || !isYoutubeTotpProduct(`${row.platform_name || ""} ${row.platform_slug || ""}`)) {
@@ -250,7 +252,7 @@ async function getSubscriptionTotp({
         iv: row.secret_iv,
         authTag: row.secret_auth_tag,
     }, keyValue);
-    if (!bypassRequestLimit) await recordTotpRequest(row.subscription_id, db);
+    if (!isAdmin) await recordTotpRequest(row.subscription_id, db);
     const generationTime = await waitForFreshTotpPeriod({ now });
     const code = generateTotp(secret, generationTime);
     const expiresAt = (Math.floor(generationTime / TOTP_PERIOD_MS) + 1) * TOTP_PERIOD_MS;

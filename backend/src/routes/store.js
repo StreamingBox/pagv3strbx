@@ -91,7 +91,7 @@ router.get("/orders/:subscriptionId/totp", requireAuth, totpRateLimit, async (re
         const data = await getSubscriptionTotp({
             subscriptionId,
             userId: req.user.id,
-            bypassRequestLimit: req.user.role === "admin",
+            isAdmin: req.user.role === "admin",
         });
         return res.json(data);
     } catch (error) {

@@ -31,7 +31,9 @@ const { fetchDisneyCodeFromGmail } = require("../src/services/gmailCodeService")
 
 function makeEmail({ uid, subject, body, html, date }) {
     const dateHeader = date.toUTCString();
-    const mimeBody = html
+    const mimeBody = html && body == null
+        ? ["Content-Type: text/html; charset=utf-8", "", html]
+        : html
         ? [
             'Content-Type: multipart/alternative; boundary="disney-test-boundary"',
             "",
@@ -154,4 +156,23 @@ test("blocks a new-login notice found only in the HTML alternative", async () =>
 
     assert.equal(result.ok, false);
     assert.equal(result.status, "device_already_entered");
+});
+
+test("extracts the visible code from an HTML email whose generated text includes tracking numbers", async () => {
+    const now = Date.now();
+    mailboxMessages = [makeEmail({
+        uid: 7,
+        subject: "Tu código de acceso único para Disney+",
+        html: '<html><body><h1>Tu código de acceso único para Disney+</h1><p>Este código de acceso vencerá en 15 minutos.</p><table><tr><td style="font-size: 28px; letter-spacing: 4px">024681</td></tr></table><a href="https://links.example.test/123456/789012">Centro de ayuda</a></body></html>',
+        date: new Date(now - 60 * 1000),
+    })];
+
+    const result = await fetchDisneyCodeFromGmail({
+        toEmail: "client@example.test",
+        gmailFromContains: "disneyplus.com",
+        purchasedAt: new Date(now - 12 * 60 * 1000),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.code, "024681");
 });

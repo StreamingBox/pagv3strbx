@@ -7,6 +7,7 @@ const reservations = require("../src/services/codeRequestReservation.service");
 let deliveredCount = 0;
 let reservationCalls = [];
 let gmailCalls = 0;
+let purchaseAgeMinutes = 2;
 
 codeQueries.getCodePlatformBySlug = async () => ({
     slug: "disney",
@@ -26,7 +27,7 @@ codeQueries.getSubscriptionWithAccount = async () => ({
     accountPassword: "synthetic-account-password",
     accountPin: "1234",
     purchaseOrderId: 5001,
-    purchaseCreatedAt: new Date(Date.now() - 2 * 60 * 1000),
+    purchaseCreatedAt: new Date(Date.now() - purchaseAgeMinutes * 60 * 1000),
 });
 codeQueries.getProviderForNetflixAccountEmail = async () => null;
 codeQueries.countDeliveredByFingerprint = async () => 0;
@@ -79,4 +80,40 @@ test("the first Disney delivery reserves a purchase-scoped slot even for an admi
     assert.equal(reservationCalls[0].platformSlug, "disney");
     assert.equal(reservationCalls[0].resetMarker, 5001);
     assert.equal(reservationCalls[0].allowCompletedReuse, false);
+});
+
+test("allows a buyer to request the first Disney code twelve minutes after purchase", async () => {
+    purchaseAgeMinutes = 12;
+    deliveredCount = 0;
+    reservationCalls = [];
+    gmailCalls = 0;
+
+    const result = await requestCodeForOrder({
+        orderNumber: 901,
+        platformSlug: "disney",
+        user: { id: 77, role: "user" },
+    });
+
+    assert.equal(result.http, 200);
+    assert.equal(gmailCalls, 1);
+    assert.equal(reservationCalls.length, 1);
+});
+
+test("rejects Disney requests after fifteen minutes before opening the mailbox", async () => {
+    purchaseAgeMinutes = 16;
+    deliveredCount = 0;
+    reservationCalls = [];
+    gmailCalls = 0;
+
+    const result = await requestCodeForOrder({
+        orderNumber: 901,
+        platformSlug: "disney",
+        user: { id: 77, role: "user" },
+    });
+
+    assert.equal(result.http, 410);
+    assert.equal(result.body.status, "purchase_window_expired");
+    assert.match(result.body.message, /15 minutos/);
+    assert.equal(gmailCalls, 0);
+    assert.equal(reservationCalls.length, 0);
 });

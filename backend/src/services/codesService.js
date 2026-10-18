@@ -28,7 +28,7 @@ const { fetchCodeFromLiveonixProvider } = require("./liveonixProviderCodeService
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const { isStoredDateOnlyExpired } = require("../utils/date");
-const { checkDisneyPurchaseWindow } = require("./disneyCodePolicy");
+const { checkDisneyPurchaseWindow, DISNEY_CODE_WINDOW_MINUTES } = require("./disneyCodePolicy");
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
@@ -360,7 +360,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                     ok: false,
                     status: purchaseWindow.status,
                     message: expired
-                        ? "Ya pasaron más de 10 minutos desde la compra. El código de Disney ya no se entrega desde esta página; contacta a Soporte."
+                        ? `Ya pasaron más de ${DISNEY_CODE_WINDOW_MINUTES} minutos desde la compra. El código de Disney ya no se entrega desde esta página; contacta a Soporte.`
                         : "No se pudo validar la fecha de compra de esta suscripción. Contacta a Soporte para revisar tu acceso.",
                 },
                 meta: { sub, plat, fingerprint, soldAccountEmail, policyPlatform },

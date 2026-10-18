@@ -60,13 +60,29 @@ test("checks both MIME alternatives for the code and login notices", () => {
     }), true);
 });
 
-test("enforces the ten-minute purchase window and fails closed on missing/future dates", () => {
+test("reads the visible HTML code without treating tracking URLs as extra codes", () => {
+    assert.equal(extractDisneyOtpCode({
+        subject: "Tu código de acceso único para Disney+",
+        text: "Tu código: 024681. Ayuda: https://links.example.test/123456/789012",
+        html: '<table><tr><td style="font-size: 28px; letter-spacing: 4px">024681</td></tr></table><a href="https://links.example.test/123456/789012">Ayuda</a>',
+    }), "024681");
+});
+
+test("ignores URL numbers in plain text and rejects ambiguous visible codes", () => {
+    const subject = "Tu código de acceso único para Disney+";
+    assert.equal(extractDisneyOtpCode({ subject, text: "Ayuda: https://links.example.test/123456" }), "");
+    assert.equal(extractDisneyOtpCode({ subject, text: "Tu código: 024681. https://links.example.test/123456" }), "024681");
+    assert.equal(extractDisneyOtpCode({ subject, text: "024681", html: "<p>024681 y 135790</p>" }), "");
+});
+
+test("enforces the fifteen-minute purchase window and fails closed on missing/future dates", () => {
     const now = Date.UTC(2026, 9, 17, 12, 0, 0);
-    assert.deepEqual(checkDisneyPurchaseWindow(new Date(now - 10 * 60 * 1000), now), {
+    assert.equal(checkDisneyPurchaseWindow(new Date(now - 12 * 60 * 1000), now).allowed, true);
+    assert.deepEqual(checkDisneyPurchaseWindow(new Date(now - 15 * 60 * 1000), now), {
         allowed: true,
         status: "within_window",
     });
-    assert.equal(checkDisneyPurchaseWindow(new Date(now - 10 * 60 * 1000 - 1), now).status, "purchase_window_expired");
+    assert.equal(checkDisneyPurchaseWindow(new Date(now - 15 * 60 * 1000 - 1), now).status, "purchase_window_expired");
     assert.equal(checkDisneyPurchaseWindow(null, now).status, "purchase_time_unavailable");
     assert.equal(checkDisneyPurchaseWindow(new Date(now + 1000), now).status, "purchase_time_unavailable");
 });

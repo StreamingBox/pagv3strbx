@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 
-const DISNEY_CODE_WINDOW_MINUTES = 10;
+const DISNEY_CODE_WINDOW_MINUTES = 15;
 const DISNEY_CODE_WINDOW_MS = DISNEY_CODE_WINDOW_MINUTES * 60 * 1000;
 
 function normalizeDisneyText(value) {
@@ -57,9 +57,16 @@ function isDisneyLoginNotice({ subject, text, html } = {}) {
 function extractDisneyOtpCode({ subject, text, html } = {}) {
     if (!isDisneyOtpSubject(subject)) return "";
 
-    const body = getDisneyBodyText({ text, html });
-    const codes = [...new Set([...body.matchAll(/(?:^|\D)(\d{6})(?!\d)/g)].map((match) => match[1]))];
-    return codes.length === 1 ? codes[0] : "";
+    // Generated plain text can include numeric tracking URLs absent from the visible email.
+    const bodies = [
+        getDisneyBodyText({ html }),
+        String(text || "").replace(/https?:\/\/[^\s<>]+/gi, " "),
+    ];
+    for (const body of bodies) {
+        const codes = [...new Set([...body.matchAll(/(?:^|\D)(\d{6})(?!\d)/g)].map((match) => match[1]))];
+        if (codes.length) return codes.length === 1 ? codes[0] : "";
+    }
+    return "";
 }
 
 function checkDisneyPurchaseWindow(purchasedAt, now = Date.now()) {

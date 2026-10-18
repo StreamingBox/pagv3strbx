@@ -13,6 +13,7 @@ const {
 } = require("../utils/imapConfig");
 const { extractFallbackCode } = require("../utils/codeExtraction");
 const {
+    DISNEY_CODE_WINDOW_MINUTES,
     extractDisneyOtpCode,
     isDisneyLoginNotice,
     isDisneyOtpSubject,
@@ -286,7 +287,7 @@ async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedA
             return {
                 ok: false,
                 status: "disney_code_not_found",
-                message: "No apareció un correo reciente de Disney con el código. Puedes volver a intentar dentro de los 10 minutos de la compra.",
+                message: `No apareció un correo reciente de Disney con el código. Puedes volver a intentar dentro de los ${DISNEY_CODE_WINDOW_MINUTES} minutos de la compra.`,
             };
         }
 
@@ -345,7 +346,7 @@ async function fetchDisneyCodeFromGmail({ toEmail, gmailFromContains, purchasedA
             status: otpMessages.length ? "regex_mismatch" : "disney_code_not_found",
             message: otpMessages.length
                 ? "El correo de Disney no tenía un código reconocible. Contacta a Soporte para revisar tu acceso."
-                : "No apareció un correo reciente de Disney con el código. Puedes volver a intentar dentro de los 10 minutos de la compra.",
+                : `No apareció un correo reciente de Disney con el código. Puedes volver a intentar dentro de los ${DISNEY_CODE_WINDOW_MINUTES} minutos de la compra.`,
         };
     } catch (err) {
         console.error("[disneyCodeService] error", {

@@ -184,11 +184,22 @@ async function recordTotpRequest(subscriptionId, db = pool) {
         const request = rows?.[0];
         if (!request) throw errorWithStatus("No se pudo validar el límite de consultas para este pedido.", 503);
         if (Number(request.window_expired) === 1) {
-            throw errorWithStatus("Este pedido ya solicitó el código. Contacta a soporte si necesitas ayuda.", 429);
+            await conn.query(
+                `UPDATE youtube_totp_request_limits
+                    SET first_requested_at = UTC_TIMESTAMP(3), request_count = 1
+                  WHERE subscription_id = ?`,
+                [subscriptionId]
+            );
+            await conn.commit();
+            transactionStarted = false;
+            return;
         }
         const requestCount = Number(request.request_count);
         if (requestCount >= MAX_TOTP_REQUESTS) {
-            throw errorWithStatus("Este pedido ya solicitó el código. Contacta a soporte si necesitas ayuda.", 429);
+            throw errorWithStatus(
+                `Alcanzaste el límite de ${MAX_TOTP_REQUESTS} consultas. Podrás pedir otro código cuando pasen ${TOTP_REQUEST_WINDOW_MINUTES} minutos desde la primera solicitud.`,
+                429
+            );
         }
 
         await conn.query(

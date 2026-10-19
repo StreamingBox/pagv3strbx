@@ -30,6 +30,11 @@ function createTotpDb(row) {
                         window_expired: Number(requestLimit.windowExpired),
                     }]];
                 }
+                if (sql.includes("SET first_requested_at = UTC_TIMESTAMP(3), request_count = 1")) {
+                    requestLimit.count = 1;
+                    requestLimit.windowExpired = false;
+                    return [{ affectedRows: 1 }];
+                }
                 if (sql.includes("UPDATE youtube_totp_request_limits")) {
                     requestLimit.count += 1;
                     return [{ affectedRows: 1 }];
@@ -199,7 +204,7 @@ test("matches a YouTube Gmail authenticator when the account email omits its dom
     assert.equal(result.code, "287082");
 });
 
-test("allows five successful requests in the first ten minutes, then blocks the subscription", async () => {
+test("allows five requests per ten-minute window and starts a new window when the old one expires", async () => {
     const encrypted = encryptTotpSecret(RFC_SECRET, KEY);
     const db = createTotpDb({
         subscription_id: 82,
@@ -217,13 +222,22 @@ test("allows five successful requests in the first ten minutes, then blocks the 
     }
     await assert.rejects(
         getSubscriptionTotp({ subscriptionId: 82, userId: 17, now: 59_000, db, keyValue: KEY }),
-        { status: 429, message: /ya solicitó el código/ },
+        { status: 429, message: /límite de 5 consultas.*10 minutos/ },
     );
+    assert.equal(db.requestLimit.count, 5);
 
     db.requestLimit.windowExpired = true;
+    const reopenedWindowResult = await getSubscriptionTotp({ subscriptionId: 82, userId: 17, now: 59_000, db, keyValue: KEY });
+    assert.equal(reopenedWindowResult.code, "287082");
+    assert.equal(db.requestLimit.count, 1);
+    assert.equal(db.requestLimit.windowExpired, false);
+
+    for (let request = 0; request < 4; request += 1) {
+        await getSubscriptionTotp({ subscriptionId: 82, userId: 17, now: 59_000, db, keyValue: KEY });
+    }
     await assert.rejects(
         getSubscriptionTotp({ subscriptionId: 82, userId: 17, now: 59_000, db, keyValue: KEY }),
-        { status: 429, message: /ya solicitó el código/ },
+        { status: 429, message: /límite de 5 consultas.*10 minutos/ },
     );
     assert.equal(db.requestLimit.count, 5);
 });

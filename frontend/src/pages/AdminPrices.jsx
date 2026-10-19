@@ -19,6 +19,7 @@ export default function AdminPrices() {
         loading, saving, error,
         page, limit, total, totalPages,
         q, setQ,
+        status, setStatus,
         loadAll, saveMulti, toggleAll,
     } = useAdminPrices();
 
@@ -112,6 +113,8 @@ export default function AdminPrices() {
                         totalPages={totalPages}
                         q={q}
                         setQ={setQ}
+                        status={status}
+                        setStatus={setStatus}
                         onToggleAll={toggleAll}
                         onSaveMulti={saveMulti}
                         loadAll={loadAll}

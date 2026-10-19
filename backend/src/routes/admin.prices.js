@@ -49,16 +49,22 @@ router.get("/admin/prices", requireAuth, requireRole("admin"), async (req, res) 
  */
 router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const { page = 1, limit = 5, q = "" } = req.query;
+        const { page = 1, limit = 5, q = "", status = "all" } = req.query;
         const pageNum = Math.max(parseInt(page, 10) || 1, 1);
         const limitNum = Math.max(parseInt(limit, 10) || 5, 1);
         const offset = (pageNum - 1) * limitNum;
+        const normalizedStatus = String(status).toLowerCase();
+        const statusHaving = normalizedStatus === "active"
+            ? "HAVING MAX(CASE WHEN pp.is_active = 1 THEN 1 ELSE 0 END) = 1"
+            : normalizedStatus === "inactive"
+                ? "HAVING MAX(CASE WHEN pp.is_active = 1 THEN 1 ELSE 0 END) = 0"
+                : "";
 
         let whereClause = "";
         let params = [];
 
         if (q && q.trim().length > 0) {
-            whereClause = "WHERE p.name LIKE ? OR d.name LIKE ?";
+            whereClause = "WHERE (p.name LIKE ? OR d.name LIKE ?)";
             const qStr = `%${q.trim()}%`;
             params = [qStr, qStr];
         }
@@ -71,6 +77,7 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
                 JOIN durations d ON d.id = pp.duration_id
                 ${whereClause}
                 GROUP BY pp.platform_id, pp.duration_id
+                ${statusHaving}
             ) as sub
         `;
         const [countRows] = await pool.query(countSql, params);
@@ -111,6 +118,7 @@ router.get("/admin/prices/grouped", requireAuth, requireRole("admin"), async (re
             JOIN durations d ON d.id = pp.duration_id
             ${whereClause}
             GROUP BY pp.platform_id, p.name, pp.duration_id, d.name, d.days
+            ${statusHaving}
             ORDER BY p.name ASC, d.days ASC
             LIMIT ${limitNum} OFFSET ${offset}
         `;

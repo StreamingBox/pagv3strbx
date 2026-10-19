@@ -17,13 +17,15 @@ const inputStyle = {
     fontFamily: "var(--font)", transition: "border-color 0.2s",
 };
 
-export default function PricesTable({ prices, loading, saving, page, limit, total, totalPages, q, setQ, onToggleAll, onSaveMulti, loadAll }) {
+export default function PricesTable({ prices, loading, saving, page, limit, total, totalPages, q, setQ, status, setStatus, onToggleAll, onSaveMulti, loadAll }) {
     const query = q.trim();
     const hasQuery = query.length > 0;
-    const applySearch = () => loadAll(1, limit, query);
+    const hasFilters = hasQuery || status !== "all";
+    const applySearch = () => loadAll(1, limit, query, status);
     const clearSearch = () => {
         setQ("");
-        loadAll(1, limit, "");
+        setStatus("all");
+        loadAll(1, limit, "", "all");
     };
 
     return (
@@ -41,9 +43,12 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                             {total}
                         </span>
                     </div>
-                    {hasQuery ? (
+                    {hasFilters ? (
                         <span style={{ color: "var(--muted)", fontSize: 12, fontWeight: 800 }}>
-                            Filtro activo: <b style={{ color: "var(--accent)" }}>{query}</b>
+                            Filtros activos: <b style={{ color: "var(--accent)" }}>{[
+                                hasQuery ? query : null,
+                                status === "active" ? "Activos" : status === "inactive" ? "Inactivos" : null,
+                            ].filter(Boolean).join(" · ")}</b>
                         </span>
                     ) : null}
                 </div>
@@ -56,7 +61,7 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                             onChange={e => {
                                 setQ(e.target.value);
                                 if (e.target.value === "") {
-                                    loadAll(1, limit, "");
+                                    loadAll(1, limit, "", status);
                                 }
                             }}
                             onKeyDown={e => {
@@ -67,6 +72,23 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                             onFocus={e => e.target.style.borderColor = "#0da6f2"}
                             onBlur={e => e.target.style.borderColor = "var(--stroke)"}
                         />
+                    </div>
+                    <div style={{ position: "relative", flex: "0 1 160px", minWidth: 145 }}>
+                        <select
+                            aria-label="Filtrar precios por estado"
+                            style={{ ...selStyle, width: "100%", height: 44, padding: "0 30px 0 12px", borderRadius: 10, fontSize: 13 }}
+                            value={status}
+                            onChange={e => {
+                                const nextStatus = e.target.value;
+                                setStatus(nextStatus);
+                                loadAll(1, limit, query, nextStatus);
+                            }}
+                        >
+                            <option value="all">Todos</option>
+                            <option value="active">Activos</option>
+                            <option value="inactive">Inactivos</option>
+                        </select>
+                        <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
                     </div>
                     <button
                         type="button"
@@ -80,9 +102,9 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                     <button
                         type="button"
                         className="btn-ghost"
-                        disabled={loading || !hasQuery}
+                        disabled={loading || !hasFilters}
                         onClick={clearSearch}
-                        style={{ width: "auto", minWidth: 110, height: 44, padding: "0 16px", borderRadius: 10, opacity: hasQuery ? 1 : 0.45 }}
+                        style={{ width: "auto", minWidth: 110, height: 44, padding: "0 16px", borderRadius: 10, opacity: hasFilters ? 1 : 0.45 }}
                     >
                         Limpiar
                     </button>
@@ -136,7 +158,7 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
                         <span>Filas:</span>
                         <div style={{ position: "relative" }}>
-                            <select style={selStyle} value={limit} onChange={e => loadAll(1, Number(e.target.value), query)}>
+                            <select style={selStyle} value={limit} onChange={e => loadAll(1, Number(e.target.value), query, status)}>
                                 {[5, 10, 20, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}
                             </select>
                             <span style={{ position: "absolute", right: 7, top: "50%", transform: "translateY(-50%)", fontSize: 8, color: "var(--muted)", pointerEvents: "none" }}>▼</span>
@@ -145,14 +167,14 @@ export default function PricesTable({ prices, loading, saving, page, limit, tota
                     </div>
 
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <button className="btn-ghost" disabled={page <= 1 || loading} onClick={() => loadAll(page - 1, limit, query)}
+                        <button className="btn-ghost" disabled={page <= 1 || loading} onClick={() => loadAll(page - 1, limit, query, status)}
                             style={{ width: "auto", padding: "6px 14px", fontSize: 13, borderRadius: 8, opacity: page <= 1 ? 0.35 : 1 }}>
                             ← Anterior
                         </button>
                         <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>
                             Página <b style={{ color: "var(--accent)" }}>{page}</b> de {totalPages || 1}
                         </span>
-                        <button className="btn-ghost" disabled={page >= totalPages || loading} onClick={() => loadAll(page + 1, limit, query)}
+                        <button className="btn-ghost" disabled={page >= totalPages || loading} onClick={() => loadAll(page + 1, limit, query, status)}
                             style={{ width: "auto", padding: "6px 14px", fontSize: 13, borderRadius: 8, opacity: page >= totalPages ? 0.35 : 1 }}>
                             Siguiente →
                         </button>

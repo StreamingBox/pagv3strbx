@@ -14,3 +14,10 @@ test("grouped admin prices expose previous prices for every currency", () => {
     assert.match(routeSource, /MAX\(CASE WHEN pp\.currency IN \('USD','USDT'\) THEN pp\.previous_price END\) AS previous_price_usd/);
     assert.match(routeSource, /MAX\(CASE WHEN pp\.currency='COP' THEN pp\.previous_lite_price_cop END\) AS previous_lite_price_cop/);
 });
+
+test("grouped admin prices filter groups by whether any currency is active", () => {
+    assert.match(routeSource, /status = "all"/);
+    assert.match(routeSource, /normalizedStatus === "active"[\s\S]*?MAX\(CASE WHEN pp\.is_active = 1 THEN 1 ELSE 0 END\) = 1/);
+    assert.match(routeSource, /normalizedStatus === "inactive"[\s\S]*?MAX\(CASE WHEN pp\.is_active = 1 THEN 1 ELSE 0 END\) = 0/);
+    assert.equal([...routeSource.matchAll(/\$\{statusHaving\}/g)].length, 2);
+});

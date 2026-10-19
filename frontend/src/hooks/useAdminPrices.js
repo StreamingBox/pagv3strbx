@@ -22,8 +22,9 @@ export function useAdminPrices() {
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(1);
     const [q, setQ] = useState("");
+    const [status, setStatus] = useState("all");
 
-    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5, queryStr = "") => {
+    const loadAll = useCallback(async (pageNum = 1, currentLimit = 5, queryStr = "", statusStr = "all") => {
         setLoading(true);
         setError("");
 
@@ -31,7 +32,7 @@ export function useAdminPrices() {
             const [p, d, g] = await Promise.all([
                 fetchPlatforms(),
                 fetchDurations(),
-                fetchPricesGrouped({ page: pageNum, limit: currentLimit, q: queryStr }),
+                fetchPricesGrouped({ page: pageNum, limit: currentLimit, q: queryStr, status: statusStr }),
             ]);
 
             setPlatforms(p);
@@ -52,7 +53,7 @@ export function useAdminPrices() {
     }, []);
 
     useEffect(() => {
-        loadAll(1, 5, "");
+        loadAll(1, 5, "", "all");
     }, [loadAll]);
 
     /**
@@ -81,14 +82,14 @@ export function useAdminPrices() {
                 };
 
                 await createPricesMulti(body);
-                await loadAll(page, limit, q);
+                await loadAll(page, limit, q, status);
             } catch (e) {
                 setError(e?.message || "No se pudo guardar los precios.");
             } finally {
                 setSaving(false);
             }
         },
-        [limit, loadAll, page, q]
+        [limit, loadAll, page, q, status]
     );
 
     const toggleAll = useCallback(
@@ -104,14 +105,14 @@ export function useAdminPrices() {
                 if (!ids.length) return;
 
                 await Promise.all(ids.map(id => patchPrice(id, { is_active: newState })));
-                await loadAll(page, limit, q);
+                await loadAll(page, limit, q, status);
             } catch (e) {
                 setError(e?.message || "No se pudo actualizar.");
             } finally {
                 setSaving(false);
             }
         },
-        [loadAll, page, limit, q]
+        [loadAll, page, limit, q, status]
     );
 
     return {
@@ -125,6 +126,8 @@ export function useAdminPrices() {
         limit,
         q,
         setQ,
+        status,
+        setStatus,
         total,
         totalPages,
         loadAll,

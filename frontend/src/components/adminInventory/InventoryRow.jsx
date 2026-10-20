@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Star } from "lucide-react";
+import { ChevronDown, Star } from "lucide-react";
 import { formatBogotaDate } from "../../utils/datetime.js";
+import { splitProfileHistory } from "./profileHistory.js";
 
 function DetailStat({ label, value, mono = false, tone = "default" }) {
     const toneColor = tone === "accent" ? "#0da6f2" : tone === "success" ? "#10b981" : tone === "warning" ? "#f59e0b" : "var(--text)";
@@ -113,9 +114,11 @@ function getProfileState(profile = {}) {
 }
 
 function AccountProfilesSummary({ account, profiles = [] }) {
+    const [showHistory, setShowHistory] = useState(false);
     if (!profiles.length) return null;
 
-    const counts = profiles.reduce((result, profile) => {
+    const { latest, history } = splitProfileHistory(profiles);
+    const counts = latest.reduce((result, profile) => {
         const state = getProfileState(profile).label;
         result[state] = (result[state] || 0) + 1;
         return result;
@@ -123,36 +126,88 @@ function AccountProfilesSummary({ account, profiles = [] }) {
     const occupied = counts.OCUPADO || 0;
     const replaced = counts.REEMPLAZADO || 0;
     const available = counts.LIBRE || 0;
-    const summary = `Este correo tiene ${profiles.length} perfiles: ${occupied} ocupado${occupied === 1 ? "" : "s"}, ${replaced} reemplazado${replaced === 1 ? "" : "s"} y ${available} libre${available === 1 ? "" : "s"}.`;
+    const selectedProfile = profiles.find((profile) => String(profile.id) === String(account?.id));
+    const selectedIsLatest = latest.some((profile) => String(profile.id) === String(account?.id));
+    const otherStates = [
+        [counts.VENDIDO || 0, "vendidos"],
+        [counts.REVISAR || 0, "por revisar"],
+    ].filter(([count]) => count > 0).map(([count, label]) => `${count} ${label}`);
+    const summary = [
+        `${occupied} ocupado${occupied === 1 ? "" : "s"}`,
+        `${available} libre${available === 1 ? "" : "s"}`,
+        `${replaced} reemplazado${replaced === 1 ? "" : "s"}`,
+        ...otherStates,
+    ].join(" · ");
+    const historyId = `inventory-profile-history-${account?.id || "account"}`;
+
+    const renderProfile = (profile) => {
+        const profileState = getProfileState(profile);
+        return (
+            <div key={profile.id} style={{ minWidth: 0, padding: "9px 0", borderBottom: "1px solid var(--stroke2)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 900 }}>Perfil {profile.profile_number ?? "—"}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {String(profile.id) === String(account?.id) && <span style={{ color: "#a78bfa", fontSize: 10, fontWeight: 800, whiteSpace: "nowrap" }}>Fila consultada</span>}
+                        <span style={{ color: profileState.color, fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{profileState.label}</span>
+                    </div>
+                </div>
+                <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{profileState.description}</div>
+                {(profile.assigned_user_email || profile.expires_at) && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 12px", marginTop: 5, color: "var(--muted)", fontSize: 10 }}>
+                        {profile.assigned_user_email && <span style={{ overflowWrap: "anywhere" }}>Asignado a: {profile.assigned_user_email}</span>}
+                        {profile.expires_at && <span>Expira: {formatBogotaDate(profile.expires_at)}</span>}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
-        <div style={{ gridColumn: "1 / -1", minWidth: 0, marginBottom: 2, background: "rgba(139,92,246,0.07)", border: "1px solid rgba(139,92,246,0.24)", borderRadius: 14, padding: "14px 16px" }}>
+        <div style={{ gridColumn: "1 / -1", minWidth: 0, marginBottom: 2, paddingBottom: 12, borderBottom: "1px solid var(--stroke2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                    <div style={{ fontSize: 11, color: "#a78bfa", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 900 }}>Estado del correo completo</div>
-                    <div style={{ marginTop: 6, color: "var(--text)", fontSize: 14, lineHeight: 1.5, fontWeight: 800 }}>{summary}</div>
-                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>Aquí se separa el estado de cada perfil del historial de reemplazos.</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", fontWeight: 900 }}>Perfiles más recientes</div>
+                    <div style={{ marginTop: 6, color: "var(--text)", fontSize: 14, lineHeight: 1.5, fontWeight: 800 }}>
+                        {latest.length} perfil{latest.length === 1 ? "" : "es"}: {summary}.
+                    </div>
+                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>Se muestra la última versión registrada de cada perfil.</div>
                 </div>
-                <span style={{ color: available > 0 ? "#10b981" : "#f59e0b", fontSize: 12, fontWeight: 900 }}>{available > 0 ? "Hay perfiles libres" : "No hay perfiles libres"}</span>
+                {history.length > 0 && (
+                    <button
+                        type="button"
+                        className="btn-ghost"
+                        aria-expanded={showHistory}
+                        aria-controls={historyId}
+                        onClick={() => setShowHistory((visible) => !visible)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "7px 10px", fontSize: 12, whiteSpace: "nowrap" }}
+                    >
+                        {showHistory ? "Ocultar historial" : `Historial anterior (${history.length})`}
+                        <ChevronDown size={14} style={{ transform: showHistory ? "rotate(180deg)" : "none", transition: "transform 140ms ease" }} />
+                    </button>
+                )}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 9, marginTop: 13 }}>
-                {profiles.map((profile) => {
-                    const profileState = getProfileState(profile);
-                    const isCurrent = String(profile.id) === String(account?.id);
-                    return (
-                        <div key={profile.id} style={{ minWidth: 0, padding: "11px 12px", borderRadius: 12, background: profileState.background, border: `1px solid ${profileState.color}55` }}>
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                                <div style={{ color: "var(--text)", fontSize: 13, fontWeight: 900 }}>Perfil {profile.profile_number ?? "—"}</div>
-                                <span style={{ color: profileState.color, fontSize: 10, fontWeight: 900, whiteSpace: "nowrap" }}>{profileState.label}</span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", columnGap: 18, marginTop: 8 }}>
+                {latest.map(renderProfile)}
+            </div>
+
+            {selectedProfile && !selectedIsLatest && (
+                <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11 }}>
+                    La fila consultada es una versión anterior del Perfil {selectedProfile.profile_number ?? "—"}; está en el historial.
+                </div>
+            )}
+
+            <div id={historyId} hidden={!showHistory} style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--stroke2)" }}>
+                {showHistory && (
+                    <>
+                        <div style={{ marginBottom: 4, color: "var(--muted)", fontSize: 11, fontWeight: 800 }}>Versiones anteriores</div>
+                        <div style={{ maxHeight: 230, overflowY: "auto", paddingRight: 6 }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", columnGap: 18 }}>
+                                {history.map(renderProfile)}
                             </div>
-                            {isCurrent && <div style={{ marginTop: 3, color: "#a78bfa", fontSize: 10, fontWeight: 800 }}>Este es el perfil consultado</div>}
-                            <div style={{ marginTop: 6, color: "var(--muted)", fontSize: 11, lineHeight: 1.4 }}>{profileState.description}</div>
-                            {profile.assigned_user_email && <div style={{ marginTop: 5, color: "var(--muted)", fontSize: 10, overflowWrap: "anywhere" }}>Asignado a: {profile.assigned_user_email}</div>}
-                            {profile.expires_at && <div style={{ marginTop: 3, color: "var(--muted)", fontSize: 10 }}>Expira: {formatBogotaDate(profile.expires_at)}</div>}
                         </div>
-                    );
-                })}
+                    </>
+                )}
             </div>
         </div>
     );

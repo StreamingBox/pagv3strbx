@@ -17,6 +17,7 @@ Antes de cada cambio, vuelve a consultar este archivo, incluso si el cambio es u
 - Antes de un commit, revisa `git diff`, `git diff --cached` y la lista exacta de archivos staged. Busca accidentalmente incluidos secretos, `.env`, claves PEM, credenciales de clientes, bases de datos, respaldos, compilados o archivos diagnósticos.
 - Nunca hagas `git add .` ni `git add -A` en un workspace con archivos no rastreados sin revisar cada elemento. Agrega únicamente rutas del cambio solicitado.
 - Si el usuario pide que el cambio quede en Git o en GitHub, confirma rama y remoto; revisa el diff staged, crea un commit descriptivo y sube solo esa rama. Verifica el resultado con `git status` y el SHA remoto. Un push no significa que producción esté desplegada.
+- Preferencia permanente explícita del usuario: cuando solicite un cambio, evalúalo y, si la revisión, pruebas y preflight de producción pasan, crea el commit, súbelo a `origin/main` y despliega a producción sin pedir confirmación adicional. Si alguna validación o condición de seguridad falla, conserva los cambios y detente antes de la operación riesgosa; explica el bloqueo sin eludir controles.
 - No reviertas ni “restaures” cambios del usuario para hacer coincidir el árbol con GitHub. Si las diferencias impiden continuar, conserva la evidencia y pide una decisión antes de sobrescribir.
 
 ## Producción y despliegues

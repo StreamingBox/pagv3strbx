@@ -634,12 +634,15 @@ async function getInventoryAccountDetail(id) {
     const [profileRows] = await pool.query(
         `SELECT
             pa.id,
+            pa.identity_id,
             pa.profile_number,
             pa.status,
             pa.assigned_to_user_id,
             u.email AS assigned_user_email,
             pa.assigned_at,
             pa.expires_at,
+            pa.created_at,
+            pa.updated_at,
             (SELECT COUNT(*)
                FROM subscriptions profile_sub
               WHERE profile_sub.platform_account_id = pa.id
@@ -792,6 +795,7 @@ async function getInventoryAccountDetail(id) {
 
             return {
                 id: row.id,
+                identity_id: row.identity_id,
                 profile_number: row.profile_number,
                 status: row.status,
                 state,
@@ -799,6 +803,8 @@ async function getInventoryAccountDetail(id) {
                 assigned_user_email: row.assigned_user_email,
                 assigned_at: row.assigned_at,
                 expires_at: row.expires_at,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
                 active_subscriptions: activeSubscriptions,
                 replacements_in: replacementsIn,
                 replacements_out: replacementsOut,

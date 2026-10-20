@@ -149,12 +149,9 @@ npm audit --audit-level=high
 (cd frontend && AUDIT_ALLOW_ADVISORIES="https://github.com/advisories/GHSA-mh99-v99m-4gvg,https://github.com/advisories/GHSA-qwww-vcr4-c8h2" AUDIT_ALLOW_PACKAGES="@eslint/config-array,@eslint/eslintrc,brace-expansion,eslint,minimatch,react-router,react-router-dom" node ../scripts/audit-dependencies.js)
 
 echo ">>> restarting API"
-if pm2 describe "$PM2_APP" >/dev/null 2>&1; then
-  pm2 restart "$PM2_APP" --update-env
-else
-  (cd backend && pm2 start src/index.js --name "$PM2_APP" --update-env)
-  pm2 save
-fi
+(cd backend && npm ls --omit=dev --depth=0)
+PM2_APP="$PM2_APP" pm2 startOrRestart "$PROJECT_DIR/ops/ec2/ecosystem.config.cjs" --only "$PM2_APP" --update-env
+pm2 save
 
 echo ">>> readiness check"
 for attempt in $(seq 1 18); do

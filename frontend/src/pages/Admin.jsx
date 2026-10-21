@@ -17,7 +17,7 @@ export default function Admin() {
     const logout = useAppLogout();
     const fileRef = useRef(null);
     const [logoOk, setLogoOk] = useState(true);
-    const [logoTs, setLogoTs] = useState(Date.now());
+    const [logoTs, setLogoTs] = useState(() => Date.now());
     const [uploadingLogo, setUploadingLogo] = useState(false);
 
     function openLogoPicker() {

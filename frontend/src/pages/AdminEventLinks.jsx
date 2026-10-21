@@ -57,7 +57,7 @@ export default function AdminEventLinks() {
     const [closingId, setClosingId] = useState(null);
     const [notice, setNotice] = useState("");
     const [error, setError] = useState("");
-    const [now, setNow] = useState(Date.now());
+    const [now, setNow] = useState(() => Date.now());
 
     const selectedPlatform = useMemo(
         () => platforms.find((platform) => Number(platform.id) === Number(platformId)) || null,

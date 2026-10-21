@@ -24,4 +24,28 @@ describe("splitProfileHistory", () => {
         expect(result.latest.map((profile) => profile.id)).toEqual([8, 9, 10]);
         expect(result.history.map((profile) => profile.id)).toEqual([3]);
     });
+
+    it("does not duplicate a screen when its older rows lack an identity", () => {
+        const result = splitProfileHistory([
+            { id: 1, identity_id: null, profile_number: " 1 " },
+            { id: 2, identity_id: 10, profile_number: 1 },
+            { id: 3, identity_id: 20, profile_number: 2 },
+        ]);
+
+        expect(result.latest.map((profile) => profile.id)).toEqual([2, 3]);
+        expect(result.history.map((profile) => profile.id)).toEqual([1]);
+    });
+
+    it("reduces a long history to the seven latest screens without discarding records", () => {
+        const profiles = Array.from({ length: 38 }, (_, index) => ({
+            id: index + 1,
+            profile_number: (index % 7) + 1,
+            identity_id: index < 7 ? null : (index % 7) + 100,
+        }));
+        const result = splitProfileHistory(profiles);
+
+        expect(result.latest.map((profile) => profile.id)).toEqual([36, 37, 38, 32, 33, 34, 35]);
+        expect(result.history).toHaveLength(31);
+        expect(result.latest.length + result.history.length).toBe(profiles.length);
+    });
 });

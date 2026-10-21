@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { assertCriticalReleaseFeatures } from "./criticalReleaseGuard.js";
 
 const requiredChunks = {
+    "AdminInventory-abc.js": {
+        type: "chunk",
+        modules: { "C:/app/src/components/adminInventory/InventoryRow.jsx": {} },
+        code: "Perfiles más recientes Historial anterior (",
+    },
     "AdminAccounts-abc.js": {
         type: "chunk",
         modules: { "C:/app/src/pages/AdminAccounts.jsx": {} },
@@ -34,5 +39,17 @@ describe("critical frontend release guard", () => {
         };
 
         expect(() => assertCriticalReleaseFeatures(incompleteBundle)).toThrow(/30 segundos/);
+    });
+
+    it("rejects the old inventory view even when other critical features are present", () => {
+        const oldInventoryBundle = {
+            ...requiredChunks,
+            "AdminInventory-abc.js": {
+                ...requiredChunks["AdminInventory-abc.js"],
+                code: "Estado del correo completo",
+            },
+        };
+
+        expect(() => assertCriticalReleaseFeatures(oldInventoryBundle)).toThrow(/AdminInventory.*Perfiles más recientes/);
     });
 });

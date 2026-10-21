@@ -1,5 +1,10 @@
 const criticalComponents = [
     {
+        moduleSuffix: "/src/components/adminInventory/InventoryRow.jsx",
+        name: "AdminInventory",
+        features: ["Perfiles más recientes", "Historial anterior ("],
+    },
+    {
         moduleSuffix: "/src/pages/AdminAccounts.jsx",
         name: "AdminAccounts",
         features: [

@@ -7,12 +7,16 @@ function recency(profile = {}) {
 }
 
 function profileKey(profile = {}) {
+    // The API already scopes these rows to one platform and email. Legacy rows
+    // can lack an identity even when they refer to the same numbered screen.
+    const number = String(profile.profile_number ?? "").trim();
+    if (number) return `profile:${number.toLowerCase()}`;
+
     if (profile.identity_id !== null && profile.identity_id !== undefined && String(profile.identity_id).trim()) {
         return `identity:${profile.identity_id}`;
     }
 
-    const number = String(profile.profile_number ?? "").trim();
-    return number ? `profile:${number.toLowerCase()}` : `account:${profile.id}`;
+    return `account:${profile.id}`;
 }
 
 function profileOrder(a = {}, b = {}) {

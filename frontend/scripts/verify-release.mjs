@@ -31,6 +31,10 @@ try {
 const assetsDir = path.join(distDir, "assets");
 const requiredChunks = [
     {
+        prefix: "AdminInventory-",
+        features: ["Perfiles más recientes", "Historial anterior ("],
+    },
+    {
         prefix: "AdminAccounts-",
         features: ["Nombre del canal de YouTube *", "YouTube Music y YouTube 3 meses requieren la columna"],
     },

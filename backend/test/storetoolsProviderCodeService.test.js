@@ -66,6 +66,25 @@ test("elige el último correo de inicio de Netflix y extrae cuatro dígitos", ()
     assert.equal(selected.code, "5662");
 });
 
+test("StoreTools omite un correo de inicio de seis cifras y usa el siguiente código de cuatro", () => {
+    const selected = storetoolsTest.selectLatestStoretoolsCode([
+        {
+            fecha: "23/9/2026, 9:45:07 a. m.",
+            asunto: "Netflix: Tu código de inicio de sesión",
+            para: "cliente@example.com",
+            mensaje: "Ingresa este código: <strong>1 2 3 4 5 6</strong>",
+        },
+        {
+            fecha: "23/9/2026, 9:31:25 a. m.",
+            asunto: "Netflix: Tu código de inicio de sesión",
+            para: "cliente@example.com",
+            mensaje: "Ingresa este código: <strong>8 0 4 2</strong>",
+        },
+    ], "cliente@example.com");
+
+    assert.equal(selected.code, "8042");
+});
+
 test("elige el último correo temporal de Netflix y encuentra el enlace Obtener código", () => {
     const selected = storetoolsTest.selectLatestStoretoolsTemporaryEmail([
         {

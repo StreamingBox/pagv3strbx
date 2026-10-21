@@ -4,8 +4,8 @@ const cheerio = require("cheerio");
 const USER_AGENT = "StreamingBox-CodeService/1.0 (+https://strbx.com.co)";
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const CODE_CONTEXT = /(?:code|codigo|c[oó]digo|pin|otp|clave|verification|verificaci[oó]n)/i;
-const CODE_VALUE = /(?:^|[^0-9])((?:[0-9][\s.\-]?){3,7}[0-9])(?:$|[^0-9])/g;
-const EXPLICIT_CODE_CONTEXT = /(?:ingresa|introduce|enter|usa|use|utiliza)\s+(?:este|el|this|the)?\s*(?:c[oó]digo|code|pin)[^0-9]{0,120}((?:[0-9][\s.\-]?){3,7}[0-9])(?:$|[^0-9])/i;
+const CODE_VALUE = /([0-9]+(?:(?:[ \t]+|[.-])[0-9]+)*)/g;
+const EXPLICIT_CODE_CONTEXT = /(?:ingresa|introduce|enter|usa|use|utiliza)\s+(?:este|el|this|the)?\s*(?:c[oó]digo|code|pin)[^0-9]{0,120}([0-9]+(?:(?:[ \t]+|[.-])[0-9]+)*)/i;
 const TEMPORARY_SUBJECT = /tu\s+c[oó]digo\s+de\s+acceso\s+temporal\s+de\s+netflix\b/i;
 
 function safeText(value) {
@@ -102,13 +102,14 @@ function looksLikeLoginPage(html) {
     return Boolean(findLoginForm($));
 }
 
-function extractCodeFromText(text, allowUnlabeled = false) {
+function extractCodeFromText(text, allowUnlabeled = false, expectedLength = 0) {
     const value = String(text || "");
     let match;
     CODE_VALUE.lastIndex = 0;
     while ((match = CODE_VALUE.exec(value))) {
         const candidate = String(match[1] || "").replace(/[^0-9]/g, "");
         if (candidate.length < 4 || candidate.length > 8) continue;
+        if (expectedLength && candidate.length !== expectedLength) continue;
         if (/^20[0-9]{2}$/.test(candidate) || candidate === "0000" || /^\d{8}$/.test(candidate)) continue;
         if (!allowUnlabeled && !CODE_CONTEXT.test(value.slice(Math.max(0, match.index - 100), match.index + match[0].length + 100))) continue;
         return candidate;
@@ -116,16 +117,17 @@ function extractCodeFromText(text, allowUnlabeled = false) {
     return "";
 }
 
-function extractExplicitCode(text) {
+function extractExplicitCode(text, expectedLength = 0) {
     const match = safeText(text).match(EXPLICIT_CODE_CONTEXT);
     if (!match?.[1]) return "";
     const candidate = String(match[1]).replace(/[^0-9]/g, "");
     if (candidate.length < 4 || candidate.length > 8) return "";
+    if (expectedLength && candidate.length !== expectedLength) return "";
     if (candidate === "0000" || /^\d{8}$/.test(candidate)) return "";
     return candidate;
 }
 
-function extractJeffProviderCode(html) {
+function extractJeffProviderCode(html, { expectedLength = 0 } = {}) {
     const $ = cheerio.load(String(html || ""));
     const prioritized = [];
     $("[id], [class], [aria-label], [data-code], [data-pin]").each((_, element) => {
@@ -149,16 +151,16 @@ function extractJeffProviderCode(html) {
     });
 
     for (const text of prioritized) {
-        const explicitCode = extractExplicitCode(text);
+        const explicitCode = extractExplicitCode(text, expectedLength);
         if (explicitCode) return explicitCode;
-        const code = extractCodeFromText(text, true);
+        const code = extractCodeFromText(text, true, expectedLength);
         if (code) return code;
     }
 
     const bodyText = safeText($("body").text() || $.text());
-    const explicitBodyCode = extractExplicitCode(bodyText);
+    const explicitBodyCode = extractExplicitCode(bodyText, expectedLength);
     if (explicitBodyCode) return explicitBodyCode;
-    return extractCodeFromText(bodyText, false);
+    return extractCodeFromText(bodyText, false, expectedLength);
 }
 
 function safeNetflixTemporaryUrl(value, baseUrl) {
@@ -518,7 +520,10 @@ async function fetchCodeFromJeffProvider({ email, config, action = "code" }) {
             return providerError("provider_code_not_found", "No se encontró el código temporal de 4 dígitos.");
         }
 
-        const code = extractJeffProviderCode(result.response.data);
+        const expectedLength = normalizedAction === "code" && String(config.slug || "").toLowerCase() === "netflix"
+            ? 4
+            : 0;
+        const code = extractJeffProviderCode(result.response.data, { expectedLength });
         if (!code) return providerError("provider_code_not_found", "No se encontró un código reciente para ese correo en el proveedor.");
         return { ok: true, type: "code", code, source: "jeff_provider" };
     } catch (error) {

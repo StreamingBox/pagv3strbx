@@ -204,8 +204,8 @@ function extractNetflixLoginOtp(content) {
     // Primary: labeled patterns with flexible spacing (handles separate HTML elements)
     // Trailing anchor is optional to handle codes at end of string
     const patterns = [
-        /(?:ingresa este codigo para iniciar sesion|ingresa este codigo en tu dispositivo para iniciar sesion en netflix|tu codigo de inicio de sesion es)[^0-9]{0,200}?([0-9][\s.\-]*[0-9][\s.\-]*[0-9][\s.\-]*[0-9])(?:[^0-9]|$)/i,
-        /(?:codigo de inicio de sesion|sign.?in code)[^0-9]{0,200}?([0-9][\s.\-]*[0-9][\s.\-]*[0-9][\s.\-]*[0-9])(?:[^0-9]|$)/i,
+        /(?:ingresa este codigo para iniciar sesion|ingresa este codigo en tu dispositivo para iniciar sesion en netflix|tu codigo de inicio de sesion es)[^0-9]{0,200}?((?:[0-9][\s.\-]*){3}[0-9])(?![\s.\-]*[0-9])/i,
+        /(?:codigo de inicio de sesion|sign.?in code)[^0-9]{0,200}?((?:[0-9][\s.\-]*){3}[0-9])(?![\s.\-]*[0-9])/i,
     ];
 
     for (const haystack of [normalizedText, normalizedSource, textOnly, source]) {

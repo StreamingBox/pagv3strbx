@@ -3,6 +3,22 @@ const test = require("node:test");
 const axios = require("axios");
 const { __test } = require("../src/services/netflixFlowService");
 
+test("Netflix login extraction never truncates a six-digit OTP", () => {
+    assert.equal(
+        __test.extractNetflixLoginOtp("Netflix: Tu código de inicio de sesión es 1 2 3 4 5 6"),
+        "",
+    );
+});
+
+test("Netflix login extraction continues past a six-digit OTP to a four-digit one", () => {
+    const content = `
+        Netflix: Tu código de inicio de sesión es 1 2 3 4 5 6
+        Netflix: Tu código de inicio de sesión es 8 0 4 2
+    `;
+
+    assert.equal(__test.extractNetflixLoginOtp(content), "8042");
+});
+
 test("accepts a temporary Netflix code that matches a year", () => {
     const html = `
         <h1>Usa este código para ver Netflix en tu dispositivo</h1>

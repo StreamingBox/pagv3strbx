@@ -30,6 +30,16 @@ test("extracts a PIN stored in an input value", () => {
     assert.equal(extractJeffProviderCode(html), "6367");
 });
 
+test("Netflix login extraction skips six-digit codes and keeps searching for four", () => {
+    const html = `
+        <section id="verification-code"><strong>1 2 3 4 5 6</strong></section>
+        <section id="verification-code"><strong>8 0 4 2</strong></section>
+    `;
+
+    assert.equal(extractJeffProviderCode(html, { expectedLength: 4 }), "8042");
+    assert.equal(extractJeffProviderCode(`<div id="verification-code">1 2 3 4 5 6</div>`, { expectedLength: 4 }), "");
+});
+
 test("does not mistake dates for provider codes", () => {
     const html = `
         <main>
@@ -208,6 +218,51 @@ test("permite el tiempo necesario para una búsqueda lenta de Jeff sin quitar el
 
     assert.equal(configured.timeoutMs, 45000);
     assert.equal(capped.timeoutMs, 60000);
+});
+
+test("Jeff no entrega seis dígitos para Netflix Inicio y sigue buscando cuatro", async () => {
+    const originalRequest = axios.request;
+    let searchHtml = `
+        <section id="verification-code"><strong>1 2 3 4 5 6</strong></section>
+        <section id="verification-code"><strong>8 0 4 2</strong></section>
+    `;
+    axios.request = async (options) => {
+        if (options.method === "GET" && options.url.endsWith("/app-login")) {
+            return { status: 200, headers: {}, data: `<form action="/login" method="post"><input name="phone" /><input name="password" type="password" /></form>` };
+        }
+        if (options.method === "POST" && options.url.endsWith("/login")) {
+            return { status: 302, headers: { location: "/v1/user-panel/inbox" }, data: "" };
+        }
+        if (options.method === "GET" && options.url.endsWith("/user-panel/inbox")) {
+            return { status: 200, headers: {}, data: `<form action="/v1/user-panel/inbox_client" method="post"><input name="correo_buscar" /></form>` };
+        }
+        if (options.method === "POST" && options.url.endsWith("/user-panel/inbox_client")) {
+            return { status: 200, headers: {}, data: searchHtml };
+        }
+        throw new Error(`Unexpected request: ${options.method} ${options.url}`);
+    };
+
+    try {
+        const config = {
+            enabled: true,
+            slug: "netflix",
+            baseUrl: "https://proveedores-jeff.store/v1",
+            username: "provider-user",
+            password: "provider-pass",
+            timeoutMs: 5000,
+            loginPath: "/app-login",
+            inboxPath: "/user-panel/inbox",
+        };
+        const result = await fetchCodeFromJeffProvider({ email: "cliente@ejemplo.com", config });
+        assert.equal(result.code, "8042");
+
+        searchHtml = `<section id="verification-code"><strong>1 2 3 4 5 6</strong></section>`;
+        const sixDigitOnly = await fetchCodeFromJeffProvider({ email: "cliente@ejemplo.com", config });
+        assert.equal(sixDigitOnly.ok, false);
+        assert.equal(sixDigitOnly.status, "provider_code_not_found");
+    } finally {
+        axios.request = originalRequest;
+    }
 });
 
 test("logs in, keeps the session cookie, searches by email and returns the provider code", async () => {

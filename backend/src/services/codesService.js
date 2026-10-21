@@ -32,8 +32,9 @@ const { checkDisneyPurchaseWindow, DISNEY_CODE_WINDOW_MINUTES } = require("./dis
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
-function isValidAccessCode(value) {
+function isValidAccessCode(value, { expectedLength = 0 } = {}) {
     const code = String(value || "").replace(/\D/g, "");
+    if (expectedLength) return new RegExp(`^\\d{${expectedLength}}$`).test(code) && code !== "0000";
     return /^\d{4,8}$/.test(code) && code !== "0000";
 }
 
@@ -673,19 +674,27 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
             body: {
                 ok: false,
                 status: fetchStatus,
-                message: fetchingResult.message || "No se encontró código",
+                message: policyPlatform === "netflix" && normalizedAction === "code"
+                    ? "No se encontró un código de Inicio de 4 dígitos. Solicita uno nuevo desde Netflix y vuelve a intentarlo."
+                    : fetchingResult.message || "No se encontró código",
             },
             meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
         };
     }
 
-    if (["code", "temporary"].includes(normalizedAction) && !isValidAccessCode(fetchingResult.code)) {
+    const netflixLoginCode = policyPlatform === "netflix" && normalizedAction === "code";
+    if (["code", "temporary"].includes(normalizedAction) && !isValidAccessCode(
+        fetchingResult.code,
+        { expectedLength: netflixLoginCode ? 4 : 0 },
+    )) {
         return {
             http: 404,
             body: {
                 ok: false,
                 status: "provider_code_not_found",
-                message: "El proveedor no devolvió un código de acceso válido.",
+                message: netflixLoginCode
+                    ? "El proveedor no devolvió un código de Inicio de 4 dígitos. Solicita uno nuevo desde Netflix y vuelve a intentarlo."
+                    : "El proveedor no devolvió un código de acceso válido.",
             },
             meta: { sub, plat, fingerprint, soldAccountEmail, reservation, gmailResult: fetchingResult },
         };
@@ -716,4 +725,4 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     };
 }
 
-module.exports = { requestCodeForOrder, normalizeSlug };
+module.exports = { requestCodeForOrder, normalizeSlug, __test: { isValidAccessCode } };

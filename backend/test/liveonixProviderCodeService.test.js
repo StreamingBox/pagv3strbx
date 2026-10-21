@@ -82,6 +82,15 @@ test("extrae cuatro dígitos del mensaje de Netflix", () => {
     assert.equal(code, "1029");
 });
 
+test("Liveonix omite un inicio de Netflix de seis cifras y continúa buscando uno de cuatro", () => {
+    const html = `
+        <div class="info-header">ASUNTO: Netflix: Tu código de inicio de sesión</div>
+        <div class="message-body"><p>Código: <strong>1 2 3 4 5 6</strong></p><p>Código anterior: <strong>8 0 4 2</strong></p></div>
+    `;
+
+    assert.equal(liveonixTest.extractLiveonixCode(html), "8042");
+});
+
 test("filtra el asunto temporal y encuentra el enlace Obtener código", () => {
     const links = liveonixTest.parseInboxLinks(`
         <div class="mail-card">

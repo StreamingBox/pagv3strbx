@@ -174,7 +174,7 @@ function extractStoretoolsCode(entry) {
         `${subject}\n${decodeHtml(message)}`,
     ];
     for (const candidate of candidates) {
-        const code = extractJeffProviderCode(candidate);
+        const code = extractJeffProviderCode(candidate, { expectedLength: 4 });
         if (/^\d{4}$/.test(code)) return code;
     }
     return "";

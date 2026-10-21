@@ -226,7 +226,7 @@ function extractLiveonixCode(html) {
     const $ = cheerio.load(String(html || ""));
     const text = safeText($("body").text() || $.text());
     if (!LOGIN_CODE_SUBJECT.test(text)) return "";
-    const code = extractJeffProviderCode(String(html || ""));
+    const code = extractJeffProviderCode(String(html || ""), { expectedLength: 4 });
     return /^\d{4}$/.test(code) ? code : "";
 }
 

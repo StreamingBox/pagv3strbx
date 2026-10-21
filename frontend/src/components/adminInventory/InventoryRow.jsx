@@ -170,7 +170,7 @@ function AccountProfilesSummary({ account, profiles = [] }) {
                     <div style={{ marginTop: 6, color: "var(--text)", fontSize: 14, lineHeight: 1.5, fontWeight: 800 }}>
                         {latest.length} perfil{latest.length === 1 ? "" : "es"}: {summary}.
                     </div>
-                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>Se muestra la última versión registrada de cada perfil.</div>
+                    <div style={{ marginTop: 4, color: "var(--muted)", fontSize: 12 }}>Se prioriza la versión con suscripción activa; si no la hay, se muestra la última actualizada.</div>
                 </div>
                 {history.length > 0 && (
                     <button

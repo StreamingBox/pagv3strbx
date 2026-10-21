@@ -13,6 +13,26 @@ describe("splitProfileHistory", () => {
         expect(result.history.map((profile) => profile.id)).toEqual([19]);
     });
 
+    it("prefers the account with an active subscription over a newer replaced row", () => {
+        const result = splitProfileHistory([
+            { id: 19, profile_number: 4, active_subscriptions: 1, updated_at: "2026-10-09T00:00:00Z" },
+            { id: 27, profile_number: 4, active_subscriptions: 0, state: "replaced", updated_at: "2026-10-13T00:00:00Z" },
+        ]);
+
+        expect(result.latest.map((profile) => profile.id)).toEqual([19]);
+        expect(result.history.map((profile) => profile.id)).toEqual([27]);
+    });
+
+    it("uses recency to choose between rows with the same subscription activity", () => {
+        const result = splitProfileHistory([
+            { id: 19, profile_number: 4, active_subscriptions: 1, updated_at: "2026-10-09T00:00:00Z" },
+            { id: 27, profile_number: 4, active_subscriptions: 1, updated_at: "2026-10-13T00:00:00Z" },
+        ]);
+
+        expect(result.latest.map((profile) => profile.id)).toEqual([27]);
+        expect(result.history.map((profile) => profile.id)).toEqual([19]);
+    });
+
     it("groups legacy rows by profile number and leaves unnumbered rows independent", () => {
         const result = splitProfileHistory([
             { id: 3, profile_number: "1" },

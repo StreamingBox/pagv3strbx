@@ -6,6 +6,10 @@ function recency(profile = {}) {
     return Number.isFinite(id) ? id : 0;
 }
 
+function hasActiveSubscription(profile = {}) {
+    return Number(profile.active_subscriptions || 0) > 0;
+}
+
 function profileKey(profile = {}) {
     // The API already scopes these rows to one platform and email. Legacy rows
     // can lack an identity even when they refer to the same numbered screen.
@@ -40,7 +44,13 @@ export function splitProfileHistory(profiles = []) {
             continue;
         }
 
-        if (recency(profile) > recency(previous)) {
+        const profileIsActive = hasActiveSubscription(profile);
+        const previousIsActive = hasActiveSubscription(previous);
+        const shouldReplace = profileIsActive !== previousIsActive
+            ? profileIsActive
+            : recency(profile) > recency(previous);
+
+        if (shouldReplace) {
             history.push(previous);
             latestByProfile.set(key, profile);
         } else {

@@ -5,7 +5,7 @@ WORKDIR /app/backend
 
 USER root
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends mariadb-client gzip tar \
+    && apt-get install -y --no-install-recommends ca-certificates mariadb-client gzip tar \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=node:node backend/package.json backend/package-lock.json ./

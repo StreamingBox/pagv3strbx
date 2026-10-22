@@ -1,0 +1,9 @@
+crm.strbx.com.co {
+	encode zstd gzip
+	reverse_proxy crm:3000
+}
+
+strbx.com.co {
+	encode zstd gzip
+	reverse_proxy web:80
+}

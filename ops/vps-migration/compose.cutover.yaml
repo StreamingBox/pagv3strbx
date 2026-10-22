@@ -1,0 +1,8 @@
+services:
+  api:
+    environment:
+      DB_NAME: ${PAGEV3_FINAL_DB_NAME:?Set PAGEV3_FINAL_DB_NAME in compose.cutover.env}
+
+  backup:
+    environment:
+      DB_NAME: ${PAGEV3_FINAL_DB_NAME:?Set PAGEV3_FINAL_DB_NAME in compose.cutover.env}

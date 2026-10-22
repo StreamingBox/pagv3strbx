@@ -17,6 +17,10 @@ The API image uses Node 24 LTS; Node 20 reached end of life before this migratio
 
 5. Start staging with only the base file. Its internal network blocks outbound requests from the API and browser worker. Do not enable `compose.egress.yaml` or `compose.proxy.yaml` until cutover preparation is approved and the source workers are stopped.
 
+## Final cutover
+
+Keep the staging database intact. Create `compose.cutover.env` from `compose.cutover.env.example`, set `PAGEV3_FINAL_DB_NAME` to a new schema, grant the configured application user access to it, and restore the final source dump there. Start the API and backup jobs with `compose.cutover.yaml` so they use that schema. Attach only the web service to `strbx_proxy` with `compose.proxy.yaml`; keep the existing CRM Caddy route unchanged and add the `strbx.com.co` site from `Caddyfile`. Enable API/worker egress only after the source API and workers are stopped.
+
 The web, API, and database bind only to loopback on ports 18081, 13100, and 13306 by default. The browser worker has no published host port. Do not use `docker compose down -v`; it removes persistent database data.
 
 ## Backups

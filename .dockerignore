@@ -1,0 +1,10 @@
+.git
+**/.git
+**/node_modules
+**/.env
+**/.env.*
+**/*.pem
+secrets/
+backend/storage
+backups
+**/*.log

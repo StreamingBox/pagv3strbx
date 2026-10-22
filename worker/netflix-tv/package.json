@@ -4,7 +4,7 @@
   "private": true,
   "description": "Worker aislado para automatizar el registro de TVs en Netflix",
   "engines": {
-    "node": ">=20 <21",
+    "node": ">=24 <25",
     "npm": ">=10"
   },
   "scripts": {

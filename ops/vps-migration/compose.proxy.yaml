@@ -1,0 +1,10 @@
+services:
+  web:
+    networks:
+      - app
+      - proxy
+
+networks:
+  proxy:
+    name: strbx_proxy
+    external: true

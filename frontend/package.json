@@ -4,7 +4,7 @@
   "version": "1.1.4",
   "type": "module",
   "engines": {
-    "node": ">=20 <21",
+    "node": ">=24 <25",
     "npm": ">=10"
   },
   "scripts": {

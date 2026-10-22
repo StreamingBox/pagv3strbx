@@ -1,0 +1,15 @@
+[Unit]
+Description=Create and verify the PageV3 production backup in Google Drive
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pagev3-migration/runtime-final
+ExecStart=/usr/bin/docker compose --env-file /opt/pagev3-migration/compose.env -f /opt/pagev3-migration/runtime-final/ops/vps-migration/compose.yaml -f /opt/pagev3-migration/runtime-final/ops/vps-migration/compose.maintenance-egress.yaml --profile maintenance run --rm backup
+Nice=15
+IOSchedulingClass=idle
+CPUQuota=40%
+MemoryMax=1G
+TimeoutStartSec=2h

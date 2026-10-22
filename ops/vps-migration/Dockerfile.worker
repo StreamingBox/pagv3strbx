@@ -1,0 +1,23 @@
+FROM node:24-bookworm-slim
+
+ENV NODE_ENV=production \
+    TV_SETUP_WORKER_HOST=0.0.0.0 \
+    TV_SETUP_WORKER_PORT=4100 \
+    NETFLIX_TV_SETUP_HEADLESS=false \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+
+COPY --chown=node:node worker/netflix-tv/package.json worker/netflix-tv/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+RUN npx playwright install --with-deps chromium \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends xvfb xauth \
+    && rm -rf /var/lib/apt/lists/* \
+    && chown -R node:node /ms-playwright
+
+COPY --chown=node:node worker/netflix-tv/src ./src
+
+USER node
+EXPOSE 4100
+CMD ["xvfb-run", "--auto-servernum", "--server-args=-screen 0 1365x900x24 -nolisten tcp", "node", "src/server.js"]

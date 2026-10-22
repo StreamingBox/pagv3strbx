@@ -1,0 +1,23 @@
+FROM node:24-bookworm-slim
+
+ENV NODE_ENV=production PORT=3000
+WORKDIR /app/backend
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends mariadb-client gzip tar \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --chown=node:node backend/package.json backend/package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+COPY --chown=node:node backend/ ./
+COPY --chown=node:node scripts/backup-production.sh /app/scripts/backup-production.sh
+COPY --chown=node:node ops/vps-migration/run-daily-backup.sh /app/ops/vps-migration/run-daily-backup.sh
+COPY --chown=node:node ops/vps-migration/verify-and-remove-backup.js /app/ops/vps-migration/verify-and-remove-backup.js
+RUN mkdir -p storage .tmp-uploads .runtime \
+    && chown node:node /app/backend /app/backend/.tmp-uploads /app/backend/.runtime
+
+USER node
+EXPOSE 3000
+CMD ["node", "src/index.js"]

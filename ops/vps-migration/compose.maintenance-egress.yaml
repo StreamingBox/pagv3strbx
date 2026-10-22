@@ -1,0 +1,14 @@
+services:
+  backup:
+    networks:
+      - app
+      - egress
+  backup-sync:
+    networks:
+      - app
+      - egress
+
+networks:
+  egress:
+    name: pagev3-migration-egress
+    driver: bridge

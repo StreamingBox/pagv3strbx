@@ -1,0 +1,14 @@
+[Unit]
+Description=Retry pending PageV3 Google Drive backup uploads
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/pagev3-migration/runtime-final
+ExecStart=/usr/bin/docker compose --env-file /opt/pagev3-migration/compose.env -f /opt/pagev3-migration/runtime-final/ops/vps-migration/compose.yaml -f /opt/pagev3-migration/runtime-final/ops/vps-migration/compose.maintenance-egress.yaml --profile maintenance run --rm backup-sync
+Nice=15
+CPUQuota=20%
+MemoryMax=256M
+TimeoutStartSec=45min

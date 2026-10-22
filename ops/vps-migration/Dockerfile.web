@@ -1,0 +1,6 @@
+FROM nginx:1.31.7-alpine3.24
+
+COPY frontend/dist/ /usr/share/nginx/html/
+COPY ops/vps-migration/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80

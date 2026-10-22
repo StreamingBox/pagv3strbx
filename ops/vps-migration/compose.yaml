@@ -1,0 +1,184 @@
+name: pagev3-migration
+
+services:
+  mariadb:
+    image: mariadb:11.8.9
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ${DB_NAME:?Set DB_NAME in compose.env}
+      MARIADB_USER: ${DB_USER:?Set DB_USER in compose.env}
+      MARIADB_PASSWORD_FILE: /run/secrets/db_password
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/db_root_password
+    volumes:
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/mysql:/var/lib/mysql
+    secrets:
+      - db_password
+      - db_root_password
+    ports:
+      - "${PAGEV3_DB_BIND:-127.0.0.1:13306}:3306"
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build:
+      context: ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}
+      dockerfile: ops/vps-migration/Dockerfile.api
+    image: pagev3-migration-api:local
+    restart: unless-stopped
+    env_file:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/.env.compose
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      TELEGRAM_BOT_ENABLED: ${PAGEV3_TELEGRAM_BOT_ENABLED:-false}
+      NETFLIX_TV_SETUP_WORKER_URL: http://netflix-tv-worker:4100
+      RCLONE_BIN: /usr/local/bin/rclone
+      RCLONE_CONFIG: /run/secrets/rclone_config
+      BACKUP_RCLONE_HOME: /home/node
+      BACKUP_DRIVE_ROOT: gdrive:StreamingBoxBackups/production
+    volumes:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/storage:/app/backend/storage
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/public/platform-logos:/app/frontend/public/platform-logos
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/dist/platform-logos:/app/frontend/dist/platform-logos
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backup-home:/home/node
+      - ${PAGEV3_BIN_ROOT:-/opt/pagev3-migration/bin}/rclone:/usr/local/bin/rclone:ro
+    secrets:
+      - rclone_config
+    ports:
+      - "${PAGEV3_API_BIND:-127.0.0.1:13100}:3000"
+    networks:
+      - app
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/readiness').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  netflix-tv-worker:
+    build:
+      context: ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}
+      dockerfile: ops/vps-migration/Dockerfile.worker
+    image: pagev3-migration-netflix-tv-worker:local
+    restart: unless-stopped
+    env_file:
+      - ${PAGEV3_SECRETS_ROOT:-/opt/pagev3-migration/secrets}/netflix-worker.env
+    environment:
+      NODE_ENV: production
+      TV_SETUP_WORKER_HOST: 0.0.0.0
+      TV_SETUP_WORKER_PORT: "4100"
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    init: true
+    shm_size: 512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  web:
+    build:
+      context: ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}
+      dockerfile: ops/vps-migration/Dockerfile.web
+    image: pagev3-migration-web:local
+    restart: unless-stopped
+    volumes:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/dist/platform-logos:/usr/share/nginx/html/platform-logos:ro
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/public/downloads:/usr/share/nginx/html/downloads:ro
+    ports:
+      - "${PAGEV3_WEB_BIND:-127.0.0.1:18081}:80"
+    networks:
+      - app
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  backup:
+    profiles: ["maintenance"]
+    image: pagev3-migration-api:local
+    restart: "no"
+    env_file:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/.env.compose
+    environment:
+      DB_HOST: mariadb
+      DB_PORT: "3306"
+      RCLONE_BIN: /usr/local/bin/rclone
+      RCLONE_CONFIG: /run/secrets/rclone_config
+      BACKUP_RCLONE_HOME: /home/node
+      BACKUP_DRIVE_ROOT: gdrive:StreamingBoxBackups/production
+    command: ["bash", "/app/ops/vps-migration/run-daily-backup.sh"]
+    volumes:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/storage:/app/backend/storage:ro
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/public:/app/frontend/public:ro
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backups:/backups
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backup-home:/home/node
+      - ${PAGEV3_BIN_ROOT:-/opt/pagev3-migration/bin}/rclone:/usr/local/bin/rclone:ro
+    secrets:
+      - rclone_config
+    networks:
+      - app
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  backup-sync:
+    profiles: ["maintenance"]
+    image: pagev3-migration-api:local
+    restart: "no"
+    env_file:
+      - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/.env
+    environment:
+      RCLONE_BIN: /usr/local/bin/rclone
+      RCLONE_CONFIG: /run/secrets/rclone_config
+      BACKUP_RCLONE_HOME: /home/node
+      BACKUP_DRIVE_ROOT: gdrive:StreamingBoxBackups/production
+    command: ["node", "/app/backend/scripts/sync-backup-drive.js"]
+    volumes:
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backups:/backups
+      - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backup-home:/home/node
+      - ${PAGEV3_BIN_ROOT:-/opt/pagev3-migration/bin}/rclone:/usr/local/bin/rclone:ro
+    secrets:
+      - rclone_config
+    networks:
+      - app
+
+networks:
+  app:
+    name: pagev3-migration-private
+    driver: bridge
+    internal: true
+
+secrets:
+  db_password:
+    file: ${PAGEV3_SECRETS_ROOT:-/opt/pagev3-migration/secrets}/db-password
+  db_root_password:
+    file: ${PAGEV3_SECRETS_ROOT:-/opt/pagev3-migration/secrets}/db-root-password
+  rclone_config:
+    file: ${PAGEV3_SECRETS_ROOT:-/opt/pagev3-migration/secrets}/rclone.conf

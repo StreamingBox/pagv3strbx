@@ -1,0 +1,14 @@
+services:
+  api:
+    networks:
+      - app
+      - egress
+  netflix-tv-worker:
+    networks:
+      - app
+      - egress
+
+networks:
+  egress:
+    name: pagev3-migration-egress
+    driver: bridge

@@ -147,6 +147,7 @@ export default function Topups() {
     const initialMethods = getFallbackTopupMethods(initialCurrency);
 
     const [wallet, setWallet] = useState(null);
+    const [rechargePromotion, setRechargePromotion] = useState(null);
     const [topupConfig, setTopupConfig] = useState({ currency: initialCurrency, methods: initialMethods });
     const [selectedMethodId, setSelectedMethodId] = useState(methodId(initialMethods[0]) || "");
     const [requests, setRequests] = useState([]);
@@ -215,11 +216,17 @@ export default function Topups() {
         }
     }
 
+    async function loadRechargePromotion() {
+        const response = await apiGet("/wallet/recharge-promotion");
+        if (response.ok) setRechargePromotion(response.data?.promotion || null);
+    }
+
     useEffect(() => {
         applyFallbackTopupConfig(wallet?.currency || user?.currency || topupConfig.currency || initialCurrency || "COP");
         void loadWallet();
         void loadTopupConfig();
         void loadRequests();
+        void loadRechargePromotion();
         // La carga inicial mezcla fallback local y configuración remota; debe ejecutarse solo al montar.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -252,6 +259,12 @@ export default function Topups() {
         : "";
     const latestRequest = requests[0] || null;
     const currency = String(wallet?.currency || topupConfig.currency || "").toUpperCase();
+    const estimateAmount = Number(String(amount || "").replace(/[^\d.]/g, ""));
+    const estimatedBonus = rechargePromotion?.active
+        && activeCurrency === "COP"
+        && estimateAmount >= Number(rechargePromotion.minimumAmount || 50000)
+        ? Math.round(estimateAmount * Number(rechargePromotion.percent || 10) / 100)
+        : 0;
     const isBreb = selectedMethod?.key === "breb";
     const isBinance = selectedMethod?.key === "binance";
 
@@ -405,13 +418,16 @@ export default function Topups() {
             setAmount("");
             setPayerName("");
             setProofFile(null);
-            setFormSuccess(
+            const baseSuccess =
                 isBreb
                     ? "Solicitud Bre-B enviada. La recarga se validará según los datos del giro y el medio de pago usado."
                     : isBinance
                         ? "Solicitud Binance enviada. La recarga se validará según el monto, el remitente y el soporte cargado."
-                    : "Comprobante cargado con éxito. Tu recarga quedó en revisión."
-            );
+                    : "Comprobante cargado con éxito. Tu recarga quedó en revisión.";
+            const bonus = Number(response.data?.request?.promoBonusAmount || 0);
+            setFormSuccess(bonus > 0
+                ? `${baseSuccess} Recibirás ${bonus.toLocaleString("es-CO")} COP adicionales cuando se apruebe.`
+                : baseSuccess);
             await loadRequests();
         } catch (error) {
             setFormError(getManualTopupErrorMessage(error));
@@ -544,6 +560,18 @@ export default function Topups() {
                         </div>
                     </section>
 
+                    {(rechargePromotion && (rechargePromotion.active || rechargePromotion.saturdayEnabled)) ? (
+                        <aside style={{ marginBottom: 16, padding: 16, borderRadius: 14, border: "1px solid rgba(16,185,129,.38)", background: "rgba(16,185,129,.09)", color: "var(--text)" }}>
+                            <div style={{ fontWeight: 900, color: "#34d399", marginBottom: 4 }}>
+                                {rechargePromotion?.active ? "Promoción activa: 10% extra en recargas" : "Todos los sábados: 10% extra en recargas"}
+                            </div>
+                            <div style={{ fontSize: 14, lineHeight: 1.5, color: "var(--muted)" }}>
+                                Recarga desde $50.000 COP por operación. El bono se acredita junto con el saldo cuando la recarga sea aprobada.
+                                {activeCurrency !== "COP" ? " Esta promoción aplica únicamente a recargas en COP." : ""}
+                            </div>
+                        </aside>
+                    ) : null}
+
                     <section className="wallet-card" style={{ marginBottom: 16 }}>
                         <div className="wallet-card__title">Medios disponibles</div>
 
@@ -590,6 +618,11 @@ export default function Topups() {
                                                     onChange={(event) => setAmount(event.target.value)}
                                                 />
                                             </label>
+                                            {estimatedBonus > 0 ? (
+                                                <div style={{ marginTop: -6, fontSize: 13, color: "#34d399", fontWeight: 800 }}>
+                                                    Recibirás +${estimatedBonus.toLocaleString("es-CO")} COP adicionales cuando se apruebe.
+                                                </div>
+                                            ) : null}
 
                                             {isBreb ? (
                                                 <>
@@ -844,6 +877,11 @@ export default function Topups() {
                                                     <div className="wallet-small" style={{ ...HISTORY_TEXT_STYLE, marginTop: 2 }}>
                                                         {item.methodLabel} · {Number(item.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || currency)}
                                                     </div>
+                                                    {Number(item.promoBonusAmount || 0) > 0 ? (
+                                                        <div className="wallet-small" style={{ ...HISTORY_TEXT_STYLE, marginTop: 3, color: item.status === "rejected" ? "var(--muted)" : "#34d399", fontWeight: 800 }}>
+                                                            {item.status === "approved" ? "Bono acreditado: +" : item.status === "rejected" ? "Bono no otorgado: " : "Bono al aprobarse: +"}{Number(item.promoBonusAmount).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || currency)}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                                 <span style={{ display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "6px 10px", border: `1px solid ${meta.color}55`, background: `${meta.color}18`, color: meta.color, fontWeight: 800, fontSize: 12 }}>
                                                     {meta.label}

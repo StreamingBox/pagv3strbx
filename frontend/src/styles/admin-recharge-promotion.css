@@ -1,0 +1,62 @@
+.recharge-promo{padding:20px 24px 36px;min-width:0}
+.recharge-promo__header{display:grid;gap:18px;margin-bottom:22px}
+.recharge-promo__title-row{display:flex;align-items:center;gap:14px}
+.recharge-promo__title-row h1{margin:0;font-size:24px;font-weight:900}
+.recharge-promo__title-row p{margin:5px 0 0;color:var(--muted);font-size:14px}
+.recharge-promo__icon{width:44px;height:44px;display:grid;place-items:center;border:1px solid rgba(16,185,129,.34);border-radius:8px;color:#34d399;background:rgba(16,185,129,.1)}
+.recharge-promo__layout{display:grid;grid-template-columns:minmax(320px,.86fr) minmax(380px,1.14fr);gap:18px;align-items:start}
+.recharge-promo__controls,.recharge-promo__email-section{display:grid;gap:14px;min-width:0}
+.recharge-promo__status,.recharge-promo__settings,.recharge-promo__email-section{border:1px solid var(--stroke);border-radius:8px;background:linear-gradient(180deg,var(--card),var(--card2));padding:16px;box-shadow:var(--shadow)}
+.recharge-promo__status{display:flex;gap:12px;align-items:center}
+.recharge-promo__status-dot{width:10px;height:10px;border-radius:50%;background:#f59e0b;flex:0 0 auto}
+.recharge-promo__status-dot.is-active{background:#10b981;box-shadow:0 0 12px rgba(16,185,129,.55)}
+.recharge-promo__status div{display:grid;gap:4px;min-width:0}
+.recharge-promo__status strong{font-size:15px}
+.recharge-promo__status span:not(.recharge-promo__status-dot){font-size:12px;color:var(--muted);line-height:1.45}
+.recharge-promo__eyebrow{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:900;letter-spacing:.08em;color:#32c5d2}
+.recharge-promo__rule-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.recharge-promo__rule-grid div,.recharge-promo__examples div{display:grid;gap:5px;padding:10px;border-radius:6px;border:1px solid var(--stroke);background:rgba(255,255,255,.025);min-width:0}
+.recharge-promo__rule-grid span,.recharge-promo__examples span{font-size:11px;color:var(--muted)}
+.recharge-promo__rule-grid strong{font-size:14px;overflow-wrap:anywhere}
+.recharge-promo__switch-row{display:flex;justify-content:space-between;align-items:center;gap:14px;border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke);padding:14px 0;cursor:pointer}
+.recharge-promo__switch-row span,.recharge-promo__manual div{display:grid;gap:4px}
+.recharge-promo__switch-row strong,.recharge-promo__manual strong{font-size:13px}
+.recharge-promo__switch-row small,.recharge-promo__manual small{font-size:12px;color:var(--muted);line-height:1.45}
+.recharge-promo__switch-row input{width:42px;height:22px;accent-color:#10b981;flex:0 0 auto}
+.recharge-promo__manual{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:14px 0;border-bottom:1px solid var(--stroke)}
+.recharge-promo__button{height:38px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:0 12px;border:1px solid rgba(16,185,129,.4);border-radius:6px;background:rgba(16,185,129,.13);color:#34d399;font-weight:800;white-space:nowrap;cursor:pointer}
+.recharge-promo__button--stop{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.09);color:#f87171}
+.recharge-promo__button:disabled{opacity:.6;cursor:wait}
+.recharge-promo__examples{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}
+.recharge-promo__examples strong{font-size:14px}
+.recharge-promo__examples b{color:#34d399;font-size:12px}
+.recharge-promo__fine-print{margin:12px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+.recharge-promo__notice,.recharge-promo__error{display:flex;gap:8px;align-items:center;padding:11px 12px;border-radius:6px;font-size:13px}
+.recharge-promo__notice{color:#34d399;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.25)}
+.recharge-promo__error{color:#fca5a5;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28)}
+.recharge-promo__loading{display:flex;align-items:center;gap:10px;color:var(--muted);padding:32px}
+.recharge-promo__section-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
+.recharge-promo__section-heading h2{font-size:16px;margin:6px 0 0}
+.recharge-promo__preview-label{font-size:10px;color:var(--muted);border:1px solid var(--stroke);border-radius:5px;padding:5px 7px;white-space:nowrap}
+.recharge-promo__email-frame{border:1px solid var(--stroke);border-radius:6px;overflow:hidden;background:#eaf0f7}
+.recharge-promo__email-meta{padding:11px 13px;color:#475569;font-size:12px;overflow-wrap:anywhere;border-bottom:1px solid #dbe2ea}
+.recharge-promo__email{max-width:620px;margin:16px auto;background:#fff;border:1px solid #dce4ef;color:#17233a;font-family:Arial,Helvetica,sans-serif}
+.recharge-promo__email-header{min-height:58px;background:#101a2e;color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.recharge-promo__email-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.recharge-promo__email-brand img{width:36px;height:36px;object-fit:contain;border-radius:8px}
+.recharge-promo__email-brand strong{font-size:16px;font-weight:800;color:#fff}
+.recharge-promo__email-header span{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#c5d0e1}
+.recharge-promo__email-body{padding:clamp(20px,4vw,34px)}
+.recharge-promo__email-kicker{display:inline-block;padding:6px 9px;border-radius:4px;background:#e5f7f4;color:#07876d;font-size:10px;font-weight:900;letter-spacing:.06em}
+.recharge-promo__email-body h3{font-size:clamp(24px,4vw,34px);line-height:1.1;margin:16px 0;color:#14213a}
+.recharge-promo__email-body p{font-size:14px;line-height:1.6;color:#506078;margin:0 0 12px}
+.recharge-promo__email-example{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:18px 0}
+.recharge-promo__email-example div{display:grid;gap:5px;padding:11px;border:1px solid #dce5ee;border-radius:5px}
+.recharge-promo__email-example span{font-size:10px;color:#65748b;text-transform:uppercase}
+.recharge-promo__email-example strong{font-size:18px;color:#17233a}
+.recharge-promo__email-example small{font-size:12px;font-weight:800;color:#07876d}
+.recharge-promo__email-note{padding:12px;border-left:3px solid #19b9a5;background:#f0faf8;color:#40556a;font-size:12px;line-height:1.55}
+.recharge-promo__email-cta{display:block;margin:18px auto 0;width:max-content;max-width:100%;padding:12px 20px;background:#05a891;color:#fff;text-decoration:none;font-size:13px;font-weight:900;border-radius:5px;text-align:center}
+.recharge-promo__email-body .recharge-promo__email-footer{text-align:center;color:#8a96a8;font-size:11px;margin:20px 0 0}
+@media(max-width:1040px){.recharge-promo__layout{grid-template-columns:1fr}}
+@media(max-width:620px){.recharge-promo{padding:14px 12px 28px}.recharge-promo__rule-grid{grid-template-columns:1fr}.recharge-promo__email-header{align-items:flex-start;flex-direction:column}.recharge-promo__email{margin:8px}.recharge-promo__examples{grid-template-columns:1fr 1fr}}

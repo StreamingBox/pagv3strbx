@@ -28,6 +28,9 @@ function mapManualTopupRow(row) {
         userName: row.user_name || null,
         amount: Number(row.amount || 0),
         currency: normalizeCurrency(row.currency || "USD", "USD"),
+        promoBonusAmount: Number(row.promo_bonus_amount || 0),
+        promoBonusPercent: Number(row.promo_bonus_percent || 0),
+        promoCampaign: row.promo_campaign || null,
         methodKey: row.method_key,
         methodLabel: row.method_label,
         proofFileUrl: row.proof_file_url,
@@ -242,7 +245,10 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
                 throw new Error(`La wallet del usuario esta en ${wallet.currency} y la solicitud esta en ${requestRow.currency}.`);
             }
 
-            const newBalance = wallet.balance + Number(requestRow.amount || 0);
+            const topupAmount = Number(requestRow.amount || 0);
+            const bonusAmount = Math.max(0, Number(requestRow.promo_bonus_amount || 0));
+            const balanceAfterTopup = Number((wallet.balance + topupAmount).toFixed(2));
+            const newBalance = Number((balanceAfterTopup + bonusAmount).toFixed(2));
 
             await conn.query("UPDATE wallets SET balance = ? WHERE id = ?", [newBalance, wallet.id]);
             await conn.query(
@@ -251,12 +257,34 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
                  VALUES (?, 'topup', ?, ?, 'manual_topup', ?, ?)`,
                 [
                     wallet.id,
-                    Number(requestRow.amount || 0),
-                    newBalance,
+                    topupAmount,
+                    balanceAfterTopup,
                     id,
                     `Recarga manual aprobada ${requestRow.request_code} (${requestRow.method_label})`,
                 ]
             );
+
+            if (bonusAmount > 0) {
+                await conn.query(
+                    `INSERT INTO wallet_transactions
+                        (wallet_id, type, amount, balance_after, reference_type, reference_id, note)
+                     VALUES (?, 'topup_bonus', ?, ?, 'manual_topup_bonus', ?, ?)`,
+                    [
+                        wallet.id,
+                        bonusAmount,
+                        newBalance,
+                        id,
+                        `Bono promocional ${Number(requestRow.promo_bonus_percent || 10)}% por recarga ${requestRow.request_code}`,
+                    ]
+                );
+                await conn.query(
+                    "INSERT INTO user_notifications (user_id, message) VALUES (?, ?)",
+                    [
+                        requestRow.user_id,
+                        `¡Recibiste un bono de ${bonusAmount.toLocaleString("es-CO")} COP por tu recarga! Ya está incluido en tu saldo.`,
+                    ]
+                );
+            }
 
             updateFields.push("wallet_id = ?");
             updateParams.push(wallet.id);
@@ -285,6 +313,7 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
             name: requestRow.user_name,
             requestCode: requestRow.request_code,
             amount: Number(requestRow.amount || 0),
+            bonusAmount: normalizedStatus === "approved" ? Number(requestRow.promo_bonus_amount || 0) : 0,
             currency: requestRow.currency || "COP",
             adminNote: note,
         };

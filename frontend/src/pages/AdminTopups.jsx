@@ -645,6 +645,11 @@ export default function AdminTopups() {
                                                 <div>
                                                     <div style={{ fontSize: 12, color: "var(--muted)" }}>Monto</div>
                                                     <div style={{ fontWeight: 800 }}>{Number(item.amount || 0).toLocaleString("es-CO")} {displayTopupCurrency(item.currency || "COP")}</div>
+                                                    {Number(item.promoBonusAmount || 0) > 0 ? (
+                                                        <div style={{ fontSize: 12, color: item.status === "rejected" ? "var(--muted)" : "#34d399", fontWeight: 800, marginTop: 4 }}>
+                                                            {item.status === "approved" ? "Bono acreditado: +" : item.status === "rejected" ? "Bono no otorgado: " : "Bono previsto: +"}{Number(item.promoBonusAmount).toLocaleString("es-CO")} COP
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                                 <div>
                                                 <div style={{ fontSize: 12, color: "var(--muted)" }}>Metodo</div>

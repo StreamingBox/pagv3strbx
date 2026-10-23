@@ -20,6 +20,7 @@ const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("
 const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
 const { normalizeCurrency, sameCurrency, displayCurrency } = require("../utils/currency");
 const { saveManualTopupProof } = require("../utils/manualTopupProofStorage");
+const { getRechargeBonusSettings, getRechargeBonusSnapshot } = require("../services/rechargeBonus.service");
 
 const router = express.Router();
 const AUTO_RECONCILE_METHOD_KEYS = new Set(["breb", "binance"]);
@@ -341,10 +342,20 @@ router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) 
         const proofFileUrl = req.file ? saveManualTopupProof({ file: req.file, requestCode }) : "";
 
         await conn.beginTransaction();
+        const [[timeRow]] = await conn.query(
+            "SELECT DATE_FORMAT(UTC_TIMESTAMP(), '%Y-%m-%dT%H:%i:%sZ') AS current_utc"
+        );
+        const promoSettings = await getRechargeBonusSettings(conn);
+        const promoBonus = getRechargeBonusSnapshot({
+            amount,
+            currency: userCurrency,
+            createdAt: timeRow?.current_utc || new Date(),
+            settings: promoSettings,
+        });
         const [ins] = await conn.query(
             `INSERT INTO manual_topup_requests
-                (request_code, user_id, method_key, method_label, amount, currency, proof_file_url, payer_name, declared_paid_at, auto_validation_status, status)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
+                (request_code, user_id, method_key, method_label, amount, currency, proof_file_url, payer_name, declared_paid_at, auto_validation_status, promo_bonus_amount, promo_bonus_percent, promo_campaign, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'submitted')`,
             [
                 requestCode,
                 userId,
@@ -356,6 +367,9 @@ router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) 
                 payerName || null,
                 declaredPaidAt && !Number.isNaN(declaredPaidAt.getTime()) ? declaredPaidAt : null,
                 usesAutoReconciliation ? "pending" : "manual_review",
+                promoBonus.bonusAmount,
+                promoBonus.bonusPercent,
+                promoBonus.bonusCampaign,
             ]
         );
         await conn.commit();
@@ -393,6 +407,9 @@ router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) 
                 user_id: userId,
                 amount,
                 currency: userCurrency,
+                promo_bonus_amount: promoBonus.bonusAmount,
+                promo_bonus_percent: promoBonus.bonusPercent,
+                promo_campaign: promoBonus.bonusCampaign,
                 method_key: selectedMethod.key,
                 method_label: selectedMethod.label,
                 proof_file_url: proofFileUrl,

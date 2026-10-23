@@ -20,6 +20,7 @@ const NAV_GROUPS = [
             { path: "/admin/sales-top", label: "Top de Ventas", icon: "🏆" },
             { path: "/admin/transactions", label: "Transacciones / Saldo", icon: "💲" },
             { path: "/admin/topups", label: "Recargas", icon: "💸" },
+            { path: "/admin/recharge-promotion", label: "Bono por recargas", icon: "🎁" },
             { path: "/admin/orders", label: "Historial de Compras", icon: "📜" },
             { path: "/admin/renewals", label: "Renovaciones", icon: "🔄" },
         ],

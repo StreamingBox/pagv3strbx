@@ -61,6 +61,7 @@ const adminUploads = require("./routes/admin.upload");
 const adminAdvertisingRoutes = require("./routes/admin.advertising");
 const advertisingRoutes = require("./routes/advertising");
 const manualTopupsRoutes = require("./routes/manualTopups");
+const adminRechargeBonusRoutes = require("./routes/admin.rechargeBonus");
 const notifaceRoutes = require("./routes/notiface");
 const telegramStockRoutes = require("./routes/telegramStock");
 const { initBot } = require("./services/telegramBot");
@@ -389,6 +390,7 @@ app.use("/api/admin/advertising", adminAdvertisingRoutes);
 app.use("/api", advertisingRoutes);
 
 app.use("/api", manualTopupsRoutes);
+app.use("/api", adminRechargeBonusRoutes);
 app.use("/api", notifaceRoutes);
 app.use("/api", telegramStockRoutes);
 

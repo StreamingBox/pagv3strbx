@@ -46,6 +46,7 @@ const AdminUploadLogs = lazy(() => import("./pages/AdminUploadLogs.jsx"));
 const AdminAdvertising = lazy(() => import("./pages/AdminAdvertising.jsx"));
 const Advertising = lazy(() => import("./pages/Advertising.jsx"));
 const AdminTopups = lazy(() => import("./pages/AdminTopups.jsx"));
+const AdminRechargePromotion = lazy(() => import("./pages/AdminRechargePromotion.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const TvSetup = lazy(() => import("./pages/TvSetup.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
@@ -406,6 +407,15 @@ export default function App() {
                     element={
                         <ProtectedRoute roles={["admin"]}>
                             <AdminTopups />
+                        </ProtectedRoute>
+                    }
+                />
+
+                <Route
+                    path="/admin/recharge-promotion"
+                    element={
+                        <ProtectedRoute roles={["admin"]}>
+                            <AdminRechargePromotion />
                         </ProtectedRoute>
                     }
                 />

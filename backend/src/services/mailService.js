@@ -406,7 +406,7 @@ function buildTopupEmailShell({ title, subtitle, bodyHtml }) {
     `;
 }
 
-async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subtitle, intro, amount, currency, requestCode, statusLabel, adminNote }) {
+async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subtitle, intro, amount, bonusAmount = 0, currency, requestCode, statusLabel, adminNote }) {
     const safeTo = String(to || "").trim();
     if (!safeTo) throw new Error("Destino de correo invalido.");
 
@@ -418,6 +418,7 @@ async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subti
 
     const transporter = await getTransporter("topup");
     const amountText = formatTopupAmount(amount, currency || "USD");
+    const bonusText = Number(bonusAmount) > 0 ? formatTopupAmount(bonusAmount, currency || "COP") : "";
     const text = [
         `Hola ${greetingName || "cliente"},`,
         "",
@@ -426,6 +427,8 @@ async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subti
         `Solicitud: ${requestCode}`,
         `Estado: ${statusLabel}`,
         `Monto: ${amountText}`,
+        bonusText ? `Bono promocional acreditado: ${bonusText}` : "",
+        bonusText ? `Total abonado: ${formatTopupAmount(Number(amount) + Number(bonusAmount), currency || "COP")}` : "",
         adminNote ? `Nota: ${adminNote}` : "",
     ].filter(Boolean).join("\n");
 
@@ -436,6 +439,7 @@ async function sendTopupLifecycleEmail({ to, subject, greetingName, title, subti
             <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Solicitud:</strong> ${escapeHtml(requestCode)}</div>
             <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Estado:</strong> ${escapeHtml(statusLabel)}</div>
             <div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Monto:</strong> ${escapeHtml(amountText)}</div>
+            ${bonusText ? `<div style="font-size:15px;color:#047857;margin:0 0 8px"><strong>Bono promocional acreditado:</strong> +${escapeHtml(bonusText)}</div><div style="font-size:15px;color:#334155;margin:0 0 8px"><strong style="color:#0f172a">Total abonado:</strong> ${escapeHtml(formatTopupAmount(Number(amount) + Number(bonusAmount), currency || "COP"))}</div>` : ""}
             ${adminNote ? `<div style="font-size:15px;color:#334155"><strong style="color:#0f172a">Nota:</strong> ${escapeHtml(adminNote)}</div>` : ""}
         </div>
         <div style="font-size:13px;line-height:1.6;color:#64748b">
@@ -495,12 +499,13 @@ async function sendTopupReviewingEmail({ to, name, requestCode, amount, currency
     });
 }
 
-async function sendTopupApprovedEmail({ to, name, requestCode, amount, currency, adminNote }) {
+async function sendTopupApprovedEmail({ to, name, requestCode, amount, bonusAmount = 0, currency, adminNote }) {
     return sendTopupLifecycleEmail({
         to,
         greetingName: name,
         requestCode,
         amount,
+        bonusAmount,
         currency,
         adminNote,
         subject: `Streaming Box | Recarga exitosa ${requestCode}`,

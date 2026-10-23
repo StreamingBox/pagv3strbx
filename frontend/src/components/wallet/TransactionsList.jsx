@@ -6,6 +6,7 @@ import DatePicker from "../DatePicker.jsx";
 const TYPE_META = {
     purchase: { label: "Compra", color: "#ef4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.25)", icon: "🛒" },
     topup: { label: "Recarga", color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.25)", icon: "💳" },
+    topup_bonus: { label: "Bono de recarga", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", icon: "🎁" },
     profit: { label: "Ganancia Venta", color: "#0da6f2", bg: "rgba(13,166,242,0.12)", border: "rgba(13,166,242,0.25)", icon: "💰" },
     adjustment: { label: "Ajuste Admin", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.25)", icon: "⚙️" },
     profit_adj: { label: "Ajuste Ganancia", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", icon: "🔧" },
@@ -367,12 +368,14 @@ export default function TransactionsList({ fetchFn, userId, users, fetchDelivere
     }
 
     /* — KPIs — */
-    const ingresos = transactions.filter(t => Number(t.amount) > 0).reduce((s, t) => s + Number(t.amount), 0);
+    const bonusCredits = transactions.filter(t => t.type === "topup_bonus").reduce((s, t) => s + Number(t.amount), 0);
+    const ingresos = transactions.filter(t => Number(t.amount) > 0 && t.type !== "topup_bonus").reduce((s, t) => s + Number(t.amount), 0);
     const egresos = Math.abs(transactions.filter(t => Number(t.amount) < 0).reduce((s, t) => s + Number(t.amount), 0));
 
     const kpis = [
         { label: "Total registros", value: total, sub: "en el filtro actual", color: "#0da6f2", icon: "📋" },
         { label: "Ingresos (pág.)", value: `+$${ingresos.toLocaleString("es-CO")}`, sub: "recargas y ganancias", color: "#10b981", icon: "📈" },
+        { label: "Bonos otorgados (pág.)", value: `+$${bonusCredits.toLocaleString("es-CO")}`, sub: "créditos promocionales", color: "#8b5cf6", icon: "🎁" },
         { label: "Egresos (pág.)", value: `-$${egresos.toLocaleString("es-CO")}`, sub: "compras y ajustes", color: "#ef4444", icon: "📉" },
     ];
 
@@ -517,6 +520,7 @@ export default function TransactionsList({ fetchFn, userId, users, fetchDelivere
                                 <option value="">📋 Todos los tipos</option>
                                 <option value="purchase">🛒 Compras</option>
                                 <option value="topup">💳 Recargas</option>
+                                <option value="topup_bonus">🎁 Bonos de recarga</option>
                                 <option value="profit">💰 Ganancias</option>
                                 <option value="adjustment">⚙️ Ajustes</option>
                             </select>

@@ -7,8 +7,11 @@ Requires=docker.service
 Type=simple
 SupplementaryGroups=ubuntu
 WorkingDirectory=/opt/pagev3-migration/runtime-final
+StateDirectory=pagev3-host-maintenance
+StateDirectoryMode=0700
 Environment=PAGEV3_MAINTENANCE_SOCKET=/run/pagev3-maintenance/agent.sock
 Environment=PAGEV3_MAINTENANCE_GID=1000
+Environment=DOCKER_CONFIG=/var/lib/pagev3-host-maintenance/docker
 RuntimeDirectory=pagev3-maintenance
 RuntimeDirectoryMode=0750
 RuntimeDirectoryPreserve=yes

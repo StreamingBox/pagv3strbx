@@ -12,6 +12,9 @@ test("API gets only the allowlisted maintenance socket, never Docker's host sock
     assert.match(compose, /group_add:\s*\n\s+- "1000"/);
     assert.doesNotMatch(compose, /\/var\/run\/docker\.sock/);
     assert.match(service, /SupplementaryGroups=ubuntu/);
+    assert.match(service, /StateDirectory=pagev3-host-maintenance/);
+    assert.match(service, /StateDirectoryMode=0700/);
+    assert.match(service, /Environment=DOCKER_CONFIG=\/var\/lib\/pagev3-host-maintenance\/docker/);
     assert.match(service, /CapabilityBoundingSet=CAP_CHOWN/);
     assert.match(service, /RuntimeDirectoryPreserve=yes/);
     assert.match(service, /ProtectSystem=strict/);

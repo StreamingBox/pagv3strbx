@@ -8,6 +8,11 @@ const {
     excludeInactiveMasterAccountSql,
     excludeManuallyHiddenExpirationSql,
 } = require("../services/expirationVisibility.service");
+const {
+    buildExpirationCtes,
+    buildExpirationDatePredicates,
+    buildLaterSubscriptionExclusionSql,
+} = require("../services/expirationQuery.service");
 
 const router = express.Router();
 
@@ -335,52 +340,13 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
         const offset = (page - 1) * limit;
 
         const { q, platform, email, accountEmail } = req.query;
-        const effectiveExpiresSql = "s.expires_at";
-        const effectiveExpiresDateSql = "DATE(s.expires_at)";
         const todayBogotaSql = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
-        const notResoldLaterSql = `
-            NOT EXISTS (
-                SELECT 1
-                FROM order_items oi_later
-                JOIN orders o_later ON o_later.id = oi_later.order_id
-                JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
-                JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
-                WHERE s_later.id <> s.id
-                  AND s_later.status != 'cancelled'
-                  AND (
-                    (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
-                    OR (
-                      COALESCE(acc.email, '') <> ''
-                      AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
-                      AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
-                      AND (
-                        acc_later.platform_id = acc.platform_id
-                        OR EXISTS (
-                          SELECT 1
-                          FROM platform_fallbacks pf
-                          WHERE COALESCE(pf.is_active, 1) = 1
-                            AND (
-                              (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
-                              OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
-                            )
-                        )
-                      )
-                    )
-                  )
-                  AND o_later.created_at > COALESCE((
-                    SELECT MAX(o_current.created_at)
-                    FROM order_items oi_current
-                    JOIN orders o_current ON o_current.id = oi_current.order_id
-                    WHERE oi_current.subscription_id = s.id
-                  ), '1000-01-01')
-            )
-        `;
 
         // Por defecto: <= 7 días (para el admin es mejor un margen un poco mayor, o igual 3)
         // Usaremos <= 7 días 
         let whereCols = [
             "s.status != 'cancelled'",
-            notResoldLaterSql,
+            buildLaterSubscriptionExclusionSql(),
             excludeInactiveMasterAccountSql(),
         ];
         let params = [];
@@ -403,9 +369,12 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
                 )`);
                 params.push(`%${qRaw}%`);
             }
-        } else {
-            whereCols.push(`${effectiveExpiresDateSql} <= DATE_ADD(${todayBogotaSql}, INTERVAL 7 DAY)`);
         }
+
+        whereCols.push(...buildExpirationDatePredicates({
+            expiryFilter: req.query.expiryFilter,
+            includeUpcomingWindow: !q,
+        }));
 
         if (platform) {
             whereCols.push("p.slug = ?");
@@ -438,55 +407,23 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
             whereCols.push(excludeManuallyHiddenExpirationSql());
         }
 
-        // New: Filter by expiry status (vencidos, hoy)
-        const expiryFilter = req.query.expiryFilter; // 'vencidos', 'hoy', 'all'
-        if (expiryFilter === "vencidos") {
-            whereCols.push(`${effectiveExpiresDateSql} < ${todayBogotaSql}`);
-        } else if (expiryFilter === "hoy") {
-            whereCols.push(`${effectiveExpiresDateSql} = ${todayBogotaSql}`);
-        }
-
         const whereSql = "WHERE " + whereCols.join(" AND ");
 
-        const [countRows] = await pool.query(
-            `SELECT COUNT(*) as total
-             FROM subscriptions s
-             JOIN platforms p ON p.id = s.platform_id
-             JOIN users u ON u.id = s.user_id
-             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
-             ${whereSql}`,
-            params
-        );
-        const total = countRows[0].total;
-        const pages = Math.ceil(total / limit);
-
         const [rows] = await pool.query(
-            `SELECT
+            `${buildExpirationCtes({ includeAccountFirstExpiration: true })}
+             SELECT
+               COUNT(*) OVER() AS total,
                s.id,
-               (
-                 SELECT oi2.order_id
-                 FROM order_items oi2
-                 JOIN orders o2 ON o2.id = oi2.order_id
-                 WHERE oi2.subscription_id = s.id
-                 ORDER BY o2.created_at DESC, oi2.id DESC
-                 LIMIT 1
-               ) AS order_id,
-               (
-                 SELECT o2.order_code
-                 FROM order_items oi2
-                 JOIN orders o2 ON o2.id = oi2.order_id
-                 WHERE oi2.subscription_id = s.id
-                 ORDER BY o2.created_at DESC, oi2.id DESC
-                 LIMIT 1
-               ) AS order_code,
+               current_order.order_id,
+               current_order.order_code,
                s.platform_id,
                s.platform_account_id,
                s.expires_at AS subscription_expires_at,
                acc.expires_at AS account_expires_at,
-               ${effectiveExpiresSql} AS expires_at,
-               ${effectiveExpiresSql} AS effective_expires_at,
-               DATE_FORMAT(${effectiveExpiresDateSql}, '%Y-%m-%d') AS expires_date,
-               DATEDIFF(${effectiveExpiresDateSql}, ${todayBogotaSql}) AS days_remaining,
+               s.expires_at AS expires_at,
+               s.expires_at AS effective_expires_at,
+               DATE_FORMAT(s.expires_at, '%Y-%m-%d') AS expires_date,
+               DATEDIFF(DATE(s.expires_at), ${todayBogotaSql}) AS days_remaining,
                s.status,
                s.price,
                s.currency,
@@ -501,28 +438,46 @@ router.get("/admin/orders-expiring", requireAuth, requireRole("admin"), async (r
              JOIN platforms p ON p.id = s.platform_id
              JOIN users u ON u.id = s.user_id
              LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+             LEFT JOIN latest_subscription_orders current_order ON current_order.subscription_id = s.id
+             LEFT JOIN account_first_expiration acc_first_expiration ON acc_first_expiration.platform_account_id = s.platform_account_id
              ${whereSql}
              ORDER BY
-                (SELECT MIN(DATE(ex.expires_at))
-                FROM subscriptions ex
-                LEFT JOIN platform_accounts ex_acc ON ex_acc.id = ex.platform_account_id
-                WHERE ex.platform_account_id = s.platform_account_id
-                  AND ex.status != 'cancelled'
-                  AND ex.platform_account_id IS NOT NULL
-               ) ASC,
+                acc_first_expiration.first_expiration_date ASC,
                COALESCE(acc.email, '') ASC,
-               ${effectiveExpiresDateSql} ASC,
-               ${effectiveExpiresSql} ASC
+                DATE(s.expires_at) ASC,
+                s.expires_at ASC,
+                s.id ASC
              LIMIT ?, ?`,
             [...params, offset, limit]
         );
+
+        let total = Number(rows[0]?.total || 0);
+        if (rows.length === 0 && offset > 0) {
+            const [countRows] = await pool.query(
+                `${buildExpirationCtes()}
+                 SELECT COUNT(*) AS total
+                 FROM subscriptions s
+                 JOIN platforms p ON p.id = s.platform_id
+                 JOIN users u ON u.id = s.user_id
+                 LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+                 LEFT JOIN latest_subscription_orders current_order ON current_order.subscription_id = s.id
+                 ${whereSql}`,
+                params
+            );
+            total = Number(countRows[0]?.total || 0);
+        }
+
+        const items = rows
+            .filter((row) => row.id !== null)
+            .map(({ total: _total, ...item }) => item);
+        const pages = Math.ceil(total / limit);
 
         return res.json({
             page,
             limit,
             total,
             pages,
-            items: rows,
+            items,
         });
 
     } catch (err) {

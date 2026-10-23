@@ -32,6 +32,8 @@ const { getStockSummary } = require("./stockSummary.service");
 const { getServerResources, buildServerResourcesMessage } = require("./serverResources.service");
 const { relieveServer } = require("./serverRelief.service");
 const { isServerReliefAdmin, createServerReliefHandler } = require("./telegramServerRelief.service");
+const { previewBuildCache, pruneBuildCache } = require("./hostBuildCache.service");
+const { createTelegramBuildCacheController } = require("./telegramBuildCache.service");
 const { resolveSupportAttachment } = require("../utils/supportAttachmentStorage");
 const {
     takeSupportTicketFromTelegram,
@@ -59,11 +61,18 @@ const stockSessions = new Map();
 const supportReplySessions = new Map();
 let bot = null;
 let botDisabledByConflict = false;
+const telegramBuildCache = createTelegramBuildCacheController({
+    authorizedIds: AUTHORIZED,
+    preview: previewBuildCache,
+    prune: pruneBuildCache,
+    sendMessage: (...args) => bot.sendMessage(...args),
+});
 const cmdServerRelief = createServerReliefHandler({
     authorizedIds: AUTHORIZED,
     sendMessage: (...args) => bot.sendMessage(...args),
     getResources: () => getServerResources({ includePressure: true }),
     relieve: relieveServer,
+    showBuildCachePreview: telegramBuildCache.showPreview,
     logger,
 });
 
@@ -1132,7 +1141,11 @@ function setupCommands() {
             const data = query.data;
             const mockMsg = { chat: query.message?.chat || { id: chatId }, from: query.from };
 
-            if (data === "cmd_stock") {
+            if (/^cache_(?:prune|cancel):[a-f0-9]{32}$/.test(String(data || ""))) {
+                await bot.answerCallbackQuery(query.id).catch(() => { });
+                await telegramBuildCache.handleCallback(query);
+                return;
+            } else if (data === "cmd_stock") {
                 await cmdStock(mockMsg);
             } else if (data === "cmd_ventas") {
                 await cmdVentas(mockMsg, [null, "10"]);

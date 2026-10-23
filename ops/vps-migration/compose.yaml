@@ -45,12 +45,16 @@ services:
       RCLONE_CONFIG: /run/secrets/rclone_config
       BACKUP_RCLONE_HOME: /home/node
       BACKUP_DRIVE_ROOT: gdrive:StreamingBoxBackups/production
+      PAGEV3_MAINTENANCE_SOCKET: /run/pagev3-maintenance/agent.sock
     volumes:
       - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/backend/storage:/app/backend/storage
       - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/public/platform-logos:/app/frontend/public/platform-logos
       - ${PAGEV3_ROOT:?Set PAGEV3_ROOT in compose.env}/frontend/dist/platform-logos:/app/frontend/dist/platform-logos
       - ${PAGEV3_DATA_ROOT:-/srv/pagev3-migration}/backup-home:/home/node
       - ${PAGEV3_BIN_ROOT:-/opt/pagev3-migration/bin}/rclone:/usr/local/bin/rclone:ro
+      - /run/pagev3-maintenance:/run/pagev3-maintenance:ro
+    group_add:
+      - "1000"
     secrets:
       - rclone_config
     ports:

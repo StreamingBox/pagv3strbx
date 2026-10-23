@@ -46,6 +46,25 @@ test("admin receives progress and measured before/after with audit", async () =>
     assert.equal(audit[0][1].archived, 2);
 });
 
+test("server relief shows BuildKit preview after reporting temporary cleanup", async () => {
+    const messages = [];
+    const calls = [];
+    const handler = createServerReliefHandler({
+        authorizedIds: admins,
+        sendMessage: async (...args) => messages.push(args),
+        getResources: async () => ({}),
+        relieve: async () => ({ status: "completed", archived: 0, releasedBytes: 0, skipped: 0, failed: 0 }),
+        showBuildCachePreview: async msg => calls.push(msg.from.id),
+        logger: { info: () => { }, error: () => assert.fail("unexpected error") },
+    });
+
+    await handler(privateAdmin);
+
+    assert.equal(calls[0], privateAdmin.from.id);
+    assert.equal(messages.length, 2);
+    assert.match(messages[1][1], /No se encontraron temporales/);
+});
+
 test("busy, cooldown and partial passes report the concrete reason", () => {
     assert.match(buildServerReliefMessage({ status: "busy" }), /en curso/);
     assert.match(buildServerReliefMessage({ status: "cooldown" }), /5 minutos/);

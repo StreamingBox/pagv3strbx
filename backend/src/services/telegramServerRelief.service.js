@@ -60,7 +60,7 @@ function buildServerReliefMessage(result, before, after) {
     ].filter(Boolean).join("\n");
 }
 
-function createServerReliefHandler({ authorizedIds, sendMessage, getResources, relieve, logger }) {
+function createServerReliefHandler({ authorizedIds, sendMessage, getResources, relieve, logger, showBuildCachePreview }) {
     return async msg => {
         if (!isServerReliefAdmin(msg, authorizedIds)) return sendMessage(msg.chat.id, "No autorizado. Este comando requiere el chat privado de un administrador configurado.");
         await sendMessage(msg.chat.id, "🔎 Revisando recursos y archivando temporales. Te enviare el resultado al terminar.");
@@ -69,7 +69,8 @@ function createServerReliefHandler({ authorizedIds, sendMessage, getResources, r
             const result = await relieve();
             const after = await getResources();
             logger.info("telegram_server_relief", { actorId: msg.from.id, ...result });
-            return sendMessage(msg.chat.id, buildServerReliefMessage(result, before, after));
+            await sendMessage(msg.chat.id, buildServerReliefMessage(result, before, after));
+            if (result.status !== "busy" && showBuildCachePreview) await showBuildCachePreview(msg);
         } catch {
             logger.error("telegram_server_relief_failed", { actorId: msg.from.id });
             return sendMessage(msg.chat.id, "❌ No se pudo completar la limpieza. Los originales se conservan hasta verificar las copias en disco y Drive. Revisa /servidor o solicita una revision.");

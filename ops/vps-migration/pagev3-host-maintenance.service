@@ -1,0 +1,37 @@
+[Unit]
+Description=PageV3 allowlisted host BuildKit maintenance agent
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/pagev3-migration/runtime-final
+Environment=PAGEV3_MAINTENANCE_SOCKET=/run/pagev3-maintenance/agent.sock
+Environment=PAGEV3_MAINTENANCE_GID=1000
+RuntimeDirectory=pagev3-maintenance
+RuntimeDirectoryMode=0750
+RuntimeDirectoryPreserve=yes
+UMask=0007
+ExecStart=/usr/bin/python3 /opt/pagev3-migration/runtime-final/ops/vps-migration/host_maintenance.py
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_CHOWN
+
+[Install]
+WantedBy=multi-user.target

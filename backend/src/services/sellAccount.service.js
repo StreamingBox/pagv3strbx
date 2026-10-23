@@ -3,6 +3,8 @@ const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { makeOrderCode } = require("../utils/orderCode");
 const {
     addDaysBogotaDateOnly,
+    BOGOTA_TODAY_SQL,
+    bogotaDateSql,
     bogotaDateOnlyToUtcEndOfDay,
     parseDateOnly,
     toSqlDateTime,
@@ -12,10 +14,18 @@ const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
 const { enqueueNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
+const { getCandidatePlatformsForPlatform } = require("./platformFallbacks.service");
 const {
     getStrbxReportedNetflixProviderAccount,
     canSellStrbxReportedNetflixAccount,
 } = require("../utils/strbxReportedAccounts");
+
+function isAllowedDeliveryPlatform(requestedPlatformId, accountPlatformId, candidatePlatforms = []) {
+    const requested = Number(requestedPlatformId);
+    const accountPlatform = Number(accountPlatformId);
+    if (!Number.isInteger(requested) || requested <= 0 || !Number.isInteger(accountPlatform) || accountPlatform <= 0) return false;
+    return candidatePlatforms.some((candidate) => Number(candidate.platformId) === accountPlatform);
+}
 
 /**
  * Vende una cuenta específica desde el inventario.
@@ -51,7 +61,14 @@ async function sellAccountFromInventory(payload) {
 
         // 1. Obtener datos de la cuenta (lock)
         const [accRows] = await conn.query(
-            "SELECT * FROM platform_accounts WHERE id = ? FOR UPDATE",
+            `SELECT pa.*, p.name AS delivered_platform_name, p.slug AS delivered_platform_slug,
+                    p.is_active AS delivered_platform_is_active,
+                    CASE WHEN pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL}
+                         THEN 1 ELSE 0 END AS inventory_not_expired
+               FROM platform_accounts pa
+               JOIN platforms p ON p.id = pa.platform_id
+              WHERE pa.id = ?
+              FOR UPDATE`,
             [accountId]
         );
         if (!accRows.length) {
@@ -62,6 +79,11 @@ async function sellAccountFromInventory(payload) {
         const account = accRows[0];
         if (account.status !== "available") {
             const err = new Error(`La cuenta no está disponible (estado: ${account.status}).`);
+            err.status = 409;
+            throw err;
+        }
+        if (!Number(account.inventory_not_expired)) {
+            const err = new Error("La cuenta de inventario está vencida y ya no se puede vender.");
             err.status = 409;
             throw err;
         }
@@ -82,7 +104,7 @@ async function sellAccountFromInventory(payload) {
              FROM platform_prices pp
              JOIN durations d ON d.id = pp.duration_id
              JOIN platforms p ON p.id = pp.platform_id
-             WHERE pp.id = ? AND pp.is_active = 1`,
+             WHERE pp.id = ? AND pp.is_active = 1 AND p.is_active = 1`,
             [platformPriceId]
         );
         if (!priceRows.length) {
@@ -92,9 +114,14 @@ async function sellAccountFromInventory(payload) {
         }
         const plan = priceRows[0];
 
-        // Validar que el plan coincida con la plataforma de la cuenta
-        if (Number(plan.platform_id) !== Number(account.platform_id)) {
-            const err = new Error("El plan seleccionado no pertenece a la plataforma de esta cuenta.");
+        // Permitir solo la plataforma solicitada o una equivalencia activa
+        // configurada explícitamente para ese producto.
+        const candidatePlatforms = await getCandidatePlatformsForPlatform(conn, plan.platform_id);
+        if (
+            !Number(account.delivered_platform_is_active) ||
+            !isAllowedDeliveryPlatform(plan.platform_id, account.platform_id, candidatePlatforms)
+        ) {
+            const err = new Error("La cuenta no pertenece a la plataforma seleccionada ni a una equivalencia activa.");
             err.status = 400;
             throw err;
         }
@@ -160,9 +187,9 @@ async function sellAccountFromInventory(payload) {
         // 5.2 Crear Subscripción
         const [subIns] = await conn.query(
             `INSERT INTO subscriptions 
-             (user_id, platform_id, platform_price_id, duration_id, platform_account_id, status, expires_at, price, currency)
-             VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
-            [userId, plan.platform_id, plan.platform_price_id, plan.duration_id, accountId, finalExpiresAt, totalAmount, plan.currency]
+             (user_id, platform_id, platform_price_id, duration_id, platform_account_id, delivered_platform_id, status, expires_at, price, currency)
+             VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+            [userId, plan.platform_id, plan.platform_price_id, plan.duration_id, accountId, account.platform_id, finalExpiresAt, totalAmount, plan.currency]
         );
         const subscriptionId = subIns.insertId;
 
@@ -177,7 +204,7 @@ async function sellAccountFromInventory(payload) {
             : normalizeCurrency(plan.currency, "COP");
         const comparableCost = unitCost <= 0 || sameCurrency(unitCostCurrency, plan.currency);
         await conn.query(
-            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO order_items (order_id, subscription_id, platform_id, platform_price_id, price, cost_amount, cost_currency, profit_amount, delivered_platform_id, product_details_snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 orderId,
                 subscriptionId,
@@ -187,6 +214,7 @@ async function sellAccountFromInventory(payload) {
                 unitCost,
                 unitCost > 0 ? unitCostCurrency : plan.currency,
                 comparableCost ? Number((totalAmount - unitCost).toFixed(2)) : null,
+                account.platform_id,
                 plan.product_details || null,
             ]
         );
@@ -241,6 +269,12 @@ async function sellAccountFromInventory(payload) {
         const results = [{
             subscriptionId,
             plan,
+            purchasedPlatformId: plan.platform_id,
+            purchasedPlatformName: plan.platform_name,
+            purchasedPlatformSlug: plan.platform_slug,
+            deliveredPlatformId: account.platform_id,
+            deliveredPlatformName: account.delivered_platform_name || plan.platform_name,
+            usedFallback: Number(account.platform_id) !== Number(plan.platform_id),
             account: {
                 email: account.email,
                 password: account.password,
@@ -265,6 +299,9 @@ async function sellAccountFromInventory(payload) {
             orderId,
             orderCode,
             subscriptionId,
+            deliveredPlatformId: Number(account.platform_id),
+            deliveredPlatformName: account.delivered_platform_name || plan.platform_name,
+            usedFallback: Number(account.platform_id) !== Number(plan.platform_id),
             deliveryMessage,
             newBalance
         };
@@ -278,5 +315,6 @@ async function sellAccountFromInventory(payload) {
 }
 
 module.exports = {
-    sellAccountFromInventory
+    sellAccountFromInventory,
+    __test: { isAllowedDeliveryPlatform },
 };

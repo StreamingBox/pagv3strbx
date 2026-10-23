@@ -89,7 +89,7 @@ Las rutas se expresan debajo de `https://strbx.com.co/api`. Los métodos y campo
 | Área | Rutas principales |
 | --- | --- |
 | Usuarios y actividad | `GET/POST /admin/users`, `GET /admin/users/stats`, `GET /admin/users/:id/activity`, `PATCH /admin/users/:id`, `PATCH /admin/users/:id/password` |
-| Inventario | `GET /admin/inventory`, `GET /admin/inventory/:id/detail`, `PATCH /admin/inventory/:id`, `POST /admin/inventory/:id/sell` |
+| Inventario | `GET /admin/inventory`, `GET /admin/sales/inventory`, `GET /admin/inventory/:id/detail`, `PATCH /admin/inventory/:id`, `POST /admin/inventory/:id/sell` |
 | Pedidos y vencimientos | `GET /admin/orders`, `GET /admin/orders/:id`, `POST /admin/orders/:id/attend`, `GET /admin/orders-expiring`, `GET /admin/orders-expiring-count` |
 | Plataformas y catálogo | `GET/POST/PATCH /admin/platforms`, `GET/POST/PATCH/DELETE /admin/prices`, `GET/POST/PATCH/DELETE /admin/durations` |
 | Proveedores | `GET/POST/PATCH /admin/providers`, `GET/POST/PATCH/DELETE /admin/provider-accounts` |
@@ -99,6 +99,12 @@ Las rutas se expresan debajo de `https://strbx.com.co/api`. Los métodos y campo
 | Códigos y trazabilidad | `GET /admin/code-logs`, `GET /admin/code-resets/:orderNumber`, `POST /admin/code-resets` |
 
 La fuente de verdad para parámetros, validaciones y respuestas de cada operación son los routers en `backend/src/routes/`. Las rutas sensibles (venta, reemplazo, contraseñas, OTP, credenciales y datos de clientes) deben invocarse solo desde acciones explícitas del operador y nunca registrarse en la consola del navegador.
+
+### Inventario reservable para venta desde el CRM
+
+`GET /admin/sales/inventory?platformId=<id>&page=1&limit=20` devuelve las cuentas disponibles para vender el producto solicitado, incluyendo sus equivalencias configuradas y activas en `platform_fallbacks`. Sigue el catálogo: primero usa inventario directo y solo ofrece equivalencias cuando no queda stock directo; aplica los mismos filtros de disponibilidad, plataforma activa y vencimiento. La respuesta contiene únicamente `id`, `platform_id`, `platform_name`, `status`, `sale_priority` y `used_fallback`; no expone contraseña, PIN, 2FA ni correo.
+
+`POST /admin/inventory/:id/sell` acepta una cuenta de esa lista cuando pertenece al producto solicitado o a una equivalencia activa. El servidor vuelve a validar la relación dentro de la transacción antes de descontar el saldo; guarda la plataforma elegida y la plataforma realmente entregada en la suscripción y en el detalle del pedido. Una equivalencia desactivada o ajena al producto no se puede vender.
 
 ## Errores y seguridad
 

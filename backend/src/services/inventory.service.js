@@ -21,6 +21,7 @@ const { isIptvProduct, isYouTubeChannelProduct } = require("../utils/productDeli
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { clearTotpSecret, isYoutubeTotpProduct, saveTotpSecret, verifyTotpCode } = require("./youtubeTotp.service");
 const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
+const { getCandidatePlatformsForPlatform } = require("./platformFallbacks.service");
 
 const EDITABLE_STATUSES = new Set(["available", "assigned", "sold", "inactive", "down", "expired", "disabled", "legacy_review"]);
 const ACTIVE_SUBSCRIPTION_EXPIRES_DATE_SQL =
@@ -488,6 +489,84 @@ async function getInventory(query = {}) {
         page: pageNum,
         limit: limitNum,
         totalPages: Math.ceil(total / limitNum)
+    };
+}
+
+/**
+ * Inventario que puede entregarse para un producto, incluidas sus equivalencias
+ * activas. Solo devuelve los campos que necesita el flujo de venta del CRM.
+ */
+async function getSellableInventory(query = {}) {
+    const requestedPlatformId = Number(query.platformId);
+    if (!Number.isInteger(requestedPlatformId) || requestedPlatformId <= 0) {
+        const err = new Error("platformId invalido.");
+        err.status = 400;
+        throw err;
+    }
+
+    const candidates = await getCandidatePlatformsForPlatform(pool, requestedPlatformId);
+    const platformIds = candidates.map((candidate) => candidate.platformId);
+    const platformPlaceholders = platformIds.map(() => "?").join(", ");
+    const pageNum = Math.max(parseInt(query.page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(query.limit, 10) || 20, 1), 200);
+    const offset = (pageNum - 1) * limitNum;
+    const whereSql = `pa.platform_id IN (${platformPlaceholders})
+        AND pa.status = 'available'
+        AND p.is_active = 1
+        AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})`;
+
+    const [stockRows] = await pool.query(
+        `SELECT pa.platform_id, COUNT(*) AS total
+           FROM platform_accounts pa
+           JOIN platforms p ON p.id = pa.platform_id
+          WHERE ${whereSql}
+          GROUP BY pa.platform_id`,
+        platformIds
+    );
+    const stockByPlatform = new Map(stockRows.map((row) => [Number(row.platform_id), Number(row.total || 0)]));
+    const directStock = stockByPlatform.get(requestedPlatformId) || 0;
+    const sellablePlatformIds = directStock > 0
+        ? [requestedPlatformId]
+        : candidates
+            .filter((candidate) => candidate.source === "fallback" && (stockByPlatform.get(candidate.platformId) || 0) > 0)
+            .map((candidate) => candidate.platformId);
+    const total = directStock > 0
+        ? directStock
+        : sellablePlatformIds.reduce((sum, id) => sum + (stockByPlatform.get(id) || 0), 0);
+
+    if (!sellablePlatformIds.length) {
+        return { items: [], total: 0, page: pageNum, limit: limitNum, totalPages: 0 };
+    }
+    const sellablePlaceholders = sellablePlatformIds.map(() => "?").join(", ");
+
+    const [rows] = await pool.query(
+        `SELECT pa.id, pa.platform_id, p.name AS platform_name, pa.sale_priority
+           FROM platform_accounts pa
+           JOIN platforms p ON p.id = pa.platform_id
+          WHERE pa.platform_id IN (${sellablePlaceholders})
+            AND pa.status = 'available'
+            AND p.is_active = 1
+            AND (pa.expires_at IS NULL OR ${bogotaDateSql("pa.expires_at")} >= ${BOGOTA_TODAY_SQL})
+          ORDER BY FIELD(pa.platform_id, ${sellablePlaceholders}) ASC, pa.sale_priority DESC, pa.id ASC
+          LIMIT ${limitNum} OFFSET ${offset}`,
+        [...sellablePlatformIds, ...sellablePlatformIds]
+    );
+
+    const items = rows.map((row) => ({
+        id: Number(row.id),
+        platform_id: Number(row.platform_id),
+        platform_name: String(row.platform_name || ""),
+        status: "available",
+        sale_priority: row.sale_priority === true || Number(row.sale_priority) === 1,
+        used_fallback: Number(row.platform_id) !== requestedPlatformId,
+    }));
+
+    return {
+        items,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
     };
 }
 
@@ -1321,6 +1400,7 @@ async function patchInventory(id, body = {}, options = {}) {
 
 module.exports = {
     getInventory,
+    getSellableInventory,
     getInventoryAccountDetail,
     exportInventoryCsv,
     patchInventory,

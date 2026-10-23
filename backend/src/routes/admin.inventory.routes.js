@@ -4,6 +4,7 @@ const requireRole = require("../middleware/requireRole");
 
 const {
     getInventory,
+    getSellableInventory,
     getInventoryAccountDetail,
     exportInventoryCsv,
     patchInventory,
@@ -19,6 +20,16 @@ router.get("/admin/inventory", requireAuth, requireRole("admin"), async (req, re
         return res.json(data);
     } catch (e) {
         return res.status(500).json({ message: "Error interno." });
+    }
+});
+
+router.get("/admin/sales/inventory", requireAuth, requireRole("admin"), async (req, res) => {
+    try {
+        const data = await getSellableInventory(req.query || {});
+        return res.json(data);
+    } catch (e) {
+        const status = e.status || 500;
+        return res.status(status).json({ message: e.message || "Error consultando inventario para venta." });
     }
 });
 

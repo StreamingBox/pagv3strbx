@@ -98,6 +98,33 @@ Las rutas se expresan debajo de `https://strbx.com.co/api`. Los métodos y campo
 | Soporte | `/admin/support-tickets/*`, `/admin/support-templates/*`, `/admin/support/subscription/:id`, `/admin/support/replace-account` |
 | Códigos y trazabilidad | `GET /admin/code-logs`, `GET /admin/code-resets/:orderNumber`, `POST /admin/code-resets` |
 
+### Venta de varias plataformas desde el CRM
+
+`POST /admin/inventory/sell` acepta una venta de 1 a 10 artículos en una sola
+operación. El cuerpo contiene `userId` y `items`, cada uno con un `accountId` y
+un `platformPriceId`. La misma cuenta no puede repetirse. El servidor vuelve a
+validar stock, vencimiento, plan activo, equivalencia y moneda dentro de una
+transacción; calcula el total desde los precios actuales y crea un solo pedido,
+un solo débito y la entrega combinada. Si cualquier artículo falla, se revierte
+el pedido completo. Las ventas individuales conservan la ruta existente
+`POST /admin/inventory/:id/sell` y su respuesta.
+
+```json
+{
+  "userId": 57,
+  "items": [
+    { "accountId": 9336, "platformPriceId": 21 },
+    { "accountId": 9352, "platformPriceId": 38 }
+  ]
+}
+```
+
+La respuesta incluye `orderId`, `orderCode`, `total`, `currency`, `newBalance`,
+metadatos de cada artículo y `deliveryMessage`. Los datos de credenciales
+aparecen únicamente dentro del mensaje de entrega, después de confirmarse la
+venta. Como toda escritura de venta, el cliente no debe repetir la petición
+automáticamente después de un resultado de red incierto; debe revisar el pedido.
+
 La fuente de verdad para parámetros, validaciones y respuestas de cada operación son los routers en `backend/src/routes/`. Las rutas sensibles (venta, reemplazo, contraseñas, OTP, credenciales y datos de clientes) deben invocarse solo desde acciones explícitas del operador y nunca registrarse en la consola del navegador.
 
 ### Inventario reservable para venta desde el CRM

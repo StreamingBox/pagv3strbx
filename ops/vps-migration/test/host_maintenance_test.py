@@ -2,6 +2,7 @@ import importlib.util
 import pathlib
 import sys
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = pathlib.Path(__file__).parents[1] / "host_maintenance.py"
@@ -33,6 +34,18 @@ class FakeDocker:
 
 
 class HostMaintenanceTests(unittest.TestCase):
+    def test_docker_command_preserves_buildx_config_directory(self):
+        completed = maintenance.subprocess.CompletedProcess([], 0, "ok", "")
+        with patch.dict(maintenance.os.environ, {"DOCKER_CONFIG": "/var/lib/pagev3-host-maintenance/docker"}), \
+                patch.object(maintenance.subprocess, "run", return_value=completed) as run:
+            result = maintenance.BuildCacheAgent._run_docker_command(["builder", "prune", "--force"], timeout=30)
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(
+            run.call_args.kwargs["env"]["DOCKER_CONFIG"],
+            "/var/lib/pagev3-host-maintenance/docker",
+        )
+
     def test_parse_system_df_reads_only_build_cache_and_units(self):
         result = maintenance.parse_system_df(df_output())
         self.assertEqual(result, {

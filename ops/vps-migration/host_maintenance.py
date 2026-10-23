@@ -96,6 +96,9 @@ class BuildCacheAgent:
 
     @staticmethod
     def _run_docker_command(args, timeout):
+        docker_env = {"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"}
+        if os.environ.get("DOCKER_CONFIG"):
+            docker_env["DOCKER_CONFIG"] = os.environ["DOCKER_CONFIG"]
         try:
             completed = subprocess.run(
                 DOCKER_BASE + args,
@@ -103,7 +106,7 @@ class BuildCacheAgent:
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env={"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8"},
+                env=docker_env,
             )
         except (OSError, subprocess.TimeoutExpired):
             raise MaintenanceError("docker_command_failed") from None

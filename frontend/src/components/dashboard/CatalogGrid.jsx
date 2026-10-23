@@ -1,11 +1,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Flame, Info, ShoppingCart, Sparkles, TrendingDown, X } from "lucide-react";
+import { Clock3, Flame, Info, ShoppingCart, Sparkles, TrendingDown, X } from "lucide-react";
 import { animate } from "animejs";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
 import { isLiteSite } from "../../config/siteVariant.js";
+import { getGeminiPromoDaysRemaining, isGemini5Tb, sortCatalogItems } from "../../utils/catalogPromotion.js";
 
 const MotionDiv = motion.div;
 const MotionButton = motion.button;
@@ -175,6 +176,11 @@ function CatalogLogoImage({ candidates, platformName, className, fallbackClassNa
 export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotifyMe, cartCountByPlatformPriceId }) {
     const liteSite = isLiteSite();
     const [selectedItem, setSelectedItem] = useState(null);
+    const [promoClock, setPromoClock] = useState(() => new Date());
+    useEffect(() => {
+        const timer = window.setInterval(() => setPromoClock(new Date()), 60_000);
+        return () => window.clearInterval(timer);
+    }, []);
     const selectedDetails = useMemo(() => detailLines(selectedItem?.productDetails), [selectedItem]);
     const selectedIsUnlimited = selectedItem?.platformType === "correo";
     const selectedStock = Number(selectedItem?.stock || 0);
@@ -182,26 +188,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
         ? (cartCountByPlatformPriceId?.get(selectedItem.platformPriceId) || 0)
         : 0;
     const selectedUnavailable = Boolean(selectedItem) && !selectedIsUnlimited && selectedInCart >= selectedStock;
-    const sorted = [...catalog].sort((a, b) => {
-        const sa = Number(a.stock || 0), sb = Number(b.stock || 0);
-        const aUnlim = a.platformType === 'correo';
-        const bUnlim = b.platformType === 'correo';
-        const aHasStock = aUnlim || sa > 0;
-        const bHasStock = bUnlim || sb > 0;
-
-        if (aHasStock && !bHasStock) return -1;
-        if (!aHasStock && bHasStock) return 1;
-        const getPriority = (item) => {
-            const cat = String(item.categoryName || "").toLowerCase();
-            if (cat.includes("video")) return 1;
-            if (cat.includes("ia") || cat.includes("inteligencia")) return 2;
-            if (cat.includes("productividad")) return 3;
-            return 4;
-        };
-        const pA = getPriority(a), pB = getPriority(b);
-        if (pA !== pB) return pA - pB;
-        return String(a.platformName || "").localeCompare(String(b.platformName || ""));
-    });
+    const sorted = useMemo(() => sortCatalogItems(catalog), [catalog]);
 
     function handleAdd(item) {
         const details = detailLines(item.productDetails);
@@ -240,8 +227,13 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                 const priceDropPercent = priceWasReduced
                     ? Math.max(1, Math.round(((previousPrice - currentPrice) / previousPrice) * 100))
                     : 0;
+                const isGeminiPromo = isPromo && isGemini5Tb(item);
+                const promoDaysRemaining = isGeminiPromo && !outOfStock
+                    ? getGeminiPromoDaysRemaining(promoClock)
+                    : null;
                 const showPromoLastUnits = isPromo
                     && !outOfStock
+                    && !isGemini5Tb(item)
                     && (item.platformPromoLastUnits === 1 || item.platformPromoLastUnits === true);
                 const promoBadgeText = item.is_renewable === 1 ? "Promoción" : "Promo";
                 const eventProduct = isEventLink(item);
@@ -339,7 +331,14 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     Producto nuevo
                                 </span>
                             ) : null}
-                            {showPromoLastUnits ? (
+                            {promoDaysRemaining !== null ? (
+                                <span className="catalog-card__promo-urgency">
+                                    <Clock3 size={12} aria-hidden="true" />
+                                    {promoDaysRemaining === 0
+                                        ? "La promo finaliza hoy"
+                                        : `Quedan ${promoDaysRemaining} ${promoDaysRemaining === 1 ? "día" : "días"} de promo`}
+                                </span>
+                            ) : showPromoLastUnits ? (
                                 <span className="catalog-card__promo-urgency">
                                     <Flame size={12} aria-hidden="true" />
                                     Últimas unidades de la promo

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ClipboardCheck, DatabaseZap, Radio, RefreshCcw } from "lucide-react";
+import { getAdminSidebarCounts } from "../../api/adminSidebarCounts.js";
 import ThemeToggle from "../ThemeToggle.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
 import useTheme from "../../hooks/useTheme";
@@ -82,90 +83,36 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
         breakpoint: 1180,
     });
     const [isHovered, setIsHovered] = useState(false);
-    const [stockCount, setStockCount] = useState(0);
-    const [expirationsCount, setExpirationsCount] = useState(0);
-    const [topupsCount, setTopupsCount] = useState(0);
-    const [supportCount, setSupportCount] = useState(0);
+    const [sidebarCounts, setSidebarCounts] = useState({ stock: 0, expirations: 0, topups: 0, support: 0 });
     const { theme } = useTheme();
     const isDark = theme === "dark";
     const navigate = useNavigate();
     const location = useLocation();
 
     useEffect(() => {
-        async function fetchStockCount() {
+        let active = true;
+        async function fetchCounts() {
             try {
-                const response = await fetch("/api/admin/stock-subscriptions", { credentials: "include" });
-                if (response.ok) {
-                    const data = await response.json();
-                    setStockCount(Array.isArray(data) ? data.length : 0);
+                const response = await getAdminSidebarCounts();
+                if (active && response.ok) {
+                    setSidebarCounts({
+                        stock: Number(response.data?.stock || 0),
+                        expirations: Number(response.data?.expirations || 0),
+                        topups: Number(response.data?.topups || 0),
+                        support: Number(response.data?.support || 0),
+                    });
                 }
             } catch {
-                // Ignore badge fetch failures; the sidebar remains usable without counts.
+                // The navigation remains usable if counters cannot be loaded.
             }
         }
-        fetchStockCount();
-        const timer = setInterval(fetchStockCount, 180000);
-        return () => clearInterval(timer);
+        void fetchCounts();
+        const timer = setInterval(fetchCounts, 60000);
+        return () => {
+            active = false;
+            clearInterval(timer);
+        };
     }, []);
-
-    useEffect(() => {
-        async function fetchExpirations() {
-            if (location.pathname === "/admin/expirations") {
-                setExpirationsCount(0);
-                return;
-            }
-            try {
-                const response = await fetch("/api/admin/orders-expiring-count", { credentials: "include" });
-                if (response.ok) {
-                    const data = await response.json();
-                    setExpirationsCount(Number(data.count) || 0);
-                }
-            } catch {
-                // Ignore badge fetch failures; the sidebar remains usable without counts.
-            }
-        }
-        fetchExpirations();
-        const timer = setInterval(fetchExpirations, 180000);
-        return () => clearInterval(timer);
-    }, [location.pathname]);
-
-    useEffect(() => {
-        async function fetchTopups() {
-            if (location.pathname === "/admin/topups") {
-                setTopupsCount(0);
-                return;
-            }
-            try {
-                const response = await fetch("/api/admin/manual-topups?status=submitted&limit=1", { credentials: "include" });
-                if (response.ok) {
-                    const data = await response.json();
-                    setTopupsCount(Number(data.total) || 0);
-                }
-            } catch {
-                // Ignore badge fetch failures; the sidebar remains usable without counts.
-            }
-        }
-        fetchTopups();
-        const timer = setInterval(fetchTopups, 180000);
-        return () => clearInterval(timer);
-    }, [location.pathname]);
-
-    useEffect(() => {
-        async function fetchSupportCount() {
-            try {
-                const response = await fetch("/api/admin/support-tickets/count", { credentials: "include" });
-                if (response.ok) {
-                    const data = await response.json();
-                    setSupportCount(Number(data.count) || 0);
-                }
-            } catch {
-                // The navigation remains usable if the counter cannot be loaded.
-            }
-        }
-        void fetchSupportCount();
-        const timer = setInterval(fetchSupportCount, 60000);
-        return () => clearInterval(timer);
-    }, [location.pathname]);
 
     const effectiveCollapsed = isMobile ? collapsed : (collapsed && !isHovered);
 
@@ -297,7 +244,7 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                 </span>
                                             ) : null}
 
-                                            {link.path === "/admin/stock-notify" && stockCount > 0 ? (
+                                            {link.path === "/admin/stock-notify" && sidebarCounts.stock > 0 ? (
                                                 <span
                                                     style={{
                                                         background: "#f59e0b",
@@ -314,11 +261,11 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                         animation: "pulse 1.8s infinite",
                                                     }}
                                                 >
-                                                    {stockCount}
+                                                    {sidebarCounts.stock}
                                                 </span>
                                             ) : null}
 
-                                            {link.path === "/admin/expirations" && expirationsCount > 0 ? (
+                                            {link.path === "/admin/expirations" && location.pathname !== "/admin/expirations" && sidebarCounts.expirations > 0 ? (
                                                 <span
                                                     style={{
                                                         background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
@@ -335,11 +282,11 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                         animation: "pulse 1.8s infinite",
                                                     }}
                                                 >
-                                                    {expirationsCount}
+                                                    {sidebarCounts.expirations}
                                                 </span>
                                             ) : null}
 
-                                            {link.path === "/admin/topups" && topupsCount > 0 ? (
+                                            {link.path === "/admin/topups" && location.pathname !== "/admin/topups" && sidebarCounts.topups > 0 ? (
                                                 <span
                                                     style={{
                                                         background: "linear-gradient(135deg, #ef4444 0%, #f97316 100%)",
@@ -356,11 +303,11 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                         animation: "pulse 1.8s infinite",
                                                     }}
                                                 >
-                                                    {topupsCount}
+                                                    {sidebarCounts.topups}
                                                 </span>
                                             ) : null}
 
-                                            {link.path === "/admin/support" && supportCount > 0 ? (
+                                            {link.path === "/admin/support" && sidebarCounts.support > 0 ? (
                                                 <span
                                                     style={{
                                                         background: "#f59e0b",
@@ -375,7 +322,7 @@ export default function AdminSidebar({ user, uploadingLogo, onOpenLogoPicker, on
                                                         flexShrink: 0,
                                                     }}
                                                 >
-                                                    {supportCount}
+                                                    {sidebarCounts.support}
                                                 </span>
                                             ) : null}
                                         </div>

@@ -38,6 +38,7 @@ const catalogRoutes = require("./routes/catalog");
 const combosRoutes = require("./routes/combos");
 
 const adminUsers = require("./routes/admin.users");
+const adminSidebarRoutes = require("./routes/admin.sidebar");
 const userNotifications = require("./routes/user.notifications");
 const adminWallet = require("./routes/admin.wallet");
 const adminPlatforms = require("./routes/admin.platforms");
@@ -369,6 +370,7 @@ app.use("/api", combosRoutes);
 
 // Admin
 app.use("/api", adminUsers);
+app.use("/api", adminSidebarRoutes);
 app.use("/api", userNotifications);
 app.use("/api", adminWallet);
 app.use("/api", adminPlatforms);

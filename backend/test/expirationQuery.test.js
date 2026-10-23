@@ -4,6 +4,7 @@ const {
     buildExpirationCtes,
     buildExpirationDatePredicates,
     buildLaterSubscriptionExclusionSql,
+    buildPendingExpirationCountQuery,
 } = require("../src/services/expirationQuery.service");
 
 test("expiration date filters use exclusive datetime bounds without wrapping expires_at", () => {
@@ -40,4 +41,16 @@ test("resold-account exclusion compares precomputed latest order dates", () => {
     assert.match(sql, /platform_fallbacks pf/);
     assert.doesNotMatch(sql, /JOIN orders o_later/);
     assert.doesNotMatch(sql, /SELECT MAX\(o_current\.created_at\)/);
+});
+
+test("pending expiration count keeps date bounds indexable and shares expiration visibility rules", () => {
+    const sql = buildPendingExpirationCountQuery();
+    assert.match(sql, /SELECT COUNT\(\*\) AS count/);
+    assert.match(sql, /latest_subscription_orders current_order/);
+    assert.match(sql, /s\.expires_at < DATE_ADD\(DATE\(CONVERT_TZ/);
+    assert.match(sql, /s\.expiration_hidden_at IS NULL/);
+    assert.match(sql, /ma\.status = 'inactive'/);
+    assert.match(sql, /later_order\.created_at > COALESCE\(current_order\.created_at/);
+    assert.doesNotMatch(sql, /DATE\(s\.expires_at\)/);
+    assert.doesNotMatch(sql, /JOIN orders o_later/);
 });

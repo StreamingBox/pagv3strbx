@@ -1,4 +1,8 @@
 const TODAY_BOGOTA_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
+const {
+    excludeInactiveMasterAccountSql,
+    excludeManuallyHiddenExpirationSql,
+} = require("./expirationVisibility.service");
 
 function buildExpirationDatePredicates({ expiryFilter, includeUpcomingWindow = true } = {}) {
     const predicates = [];
@@ -93,8 +97,23 @@ function buildLaterSubscriptionExclusionSql() {
         )`;
 }
 
+function buildPendingExpirationCountQuery() {
+    return `${buildExpirationCtes()}
+        SELECT COUNT(*) AS count
+        FROM subscriptions s
+        LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
+        LEFT JOIN latest_subscription_orders current_order ON current_order.subscription_id = s.id
+        WHERE s.status != 'cancelled'
+          AND COALESCE(s.is_attended, 0) = 0
+          AND ${excludeManuallyHiddenExpirationSql()}
+          AND s.expires_at < DATE_ADD(${TODAY_BOGOTA_SQL}, INTERVAL 1 DAY)
+          AND ${excludeInactiveMasterAccountSql()}
+          AND ${buildLaterSubscriptionExclusionSql()}`;
+}
+
 module.exports = {
     buildExpirationCtes,
     buildExpirationDatePredicates,
     buildLaterSubscriptionExclusionSql,
+    buildPendingExpirationCountQuery,
 };

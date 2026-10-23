@@ -12,6 +12,7 @@ const {
     buildExpirationCtes,
     buildExpirationDatePredicates,
     buildLaterSubscriptionExclusionSql,
+    buildPendingExpirationCountQuery,
 } = require("../services/expirationQuery.service");
 
 const router = express.Router();
@@ -570,53 +571,7 @@ router.post("/admin/orders/attend-bulk", requireAuth, requireRole("admin"), asyn
 // ✅ Count pending expirations (Admin)
 router.get("/admin/orders-expiring-count", requireAuth, requireRole("admin"), async (req, res) => {
     try {
-        const effectiveExpiresDateSql = "DATE(s.expires_at)";
-        const todayBogotaSql = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-05:00'))";
-        const [rows] = await pool.query(
-            `SELECT COUNT(*) as count
-             FROM subscriptions s
-             LEFT JOIN platform_accounts acc ON acc.id = s.platform_account_id
-             WHERE s.status != 'cancelled'
-               AND COALESCE(s.is_attended, 0) = 0
-               AND s.expiration_hidden_at IS NULL
-               AND ${effectiveExpiresDateSql} <= ${todayBogotaSql}
-               AND ${excludeInactiveMasterAccountSql()}
-               AND NOT EXISTS (
-                   SELECT 1
-                   FROM order_items oi_later
-                   JOIN orders o_later ON o_later.id = oi_later.order_id
-                   JOIN subscriptions s_later ON s_later.id = oi_later.subscription_id
-                   JOIN platform_accounts acc_later ON acc_later.id = s_later.platform_account_id
-                   WHERE s_later.id <> s.id
-                     AND s_later.status != 'cancelled'
-                     AND (
-                       (acc.identity_id IS NOT NULL AND acc_later.identity_id = acc.identity_id)
-                       OR (
-                         COALESCE(acc.email, '') <> ''
-                         AND LOWER(COALESCE(acc_later.email, '')) = LOWER(COALESCE(acc.email, ''))
-                         AND COALESCE(CAST(acc_later.profile_number AS CHAR), '') = COALESCE(CAST(acc.profile_number AS CHAR), '')
-                         AND (
-                           acc_later.platform_id = acc.platform_id
-                           OR EXISTS (
-                             SELECT 1
-                             FROM platform_fallbacks pf
-                             WHERE COALESCE(pf.is_active, 1) = 1
-                               AND (
-                                 (pf.source_platform_id = acc.platform_id AND pf.fallback_platform_id = acc_later.platform_id)
-                                 OR (pf.source_platform_id = acc_later.platform_id AND pf.fallback_platform_id = acc.platform_id)
-                               )
-                           )
-                         )
-                       )
-                     )
-                     AND o_later.created_at > COALESCE((
-                       SELECT MAX(o_current.created_at)
-                       FROM order_items oi_current
-                       JOIN orders o_current ON o_current.id = oi_current.order_id
-                       WHERE oi_current.subscription_id = s.id
-                     ), '1000-01-01')
-               )`
-        );
+        const [rows] = await pool.query(buildPendingExpirationCountQuery());
         return res.json({ count: rows[0].count });
     } catch (err) {
         console.error(err);

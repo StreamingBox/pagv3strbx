@@ -38,6 +38,7 @@ services:
       PORT: "3000"
       DB_HOST: mariadb
       DB_PORT: "3306"
+      SUPPORT_UPLOAD_DIR: /app/backend/storage/support
       TELEGRAM_BOT_ENABLED: ${PAGEV3_TELEGRAM_BOT_ENABLED:-false}
       NETFLIX_TV_SETUP_WORKER_URL: http://netflix-tv-worker:4100
       RCLONE_BIN: /usr/local/bin/rclone

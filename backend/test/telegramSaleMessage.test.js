@@ -4,7 +4,16 @@ const assert = require("node:assert/strict");
 const {
     buildDailySalesMessage,
     buildSaleNotificationMessage,
+    __testing: { assertSaleNotificationDelivered },
 } = require("../src/services/telegramBot");
+
+test("un aviso de venta sin entregas falla para permitir el reintento del outbox", () => {
+    assert.throws(
+        () => assertSaleNotificationDelivered(0),
+        (error) => error.code === "TELEGRAM_SALE_DELIVERY_FAILED",
+    );
+    assert.equal(assertSaleNotificationDelivered(1), undefined);
+});
 
 test("el resumen diario conserva la hora calendario de Colombia y segmenta la moneda", () => {
     const message = buildDailySalesMessage([

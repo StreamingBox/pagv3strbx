@@ -1458,13 +1458,24 @@ async function loadSaleCostSummary(orderId) {
     };
 }
 
+function assertSaleNotificationDelivered(deliveredCount) {
+    if (Number(deliveredCount) > 0) return;
+    const error = new Error("Telegram no entregó el aviso de venta a ningún chat configurado.");
+    error.code = "TELEGRAM_SALE_DELIVERY_FAILED";
+    throw error;
+}
+
 /**
  * Envía notificación de nueva venta a todos los chats autorizados.
  * El costo y la ganancia se leen desde order_items para usar el valor real
  * registrado al cargar la cuenta vendida.
  */
 async function notifySale({ orderId, seller, platforms, total, currency, discount, profit, newBalance, orderCode }) {
-    if (!bot || AUTHORIZED.size === 0) return;
+    if (!bot || AUTHORIZED.size === 0) {
+        const error = new Error("El bot o los chats destinatarios de Telegram no están configurados.");
+        error.code = "TELEGRAM_SALE_NOT_CONFIGURED";
+        throw error;
+    }
 
     let summary = null;
     try {
@@ -1490,7 +1501,8 @@ async function notifySale({ orderId, seller, platforms, total, currency, discoun
         costComplete: summary?.costComplete ?? false,
     });
 
-    await notifyAuthorizedChats(msg, { parse_mode: "MarkdownV2" });
+    const sent = await notifyAuthorizedChats(msg, { parse_mode: "MarkdownV2" });
+    assertSaleNotificationDelivered(sent.length);
 }
 
 async function notifyRenewalSale({
@@ -1725,5 +1737,5 @@ module.exports = {
     notifySupportTicketCreated,
     notifySupportTicketAutoNoStock,
     notifyMonthlyPurchaseEnforcement,
-    __testing: { isConfiguredAdmin },
+    __testing: { isConfiguredAdmin, assertSaleNotificationDelivered },
 };

@@ -12,7 +12,7 @@ const {
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
-const { enqueueNotification } = require("./notificationOutbox.service");
+const { enqueueNotification, enqueueSaleNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 const { getCandidatePlatformsForPlatform } = require("./platformFallbacks.service");
 const {
@@ -261,6 +261,18 @@ async function sellAccountFromInventory(payload) {
                 payload: { orderId },
             });
         }
+
+        await enqueueSaleNotification(conn, {
+            orderId,
+            seller: targetUser.name || targetUser.email || `ID ${userId}`,
+            platforms: [plan.platform_name],
+            total: totalAmount,
+            currency: plan.currency,
+            discount: 0,
+            profit: profitToAdd,
+            newBalance,
+            orderCode,
+        });
 
         await conn.commit();
         schedulePlatformStockAlertCheck();

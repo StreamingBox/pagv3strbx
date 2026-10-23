@@ -16,7 +16,7 @@ const {
     completeCheckoutIdempotency,
     failCheckoutIdempotency,
 } = require("./checkoutIdempotency.service");
-const { enqueueNotification } = require("./notificationOutbox.service");
+const { enqueueNotification, enqueueSaleNotification } = require("./notificationOutbox.service");
 const {
     automaticProfitForEntry,
     automaticUnitCostForPlan,
@@ -514,21 +514,16 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 payload: { orderId },
             });
         }
-        await enqueueNotification(conn, {
-            channel: "telegram",
-            eventType: "sale",
-            dedupeKey: `telegram-sale:${orderId}`,
-            payload: {
-                orderId,
-                seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
-                platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
-                total,
-                currency,
-                discount: total,
-                profit: profitToAdd,
-                newBalance,
-                orderCode,
-            },
+        await enqueueSaleNotification(conn, {
+            orderId,
+            seller: buyerInfo?.name || buyerInfo?.email || `ID ${userId}`,
+            platforms: purchaseEntries.map((entry) => entry.comboName ? `${entry.comboName}: ${entry.plan.platform_name}` : entry.plan.platform_name),
+            total,
+            currency,
+            discount: total,
+            profit: profitToAdd,
+            newBalance,
+            orderCode,
         });
 
         await conn.commit();

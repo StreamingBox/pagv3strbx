@@ -27,6 +27,19 @@ async function enqueueNotification(conn, { channel = "email", eventType, payload
     wakeNotificationOutbox();
 }
 
+async function enqueueSaleNotification(conn, payload = {}) {
+    const orderId = Number(payload.orderId);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+        throw new Error("Un ID de orden válido es obligatorio para notificar una venta.");
+    }
+    return enqueueNotification(conn, {
+        channel: "telegram",
+        eventType: "sale",
+        dedupeKey: `telegram-sale:${orderId}`,
+        payload: { ...payload, orderId },
+    });
+}
+
 async function buildOrderDeliveryPayload(orderId) {
     const [[order]] = await pool.query(
         `SELECT o.id, o.order_code, o.total, o.currency, u.name AS user_name, u.email AS user_email
@@ -285,6 +298,7 @@ function wakeNotificationOutbox(delayMs = 1200) {
 
 module.exports = {
     enqueueNotification,
+    enqueueSaleNotification,
     processNotificationOutbox,
     startNotificationOutbox,
     wakeNotificationOutbox,

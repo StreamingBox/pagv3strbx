@@ -238,6 +238,7 @@ El despliegue audita dependencias, compila el frontend y reinicia el backend Nod
 ## Notas
 
 - El backend expone rutas públicas y privadas bajo `/api`.
+- La integración del CRM externo y su flujo de autenticación están documentados en [`docs/integrations/crm-api.md`](docs/integrations/crm-api.md).
 - Existen vistas admin para órdenes, renovaciones, inventario, vencimientos, logs de códigos y soporte.
 - Hay integración con links compartidos `/s/:token` para mostrar credenciales temporales.
 - Las renovaciones generan órdenes `RENO-*` y notifican a Telegram con el bloque básico de la operación.

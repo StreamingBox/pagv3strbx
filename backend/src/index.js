@@ -16,6 +16,7 @@ const { isCountableLoginAttemptResponse } = require("./utils/loginRateLimit");
 const cookieParser = require("cookie-parser");
 const sanitize = require("./middleware/sanitize");
 const { createOriginGuard } = require("./middleware/originGuard");
+const { createAllowedOrigins, createCorsOptions } = require("./config/corsOrigins");
 const logger = require("./utils/logger");
 
 // ✅ Rutas
@@ -161,38 +162,10 @@ app.set("trust proxy", 1);
 /* =======================
    CORS (ANTES DE RUTAS)
    ======================= */
-const allowedOrigins = new Set([
-    "https://strbx.com.co",
-    "https://www.strbx.com.co",
-]);
-
-if (process.env.NODE_ENV !== "production") {
-    allowedOrigins.add("http://localhost:5173");
-    allowedOrigins.add("http://127.0.0.1:5173");
-    allowedOrigins.add("http://localhost:5174");
-    allowedOrigins.add("http://127.0.0.1:5174");
-}
-// Pruebas por IP / Elastic IP en EC2 (el navegador envía Origin: https://TU_IP)
-// En backend/.env: CORS_EXTRA_ORIGINS=https://18.x.x.x,http://18.x.x.x
-if (process.env.CORS_EXTRA_ORIGINS) {
-    for (const raw of String(process.env.CORS_EXTRA_ORIGINS).split(/[,;\s]+/)) {
-        const o = raw.trim().replace(/\/+$/, "");
-        if (o) allowedOrigins.add(o);
-    }
-}
-const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const allowedOrigins = createAllowedOrigins();
 const allowLocalDevOrigin = process.env.NODE_ENV !== "production";
 
-const corsOptions = {
-    origin: (origin, cb) => {
-        if (!origin) return cb(null, true); // curl/postman
-        if (allowedOrigins.has(origin) || (allowLocalDevOrigin && localDevOrigin.test(origin))) return cb(null, true);
-        return cb(new Error(`CORS blocked: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-};
+const corsOptions = createCorsOptions({ allowedOrigins, allowLocalDev: allowLocalDevOrigin });
 
 app.use(createOriginGuard({ allowedOrigins, allowLocalDev: allowLocalDevOrigin }));
 app.use(cors(corsOptions));

@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { createOriginGuard } = require("../src/middleware/originGuard");
+const { createAllowedOrigins } = require("../src/config/corsOrigins");
 
 function runGuard({ method = "POST", headers = {} } = {}) {
     let nextCalled = false;
@@ -23,7 +24,7 @@ function runGuard({ method = "POST", headers = {} } = {}) {
     };
 
     createOriginGuard({
-        allowedOrigins: new Set(["https://strbx.com.co"]),
+        allowedOrigins: createAllowedOrigins({ nodeEnv: "production", extraOrigins: "" }),
         allowLocalDev: false,
     })(req, res, () => { nextCalled = true; });
 
@@ -32,6 +33,13 @@ function runGuard({ method = "POST", headers = {} } = {}) {
 
 test("origin guard accepts the production frontend", () => {
     assert.deepEqual(runGuard({ headers: { origin: "https://strbx.com.co" } }), {
+        nextCalled: true,
+        response: null,
+    });
+});
+
+test("origin guard accepts the CRM production frontend", () => {
+    assert.deepEqual(runGuard({ headers: { origin: "https://crm.strbx.com.co" } }), {
         nextCalled: true,
         response: null,
     });

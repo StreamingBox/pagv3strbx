@@ -6,7 +6,6 @@ const {
     duplicateSummaryLine,
     findExactAccountDuplicate,
     findActiveAssignedScreenDuplicate,
-    findReusableAccountForReload,
     isScreenCostInput,
 } = require("../src/services/accounts.service");
 
@@ -115,13 +114,6 @@ test("YouTube duplicate lookups compare the channel as well as Google credential
         },
     };
 
-    await findReusableAccountForReload(conn, {
-        pid: 31,
-        emailValue: "ddsm29592@gmail.com",
-        accountProf: null,
-        password: "same-password",
-        youtubeChannelName: " @Strbx-2 ",
-    });
     await findExactAccountDuplicate(conn, {
         pid: 31,
         emailValue: "ddsm29592@gmail.com",
@@ -136,7 +128,7 @@ test("YouTube duplicate lookups compare the channel as well as Google credential
         youtubeChannelName: " @Strbx-2 ",
     });
 
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 2);
     for (const call of calls) {
         assert.match(call.sql, /LOWER\(TRIM\(COALESCE\(pa\.youtube_channel_name, ''\)\)\) = LOWER\(TRIM\(\?\)\)/);
         assert.equal(call.params.at(-1), "@Strbx-2");
@@ -177,7 +169,7 @@ test("bulk YouTube Music upload allows one Google login on separate channels", a
     assert.equal(result.skippedDuplicateExact, 0);
     assert.equal(insertedAccounts, 2);
     const duplicateLookups = calls.filter(({ sql }) => sql.includes("has_replacement_history"));
-    assert.equal(duplicateLookups.length, 4);
+    assert.equal(duplicateLookups.length, 2);
     assert.ok(duplicateLookups.every(({ sql }) => sql.includes("pa.youtube_channel_name")));
     const stockNotificationChecks = calls.filter(({ sql }) =>
         sql.includes("FROM stock_subscriptions ss") && sql.includes("ss.is_notified = FALSE")
@@ -185,8 +177,6 @@ test("bulk YouTube Music upload allows one Google login on separate channels", a
     assert.equal(stockNotificationChecks.length, 1);
     assert.deepEqual(duplicateLookups.map(({ params }) => params.at(-1)), [
         "Canal Principal",
-        "Canal Principal",
-        "@Strbx-2",
         "@Strbx-2",
     ]);
 });
@@ -215,43 +205,80 @@ test("manual YouTube Music entry checks duplicates against the selected channel"
 
     assert.equal(result.id, 1001);
     const duplicateLookups = calls.filter(({ sql }) => sql.includes("has_replacement_history"));
-    assert.equal(duplicateLookups.length, 2);
+    assert.equal(duplicateLookups.length, 1);
     assert.ok(duplicateLookups.every(({ sql }) => sql.includes("pa.youtube_channel_name")));
     assert.ok(duplicateLookups.every(({ params }) => params.at(-1) === "@Strbx-2"));
     assert.ok(calls.some(({ sql, params }) => sql.includes("INSERT INTO platform_accounts") && params.includes("@Strbx-2")));
 });
 
-test("historical credential can be reused only without an active subscription", async () => {
+test("manual upload creates a fresh available row without inheriting a historical expiry", async () => {
     const calls = [];
+    let accountInsertParams;
     const conn = {
         async query(sql, params) {
             calls.push({ sql, params });
-            return [[{
-                id: 6536,
-                platform_id: 9,
-                platform_name: "Crunchyroll",
-                email: "hajaoyg.joslynn@hotmail.com",
-                profile_number: "5",
-                status: "sold",
-                subscription_id: null,
-            }]];
+            if (/SELECT name, slug FROM platforms WHERE id=/i.test(sql)) {
+                return [[{ name: "Netflix Internacional", slug: "netflix-internacional" }]];
+            }
+            if (sql.includes("has_replacement_history")) return [[]];
+            if (sql.includes("INSERT INTO account_identities")) return [{ insertId: 900 }];
+            if (sql.includes("INSERT INTO platform_accounts")) {
+                accountInsertParams = params;
+                return [{ insertId: 7001 }];
+            }
+            return [[]];
         },
     };
 
-    const row = await findReusableAccountForReload(conn, {
-        pid: 9,
-        emailValue: "hajaoyg.joslynn@hotmail.com",
-        accountProf: "5",
-        password: "koko123###",
+    const result = await createAccountOne(conn, {
+        platformId: 9,
+        email: "new-screen@example.com",
+        password: "test-password",
+        profileNumber: "1",
+        costMode: "PANTALLA",
+        costAmount: 800,
     });
 
-    assert.equal(row.id, 6536);
-    assert.deepEqual(calls[0].params, [9, "hajaoyg.joslynn@hotmail.com", "5", "koko123###"]);
-    assert.match(calls[0].sql, /active_sub\.id IS NULL/);
-    assert.match(calls[0].sql, /LIMIT 1 FOR UPDATE/);
-    assert.match(calls[0].sql, /LOWER\(TRIM\(COALESCE\(pa\.status, ''\)\)\) IN \('available', 'assigned', 'sold'\)/);
-    assert.match(calls[0].sql, /replaced\.old_account_id = pa\.id/);
-    assert.match(calls[0].sql, /DATE\(CONVERT_TZ\(active_sub\.expires_at, '\+00:00', '-05:00'\)\) >= DATE\(CONVERT_TZ\(UTC_TIMESTAMP\(\), '\+00:00', '-05:00'\)\)/);
+    assert.equal(result.id, 7001);
+    assert.equal(accountInsertParams[11], null);
+    assert.ok(calls.some(({ sql }) => sql.includes("INSERT INTO platform_accounts")));
+    assert.ok(!calls.some(({ sql }) => /UPDATE\s+platform_accounts\s+SET\s+identity_id/i.test(sql)));
+    assert.equal(result.reused, undefined);
+});
+
+test("bulk upload creates fresh inventory IDs instead of reactivating expired historical rows", async () => {
+    const calls = [];
+    let accountInsertParams;
+    const conn = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            if (/SELECT id, name, slug FROM platforms WHERE id IN/i.test(sql)) {
+                return [[{ id: 9, name: "Netflix Internacional", slug: "netflix-internacional" }]];
+            }
+            if (sql.includes("has_replacement_history")) return [[]];
+            if (sql.includes("INSERT INTO account_identities")) return [{ insertId: 901 }];
+            if (sql.includes("INSERT INTO platform_accounts")) {
+                accountInsertParams = params;
+                return [{ insertId: 7002 }];
+            }
+            return [[]];
+        },
+    };
+
+    const result = await bulkInsertAccounts(conn, [{
+        platformId: 9,
+        email: "new-screen@example.com",
+        password: "test-password",
+        profileNumber: "1",
+        costMode: "PANTALLA",
+        costAmount: 800,
+    }]);
+
+    assert.equal(result.inserted, 1);
+    assert.equal(result.reusedExistingCount, 0);
+    assert.deepEqual(result.reusedExisting, []);
+    assert.equal(accountInsertParams[11], null);
+    assert.ok(!calls.some(({ sql }) => /UPDATE\s+platform_accounts\s+SET\s+identity_id/i.test(sql)));
 });
 
 test("bulk upload can force assigned screen duplicates when admin confirms", async () => {

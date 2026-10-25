@@ -120,77 +120,6 @@ async function insertAccount(conn, { identityId, pid, pname, emailValue, passwor
     return ins.insertId;
 }
 
-async function reloadExistingAccount(conn, {
-    accountId,
-    identityId,
-    pid,
-    pname,
-    emailValue,
-    password,
-    accessUrl,
-    pin,
-    twoFactorSecret,
-    codeProvider,
-    accountProf,
-    youtubeChannelName,
-    exp,
-    costModel,
-    deferStockNotifications = false,
-}) {
-    const [result] = await conn.query(
-        `UPDATE platform_accounts
-            SET identity_id = ?,
-                platform_id = ?,
-                platform_name = ?,
-                email = ?,
-                password = ?,
-                access_url = ?,
-                pin = ?,
-                two_factor_secret = ?,
-                code_provider = ?,
-                profile_number = ?,
-                youtube_channel_name = ?,
-                status = 'available',
-                expires_at = ?,
-                assigned_to_user_id = NULL,
-                assigned_at = NULL,
-                parent_account_cost_total = COALESCE(?, parent_account_cost_total),
-                parent_profiles_total = COALESCE(?, parent_profiles_total),
-                unit_cost = COALESCE(?, unit_cost),
-                updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-        [
-            identityId,
-            pid,
-            pname || "",
-            emailValue,
-            password,
-            accessUrl,
-            pin,
-            twoFactorSecret,
-            codeProvider || STRBX_PROVIDER,
-            accountProf,
-            youtubeChannelName || null,
-            exp,
-            costModel?.parentCostTotal ?? null,
-            costModel?.parentProfilesTotal ?? null,
-            costModel?.unitCost ?? null,
-            accountId,
-        ]
-    );
-
-    if (result.affectedRows !== 1) {
-        const err = new Error("No se pudo reutilizar la cuenta historica.");
-        err.status = 409;
-        throw err;
-    }
-
-    if (!deferStockNotifications) {
-        await queueStockAvailabilityNotifications(conn, pid, pname);
-    }
-    return accountId;
-}
-
 function firstNonEmpty(...values) {
     for (const value of values) {
         if (value !== null && value !== undefined && String(value).trim()) {
@@ -409,75 +338,6 @@ async function findExactAccountDuplicate(conn, { pid, emailValue, accountProf, p
     return rows?.[0] || null;
 }
 
-async function findReusableAccountForReload(conn, { pid, emailValue, accountProf, password, youtubeChannelName }) {
-    const params = [pid, emailValue];
-    const profileSql = accountProf === null || accountProf === undefined || String(accountProf).trim() === ""
-        ? "(pa.profile_number IS NULL OR CAST(pa.profile_number AS CHAR) = '')"
-        : "CAST(pa.profile_number AS CHAR) = ?";
-    if (profileSql.includes("?")) params.push(String(accountProf));
-    params.push(String(password ?? ""));
-    const youtubeChannelSql = youtubeChannelName
-        ? "AND LOWER(TRIM(COALESCE(pa.youtube_channel_name, ''))) = LOWER(TRIM(?))"
-        : "";
-    if (youtubeChannelName) params.push(String(youtubeChannelName).trim());
-
-    const [rows] = await conn.query(
-        `SELECT
-            pa.id,
-            pa.platform_id,
-            COALESCE(p.name, pa.platform_name) AS platform_name,
-            pa.email,
-            pa.profile_number,
-            pa.youtube_channel_name,
-            pa.status,
-            pa.expires_at,
-            u.email AS assigned_user_email,
-            u.name AS assigned_user_name,
-            active_sub.id AS subscription_id,
-            active_sub.expires_at AS subscription_expires_at,
-            o.id AS order_id,
-            o.order_code,
-            EXISTS(
-                SELECT 1
-                  FROM account_replacement_logs arl
-                 WHERE arl.old_account_id = pa.id OR arl.new_account_id = pa.id
-            ) AS has_replacement_history
-         FROM platform_accounts pa
-         LEFT JOIN platforms p ON p.id = pa.platform_id
-         LEFT JOIN users u ON u.id = pa.assigned_to_user_id
-         LEFT JOIN subscriptions active_sub
-           ON active_sub.platform_account_id = pa.id
-          AND active_sub.status = 'active'
-          AND (
-                active_sub.expires_at IS NULL
-                OR ${bogotaDateSql("active_sub.expires_at")} >= ${BOGOTA_TODAY_SQL}
-          )
-         LEFT JOIN order_items oi ON oi.subscription_id = active_sub.id
-         LEFT JOIN orders o ON o.id = oi.order_id
-        WHERE pa.platform_id = ?
-          AND LOWER(TRIM(pa.email)) = LOWER(TRIM(?))
-          AND ${profileSql}
-          AND BINARY COALESCE(pa.password, '') = BINARY ?
-          ${youtubeChannelSql}
-          AND LOWER(TRIM(COALESCE(pa.status, ''))) IN ('available', 'assigned', 'sold')
-          AND active_sub.id IS NULL
-          AND NOT EXISTS (
-                SELECT 1
-                  FROM account_replacement_logs replaced
-                 WHERE replaced.old_account_id = pa.id
-          )
-        ORDER BY
-            CASE WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'assigned' THEN 0
-                 WHEN LOWER(TRIM(COALESCE(pa.status, ''))) = 'available' THEN 1
-                 ELSE 2 END,
-            pa.id DESC
-        LIMIT 1 FOR UPDATE`,
-        params
-    );
-
-    return rows?.[0] || null;
-}
-
 /**
  * Cuando entra stock de una plataforma, busca a todos los usuarios
  * que pidieron aviso y les crea una notificación interna.
@@ -688,44 +548,7 @@ async function createAccountOne(conn, body) {
         { required: isIptvProduct({ platformName: pname, platformSlug }) }
     );
 
-    const reusable = await findReusableAccountForReload(conn, {
-        pid,
-        emailValue,
-        accountProf,
-        password,
-        youtubeChannelName: isYouTubeChannel ? youtubeChannelName : null,
-    });
-    if (reusable) {
-        const identityId = await upsertIdentity(conn, {
-            pid,
-            emailValue,
-            identityProf,
-            password,
-            pin: normalizeOptionalValue(pin),
-        });
-        const reusedId = await reloadExistingAccount(conn, {
-            accountId: reusable.id,
-            identityId,
-            pid,
-            pname,
-            emailValue,
-            password,
-            accessUrl,
-            pin: normalizeOptionalValue(pin),
-            twoFactorSecret,
-            codeProvider,
-            accountProf,
-            youtubeChannelName,
-            exp,
-            costModel,
-        });
-
-        if (totpSecret) await saveTotpSecret(conn, emailValue, totpSecret);
-
-        await propagatePassword(conn, { pid, emailValue, password, newId: reusedId });
-        return { id: reusedId, platformId: pid, platformName: pname, reused: true };
-    }
-
+    // Cada carga crea una fila de inventario nueva; la identidad antigua conserva su venta y vencimiento.
     const exactDuplicate = await findExactAccountDuplicate(conn, {
         pid,
         emailValue,
@@ -895,8 +718,6 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     let missingPlatformRows = 0;
     const duplicateAssigned = [];
     const duplicateExact = [];
-    const reusedExisting = [];
-    const reloadedKeys = new Set();
     const platformsWithNewStock = new Map();
     const allowAssignedDuplicateScreens = options.allowAssignedDuplicateScreens === true;
 
@@ -956,67 +777,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             throw err;
         }
 
-        const reloadKey = [
-            pid,
-            String(r.email).trim().toLowerCase(),
-            accountProf ?? "",
-            r.password,
-            isYouTubeChannel ? String(r.youtubeChannelName || "").trim().toLowerCase() : "",
-        ].join("|");
-        const reusable = reloadedKeys.has(reloadKey)
-            ? null
-            : await findReusableAccountForReload(conn, {
-                pid,
-                emailValue: r.email,
-                accountProf,
-                password: r.password,
-                youtubeChannelName: isYouTubeChannel ? r.youtubeChannelName : null,
-            });
-        if (reusable) {
-            const identityId = await upsertIdentity(conn, {
-                pid,
-                emailValue: r.email,
-                identityProf,
-                password: r.password,
-                pin: r.pin,
-            });
-            const reusedId = await reloadExistingAccount(conn, {
-                accountId: reusable.id,
-                identityId,
-                pid,
-                pname: platform.name,
-                emailValue: r.email,
-                password: r.password,
-                accessUrl,
-                pin: r.pin,
-                twoFactorSecret: r.twoFactorSecret,
-                codeProvider,
-                accountProf,
-                youtubeChannelName: r.youtubeChannelName,
-                exp,
-                costModel,
-                deferStockNotifications: true,
-            });
-
-            await propagatePassword(conn, {
-                pid,
-                emailValue: r.email,
-                password: r.password,
-                newId: reusedId,
-            });
-            reloadedKeys.add(reloadKey);
-            platformsWithNewStock.set(pid, platform.name);
-            reusedExisting.push({
-                rowNumber: r.rowNumber || rowIndex + 2,
-                accountId: reusedId,
-                platformName: platform.name,
-                email: r.email,
-                profileNumber: accountProf,
-            });
-            inserted += 1;
-            continue;
-        }
-
+        // Las cargas masivas tampoco reactivan IDs con historial de venta o vencimiento.
         const exactDuplicate = await findExactAccountDuplicate(conn, {
             pid,
             emailValue: r.email,
@@ -1083,8 +844,8 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         missingPlatformRows,
         skippedDuplicateExact: duplicateExact.length,
         duplicateExact,
-        reusedExistingCount: reusedExisting.length,
-        reusedExisting,
+        reusedExistingCount: 0,
+        reusedExisting: [],
         skippedDuplicateAssigned: duplicateAssigned.length,
         duplicateAssigned,
         forcedAssignedDuplicates: allowAssignedDuplicateScreens,
@@ -1098,6 +859,5 @@ module.exports = {
     duplicateSummaryMessage,
     findExactAccountDuplicate,
     findActiveAssignedScreenDuplicate,
-    findReusableAccountForReload,
     isScreenCostInput,
 };

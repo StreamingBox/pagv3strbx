@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ClipboardCheck, DatabaseZap, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, DatabaseZap, RefreshCcw, UsersRound } from "lucide-react";
 import IconBadge from "./IconBadge.jsx";
 import { apiFetch } from "../../api/api.js";
 import "../../styles/special-effects.css";
@@ -105,6 +105,7 @@ export default function AdminKpiCards({ onNavigate }) {
             groupName: "Usuarios & Atención",
             items: [
                 { icon: "👤", tone: "violet", title: "Usuarios", hint: "Gestión de clientes/vendedores.", path: "/admin/users" },
+                { icon: <UsersRound size={20} strokeWidth={2.4} aria-hidden />, tone: "emerald", title: "Referidos", hint: "Campaña, avances y premios.", path: "/admin/referrals" },
                 { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
                 { icon: "🔁", tone: "orange", title: "Historial Reemplazos", hint: "Cambios de cuenta realizados.", path: "/admin/replacements" },
             ],

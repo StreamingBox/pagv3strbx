@@ -143,6 +143,7 @@ export default function AccountGroup({ group, getDaysLeft, renderDaysBadge, togg
             {!collapsed && group.rows.map((item, idx) => {
                 const daysLeft = getDaysLeft(item);
                 const isSaving = savingIds.includes(item.id);
+                const isAttended = Number(item.is_attended) === 1;
                 const isOutsideFilter =
                     attendedFilter === "0" ? !!item.is_attended :
                     attendedFilter === "1" ? !item.is_attended :
@@ -231,10 +232,12 @@ export default function AccountGroup({ group, getDaysLeft, renderDaysBadge, togg
                                     padding: "6px 12px", fontSize: 11, fontWeight: 700, borderRadius: 8,
                                     background: "linear-gradient(135deg, #0da6f2 0%, #8b5cf6 100%)",
                                     border: "none", color: "#fff",
-                                    boxShadow: "0 4px 14px rgba(13,166,242,0.3)", cursor: isSaving ? "not-allowed" : "pointer",
-                                    opacity: isSaving ? 0.7 : 1
+                                    boxShadow: "0 4px 14px rgba(13,166,242,0.3)",
+                                    cursor: isSaving || isAttended ? "not-allowed" : "pointer",
+                                    opacity: isSaving || isAttended ? 0.55 : 1
                                 }}
-                                disabled={isSaving}
+                                disabled={isSaving || isAttended}
+                                title={isAttended ? "Cuenta atendida. Desmárcala para habilitar la renovación." : undefined}
                                 onClick={() => navigate(`/admin/renewals`, { state: { orderId: item.id } })}
                             >
                                 Renovar →

@@ -8,7 +8,7 @@ Antes de cada cambio, vuelve a consultar este archivo, incluso si el cambio es u
 2. Inspecciona el código, pruebas y configuración que realmente participan en la tarea. Busca instrucciones locales y cambios previos relacionados. No des por hecho que el contenido local, GitHub y producción son iguales.
 3. Conserva todo cambio preexistente del usuario. No uses `git reset --hard`, `git checkout --`, `git clean`, borrados masivos ni reemplazos de carpetas para “limpiar”. No sobrescribas archivos no rastreados sin entender primero qué son.
 4. Trata respaldos, capturas, volcados, archivos `.patch`, directorios `.codex-*`, `.build-*`, `.providers-*`, `.tv-*`, secretos y datos operativos como datos del usuario: no los borres, muevas, edites, publiques ni agregues a Git salvo petición explícita y revisión puntual.
-5. Para producción, confirma de nuevo el host/IP, dominio, rama y ruta desplegada. La IP nueva indicada por el usuario es `3.144.117.146`; no la confundas con servidores anteriores ni supongas que sigue siendo el destino sin verificarlo en la tarea actual.
+5. Para producción, confirma de nuevo el host/IP, dominio, rama y ruta desplegada. El destino de producción definido por el usuario es `2.25.93.122`; no lo sustituyas por `3.144.117.146` ni por otros servidores anteriores.
 
 ## Cambios y Git
 

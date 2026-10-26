@@ -117,6 +117,26 @@ function extractCodeFromText(text, allowUnlabeled = false, expectedLength = 0) {
     return "";
 }
 
+function extractNetflixApiCode(html, expectedLength) {
+    if (expectedLength !== 4) return "";
+
+    const $ = cheerio.load(String(html || ""));
+    const text = safeText($("body").text() || $.text());
+    const labelPattern = /c[oó]digo\s+netflix\s*\(\s*api\s*\)\s*[:：-]?/gi;
+    let label;
+
+    while ((label = labelPattern.exec(text))) {
+        const tail = text.slice(label.index + label[0].length);
+        const match = tail.match(/^\s*([0-9](?:[\s.-]*[0-9]){3,7})(?![\s.-]*[0-9])/);
+        if (!match?.[1]) continue;
+
+        const code = match[1].replace(/[^0-9]/g, "");
+        if (code.length === 4 && code !== "0000") return code;
+    }
+
+    return "";
+}
+
 function extractExplicitCode(text, expectedLength = 0) {
     const match = safeText(text).match(EXPLICIT_CODE_CONTEXT);
     if (!match?.[1]) return "";
@@ -128,6 +148,9 @@ function extractExplicitCode(text, expectedLength = 0) {
 }
 
 function extractJeffProviderCode(html, { expectedLength = 0 } = {}) {
+    const netflixApiCode = extractNetflixApiCode(html, expectedLength);
+    if (netflixApiCode) return netflixApiCode;
+
     const $ = cheerio.load(String(html || ""));
     const prioritized = [];
     $("[id], [class], [aria-label], [data-code], [data-pin]").each((_, element) => {
@@ -546,6 +569,7 @@ module.exports = {
     __test: {
         extractJeffTemporaryAction,
         extractJeffTemporaryCode,
+        extractNetflixApiCode,
         findJeffTemporaryMessageLinks,
         safeNetflixTemporaryUrl,
     },

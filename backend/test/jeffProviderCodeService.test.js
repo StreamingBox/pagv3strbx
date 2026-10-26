@@ -43,10 +43,10 @@ test("Netflix login extraction skips six-digit codes and keeps searching for fou
 test("prefers the explicit Netflix API login code while preserving the legacy code path", () => {
     const html = `
         <section id="verification-code">Código de Inicio: 8042</section>
-        <p>Código Netflix (API): <strong>1 5 7 6</strong></p>
+        <p>Código Netflix (API): <strong>4 8 2 6</strong></p>
     `;
 
-    assert.equal(extractJeffProviderCode(html, { expectedLength: 4 }), "1576");
+    assert.equal(extractJeffProviderCode(html, { expectedLength: 4 }), "4826");
     assert.equal(extractJeffProviderCode(`<section id="verification-code">Código de Inicio: 8042</section>`, { expectedLength: 4 }), "8042");
 });
 
@@ -323,7 +323,7 @@ test("logs in, keeps the session cookie, searches by email and returns the provi
             return {
                 status: 200,
                 headers: {},
-                data: `<section><h2>Código Netflix (API):</h2><strong>1 5 7 6</strong></section>`,
+                data: `<section><h2>Código Netflix (API):</h2><strong>4 8 2 6</strong></section>`,
             };
         }
         throw new Error(`Unexpected request: ${options.method} ${options.url}`);
@@ -348,7 +348,7 @@ test("logs in, keeps the session cookie, searches by email and returns the provi
         assert.deepEqual(result, {
             ok: true,
             type: "code",
-            code: "1576",
+            code: "4826",
             source: "jeff_provider",
         });
         assert.equal(calls[0].url, "https://proveedores-jeff.store/v1/app-login");

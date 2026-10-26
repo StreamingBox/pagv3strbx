@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ClipboardCheck, DatabaseZap, Radio, RefreshCcw } from "lucide-react";
+import { ClipboardCheck, DatabaseZap, Radio, RefreshCcw, UsersRound } from "lucide-react";
 import { getAdminSidebarCounts } from "../../api/adminSidebarCounts.js";
 import ThemeToggle from "../ThemeToggle.jsx";
 import StreamingBoxLogo from "../StreamingBoxLogo.jsx";
@@ -22,6 +22,7 @@ const NAV_GROUPS = [
             { path: "/admin/transactions", label: "Transacciones / Saldo", icon: "💲" },
             { path: "/admin/topups", label: "Recargas", icon: "💸" },
             { path: "/admin/recharge-promotion", label: "Bono por recargas", icon: "🎁" },
+            { path: "/admin/referrals", label: "Referidos", icon: <UsersRound size={18} aria-hidden /> },
             { path: "/admin/orders", label: "Historial de Compras", icon: "📜" },
             { path: "/admin/renewals", label: "Renovaciones", icon: "🔄" },
         ],

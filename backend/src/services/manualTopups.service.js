@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { processTopupReferral } = require("./referrals.service");
 
 const pool = require("../db");
 const {
@@ -305,6 +306,10 @@ async function updateManualTopupStatus({ id, status, adminUserId = null, adminNo
              WHERE id = ?`,
             [...updateParams, id]
         );
+
+        if (normalizedStatus === "approved") {
+            await processTopupReferral(conn, { ...requestRow, currency: normalizeCurrency(requestRow.currency) });
+        }
 
         await conn.commit();
 

@@ -1,7 +1,7 @@
 /* global __APK_RELEASE_ID__ */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Headphones } from "lucide-react";
+import { Headphones, UsersRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import ThemeToggle from "../ThemeToggle.jsx";
 import UserNotifications from "./UserNotifications.jsx";
@@ -24,6 +24,7 @@ const APK_ACK_STORAGE_KEY = "sb-apk-release-downloaded";
 const NAV_ITEMS = [
     { key: "home", label: "Inicio", icon: "🏠", path: "/dashboard" },
     { key: "wallet", label: "Recargas", icon: "💳", path: "/topups" },
+    { key: "referrals", label: "Referidos", icon: <UsersRound size={19} strokeWidth={2.3} aria-hidden />, path: "/referrals" },
     { key: "orders", label: "Historial de Compras", icon: "🧾", path: "/orders" },
     { key: "renewals", label: "Renovaciones", icon: "🔄", path: "/renewals" },
     { key: "analytics", label: "Mis Estadísticas", icon: "📊", path: "/analytics" },

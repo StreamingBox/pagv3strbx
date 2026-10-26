@@ -10,6 +10,11 @@ export default function RegisterForm({
     isMobile,
     name,
     setName,
+    referralCode = "",
+    setReferralCode,
+    referralCampaign,
+    referralConsent = false,
+    setReferralConsent,
     email,
     setEmail,
     password,
@@ -74,6 +79,15 @@ export default function RegisterForm({
                         </button>
                     </div>
                 </label>
+                {(referralCampaign?.active || referralCode) && <label style={S.label}>
+                    Código de referido (opcional)
+                    <input style={S.input} type="text" maxLength={12} autoComplete="off" value={referralCode} onChange={event => setReferralCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} />
+                    {referralCampaign && !referralCampaign.active && <small style={{ color: C.muted, display: "block", marginTop: 6, lineHeight: 1.4 }}>Campaña pausada. Este registro no generará un premio por referido.</small>}
+                </label>}
+                {referralCode && referralCampaign?.active && <label style={S.checkboxRow}>
+                    <input style={S.checkbox} type="checkbox" required checked={referralConsent} onChange={event => setReferralConsent(event.target.checked)} />
+                    <span style={S.checkboxText}>Autorizo a quien me invita a ver mi nombre, correo y avance de recargas para acompañarme hasta la meta. Puedo retirar esta autorización en Referidos.</span>
+                </label>}
                 <label style={S.checkboxRow}>
                     <input
                         style={S.checkbox}

@@ -47,6 +47,8 @@ const AdminAdvertising = lazy(() => import("./pages/AdminAdvertising.jsx"));
 const Advertising = lazy(() => import("./pages/Advertising.jsx"));
 const AdminTopups = lazy(() => import("./pages/AdminTopups.jsx"));
 const AdminRechargePromotion = lazy(() => import("./pages/AdminRechargePromotion.jsx"));
+const AdminReferrals = lazy(() => import("./pages/AdminReferrals.jsx"));
+const Referrals = lazy(() => import("./pages/Referrals.jsx"));
 const Codes = lazy(() => import("./pages/Codes.jsx"));
 const TvSetup = lazy(() => import("./pages/TvSetup.jsx"));
 const Orders = lazy(() => import("./pages/Orders.jsx"));
@@ -115,6 +117,9 @@ export default function App() {
                 />
 
                 {/* ================= Orders ================= */}
+                <Route path="/referrals" element={<ProtectedRoute roles={["admin", "user"]}><Referrals /></ProtectedRoute>} />
+                <Route path="/admin/referrals" element={<ProtectedRoute roles={["admin"]}><AdminReferrals /></ProtectedRoute>} />
+
                 <Route
                     path="/orders"
                     element={

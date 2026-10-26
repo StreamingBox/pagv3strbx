@@ -61,9 +61,11 @@ export default function TermsModal({ open, onClose }) {
                                 En la máxima medida permitida por la ley, Streaming Box no será responsable por daños indirectos, incidentales o lucro cesante derivados del uso o imposibilidad de uso de la plataforma.</p>
                             <p><strong>10. Privacidad y Datos Personales</strong><br />
                                 Tratamos tus datos para operación, soporte, seguridad y cumplimiento. Al usar la plataforma aceptas este tratamiento conforme a la normativa aplicable.</p>
-                            <p><strong>11. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
+                            <p><strong>11. Programa de Referidos</strong><br />
+                                La participación es voluntaria. El premio para quien invita depende de que un cliente nuevo alcance la meta de recargas aprobadas durante el plazo ofrecido al registrarse. Los bonos y ajustes administrativos no cuentan como recargas. Participar con un código requiere autorizar compartir nombre, correo y avance acumulado con quien invita; esta autorización puede retirarse desde Referidos, sin cambiar el premio prometido. Las condiciones quedan registradas para cada invitación. No se permiten autorreferidos ni registros fraudulentos.</p>
+                            <p><strong>12. Modificaciones, Ley Aplicable y Jurisdicción</strong><br />
                                 Podemos actualizar estos términos en cualquier momento. La versión vigente será la publicada en la plataforma. Cualquier controversia se regirá por la ley aplicable y la jurisdicción competente del domicilio del operador.</p>
-                            <p className="tos-legal">Última actualización: 13 de junio de 2026.<br />
+                            <p className="tos-legal">Última actualización: 26 de octubre de 2026.<br />
                                 (c) 2026 Streaming Box. Todos los derechos reservados. Plataforma desarrollada y operada de forma privada.</p>
                         </div>
                     </MotionDiv>

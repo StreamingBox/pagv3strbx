@@ -362,6 +362,13 @@ export default function Auth() {
     const [showTerms, setShowTerms] = useState(false);
     const [isMobile, setIsMobile] = useState(getIsMobile);
     const [name, setName] = useState("");
+    const invitationFromUrl = new URLSearchParams(location.search).get("ref")?.slice(0, 12).toUpperCase() || "";
+    const [referralDraft, setReferralDraft] = useState({ search: location.search, value: invitationFromUrl });
+    const referralCode = referralDraft.search === location.search ? referralDraft.value : invitationFromUrl;
+    const setReferralCode = value => setReferralDraft({ search: location.search, value });
+    const [consentedReferralCode, setConsentedReferralCode] = useState("");
+    const referralConsent = Boolean(referralCode) && consentedReferralCode === referralCode;
+    const [referralCampaign, setReferralCampaign] = useState(null);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -394,6 +401,16 @@ export default function Auth() {
     }, [location.pathname]);
 
     useEffect(() => {
+        if (!isRegister) return;
+        const controller = new AbortController();
+        fetch(`${API_BASE}/referrals/campaign`, { signal: controller.signal })
+            .then(response => response.ok ? response.json() : null)
+            .then(data => { if (!controller.signal.aborted) setReferralCampaign(data?.campaign || null); })
+            .catch(() => {});
+        return () => controller.abort();
+    }, [isRegister]);
+
+    useEffect(() => {
         if (!isNativeAndroidApp()) return;
         try {
             const savedRemember = localStorage.getItem(APP_REMEMBER_LOGIN_KEY);
@@ -412,7 +429,7 @@ export default function Auth() {
         setError("");
         const next = !isRegister;
         setIsRegister(next);
-        navigate(next ? "/register" : "/");
+        navigate((next ? "/register" : "/") + (referralCode ? "?ref=" + encodeURIComponent(referralCode) : ""));
     }
 
     function persistNativeAppCredentials(nextEmail, shouldRemember) {
@@ -464,7 +481,7 @@ export default function Auth() {
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, referralCode, referralConsent }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "Error al crear cuenta.");
@@ -526,6 +543,11 @@ export default function Auth() {
                 isMobile={isMobile}
                 name={name}
                 setName={setName}
+                referralCode={referralCode}
+                setReferralCode={setReferralCode}
+                referralCampaign={referralCampaign}
+                referralConsent={referralConsent}
+                setReferralConsent={checked => setConsentedReferralCode(checked ? referralCode : "")}
                 email={email}
                 setEmail={setEmail}
                 password={password}

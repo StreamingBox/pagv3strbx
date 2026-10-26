@@ -10,6 +10,7 @@ const { sendPasswordResetEmail } = require("../services/mailService");
 const { notifyUserRegistered } = require("../services/telegramBot");
 const { safelyRecordUserActivity } = require("../services/userActivity.service");
 const { isLiteRequest, getSalesChannel } = require("../utils/salesChannel");
+const { attachReferral } = require("../services/referrals.service");
 const router = express.Router();
 
 /**
@@ -147,10 +148,14 @@ router.post("/register", async (req, res) => {
 
         const passwordHash = await bcrypt.hash(password, 12);
 
-        const [result] = await pool.query(
-            "INSERT INTO users (name, email, password_hash, role, status, currency, account_type) VALUES (?, ?, ?, 'user', 'pending', 'COP', ?)",
-            [name.trim(), emailClean, passwordHash, accountType]
-        );
+        const result = await withTransaction(async conn => {
+            const [created] = await conn.query(
+                "INSERT INTO users (name, email, password_hash, role, status, currency, account_type) VALUES (?, ?, ?, 'user', 'pending', 'COP', ?)",
+                [name.trim(), emailClean, passwordHash, accountType]
+            );
+            await attachReferral(conn, { userId: created.insertId, code: req.body?.referralCode, contactConsent: req.body?.referralConsent });
+            return created;
+        });
 
         notifyUserRegistered(result.insertId).catch((tgErr) => {
             console.error("[TelegramBot] notifyUserRegistered:", tgErr?.message || tgErr);
@@ -161,6 +166,8 @@ router.post("/register", async (req, res) => {
             message: "Solicitud recibida. La cuenta quedó pendiente de aprobación.",
         });
     } catch (err) {
+        if (err.status === 400) return res.status(400).json({ message: err.message });
+        if (err.code === "ER_DUP_ENTRY") return res.status(201).json({ ok: true, message: "Solicitud recibida. Si los datos pueden registrarse, quedará pendiente de aprobación." });
         console.error("REGISTER ERROR:", err.message);
         return res.status(500).json({ message: "Error interno." });
     }

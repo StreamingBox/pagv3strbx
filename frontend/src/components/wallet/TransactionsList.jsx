@@ -7,6 +7,8 @@ const TYPE_META = {
     purchase: { label: "Compra", color: "#ef4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.25)", icon: "🛒" },
     topup: { label: "Recarga", color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.25)", icon: "💳" },
     topup_bonus: { label: "Bono de recarga", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", icon: "🎁" },
+    referral_bonus: { label: "Premio por referido", color: "#10b981", bg: "rgba(16,185,129,0.12)", border: "rgba(16,185,129,0.25)", icon: "+" },
+    referral_reversal: { label: "Reversión de premio", color: "#ef4444", bg: "rgba(239,68,68,0.12)", border: "rgba(239,68,68,0.25)", icon: "-" },
     profit: { label: "Ganancia Venta", color: "#0da6f2", bg: "rgba(13,166,242,0.12)", border: "rgba(13,166,242,0.25)", icon: "💰" },
     adjustment: { label: "Ajuste Admin", color: "#f59e0b", bg: "rgba(245,158,11,0.12)", border: "rgba(245,158,11,0.25)", icon: "⚙️" },
     profit_adj: { label: "Ajuste Ganancia", color: "#8b5cf6", bg: "rgba(139,92,246,0.12)", border: "rgba(139,92,246,0.25)", icon: "🔧" },
@@ -368,8 +370,8 @@ export default function TransactionsList({ fetchFn, userId, users, fetchDelivere
     }
 
     /* — KPIs — */
-    const bonusCredits = transactions.filter(t => t.type === "topup_bonus").reduce((s, t) => s + Number(t.amount), 0);
-    const ingresos = transactions.filter(t => Number(t.amount) > 0 && t.type !== "topup_bonus").reduce((s, t) => s + Number(t.amount), 0);
+    const bonusCredits = transactions.filter(t => ["topup_bonus", "referral_bonus", "referral_reversal"].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
+    const ingresos = transactions.filter(t => Number(t.amount) > 0 && !["topup_bonus", "referral_bonus"].includes(t.type)).reduce((s, t) => s + Number(t.amount), 0);
     const egresos = Math.abs(transactions.filter(t => Number(t.amount) < 0).reduce((s, t) => s + Number(t.amount), 0));
 
     const kpis = [
@@ -521,6 +523,8 @@ export default function TransactionsList({ fetchFn, userId, users, fetchDelivere
                                 <option value="purchase">🛒 Compras</option>
                                 <option value="topup">💳 Recargas</option>
                                 <option value="topup_bonus">🎁 Bonos de recarga</option>
+                                <option value="referral_bonus">Premios por referidos</option>
+                                <option value="referral_reversal">Reversiones de premios</option>
                                 <option value="profit">💰 Ganancias</option>
                                 <option value="adjustment">⚙️ Ajustes</option>
                             </select>

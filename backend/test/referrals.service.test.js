@@ -145,3 +145,60 @@ test("month caps follow Bogota midnight, including year rollover", () => {
     assert.equal(month.start.toISOString(), "2027-01-01T05:00:00.000Z");
     assert.equal(month.end.toISOString(), "2027-02-01T05:00:00.000Z");
 });
+
+test("email invitation tokens are hashed, bound to one email, and consumed with registration", async () => {
+    const token = "a".repeat(64);
+    const invite = {
+        id: 71, referrer_user_id: 1, recipient_email: "new@example.test", recipient_email_key: "new@example.test",
+        token_hash: service.hashEmailInviteToken(token), referral_code: "SB0123456789", settings_version: 4,
+        reward_amount: 10000, minimum_topup: 50000, attribution_days: 30,
+        expires_at: new Date("2026-11-08T14:00:00Z"), used_at: null, revoked_at: null,
+    };
+    const inserted = [];
+    const db = { async query(sql, params = []) {
+        if (sql.startsWith("SELECT * FROM referral_email_invites")) {
+            return [[params[0] === invite.token_hash && !invite.used_at && invite.expires_at > now ? { ...invite } : undefined].filter(Boolean)];
+        }
+        if (sql.startsWith("SELECT UTC_TIMESTAMP")) return [[{ now_utc: now }]];
+        if (sql.startsWith("SELECT id, status, role, currency FROM users")) return [[{ id: 1, status: "active", role: "user", currency: "COP" }]];
+        if (sql.startsWith("INSERT INTO referrals")) { inserted.push(params); return [{ insertId: 82 }]; }
+        if (sql.startsWith("UPDATE referral_email_invites")) {
+            invite.used_at = params[0]; invite.registered_user_id = params[1];
+            return [{ affectedRows: 1 }];
+        }
+        if (sql.startsWith("INSERT INTO referral_audit_log")) return [{ insertId: 1 }];
+        throw new Error("Unexpected invitation SQL: " + sql);
+    } };
+
+    await assert.rejects(service.attachReferral(db, { userId: 2, inviteToken: token, email: "other@example.test", contactConsent: true }), /correo al que se envió/);
+    assert.equal(invite.used_at, null);
+    assert.equal(inserted.length, 0);
+
+    assert.equal(await service.attachReferral(db, { userId: 2, inviteToken: token, email: " NEW@example.test ", contactConsent: true }), true);
+    assert.equal(inserted.length, 1);
+    assert.deepEqual(inserted[0].slice(0, 6), [1, 2, "SB0123456789", 4, 10000, 50000]);
+    assert.equal(invite.registered_user_id, 2);
+    await assert.rejects(service.attachReferral(db, { userId: 3, inviteToken: token, email: "new@example.test", contactConsent: true }), /ya se usó/);
+    assert.equal(inserted.length, 1);
+});
+
+test("invite preview returns only a live, unregistered recipient and never consumes the token", async () => {
+    const token = "b".repeat(64);
+    const hash = service.hashEmailInviteToken(token);
+    let recipientExists = false;
+    const db = { async query(sql, params = []) {
+        if (sql.startsWith("SELECT i.recipient_email")) {
+            assert.equal(params[0], hash);
+            return [[{ recipient_email: "new@example.test", recipient_email_key: "new@example.test", reward_amount: 10000, minimum_topup: 50000, attribution_days: 30, expires_at: now, referrer_name: "Synthetic Inviter" }]];
+        }
+        if (sql.startsWith("SELECT id FROM users WHERE email")) return [recipientExists ? [{ id: 2 }] : []];
+        throw new Error("Unexpected preview SQL: " + sql);
+    } };
+    const invite = await service.getEmailInvite(token, db);
+    assert.equal(invite.email, "new@example.test");
+    assert.equal(invite.inviterName, "Synthetic Inviter");
+    assert.equal(invite.campaign.minimumTopup, 50000);
+    recipientExists = true;
+    assert.equal(await service.getEmailInvite(token, db), null);
+    assert.throws(() => service.hashEmailInviteToken("not-a-token"), /no está disponible/);
+});

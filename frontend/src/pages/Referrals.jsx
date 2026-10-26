@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Copy, Gift, RefreshCw, Share2, UsersRound } from "lucide-react";
+import { Copy, Gift, Mail, RefreshCw, Share2, UsersRound } from "lucide-react";
 import Sidebar from "../components/dashboard/Sidebar.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
@@ -22,6 +22,8 @@ export default function Referrals() {
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
     const [savingConsent, setSavingConsent] = useState(false);
+    const [inviteEmail, setInviteEmail] = useState("");
+    const [sendingInvite, setSendingInvite] = useState(false);
     const linkRef = useRef(null);
     useEffect(() => {
         const controller = new AbortController();
@@ -58,6 +60,19 @@ export default function Referrals() {
         } finally { setSavingConsent(false); }
     }
 
+    async function sendEmailInvite(event) {
+        event.preventDefault();
+        setSendingInvite(true); setError(""); setMessage("");
+        try {
+            const response = await apiFetch("/referrals/invite", { method: "POST", body: JSON.stringify({ email: inviteEmail.trim() }) });
+            if (!response.ok) throw new Error(response.data?.message || "No se pudo enviar la invitación.");
+            setMessage("Invitación enviada a " + (response.data?.email || inviteEmail.trim()) + ". El enlace es único y vence en 7 días.");
+            setInviteEmail("");
+        } catch (failure) {
+            setError(failure.message || "No se pudo enviar la invitación.");
+        } finally { setSendingInvite(false); }
+    }
+
     const campaign = data?.campaign;
     const canInvite = Boolean(data?.eligible && campaign?.active);
     const shareText = canInvite ? "Te invito a Streaming Box: " + data.shareUrl : "";
@@ -70,6 +85,11 @@ export default function Referrals() {
                 <section className="referrals-invitation" aria-label="Tu invitación">
                     <div className="referrals-offer"><Gift size={28} aria-hidden /><div><h2>{canInvite ? money(campaign.rewardAmount) + " por cada referido válido" : !data.eligible ? "Disponible para clientes activos en COP" : "Campaña pausada"}</h2><p>{canInvite ? "Clientes nuevos. Meta acumulada: " + money(campaign.minimumTopup) + " en recargas aprobadas durante los " + campaign.attributionDays + " días posteriores al registro." : "Los premios ya ofrecidos conservan las condiciones registradas."}</p></div></div>
                     {canInvite && <div className="referrals-share"><label htmlFor="referral-link">Tu enlace personal <code>{data.code}</code></label><div><input id="referral-link" ref={linkRef} readOnly value={data.shareUrl} /><button type="button" className="referrals-icon-button" onClick={copyLink} title="Copiar enlace" aria-label="Copiar enlace"><Copy size={18} /></button><a className="referrals-button" href={"https://wa.me/?text=" + encodeURIComponent(shareText)} target="_blank" rel="noopener noreferrer"><Share2 size={17} />Compartir</a></div></div>}
+                    {canInvite && <form className="referrals-email-invite" onSubmit={sendEmailInvite}>
+                        <label htmlFor="referral-invite-email">Invitar por correo<input id="referral-invite-email" type="email" autoComplete="email" maxLength={254} placeholder="persona@correo.com" value={inviteEmail} onChange={event => setInviteEmail(event.target.value)} required /></label>
+                        <button type="submit" className="referrals-button is-primary" disabled={sendingInvite || loading}><Mail size={17} />{sendingInvite ? "Enviando…" : "Enviar invitación"}</button>
+                        <p>Le enviaremos un enlace individual para ese correo. Al abrirlo, el correo aparecerá precargado; el enlace vence en 7 días y queda inutilizado al registrarse.</p>
+                    </form>}
                     {message && <p className="referrals-success" role="status">{message}</p>}
                     <p className="referrals-terms">Premio único para quien invita, acreditado como saldo de compras. Se suman las recargas aprobadas del invitado dentro del plazo; los bonos, recargas rechazadas y ajustes administrativos no cuentan. No aplica a autorreferidos ni a cuentas antiguas. El bono habitual de recargas del invitado no cambia.</p>
                 </section>

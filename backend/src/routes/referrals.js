@@ -5,10 +5,17 @@ const { withTransaction } = require("../dbHelpers");
 const requireAuth = require("../middleware/requireAuth");
 const requireRole = require("../middleware/requireRole");
 const referrals = require("../services/referrals.service");
+const { sendReferralInvitationEmail } = require("../services/mailService");
 
 const router = express.Router();
 const admin = [requireAuth, requireRole("admin")];
 const publicLimiter = rateLimit({ windowMs: 60000, limit: 60, standardHeaders: true, legacyHeaders: false });
+const inviteIpLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false });
+const inviteSendLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, limit: 8, standardHeaders: true, legacyHeaders: false,
+    keyGenerator: req => "referral-user:" + String(req.user.id),
+    message: { message: "Alcanzaste el límite de invitaciones por ahora. Intenta más tarde." },
+});
 
 function handler(callback) {
     return async (req, res) => {
@@ -29,6 +36,46 @@ function recordId(req) {
 
 router.get("/referrals/campaign", publicLimiter, handler(async (_req, res) => {
     res.json({ ok: true, campaign: referrals.campaignStatus(await referrals.getSettings()) });
+}));
+
+router.get("/referrals/invite/validate", publicLimiter, handler(async (req, res) => {
+    const invite = await referrals.getEmailInvite(req.query?.token);
+    if (!invite) throw referrals.domainError("Esta invitación ya se usó, venció o no está disponible.", 404);
+    res.json({ ok: true, invite });
+}));
+
+router.post("/referrals/invite", requireAuth, inviteIpLimiter, inviteSendLimiter, handler(async (req, res) => {
+    const email = referrals.normalizeInvitationEmail(req.body?.email);
+    const invite = await withTransaction(db => referrals.createEmailInvite(db, { referrerUserId: req.user.id, email }));
+    let base;
+    try {
+        base = new URL(process.env.PUBLIC_BASE_URL || process.env.FRONTEND_URL || "https://strbx.com.co");
+        if (!/[\s]/.test(base.origin) && ["http:", "https:"].includes(base.protocol)) {
+            base = base.origin;
+        } else throw new Error("invalid origin");
+    } catch {
+        await withTransaction(db => referrals.revokeEmailInvite(db, invite.id, invite.tokenHash));
+        throw referrals.domainError("No se pudo preparar el enlace de invitación.", 503);
+    }
+    const inviteUrl = base + "/register#invite=" + invite.token;
+    try {
+        await sendReferralInvitationEmail({
+            to: invite.email, inviterName: invite.inviterName, inviteUrl,
+            campaign: invite.campaign, expiresAt: invite.expiresAt,
+        });
+    } catch {
+        await withTransaction(db => referrals.revokeEmailInvite(db, invite.id, invite.tokenHash));
+        throw referrals.domainError("No se pudo enviar el correo. Verifica el SMTP e inténtalo de nuevo.", 503);
+    }
+    try {
+        await referrals.markEmailInviteSent(pool, invite.id, invite.tokenHash);
+    } catch (error) {
+        console.error("[referrals] invite_sent_marker_failed", { code: error?.code || "db_error" });
+    }
+    res.status(202).json({
+        ok: true, email: invite.email, expiresAt: invite.expiresAt,
+        message: "Enviamos la invitación. El enlace es único y solo sirve para ese correo.",
+    });
 }));
 
 router.get("/referrals/me", requireAuth, handler(async (req, res) => {

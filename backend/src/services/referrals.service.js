@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const pool = require("../db");
 
 const SETTINGS_KEY = "referral_program_json";
+const EMAIL_INVITE_TTL_DAYS = 7;
 const DEFAULT_SETTINGS = Object.freeze({
     enabled: false, rewardAmount: 10000, minimumTopup: 50000, attributionDays: 30,
     monthlyRewardLimit: 0, monthlyBudget: 0, startsAt: null, endsAt: null, version: 1,
@@ -81,6 +82,155 @@ function isEligibleUser(user) {
     return user?.status === "active" && user?.role === "user" && user?.currency === "COP";
 }
 
+function normalizeInvitationEmail(value) {
+    const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw domainError("Escribe un correo válido.");
+    return email;
+}
+
+function hashEmailInviteToken(value) {
+    const token = String(value || "").trim().toLowerCase();
+    if (!/^[a-f0-9]{64}$/.test(token)) throw domainError("La invitación no está disponible.", 404);
+    return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function createEmailInvite(db, { referrerUserId, email }) {
+    const recipientEmail = normalizeInvitationEmail(email);
+    const [[clock]] = await db.query("SELECT UTC_TIMESTAMP() AS now_utc");
+    const now = new Date(clock.now_utc);
+    const [[referrer]] = await db.query("SELECT id, name, email, status, role, currency FROM users WHERE id = ? LIMIT 1 FOR UPDATE", [referrerUserId]);
+    if (!isEligibleUser(referrer)) throw domainError("Solo los clientes activos en COP pueden enviar invitaciones.", 403);
+    if (normalizeInvitationEmail(referrer.email) === recipientEmail) throw domainError("No puedes invitar tu propio correo.");
+
+    const settings = await getSettings(db);
+    if (!campaignStatus(settings, now).active) throw domainError("La campaña de referidos está pausada.", 409);
+    const [[existingUser]] = await db.query("SELECT id FROM users WHERE email = ? LIMIT 1 FOR UPDATE", [recipientEmail]);
+    if (existingUser) throw domainError("Ese correo ya tiene una cuenta y no puede participar como nuevo referido.", 409);
+
+    const code = await ensureReferralCode(referrerUserId, db);
+    const [[existingInvite]] = await db.query(
+        "SELECT id, referrer_user_id, used_at, revoked_at, expires_at FROM referral_email_invites WHERE recipient_email_key = ? LIMIT 1 FOR UPDATE",
+        [recipientEmail]
+    );
+    if (existingInvite?.used_at) throw domainError("Ese correo ya usó una invitación.", 409);
+    if (existingInvite && !existingInvite.revoked_at && new Date(existingInvite.expires_at) > now
+        && Number(existingInvite.referrer_user_id) !== Number(referrerUserId)) {
+        throw domainError("Ese correo ya tiene una invitación vigente.", 409);
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashEmailInviteToken(token);
+    const expiresAt = new Date(now.getTime() + EMAIL_INVITE_TTL_DAYS * 86400000);
+    const values = [referrerUserId, recipientEmail, recipientEmail, tokenHash, code, settings.version,
+        settings.rewardAmount, settings.minimumTopup, settings.attributionDays, expiresAt];
+    let inviteId;
+    if (existingInvite) {
+        inviteId = existingInvite.id;
+        await db.query(`UPDATE referral_email_invites
+            SET referrer_user_id = ?, recipient_email = ?, recipient_email_key = ?, token_hash = ?, referral_code = ?,
+                settings_version = ?, reward_amount = ?, minimum_topup = ?, attribution_days = ?, expires_at = ?,
+                sent_at = NULL, revoked_at = NULL, registered_user_id = NULL
+            WHERE id = ?`, [...values, inviteId]);
+    } else {
+        const [created] = await db.query(`INSERT INTO referral_email_invites
+            (referrer_user_id, recipient_email, recipient_email_key, token_hash, referral_code,
+             settings_version, reward_amount, minimum_topup, attribution_days, expires_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, values);
+        inviteId = created.insertId;
+    }
+    await audit(db, null, referrerUserId, "email_invite_created", {
+        inviteId, rewardAmount: settings.rewardAmount, minimumTopup: settings.minimumTopup,
+        attributionDays: settings.attributionDays, expiresAt,
+    });
+    return {
+        id: inviteId, token, tokenHash, email: recipientEmail, inviterName: String(referrer.name || "").trim(),
+        expiresAt, campaign: {
+            rewardAmount: Number(settings.rewardAmount), minimumTopup: Number(settings.minimumTopup),
+            attributionDays: Number(settings.attributionDays), currency: "COP",
+        },
+    };
+}
+
+async function getEmailInvite(token, db = pool) {
+    const tokenHash = hashEmailInviteToken(token);
+    const [rows] = await db.query(`SELECT i.recipient_email, i.recipient_email_key, i.reward_amount, i.minimum_topup,
+            i.attribution_days, i.expires_at, u.name AS referrer_name
+        FROM referral_email_invites i
+        JOIN users u ON u.id = i.referrer_user_id
+        WHERE i.token_hash = ? AND i.used_at IS NULL AND i.revoked_at IS NULL
+            AND i.expires_at > UTC_TIMESTAMP() AND u.status = 'active' AND u.role = 'user' AND u.currency = 'COP'
+        LIMIT 1`, [tokenHash]);
+    const invite = rows[0];
+    if (!invite) return null;
+    const [[existingUser]] = await db.query("SELECT id FROM users WHERE email = ? LIMIT 1", [invite.recipient_email_key]);
+    if (existingUser) return null;
+    return {
+        email: invite.recipient_email,
+        inviterName: String(invite.referrer_name || "").trim(),
+        expiresAt: invite.expires_at,
+        campaign: {
+            active: true, rewardAmount: Number(invite.reward_amount), minimumTopup: Number(invite.minimum_topup),
+            attributionDays: Number(invite.attribution_days), currency: "COP",
+        },
+    };
+}
+
+async function markEmailInviteSent(db, inviteId, tokenHash) {
+    const [result] = await db.query(`UPDATE referral_email_invites SET sent_at = UTC_TIMESTAMP()
+        WHERE id = ? AND token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > UTC_TIMESTAMP()`,
+    [inviteId, tokenHash]);
+    return Number(result.affectedRows) === 1;
+}
+
+async function revokeEmailInvite(db, inviteId, tokenHash) {
+    await db.query(`UPDATE referral_email_invites SET revoked_at = UTC_TIMESTAMP()
+        WHERE id = ? AND token_hash = ? AND used_at IS NULL AND revoked_at IS NULL`, [inviteId, tokenHash]);
+}
+
+async function consumeEmailInviteForExistingUser(db, { token, email, userId }) {
+    const recipientEmail = normalizeInvitationEmail(email);
+    const tokenHash = hashEmailInviteToken(token);
+    const [rows] = await db.query(`SELECT id FROM referral_email_invites
+        WHERE token_hash = ? AND recipient_email_key = ? AND used_at IS NULL AND revoked_at IS NULL
+            AND expires_at > UTC_TIMESTAMP() LIMIT 1 FOR UPDATE`, [tokenHash, recipientEmail]);
+    if (!rows.length) return false;
+    const [result] = await db.query(`UPDATE referral_email_invites SET used_at = UTC_TIMESTAMP(), registered_user_id = ?
+        WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL`, [userId, rows[0].id]);
+    return Number(result.affectedRows) === 1;
+}
+
+async function attachEmailInvite(db, { userId, token, email, contactConsent }) {
+    if (contactConsent !== true) throw domainError("Para participar con un referido, autoriza compartir tu nombre, correo y avance con quien te invita.");
+    const recipientEmail = normalizeInvitationEmail(email);
+    const tokenHash = hashEmailInviteToken(token);
+    const [rows] = await db.query(`SELECT * FROM referral_email_invites
+        WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > UTC_TIMESTAMP()
+        LIMIT 1 FOR UPDATE`, [tokenHash]);
+    const invite = rows[0];
+    if (!invite) throw domainError("La invitación ya se usó, venció o no está disponible.", 409);
+    if (String(invite.recipient_email_key).toLowerCase() !== recipientEmail) throw domainError("Regístrate con el correo al que se envió esta invitación.");
+    const [[clock]] = await db.query("SELECT UTC_TIMESTAMP() AS now_utc");
+    const now = new Date(clock.now_utc);
+    const [[referrer]] = await db.query("SELECT id, status, role, currency FROM users WHERE id = ? LIMIT 1 FOR UPDATE", [invite.referrer_user_id]);
+    if (!isEligibleUser(referrer) || Number(referrer.id) === Number(userId)) throw domainError("La invitación no está disponible.", 409);
+    const expiresAt = new Date(now.getTime() + Number(invite.attribution_days) * 86400000);
+    const [created] = await db.query(`INSERT INTO referrals
+        (referrer_user_id, referred_user_id, referral_code, settings_version, reward_amount, minimum_topup,
+         currency, created_at, expires_at, contact_consent_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'COP', ?, ?, ?)`,
+    [invite.referrer_user_id, userId, invite.referral_code, invite.settings_version, invite.reward_amount,
+        invite.minimum_topup, now, expiresAt, now]);
+    const [consumed] = await db.query(`UPDATE referral_email_invites
+        SET used_at = ?, registered_user_id = ?
+        WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?`,
+    [now, userId, invite.id, now]);
+    if (Number(consumed.affectedRows) !== 1) throw domainError("La invitación ya se usó o venció. Solicita un enlace nuevo.", 409);
+    await audit(db, created.insertId, userId, "registered", {
+        settingsVersion: invite.settings_version, contactConsent: true, viaEmailInvite: true,
+    });
+    return true;
+}
+
 async function ensureReferralCode(userId, db = pool) {
     for (let attempt = 0; attempt < 4; attempt += 1) {
         const [rows] = await db.query("SELECT code FROM referral_codes WHERE user_id = ? LIMIT 1", [userId]);
@@ -94,7 +244,11 @@ async function ensureReferralCode(userId, db = pool) {
 }
 
 // Only called for a newly inserted registration, within the same transaction.
-async function attachReferral(db, { userId, code, contactConsent = false }) {
+async function attachReferral(db, { userId, code, inviteToken, email, contactConsent = false }) {
+    if (inviteToken) {
+        if (String(code || "").trim()) throw domainError("Usa una sola invitación por registro.");
+        return attachEmailInvite(db, { userId, token: inviteToken, email, contactConsent });
+    }
     const normalizedCode = String(code || "").trim().toUpperCase();
     if (!normalizedCode) return false;
     const settings = await getSettings(db);
@@ -279,4 +433,10 @@ async function listReferrals(input = {}, { userId = null, exportAll = false, db 
     return { items: rows.map(row => mapReferral(row, admin)), total, page, totalPages: Math.max(1, Math.ceil(total / limit)), summary: { total, credited: Number(summary.credited), review: Number(summary.review), pending: Number(summary.pending), awarded: Number(summary.awarded) } };
 }
 
-module.exports = { DEFAULT_SETTINGS, SETTINGS_KEY, STATES, domainError, normalizeSettings, validateSettings, campaignStatus, getSettings, saveSettings, audit, isEligibleUser, ensureReferralCode, attachReferral, monthBounds, processTopupReferral, reverseReferral, buildFilters, mapReferral, listReferrals };
+module.exports = {
+    DEFAULT_SETTINGS, SETTINGS_KEY, STATES, EMAIL_INVITE_TTL_DAYS, domainError, normalizeSettings,
+    validateSettings, campaignStatus, getSettings, saveSettings, audit, isEligibleUser, ensureReferralCode,
+    normalizeInvitationEmail, hashEmailInviteToken, createEmailInvite, getEmailInvite, markEmailInviteSent,
+    revokeEmailInvite, consumeEmailInviteForExistingUser, attachReferral, monthBounds, processTopupReferral,
+    reverseReferral, buildFilters, mapReferral, listReferrals,
+};

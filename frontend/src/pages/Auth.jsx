@@ -363,12 +363,18 @@ export default function Auth() {
     const [isMobile, setIsMobile] = useState(getIsMobile);
     const [name, setName] = useState("");
     const invitationFromUrl = new URLSearchParams(location.search).get("ref")?.slice(0, 12).toUpperCase() || "";
+    const inviteToken = new URLSearchParams(String(location.hash || "").replace(/^#/, "")).get("invite")?.slice(0, 64).toLowerCase() || "";
     const [referralDraft, setReferralDraft] = useState({ search: location.search, value: invitationFromUrl });
     const referralCode = referralDraft.search === location.search ? referralDraft.value : invitationFromUrl;
     const setReferralCode = value => setReferralDraft({ search: location.search, value });
-    const [consentedReferralCode, setConsentedReferralCode] = useState("");
-    const referralConsent = Boolean(referralCode) && consentedReferralCode === referralCode;
+    const [consentedReferral, setConsentedReferral] = useState("");
+    const referralConsentKey = inviteToken ? "invite:" + inviteToken : referralCode;
+    const referralConsent = Boolean(referralConsentKey) && consentedReferral === referralConsentKey;
     const [referralCampaign, setReferralCampaign] = useState(null);
+    const [referralInviteState, setReferralInviteState] = useState(null);
+    const referralInvite = inviteToken
+        ? referralInviteState?.token === inviteToken ? referralInviteState : { status: "loading" }
+        : null;
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -411,6 +417,26 @@ export default function Auth() {
     }, [isRegister]);
 
     useEffect(() => {
+        if (!isRegister || !inviteToken) return undefined;
+        const controller = new AbortController();
+        fetch(`${API_BASE}/referrals/invite/validate?token=${encodeURIComponent(inviteToken)}`, { signal: controller.signal, cache: "no-store" })
+            .then(async response => {
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data?.message || "Esta invitación ya no está disponible.");
+                return data.invite;
+            })
+            .then(invite => {
+                if (controller.signal.aborted) return;
+                setEmail(invite.email);
+                setReferralInviteState({ ...invite, token: inviteToken, status: "valid" });
+            })
+            .catch(failure => {
+                if (!controller.signal.aborted) setReferralInviteState({ token: inviteToken, status: "invalid", message: failure.message });
+            });
+        return () => controller.abort();
+    }, [isRegister, inviteToken]);
+
+    useEffect(() => {
         if (!isNativeAndroidApp()) return;
         try {
             const savedRemember = localStorage.getItem(APP_REMEMBER_LOGIN_KEY);
@@ -429,7 +455,8 @@ export default function Auth() {
         setError("");
         const next = !isRegister;
         setIsRegister(next);
-        navigate((next ? "/register" : "/") + (referralCode ? "?ref=" + encodeURIComponent(referralCode) : ""));
+        const suffix = inviteToken ? "#invite=" + encodeURIComponent(inviteToken) : referralCode ? "?ref=" + encodeURIComponent(referralCode) : "";
+        navigate((next ? "/register" : "/") + suffix);
     }
 
     function persistNativeAppCredentials(nextEmail, shouldRemember) {
@@ -476,12 +503,13 @@ export default function Auth() {
         if (password !== confirmPassword) return setError("Las contraseñas no coinciden.");
         if (password.length < 8) return setError("La contraseña debe tener mínimo 8 caracteres.");
         if (!acceptedTerms) return setError("Debes aceptar los Términos y Condiciones.");
+        if (inviteToken && referralInvite?.status !== "valid") return setError("La invitación no está disponible. Solicita un enlace nuevo.");
         setLoading(true);
         try {
             const res = await fetch(`${API_BASE}/auth/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, referralCode, referralConsent }),
+                body: JSON.stringify({ name: name.trim(), email: email.trim().toLowerCase(), password, referralCode: inviteToken ? "" : referralCode, referralInviteToken: inviteToken || null, referralConsent }),
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(data?.message || "Error al crear cuenta.");
@@ -546,8 +574,9 @@ export default function Auth() {
                 referralCode={referralCode}
                 setReferralCode={setReferralCode}
                 referralCampaign={referralCampaign}
+                referralInvite={referralInvite}
                 referralConsent={referralConsent}
-                setReferralConsent={checked => setConsentedReferralCode(checked ? referralCode : "")}
+                setReferralConsent={checked => setConsentedReferral(checked ? referralConsentKey : "")}
                 email={email}
                 setEmail={setEmail}
                 password={password}

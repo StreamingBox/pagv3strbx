@@ -10,7 +10,7 @@ const { sendPasswordResetEmail } = require("../services/mailService");
 const { notifyUserRegistered } = require("../services/telegramBot");
 const { safelyRecordUserActivity } = require("../services/userActivity.service");
 const { isLiteRequest, getSalesChannel } = require("../utils/salesChannel");
-const { attachReferral } = require("../services/referrals.service");
+const { attachReferral, consumeEmailInviteForExistingUser } = require("../services/referrals.service");
 const router = express.Router();
 
 /**
@@ -140,6 +140,11 @@ router.post("/register", async (req, res) => {
             [emailClean]
         );
         if (existing.length) {
+            if (req.body?.referralInviteToken) {
+                await withTransaction(conn => consumeEmailInviteForExistingUser(conn, {
+                    token: req.body.referralInviteToken, email: emailClean, userId: existing[0].id,
+                }));
+            }
             return res.status(201).json({
                 ok: true,
                 message: "Solicitud recibida. Si los datos pueden registrarse, quedará pendiente de aprobación.",
@@ -153,7 +158,11 @@ router.post("/register", async (req, res) => {
                 "INSERT INTO users (name, email, password_hash, role, status, currency, account_type) VALUES (?, ?, ?, 'user', 'pending', 'COP', ?)",
                 [name.trim(), emailClean, passwordHash, accountType]
             );
-            await attachReferral(conn, { userId: created.insertId, code: req.body?.referralCode, contactConsent: req.body?.referralConsent });
+            await attachReferral(conn, {
+                userId: created.insertId, code: req.body?.referralCode,
+                inviteToken: req.body?.referralInviteToken, email: emailClean,
+                contactConsent: req.body?.referralConsent,
+            });
             return created;
         });
 
@@ -166,7 +175,7 @@ router.post("/register", async (req, res) => {
             message: "Solicitud recibida. La cuenta quedó pendiente de aprobación.",
         });
     } catch (err) {
-        if (err.status === 400) return res.status(400).json({ message: err.message });
+        if (Number(err.status) >= 400 && Number(err.status) < 500) return res.status(err.status).json({ message: err.message });
         if (err.code === "ER_DUP_ENTRY") return res.status(201).json({ ok: true, message: "Solicitud recibida. Si los datos pueden registrarse, quedará pendiente de aprobación." });
         console.error("REGISTER ERROR:", err.message);
         return res.status(500).json({ message: "Error interno." });

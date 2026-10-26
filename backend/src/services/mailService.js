@@ -289,6 +289,73 @@ async function sendPasswordResetEmail({ to, name, resetUrl, expiresMinutes }) {
     }
 }
 
+async function sendReferralInvitationEmail({ to, inviterName, inviteUrl, campaign, expiresAt }) {
+    const safeTo = String(to || "").trim();
+    if (!safeTo || !inviteUrl || !campaign) throw new Error("Datos de invitación no válidos.");
+    const config = getMailConfig();
+    if (!config) throw new Error("El correo de invitaciones no está configurado.");
+    const transporter = await getTransporter();
+    if (!transporter) throw new Error("El correo de invitaciones no está configurado.");
+
+    const appName = process.env.APP_NAME || "Streaming Box";
+    const safeInviter = String(inviterName || "").replace(/[\r\n]+/g, " ").trim().slice(0, 80) || "Un usuario de Streaming Box";
+    const reward = formatMoney(campaign.rewardAmount, "COP") + " COP";
+    const target = formatMoney(campaign.minimumTopup, "COP") + " COP";
+    const days = Number(campaign.attributionDays);
+    const expiryText = formatDateTime(expiresAt) || "7 días desde el envío";
+    const subject = `${safeInviter} te invita a Streaming Box`;
+    const text = [
+        `Hola, ${safeInviter} quiere invitarte a unirte a ${appName}.`,
+        "",
+        "Puedes crear tu cuenta con este enlace personal:",
+        inviteUrl,
+        "",
+        `El correo destinatario ya aparecerá escrito en el registro. La persona que te invitó recibirá ${reward} en saldo cuando acumules ${target} en recargas aprobadas dentro de los ${days} días posteriores a tu registro.`,
+        "Los bonos promocionales y ajustes administrativos no cuentan para la meta. Este premio es para quien invita; no es un descuento en tu cuenta.",
+        `El enlace solo se puede usar una vez. Vence: ${expiryText}`,
+        "Si no esperabas esta invitación, puedes ignorar este correo.",
+    ].join("\n");
+    const html = `
+        <div style="margin:0;padding:28px;background:#edf2ff;font-family:Arial,Helvetica,sans-serif;color:#172033">
+            <div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #dce5f5;border-radius:12px;overflow:hidden">
+                <div style="padding:24px 28px;background:#111b35;color:#ffffff;border-top:4px solid #16c6df">
+                    <div style="font-size:17px;font-weight:700">${escapeHtml(appName)}</div>
+                    <div style="margin-top:5px;font-size:12px;color:#b9c8e4">INVITACIÓN PERSONAL</div>
+                </div>
+                <div style="padding:30px 28px">
+                    <p style="margin:0 0 14px;font-size:16px">Hola,</p>
+                    <h1 style="margin:0 0 14px;font-size:25px;line-height:1.2;color:#17233e">${escapeHtml(safeInviter)} te invita a registrarte</h1>
+                    <p style="margin:0 0 22px;color:#52617d;line-height:1.6">Crea tu cuenta con este enlace personal. El correo al que enviamos esta invitación aparecerá precargado en el formulario.</p>
+                    <div style="padding:18px;border:1px solid #dce5f5;border-radius:8px;background:#f7f9fd">
+                        <div style="font-size:12px;font-weight:700;color:#52617d;text-transform:uppercase">Premio para quien te invita</div>
+                        <div style="margin:8px 0;font-size:25px;font-weight:800;color:#087d92">${escapeHtml(reward)}</div>
+                        <div style="color:#52617d;line-height:1.55">Cuando acumules ${escapeHtml(target)} en recargas aprobadas durante los ${escapeHtml(days)} días posteriores a tu registro.</div>
+                    </div>
+                    <p style="margin:24px 0;text-align:center"><a href="${escapeHtml(inviteUrl)}" style="display:inline-block;padding:13px 22px;border-radius:6px;background:#087d92;color:#ffffff;text-decoration:none;font-weight:700">Crear mi cuenta</a></p>
+                    <p style="font-size:12px;line-height:1.55;color:#64748b">El enlace es único para tu correo, solo se puede usar una vez y vence el ${escapeHtml(expiryText)} Los bonos promocionales y ajustes administrativos no cuentan para la meta. El premio es para quien invita; no es un descuento en tu cuenta.</p>
+                    <p style="font-size:12px;line-height:1.55;color:#64748b">Si no esperabas esta invitación, puedes ignorar este mensaje.</p>
+                    <p style="font-size:11px;line-height:1.5;color:#8490a5;word-break:break-all">${escapeHtml(inviteUrl)}</p>
+                </div>
+            </div>
+        </div>`;
+
+    try {
+        await transporter.sendMail({
+            from: config.from,
+            to: safeTo,
+            replyTo: config.from,
+            subject,
+            text,
+            html,
+            headers: { "Auto-Submitted": "auto-generated", "X-Auto-Response-Suppress": "All" },
+        });
+        return { ok: true, delivery: "email" };
+    } catch (error) {
+        console.error("[mail] No se pudo enviar una invitación de referido:", error?.code || "send_failed");
+        throw new Error("No se pudo enviar el correo de invitación.");
+    }
+}
+
 async function sendOrderDeliveryEmail({ to, name, orderCode, total, currency, results, paymentMethod = "Balance de cuenta" }) {
     const safeTo = String(to || "").trim();
     if (!safeTo) throw new Error("Destino de correo invalido.");
@@ -912,6 +979,7 @@ async function sendSupportTicketResolvedEmail({ ticket, customerName, responseEv
 
 module.exports = {
     sendPasswordResetEmail,
+    sendReferralInvitationEmail,
     sendOrderDeliveryEmail,
     sendTopupSubmittedEmail,
     sendTopupReviewingEmail,

@@ -22,4 +22,20 @@ describe("referral registration field", () => {
         fireEvent.click(consent);
         expect(props.setReferralConsent).toHaveBeenCalledWith(true);
     });
+    it("prefills and locks the invited email and shows the single-use referral terms", () => {
+        render(<RegisterForm {...props} email="invitee@example.test" referralInvite={{ status: "valid", inviterName: "Synthetic Inviter", campaign: { active: true } }} referralCampaign={{ active: false }} />);
+        expect(screen.getByLabelText("Email")).toHaveValue("invitee@example.test");
+        expect(screen.getByLabelText("Email")).toHaveAttribute("readonly");
+        expect(screen.getByText("Synthetic Inviter")).toBeInTheDocument();
+        expect(screen.getByText(/te invitó a registrarte/)).toBeInTheDocument();
+        expect(screen.getByText(/solo podrá usarse una vez/)).toBeInTheDocument();
+        expect(screen.getByRole("checkbox", { name: /Autorizo a quien me invita/ })).toBeRequired();
+        expect(screen.queryByLabelText("Código de referido (opcional)")).not.toBeInTheDocument();
+    });
+    it("blocks registration while a personal invitation cannot be validated", () => {
+        render(<RegisterForm {...props} referralInvite={{ status: "invalid", message: "Invitación no disponible" }} />);
+        expect(screen.getByRole("alert")).toHaveTextContent("Invitación no disponible");
+        expect(screen.getByRole("button", { name: "Registrarse" })).toBeDisabled();
+        expect(screen.getByLabelText("Email")).toHaveAttribute("readonly");
+    });
 });

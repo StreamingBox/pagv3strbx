@@ -11,6 +11,33 @@ import { getGeminiPromoDaysRemaining, isGemini5Tb, sortCatalogItems } from "../.
 const MotionDiv = motion.div;
 const MotionButton = motion.button;
 
+const SPOTIFY_PLAN_ARTWORK = Object.freeze({
+    30: {
+        src: "/platform-logos/spotify-plan-1m.webp",
+        label: "1 MES",
+        accent: "#A3E635",
+        variant: "one-month",
+    },
+    60: {
+        src: "/platform-logos/spotify-plan-2m.webp",
+        label: "2 MESES",
+        accent: "#22D3EE",
+        variant: "two-months",
+    },
+    90: {
+        src: "/platform-logos/spotify-plan-3m.webp",
+        label: "3 MESES",
+        accent: "#34D399",
+        variant: "three-months",
+    },
+});
+
+function getSpotifyPlanArtwork(item) {
+    const platform = `${item?.platformSlug || ""} ${item?.platformName || ""}`.toLowerCase();
+    if (!platform.includes("spotify")) return null;
+    return SPOTIFY_PLAN_ARTWORK[Number(item?.days)] || null;
+}
+
 // Colores de fondo para mezclar con el fondo sólido de las imágenes PNG
 const PLATFORM_COLORS = {
     netflix: { bg: "#000000", accent: "#E50914" },
@@ -136,11 +163,13 @@ function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
         [item?.platformSlug, item?.platformName]
     );
     const candidatesKey = candidates.join("|");
+    const spotifyArtwork = getSpotifyPlanArtwork(item);
 
     return (
         <CatalogLogoImage
             key={candidatesKey}
             candidates={candidates}
+            spotifyArtwork={spotifyArtwork}
             platformName={item?.platformName}
             className={className}
             fallbackClassName={fallbackClassName}
@@ -149,9 +178,31 @@ function CatalogLogo({ item, className, fallbackClassName, fallbackStyle }) {
     );
 }
 
-function CatalogLogoImage({ candidates, platformName, className, fallbackClassName, fallbackStyle }) {
+function CatalogLogoImage({ candidates, spotifyArtwork, platformName, className, fallbackClassName, fallbackStyle }) {
     const [index, setIndex] = useState(0);
     const logoSrc = candidates[index] || null;
+
+    if (spotifyArtwork) {
+        return (
+            <div
+                className={`catalog-card__spotify-art catalog-card__spotify-art--${spotifyArtwork.variant}`}
+                style={{ "--spotify-art-accent": spotifyArtwork.accent }}
+                aria-hidden="true"
+            >
+                <img
+                    src={spotifyArtwork.src}
+                    alt=""
+                    className="catalog-card__spotify-art-bg"
+                    loading="lazy"
+                    decoding="async"
+                />
+                <span className="catalog-card__spotify-mark">
+                    <img src="/platform-logos/spotify-3-meses.png" alt="" decoding="async" />
+                </span>
+                <span className="catalog-card__spotify-duration">{spotifyArtwork.label}</span>
+            </div>
+        );
+    }
 
     return (
         <>

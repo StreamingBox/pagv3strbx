@@ -121,3 +121,55 @@ describe("CatalogGrid Gemini promotion", () => {
         expect(container.textContent).not.toContain("La promo finaliza hoy");
     });
 });
+
+describe("Spotify plan artwork", () => {
+    it("uses distinct duration artwork while preserving the Spotify mark", () => {
+        const plans = [
+            product({
+                platformName: "Spotify 1 Mes",
+                platformSlug: "spotify-1-mes",
+                platformType: "normal",
+                platformPromo: false,
+                platformPromoLastUnits: false,
+                durationName: "Mensual",
+                days: 30,
+                stock: 1,
+            }),
+            product({
+                platformName: "Spotify 2 Meses",
+                platformSlug: "spotify-2-meses",
+                platformType: "normal",
+                platformPromo: false,
+                platformPromoLastUnits: false,
+                durationName: "2 Meses",
+                days: 60,
+                stock: 1,
+            }),
+            product({
+                platformName: "Spotify 3 Meses",
+                platformSlug: "spotify-3-meses",
+                platformType: "normal",
+                platformPromo: false,
+                platformPromoLastUnits: false,
+                durationName: "Trimestral",
+                days: 90,
+                stock: 1,
+            }),
+        ];
+        const { container } = renderCatalog(plans);
+        const artworks = [...container.querySelectorAll(".catalog-card__spotify-art")];
+
+        expect(artworks).toHaveLength(3);
+        expect(artworks.map((art) => art.querySelector(".catalog-card__spotify-art-bg").getAttribute("src"))).toEqual([
+            "/platform-logos/spotify-plan-1m.webp",
+            "/platform-logos/spotify-plan-2m.webp",
+            "/platform-logos/spotify-plan-3m.webp",
+        ]);
+        expect(artworks.map((art) => art.querySelector(".catalog-card__spotify-duration").textContent)).toEqual([
+            "1 MES",
+            "2 MESES",
+            "3 MESES",
+        ]);
+        expect(artworks.every((art) => art.querySelector(".catalog-card__spotify-mark img").getAttribute("src") === "/platform-logos/spotify-3-meses.png")).toBe(true);
+    });
+});

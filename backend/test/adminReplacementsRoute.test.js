@@ -29,7 +29,7 @@ test("admin replacements supports Bogota date and platform filters and remains a
         installMockModule("../src/db", {
             query: async (sql, params = []) => {
                 calls.push({ sql, params });
-                if (sql.includes("COUNT(*) AS total")) return [[{ total: 1, pending_total: 1, reviewed_total: 0 }], []];
+                if (sql.includes("COUNT(*) AS total")) return [[{ total: 3, pending_total: 1, paused_total: 2, reviewed_total: 0 }], []];
                 if (sql.includes("SELECT DISTINCT p.id, p.name")) return [[{ id: 12, name: "Paramount Plus" }], []];
                 if (sql.includes("old_pa.password AS old_account_password")) return [[{
                     id: 862,
@@ -81,13 +81,18 @@ test("admin replacements supports Bogota date and platform filters and remains a
         assert.equal(body.items[0].platform_name, "Paramount Plus");
         assert.equal(Object.hasOwn(body.items[0], "old_account_password"), false);
         assert.deepEqual(body.platforms, [{ id: 12, name: "Paramount Plus" }]);
-        assert.deepEqual(body.counts, { pending: 1, reviewed: 0, all: 1 });
+        assert.deepEqual(body.counts, { pending: 1, paused: 2, reviewed: 0, all: 3 });
         assert.equal(response.headers.get("cache-control"), "private, no-store, max-age=0");
 
         const countQuery = calls.find(({ sql }) => sql.includes("COUNT(*) AS total"));
         assert.match(countQuery.sql, /arl\.created_at >= \?/);
         assert.match(countQuery.sql, /arl\.created_at < \?/);
         assert.match(countQuery.sql, /arl\.platform_id = \?/);
+        assert.match(countQuery.sql, /FROM master_accounts fallen_ma/);
+        assert.match(countQuery.sql, /fallen_ma\.status = 'inactive'/);
+        assert.match(countQuery.sql, /fallen_ma\.account_email = LOWER\(TRIM\(COALESCE\(arl\.old_account_email, ''\)\)\)/);
+        assert.match(calls.find(({ sql }) => sql.includes("FROM account_replacement_logs arl") && sql.includes("LIMIT ? OFFSET ?")).sql, /NOT EXISTS \([\s\S]*FROM master_accounts fallen_ma/);
+        assert.match(calls.find(({ sql }) => sql.includes("FROM account_replacement_logs arl") && sql.includes("LIMIT ? OFFSET ?")).sql, /AS review_paused/);
         assert.deepEqual(countQuery.params.slice(-3), ["2026-10-25 05:00:00", "2026-10-26 05:00:00", 12]);
 
         const secondPage = await fetch(`${url}&page=2`);

@@ -55,7 +55,7 @@ describe("admin replacement history", () => {
                     page: 1,
                     total: 1,
                     totalPages: 1,
-                    counts: { pending: 1, reviewed: 0, all: 1 },
+                    counts: { pending: 1, paused: 2, reviewed: 0, all: 3 },
                 },
             });
         });
@@ -64,6 +64,8 @@ describe("admin replacement history", () => {
     it("filters by Bogota date range, platform and text", async () => {
         render(<AdminReplacements />);
         await screen.findByText("old@example.test");
+        expect(screen.getByRole("status")).toHaveTextContent("En pausa: 2.");
+        expect(screen.getByRole("status")).toHaveTextContent("regresan automáticamente");
 
         fireEvent.change(screen.getByLabelText("Fecha desde"), { target: { value: "2026-10-25" } });
         fireEvent.change(screen.getByLabelText("Fecha hasta"), { target: { value: "2026-10-25" } });
@@ -160,6 +162,27 @@ describe("admin replacement history", () => {
 
         await screen.findByText("Reemplazo #862 marcado como revisado y archivado.");
         expect(apiFetch).toHaveBeenCalledWith("/admin/replacements/862/review", { method: "POST", cache: "no-store" });
+    });
+
+    it("does not offer review for replacements paused by a fallen master account", async () => {
+        apiFetch.mockImplementation((url) => Promise.resolve({
+            ok: true,
+            data: {
+                items: url.includes("reviewState=all") ? [{ ...sample, review_paused: 1 }] : [sample],
+                platforms: [{ id: 12, name: "Paramount Plus" }],
+                page: 1,
+                total: 1,
+                totalPages: 1,
+                counts: { pending: 1, paused: 1, reviewed: 0, all: 2 },
+            },
+        }));
+
+        render(<AdminReplacements />);
+        await screen.findByText("old@example.test");
+        fireEvent.click(screen.getByRole("tab", { name: /Todos/ }));
+
+        expect(await screen.findByText("En pausa · cuenta caída")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Revisado" })).not.toBeInTheDocument();
     });
 
     it("does not show a successful archive notice when the follow-up refresh fails", async () => {

@@ -45,6 +45,19 @@ function replacementTicketSql() {
               LIMIT 1)`;
 }
 
+function fallenMasterAccountCondition() {
+    return `EXISTS (
+        SELECT 1
+          FROM master_accounts fallen_ma
+         WHERE fallen_ma.platform_id = arl.platform_id
+           AND fallen_ma.status = 'inactive'
+           AND (
+                fallen_ma.account_email = LOWER(TRIM(COALESCE(old_pa.email, '')))
+                OR fallen_ma.account_email = LOWER(TRIM(COALESCE(arl.old_account_email, '')))
+           )
+    )`;
+}
+
 router.get("/admin/replacements/:id/credentials", requireAuth, requireRole("admin"), async (req, res) => {
     setPrivateNoStore(res);
     const id = Number(req.params.id);
@@ -179,8 +192,9 @@ router.get("/admin/replacements", requireAuth, requireRole("admin"), async (req,
         }
 
         const baseWhereSql = baseWhere.length ? `WHERE ${baseWhere.join(" AND ")}` : "";
+        const fallenAccount = fallenMasterAccountCondition();
         const stateWhere = reviewState === "pending"
-            ? "arl.reviewed_at IS NULL"
+            ? `arl.reviewed_at IS NULL AND NOT ${fallenAccount}`
             : reviewState === "reviewed"
                 ? "arl.reviewed_at IS NOT NULL"
                 : "";
@@ -189,7 +203,8 @@ router.get("/admin/replacements", requireAuth, requireRole("admin"), async (req,
 
         const [[countRow]] = await pool.query(
             `SELECT COUNT(*) AS total,
-                    COALESCE(SUM(arl.reviewed_at IS NULL), 0) AS pending_total,
+                    COALESCE(SUM(arl.reviewed_at IS NULL AND NOT ${fallenAccount}), 0) AS pending_total,
+                    COALESCE(SUM(arl.reviewed_at IS NULL AND ${fallenAccount}), 0) AS paused_total,
                     COALESCE(SUM(arl.reviewed_at IS NOT NULL), 0) AS reviewed_total
                FROM account_replacement_logs arl
                ${replacementJoins()}
@@ -212,6 +227,7 @@ router.get("/admin/replacements", requireAuth, requireRole("admin"), async (req,
         const [rows] = await pool.query(
             `SELECT
                 arl.*,
+                (arl.reviewed_at IS NULL AND ${fallenAccount}) AS review_paused,
                 COALESCE(old_pa.email, arl.old_account_email) AS old_account_current_email,
                 old_pa.profile_number AS old_account_profile_number,
                 old_pa.status AS old_account_status,
@@ -250,6 +266,7 @@ router.get("/admin/replacements", requireAuth, requireRole("admin"), async (req,
             totalPages: Math.max(Math.ceil(total / limit), 1),
             counts: {
                 pending: Number(countRow?.pending_total || 0),
+                paused: Number(countRow?.paused_total || 0),
                 reviewed: Number(countRow?.reviewed_total || 0),
                 all: Number(countRow?.total || 0),
             },

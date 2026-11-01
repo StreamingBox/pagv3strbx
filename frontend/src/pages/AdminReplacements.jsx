@@ -58,7 +58,7 @@ export default function AdminReplacements() {
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
     const [total, setTotal] = useState(0);
-    const [counts, setCounts] = useState({ pending: 0, reviewed: 0, all: 0 });
+    const [counts, setCounts] = useState({ pending: 0, paused: 0, reviewed: 0, all: 0 });
     const [reviewState, setReviewState] = useState("pending");
     const [expandedId, setExpandedId] = useState(null);
     const [credentialData, setCredentialData] = useState({});
@@ -86,7 +86,7 @@ export default function AdminReplacements() {
             const { ok, data } = await apiFetch(`/admin/replacements?${params.toString()}`, { method: "GET", cache: "no-store" });
             if (!ok) throw new Error(data?.message || "No se pudo cargar el historial.");
             setItems(data.items || []);
-            setCounts(data.counts || { pending: 0, reviewed: 0, all: 0 });
+            setCounts(data.counts || { pending: 0, paused: 0, reviewed: 0, all: 0 });
             if (Array.isArray(data.platforms)) setPlatforms(data.platforms);
             setPage(Number(data.page || nextPage));
             setTotal(Number(data.total || 0));
@@ -95,7 +95,7 @@ export default function AdminReplacements() {
             setError(e.message || "Error cargando historial.");
             setItems([]);
             setTotal(0);
-            setCounts({ pending: 0, reviewed: 0, all: 0 });
+            setCounts({ pending: 0, paused: 0, reviewed: 0, all: 0 });
             return false;
         } finally {
             setLoading(false);
@@ -346,6 +346,10 @@ export default function AdminReplacements() {
                         ))}
                     </div>
 
+                    {reviewState === "pending" && <div role="status" style={{ marginBottom: 16, padding: "10px 13px", border: "1px solid rgba(245,158,11,.3)", borderRadius: 9, background: "rgba(245,158,11,.07)", color: "var(--muted)", fontSize: 12 }}>
+                        En pausa: {Number(counts.paused || 0).toLocaleString("es-CO")}. Los reemplazos cuya cuenta anterior siga marcada como caída en Cuentas Maestras no aparecen en Pendientes; al reactivarla o quitarla de esa lista, regresan automáticamente.
+                    </div>}
+
                     <form onSubmit={applyFilters} style={{ background: "var(--card)", border: "1px solid var(--stroke)", borderRadius: 12, padding: 16, marginBottom: 16 }}>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(175px, 1fr))", gap: 12, alignItems: "end" }}>
                             <label style={{ display: "grid", gap: 6, color: "var(--muted)", fontSize: 12, fontWeight: 700 }}>
@@ -441,6 +445,8 @@ export default function AdminReplacements() {
                                                     <td style={{ padding: "12px 13px", whiteSpace: "nowrap" }}>
                                                         {item.reviewed_at ? (
                                                             <><strong style={{ color: "#34d399" }}>Archivado</strong><div style={{ color: "var(--muted)", marginTop: 3 }}>{item.reviewer_email || item.reviewer_name || "Admin"}</div><div style={{ color: "var(--muted)", marginTop: 2 }}>{fmtDateTime(item.reviewed_at)}</div></>
+                                                        ) : item.review_paused ? (
+                                                            <strong style={{ color: "#fbbf24" }} title="Al reactivar o quitar la cuenta de Cuentas Maestras, volverá a Pendientes.">En pausa · cuenta caída</strong>
                                                         ) : <strong style={{ color: "#fbbf24" }}>Pendiente</strong>}
                                                     </td>
                                                     <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
@@ -449,7 +455,7 @@ export default function AdminReplacements() {
                                                                 {isExpanded ? <ChevronUp size={14} aria-hidden /> : <ChevronDown size={14} aria-hidden />}
                                                                 {loadingCredentialsId === item.id ? "Cargando..." : isExpanded ? "Ocultar datos" : "Ver cuentas"}
                                                             </button>
-                                                            {!item.reviewed_at && <button type="button" onClick={() => void markReviewed(item)} disabled={reviewingId === item.id} style={{ minHeight: 34, padding: "0 10px", border: "1px solid rgba(16,185,129,.4)", borderRadius: 7, background: "rgba(16,185,129,.1)", color: "#34d399", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 750, cursor: "pointer" }}>
+                                                            {!item.reviewed_at && !item.review_paused && <button type="button" onClick={() => void markReviewed(item)} disabled={reviewingId === item.id} style={{ minHeight: 34, padding: "0 10px", border: "1px solid rgba(16,185,129,.4)", borderRadius: 7, background: "rgba(16,185,129,.1)", color: "#34d399", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, fontWeight: 750, cursor: "pointer" }}>
                                                                 <Archive size={14} aria-hidden /> {reviewingId === item.id ? "Archivando..." : "Revisado"}
                                                             </button>}
                                                         </div>

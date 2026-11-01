@@ -20,24 +20,44 @@ const sample = {
     user_email: "cliente@example.test",
     old_account_id: 9476,
     old_account_email: "old@example.test",
+    old_account_password: "fake-old-pass",
+    old_account_pin: "0012",
+    old_account_profile_number: 3,
+    old_account_status: "sold",
+    old_account_expiry: "2026-11-24",
     new_account_id: 9483,
     new_account_email: "new@example.test",
+    new_account_password: "fake-new-pass",
+    new_account_pin: "9087",
+    new_account_profile_number: 2,
+    new_account_status: "assigned",
+    new_account_expiry: "2026-11-24",
     previousExpiresLabel: "2026-11-24",
     admin_email: "admin@example.test",
+    support_ticket_code: "SUP-TEST",
 };
 
 describe("admin replacement history", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        apiFetch.mockResolvedValue({
-            ok: true,
-            data: {
-                items: [sample],
-                platforms: [{ id: 12, name: "Paramount Plus" }],
-                page: 1,
-                total: 1,
-                totalPages: 1,
-            },
+        apiFetch.mockImplementation((url) => {
+            if (url.endsWith("/credentials")) {
+                return Promise.resolve({ ok: true, data: { item: sample } });
+            }
+            if (url.endsWith("/review")) {
+                return Promise.resolve({ ok: true, data: { item: { id: 862, reviewed_by_user_id: 1 } } });
+            }
+            return Promise.resolve({
+                ok: true,
+                data: {
+                    items: [sample],
+                    platforms: [{ id: 12, name: "Paramount Plus" }],
+                    page: 1,
+                    total: 1,
+                    totalPages: 1,
+                    counts: { pending: 1, reviewed: 0, all: 1 },
+                },
+            });
         });
     });
 
@@ -57,6 +77,7 @@ describe("admin replacement history", () => {
             expect(requestedUrl).toContain("toDate=2026-10-25");
             expect(requestedUrl).toContain("platformId=12");
             expect(requestedUrl).toContain("q=ORD-TEST");
+            expect(requestedUrl).toContain("reviewState=pending");
         });
         expect(screen.getByText("new@example.test")).toBeInTheDocument();
     });
@@ -87,6 +108,7 @@ describe("admin replacement history", () => {
             ok: true,
             data: { items: [{ ...sample, id: 863, old_account_id: 9001, new_account_id: 9002 }], totalPages: 2 },
         });
+        vi.spyOn(window, "confirm").mockReturnValue(true);
         fireEvent.click(screen.getByRole("button", { name: "Exportar Excel" }));
 
         await waitFor(() => expect(writeFile).toHaveBeenCalledOnce());
@@ -95,8 +117,13 @@ describe("admin replacement history", () => {
         expect(exportedRows[0]).toMatchObject({
             "Cuenta anterior (ID)": 9476,
             "Cuenta anterior": "old@example.test",
+            "Contraseña anterior (inventario actual)": "fake-old-pass",
+            "PIN anterior (inventario actual)": "0012",
+            "Perfil anterior": 3,
             "Cuenta nueva (ID)": 9483,
             "Cuenta nueva": "new@example.test",
+            "Contraseña nueva (inventario actual)": "fake-new-pass",
+            "PIN nuevo (inventario actual)": "9087",
         });
         expect(exportedRows[1]).toMatchObject({ "Cuenta anterior (ID)": 9001, "Cuenta nueva (ID)": 9002 });
         const exportRequests = apiFetch.mock.calls.slice(-2).map(([url]) => url);
@@ -107,8 +134,51 @@ describe("admin replacement history", () => {
             expect(url).toContain("fromDate=2026-10-25");
             expect(url).toContain("platformId=12");
             expect(url).toContain("q=ORD-TEST");
+            expect(url).toContain("includeCredentials=1");
+            expect(url).toContain("reviewState=pending");
         }
         expect(appendSheet).toHaveBeenCalledWith(expect.anything(), expect.anything(), "Reemplazos");
-        expect(writeFile.mock.calls[0][1]).toBe("Reemplazos_paramount-plus_2026-10-25_hoy.xlsx");
+        expect(writeFile.mock.calls[0][1]).toBe("Reemplazos_pending_paramount-plus_2026-10-25_hoy.xlsx");
+    });
+
+    it("loads credentials only when opening a replacement and masks them until requested", async () => {
+        render(<AdminReplacements />);
+        await screen.findByText("old@example.test");
+        fireEvent.click(screen.getByRole("button", { name: "Ver cuentas" }));
+
+        expect(apiFetch).toHaveBeenCalledWith("/admin/replacements/862/credentials", { method: "GET", cache: "no-store" });
+        await waitFor(() => expect(screen.getAllByText("••••••••")).toHaveLength(4));
+        fireEvent.click(screen.getByRole("button", { name: "Mostrar contraseña de cuenta anterior 862" }));
+        expect(screen.getByText("fake-old-pass")).toBeInTheDocument();
+        expect(screen.getByText("Perfil 3")).toBeInTheDocument();
+    });
+
+    it("archives a replacement as reviewed without changing account details", async () => {
+        render(<AdminReplacements />);
+        await screen.findByText("old@example.test");
+        fireEvent.click(screen.getByRole("button", { name: "Revisado" }));
+
+        await screen.findByText("Reemplazo #862 marcado como revisado y archivado.");
+        expect(apiFetch).toHaveBeenCalledWith("/admin/replacements/862/review", { method: "POST", cache: "no-store" });
+    });
+
+    it("does not show a successful archive notice when the follow-up refresh fails", async () => {
+        let listCalls = 0;
+        apiFetch.mockImplementation((url) => {
+            if (url.endsWith("/review")) return Promise.resolve({ ok: true, data: { item: { id: 862 } } });
+            if (url.startsWith("/admin/replacements?")) {
+                listCalls += 1;
+                if (listCalls > 1) return Promise.resolve({ ok: false, data: { message: "Error de actualización" } });
+                return Promise.resolve({ ok: true, data: { items: [sample], total: 1, totalPages: 1, counts: { pending: 1, reviewed: 0, all: 1 } } });
+            }
+            return Promise.resolve({ ok: true, data: { item: sample } });
+        });
+
+        render(<AdminReplacements />);
+        await screen.findByText("old@example.test");
+        fireEvent.click(screen.getByRole("button", { name: "Revisado" }));
+
+        await screen.findByText("Error de actualización");
+        expect(screen.queryByText("Reemplazo #862 marcado como revisado y archivado.")).not.toBeInTheDocument();
     });
 });

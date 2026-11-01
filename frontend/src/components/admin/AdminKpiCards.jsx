@@ -107,7 +107,7 @@ export default function AdminKpiCards({ onNavigate }) {
                 { icon: "👤", tone: "violet", title: "Usuarios", hint: "Gestión de clientes/vendedores.", path: "/admin/users" },
                 { icon: <UsersRound size={20} strokeWidth={2.4} aria-hidden />, tone: "emerald", title: "Referidos", hint: "Campaña, avances y premios.", path: "/admin/referrals" },
                 { icon: "🛠️", tone: "teal", title: "Soporte Técnico", hint: "Reemplazos y cuentas caídas.", path: "/admin/support" },
-                { icon: "🔁", tone: "orange", title: "Historial Reemplazos", hint: "Cambios de cuenta realizados.", path: "/admin/replacements" },
+                { icon: "🔁", tone: "orange", title: "Reemplazos", hint: "Revisa y archiva cuentas que salieron por soporte.", path: "/admin/replacements" },
             ],
         },
     ];

@@ -4,6 +4,7 @@ const { makeOrderCode } = require("../utils/orderCode");
 const {
     addDaysBogotaDateOnly,
     bogotaDateOnlyToUtcEndOfDay,
+    formatDateOnlyBogota,
     toSqlDateTime,
 } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
@@ -22,6 +23,7 @@ const {
     automaticUnitCostForPlan,
 } = require("../utils/profitCosts");
 const { eventLinkSnapshot, isEventLinkPlan } = require("../utils/eventLinks");
+const { isUniversalPlusProduct } = require("../utils/productDeliveryProfile");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -376,7 +378,18 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
 
             // subscriptions.expires_at is the contractual calendar date in Colombia.
             // The account keeps a technical timestamp only for stock availability.
-            const expiresAt = eventLink?.expiresAt || addDaysBogotaDateOnly(Number(plan.days));
+            const defaultExpiresAt = eventLink?.expiresAt || addDaysBogotaDateOnly(Number(plan.days));
+            const universalPlus = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug });
+            let expiresAt = defaultExpiresAt;
+            if (universalPlus) {
+                const supplierExpiry = formatDateOnlyBogota(account?.expires_at);
+                if (supplierExpiry === "-") {
+                    const err = new Error("La cuenta Universal+ no tiene registrada la vigencia del proveedor. Actualiza el inventario antes de intentar comprar.");
+                    err.status = 409;
+                    throw err;
+                }
+                expiresAt = supplierExpiry;
+            }
             const expiresAtSql = toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(expiresAt));
             const itemPrice = Number(entry.salePrice || 0);
 
@@ -414,7 +427,7 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 );
             }
 
-            const token = await insertCredentialLinkWithRetry(conn, {
+            const token = universalPlus ? null : await insertCredentialLinkWithRetry(conn, {
                 subscriptionId,
                 createdByUserId: userId,
             });

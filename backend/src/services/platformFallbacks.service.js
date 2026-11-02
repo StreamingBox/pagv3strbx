@@ -116,7 +116,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
 
     if (specificAccountId > 0) {
         const [specificRows] = await conn.query(
-            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost,
+            `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost, pa.expires_at,
                     p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
              FROM platform_accounts pa
              JOIN platforms p ON p.id = pa.platform_id
@@ -142,7 +142,7 @@ async function findAvailableAccountForPlatform(conn, platformId, options = {}) {
     }
 
     const [rows] = await conn.query(
-        `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost,
+        `SELECT pa.id, pa.platform_id, pa.email, pa.password, pa.pin, pa.two_factor_secret, pa.profile_number, pa.youtube_channel_name, pa.access_url, pa.unit_cost, pa.expires_at,
                 p.name AS delivered_platform_name, p.slug AS delivered_platform_slug
          FROM platform_accounts pa
          JOIN platforms p ON p.id = pa.platform_id AND p.is_active = 1

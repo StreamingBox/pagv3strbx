@@ -6,12 +6,14 @@ const {
     BOGOTA_TODAY_SQL,
     bogotaDateSql,
     bogotaDateOnlyToUtcEndOfDay,
+    formatDateOnlyBogota,
     parseDateOnly,
     toSqlDateTime,
 } = require("../utils/date");
 const { buildDeliveryMessage } = require("../utils/deliveryMessage");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
+const { isUniversalPlusProduct } = require("../utils/productDeliveryProfile");
 const { enqueueNotification, enqueueSaleNotification } = require("./notificationOutbox.service");
 const { schedulePlatformStockAlertCheck } = require("./stockAlertMonitor.service");
 const { getCandidatePlatformsForPlatform } = require("./platformFallbacks.service");
@@ -158,8 +160,17 @@ async function sellAccountFromInventory(payload) {
         }
 
         // 4. Calcular Fecha de Vencimiento
+        const universalPlus = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug });
         let finalExpiresAt;
-        if (customExpiryDate) {
+        if (universalPlus) {
+            const supplierExpiry = formatDateOnlyBogota(account.expires_at);
+            if (supplierExpiry === "-") {
+                const err = new Error("La cuenta Universal+ no tiene registrada la vigencia del proveedor. Actualiza el inventario antes de vender.");
+                err.status = 409;
+                throw err;
+            }
+            finalExpiresAt = supplierExpiry;
+        } else if (customExpiryDate) {
             // Usar la fecha manual proporcionada por el admin
             finalExpiresAt = parseDateOnly(customExpiryDate);
             if (!finalExpiresAt) {
@@ -226,7 +237,7 @@ async function sellAccountFromInventory(payload) {
         );
 
         // 5.5 Generar Token de credenciales
-        const token = await insertCredentialLinkWithRetry(conn, {
+        const token = universalPlus ? null : await insertCredentialLinkWithRetry(conn, {
             subscriptionId,
             createdByUserId: adminUserId || userId,
         });
@@ -445,8 +456,17 @@ async function sellAccountsFromInventory(payload) {
                 throw err;
             }
 
+            const universalPlus = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug });
             let expiresAt;
-            if (item.customExpiryDate) {
+            if (universalPlus) {
+                const supplierExpiry = formatDateOnlyBogota(account.expires_at);
+                if (supplierExpiry === "-") {
+                    const err = new Error(`La cuenta Universal+ #${account.id} no tiene registrada la vigencia del proveedor.`);
+                    err.status = 409;
+                    throw err;
+                }
+                expiresAt = supplierExpiry;
+            } else if (item.customExpiryDate) {
                 expiresAt = parseDateOnly(item.customExpiryDate);
                 if (!expiresAt) {
                     const err = new Error(`La fecha de vencimiento del artículo para ${plan.platform_name} debe tener el formato YYYY-MM-DD.`);
@@ -546,10 +566,12 @@ async function sellAccountsFromInventory(payload) {
                 "UPDATE platform_accounts SET status = 'assigned', assigned_to_user_id = ?, assigned_at = NOW(), expires_at = ? WHERE id = ?",
                 [normalizedUserId, expiresAtSql, account.id]
             );
-            const token = await insertCredentialLinkWithRetry(conn, {
-                subscriptionId,
-                createdByUserId: adminUserId || normalizedUserId,
-            });
+            const token = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug })
+                ? null
+                : await insertCredentialLinkWithRetry(conn, {
+                    subscriptionId,
+                    createdByUserId: adminUserId || normalizedUserId,
+                });
             results.push({
                 subscriptionId,
                 plan,

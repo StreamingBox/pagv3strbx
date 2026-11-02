@@ -246,6 +246,44 @@ test("manual upload creates a fresh available row without inheriting a historica
     assert.equal(result.reused, undefined);
 });
 
+test("Universal+ upload stores email and provider expiry without propagating an empty password", async () => {
+    const calls = [];
+    let identityParams;
+    let accountParams;
+    const conn = {
+        async query(sql, params = []) {
+            calls.push({ sql, params });
+            if (/SELECT name, slug FROM platforms WHERE id=/i.test(sql)) {
+                return [[{ name: "Universal+ Pantalla", slug: "universal-plus-pantalla" }]];
+            }
+            if (sql.includes("has_replacement_history")) return [[]];
+            if (sql.includes("INSERT INTO account_identities")) {
+                identityParams = params;
+                return [{ insertId: 900 }];
+            }
+            if (sql.includes("INSERT INTO platform_accounts")) {
+                accountParams = params;
+                return [{ insertId: 7003 }];
+            }
+            return [[]];
+        },
+    };
+
+    const result = await createAccountOne(conn, {
+        platformId: 77,
+        email: "access@example.test",
+        expiresAt: "2099-12-31",
+    });
+
+    assert.equal(result.id, 7003);
+    assert.equal(identityParams[3], "");
+    assert.equal(identityParams[5], 1);
+    assert.equal(accountParams[4], "");
+    assert.equal(accountParams[11], "2100-01-01 04:59:59");
+    assert.equal(accountParams[14], 3500);
+    assert.ok(!calls.some(({ sql }) => /UPDATE\s+platform_accounts\s+SET\s+password/i.test(sql)));
+});
+
 test("bulk upload creates fresh inventory IDs instead of reactivating expired historical rows", async () => {
     const calls = [];
     let accountInsertParams;

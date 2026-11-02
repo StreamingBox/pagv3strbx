@@ -4,6 +4,7 @@ const {
     isDisneyCodeTvProduct,
     isIptvProduct,
     isMicrosoftOfficeProduct,
+    isUniversalPlusProduct,
     isYouTubeChannelProduct,
     normalizeProductName,
 } = require("./productDeliveryProfile");
@@ -266,6 +267,13 @@ function buildAccountDeliveryMessage({
         return lines.join("\n").trim();
     }
 
+    if (isUniversalPlusProduct({ platformName, platformSlug })) {
+        lines.push(`📧 Correo de acceso: ${safeAccount.email || "-"}`);
+        if (expiresAt) lines.push(`📅 Válido hasta: ${formatDateOnlyBogota(expiresAt)}`);
+        lines.push("📌 Uso permitido en un solo dispositivo.");
+        return lines.join("\n").trim();
+    }
+
     if (safeAccount.email) {
         lines.push(`📧 Correo: ${safeAccount.email}`);
     }
@@ -344,6 +352,13 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
     };
     const isEventLinkResult = (result) => isEventLinkPlan(result?.plan || {})
         || Boolean(result?.eventLink?.url || result?.event_link_url);
+    const isUniversalPlusResult = (result) => {
+        const plan = result?.plan || {};
+        return isUniversalPlusProduct({
+            platformName: result?.purchasedPlatformName || result?.platformName || plan.platform_name,
+            platformSlug: result?.purchasedPlatformSlug || result?.platformSlug || plan.platform_slug,
+        });
+    };
 
     const hasDeviceUsageRuleItems = safeResults.some((result) => {
         const plan = result?.plan || {};
@@ -421,6 +436,15 @@ function buildDeliveryMessage({ orderCode, results, baseUrl }) {
                     : buildChatGPTPersonalCredentialsMessage(account)
             );
             markOrderPlatform36Notice(platformId);
+            lines.push("");
+            continue;
+        }
+
+        if (isUniversalPlusResult(result)) {
+            lines.push(`🖥️ ${platformName}`);
+            lines.push(`📧 Correo de acceso: ${account.email || "-"}`);
+            if (result?.expiresAt) lines.push(`📅 Válido hasta: ${formatDateOnlyBogota(result.expiresAt)}`);
+            lines.push("📌 Uso permitido en un solo dispositivo.");
             lines.push("");
             continue;
         }

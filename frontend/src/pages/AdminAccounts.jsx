@@ -81,6 +81,15 @@ function isIptvPlatform(platform) {
     return compact.includes("iptv");
 }
 
+function isUniversalPlusPlatform(platform) {
+    const compact = String(platform?.slug || platform?.name || platform || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
+    return compact.includes("universalplus");
+}
+
 function isNetflixPlatform(platform) {
     const compact = String(platform?.slug || platform?.name || platform || "")
         .normalize("NFD")
@@ -120,6 +129,7 @@ function summarizeExcelRows(rows, platforms = []) {
         invalidCost: 0,
         invalidIptvRows: [],
         invalidYouTubeMusicRows: [],
+        invalidUniversalPlusRows: [],
     };
 
     for (const [index, row] of rows.entries()) {
@@ -130,12 +140,15 @@ function summarizeExcelRows(rows, platforms = []) {
         const platformById = platforms.find((item) => String(item?.id) === String(platform).trim());
         const requiresIptvAccess = isIptvPlatform(platformById || platform);
         const requiresYoutubeChannel = isYouTubeChannelPlatform(platformById || platform);
+        const requiresUniversalExpiry = isUniversalPlusPlatform(platformById || platform);
+        const expiresAt = readExcelValue(row, ["expiresat", "expiracion", "fechaexpiracion", "validohasta", "fechafin"]);
         const youtubeChannel = readExcelValue(row, ["youtubechannelname", "nombrecanalyoutube", "nombredelcanaldeyoutube", "youtubechannel", "canalyoutube", "canaldeyoutube", "canal"]);
         const valid = !!String(platform).trim()
             && !!String(email).trim()
-            && !!String(password).trim()
+            && (!!String(password).trim() || requiresUniversalExpiry)
             && (!requiresIptvAccess || !!String(accessUrl).trim())
-            && (!requiresYoutubeChannel || !!String(youtubeChannel).trim());
+            && (!requiresYoutubeChannel || !!String(youtubeChannel).trim())
+            && (!requiresUniversalExpiry || /^\d{4}-\d{2}-\d{2}$/.test(String(expiresAt).trim()));
         if (!valid) {
             summary.invalid += 1;
             if (requiresIptvAccess && (!String(email).trim() || !String(password).trim() || !String(accessUrl).trim())) {
@@ -143,6 +156,9 @@ function summarizeExcelRows(rows, platforms = []) {
             }
             if (requiresYoutubeChannel && !String(youtubeChannel).trim()) {
                 summary.invalidYouTubeMusicRows.push(index + 2);
+            }
+            if (requiresUniversalExpiry && !/^\d{4}-\d{2}-\d{2}$/.test(String(expiresAt).trim())) {
+                summary.invalidUniversalPlusRows.push(index + 2);
             }
             continue;
         }
@@ -154,7 +170,9 @@ function summarizeExcelRows(rows, platforms = []) {
         const accountTotal = positiveNumber(readExcelValue(row, ["mothercosttotal", "parentaccountcosttotal", "costocuentamadre", "costocuentacompleta"]));
         const profiles = positiveNumber(readExcelValue(row, ["motherprofilestotal", "parentprofilestotal", "cantidadperfiles", "totalpantallas"]));
 
-        if (direct || (["pantalla", "perfil", "screen", "unitario"].includes(mode) && amount)) {
+        if (requiresUniversalExpiry && !direct && !amount && !accountTotal && !profiles && !mode) {
+            summary.screenCost += 1;
+        } else if (direct || (["pantalla", "perfil", "screen", "unitario"].includes(mode) && amount)) {
             summary.screenCost += 1;
         } else if (
             (accountTotal && profiles) ||
@@ -307,6 +325,7 @@ export default function AdminAccounts() {
     const [platformName, setPlatformName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [expiresAt, setExpiresAt] = useState("");
     const [accessUrl, setAccessUrl] = useState("");
     const [twoFactorSecret, setTwoFactorSecret] = useState("");
     const [codeProvider, setCodeProvider] = useState("strbx");
@@ -341,6 +360,7 @@ export default function AdminAccounts() {
     );
     const isChatGPTPersonal = isChatGPTPersonalPlatform(selectedPlatform);
     const isIptv = isIptvPlatform(selectedPlatform);
+    const isUniversalPlus = isUniversalPlusPlatform(selectedPlatform);
     const isNetflix = isNetflixPlatform(selectedPlatform);
     const isYouTubeChannel = isYouTubeChannelPlatform(selectedPlatform);
     const isYouTubeTotp = isYouTubeTotpPlatform(selectedPlatform);
@@ -350,7 +370,9 @@ export default function AdminAccounts() {
     const hasCompactCredentials = isChatGPTPersonal || isIptv;
     const manualCostAmount = positiveNumber(motherCostTotal);
     const manualProfiles = Math.floor(positiveNumber(motherProfilesTotal));
-    const manualUnitCost = costMode === "account"
+    const manualUnitCost = isUniversalPlus && manualCostAmount <= 0
+        ? 3500
+        : costMode === "account"
         ? (manualCostAmount > 0 && manualProfiles > 0 ? manualCostAmount / manualProfiles : 0)
         : manualCostAmount;
     const manualCostIncomplete = costMode === "account" && manualCostAmount > 0 && manualProfiles <= 0;
@@ -380,6 +402,10 @@ export default function AdminAccounts() {
     }
 
     async function createAccount() {
+        if (isUniversalPlus && !expiresAt) {
+            setError("Registra la fecha de vigencia indicada por el proveedor para Universal+.");
+            return;
+        }
         if (isYouTubeChannel && !youtubeChannelName.trim()) {
             setError("Indica el nombre exacto del canal de YouTube que debe usar el cliente.");
             return;
@@ -405,6 +431,7 @@ export default function AdminAccounts() {
                     platformName: platformName || selectedPlatform?.name || "",
                     email,
                     password,
+                    expiresAt: isUniversalPlus ? expiresAt : null,
                     accessUrl: accessUrl || null,
                     twoFactorSecret: isChatGPTPersonal ? (twoFactorSecret || null) : null,
                     codeProvider: isNetflix ? codeProvider : "strbx",
@@ -416,7 +443,7 @@ export default function AdminAccounts() {
                         totpConfirmationCode: youtubeTotpConfirmationCode.trim(),
                     } : {}),
                     costMode,
-                    costAmount: motherCostTotal || null,
+                    costAmount: motherCostTotal || (isUniversalPlus ? "3500" : null),
                     motherProfilesTotal: costMode === "account" ? (motherProfilesTotal || null) : null,
                 }),
             });
@@ -424,6 +451,7 @@ export default function AdminAccounts() {
             if (data?.id) {
                 setEmail("");
                 setPassword("");
+                setExpiresAt("");
                 setAccessUrl("");
                 setTwoFactorSecret("");
                 setCodeProvider("strbx");
@@ -485,6 +513,9 @@ export default function AdminAccounts() {
             }
             if (summary.invalidYouTubeMusicRows.length) {
                 throw new Error(`YouTube Music y YouTube 3 meses requieren la columna "Nombre del canal de YouTube". Revisa las filas: ${summary.invalidYouTubeMusicRows.join(", ")}.`);
+            }
+            if (summary.invalidUniversalPlusRows.length) {
+                throw new Error(`Universal+ requiere la fecha de vigencia en formato AAAA-MM-DD. Revisa las filas: ${summary.invalidUniversalPlusRows.join(", ")}.`);
             }
             if (!summary.valid) throw new Error("El archivo no tiene cuentas validas.");
 
@@ -676,6 +707,7 @@ export default function AdminAccounts() {
             "perfil",
             "nombreCanalYoutube",
             "pin",
+            "validoHasta",
             "tipoCosto",
             "valorCosto",
             "totalPantallas",
@@ -773,7 +805,7 @@ export default function AdminAccounts() {
         const wsCuentas = XLSX.utils.json_to_sheet([], { header: headers });
         wsCuentas["!cols"] = [
             { wch: 13 }, { wch: 22 }, { wch: 20 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 32 },
-            { wch: 28 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
+            { wch: 28 }, { wch: 10 }, { wch: 24 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 18 }, { wch: 24 },
         ];
         const wsExamples = XLSX.utils.json_to_sheet(exampleRows, { header: headers });
         wsExamples["!cols"] = wsCuentas["!cols"];
@@ -793,6 +825,7 @@ export default function AdminAccounts() {
             ["Proveedor de codigos:", "Aplica a Netflix y Netflix Internacional. Usa STRBX para el buzón Gmail actual, Jeff Premium, StoreTools.co o LiveOnix según corresponda. Las demás plataformas usan STRBX."],
             [""],
             ["IPTV / IPTV 3 MESES:", "usuario, contrasena y url son obligatorios. Solo se entregan esos tres datos."],
+            ["Universal+ Pantalla:", "correo y validoHasta (AAAA-MM-DD) son obligatorios; la contraseña no aplica. El costo se registra en 3.500 COP si se deja vacío."],
             [""],
             ["UTILIDAD NETA"],
             ["El sistema calcula: precio de venta - costo unitario = utilidad neta."],
@@ -1219,16 +1252,30 @@ export default function AdminAccounts() {
 
                             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                                 <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                                    Contraseña *
+                                    {isUniversalPlus ? "Contraseña (no aplica)" : "Contraseña *"}
                                 </label>
                                 <input
                                     style={inputStyle}
                                     type="text"
-                                    placeholder="Contraseña de la cuenta"
+                                    placeholder={isUniversalPlus ? "Universal+ se entrega solo con correo" : "Contraseña de la cuenta"}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
                             </div>
+
+                            {isUniversalPlus && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                    <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                        Válido hasta (proveedor) *
+                                    </label>
+                                    <input
+                                        style={inputStyle}
+                                        type="date"
+                                        value={expiresAt}
+                                        onChange={(e) => setExpiresAt(e.target.value)}
+                                    />
+                                </div>
+                            )}
 
                             {isIptv && (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1462,7 +1509,7 @@ export default function AdminAccounts() {
                                 className="btn"
                                 style={{ width: "100%", maxWidth: 320, fontSize: 14, fontWeight: 800, height: 48 }}
                                 onClick={createAccount}
-                                disabled={saving || !platformId || !email || !password || (isIptv && !accessUrl.trim()) || (isYouTubeChannel && !youtubeChannelName.trim()) || manualCostIncomplete}
+                                disabled={saving || !platformId || !email || (!password && !isUniversalPlus) || (isUniversalPlus && !expiresAt) || (isIptv && !accessUrl.trim()) || (isYouTubeChannel && !youtubeChannelName.trim()) || manualCostIncomplete}
                             >
                                 {saving ? "Guardando..." : "✅ Agregar Cuenta"}
                             </button>

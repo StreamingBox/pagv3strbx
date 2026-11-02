@@ -1,5 +1,5 @@
 const pool = require("../db");
-const { BOGOTA_TODAY_SQL, bogotaDateSql, toSqlDateStart } = require("../utils/date");
+const { BOGOTA_TODAY_SQL, bogotaDateOnlyToUtcEndOfDay, bogotaDateSql, currentBogotaDateOnly, toSqlDateStart, toSqlDateTime } = require("../utils/date");
 const {
     normalizeOptionalValue,
     normalizeProfileForAccount,
@@ -10,7 +10,7 @@ const {
     resolveCostModel,
     validateCostModelInput,
 } = require("../utils/accountCosts");
-const { isIptvProduct, isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
+const { isIptvProduct, isUniversalPlusProduct, isYouTubeChannelProduct } = require("../utils/productDeliveryProfile");
 const { normalizeAccessUrl } = require("../utils/accountAccess");
 const { enqueueNotification } = require("./notificationOutbox.service");
 const { isYoutubeTotpProduct, saveTotpSecret, verifyTotpCode } = require("./youtubeTotp.service");
@@ -66,15 +66,15 @@ async function resolvePlatform(conn, { platformId, platformName }) {
     return { pid, pname, platformSlug };
 }
 
-async function upsertIdentity(conn, { pid, emailValue, identityProf, password, pin }) {
+async function upsertIdentity(conn, { pid, emailValue, identityProf, password, pin, preservePasswordIfEmpty = false }) {
     const [idRes] = await conn.query(
         `INSERT INTO account_identities (platform_id, email, profile_number, last_password, last_pin)
      VALUES (?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
-          last_password=VALUES(last_password),
+          last_password=CASE WHEN ? = 1 AND VALUES(last_password) = '' THEN last_password ELSE VALUES(last_password) END,
           last_pin=VALUES(last_pin),
           updated_at=CURRENT_TIMESTAMP`,
-        [pid, emailValue, identityProf, password, pin]
+        [pid, emailValue, identityProf, String(password || "").trim(), pin, preservePasswordIfEmpty ? 1 : 0]
     );
 
     let identityId = idRes.insertId;
@@ -127,6 +127,27 @@ function firstNonEmpty(...values) {
         }
     }
     return "";
+}
+
+function resolveAccountExpiry(value, isUniversalPlus = false) {
+    const rawValue = String(value || "").trim();
+    const dateOnly = rawValue.slice(0, 10);
+    const dateMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const validCalendarDate = Boolean(dateMatch && new Date(Date.UTC(
+        Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3])
+    )).toISOString().slice(0, 10) === dateOnly);
+    if (isUniversalPlus && (rawValue !== dateOnly || !validCalendarDate)) {
+        const err = new Error("Universal+ requiere la fecha de vigencia indicada por el proveedor.");
+        err.status = 400;
+        throw err;
+    }
+    if (!dateOnly) return null;
+    if (isUniversalPlus && dateOnly < currentBogotaDateOnly()) {
+        const err = new Error("La fecha de vigencia de Universal+ ya venció.");
+        err.status = 400;
+        throw err;
+    }
+    return isUniversalPlus ? toSqlDateTime(bogotaDateOnlyToUtcEndOfDay(dateOnly)) : toSqlDateStart(value);
 }
 
 function isScreenCostInput(costInput = {}) {
@@ -424,6 +445,7 @@ async function queueStockAvailabilityNotifications(conn, pid, pname) {
 }
 
 async function propagatePassword(conn, { pid, emailValue, password, newId }) {
+    if (!String(password || "").trim()) return;
     await conn.query(
         `UPDATE platform_accounts
      SET password = ?,
@@ -475,8 +497,17 @@ async function createAccountOne(conn, body) {
     const { platformId, platformName, password, pin, profileNumber, expiresAt } = body;
     const email = firstNonEmpty(body.email, body.correo, body.username, body.user, body.usuario);
 
-    if (!email || !password || (!platformId && !platformName)) {
-        const err = new Error("platformId o platformName, email y password son obligatorios.");
+    if (!email || (!platformId && !platformName)) {
+        const err = new Error("platformId o platformName y email son obligatorios.");
+        err.status = 400;
+        throw err;
+    }
+
+    const { pid, pname, platformSlug } = await resolvePlatform(conn, { platformId, platformName });
+    const isUniversalPlus = isUniversalPlusProduct({ platformName: pname, platformSlug });
+    const accountPassword = password ?? "";
+    if (!String(accountPassword).trim() && !isUniversalPlus) {
+        const err = new Error("La contraseña es obligatoria para esta plataforma.");
         err.status = 400;
         throw err;
     }
@@ -491,7 +522,7 @@ async function createAccountOne(conn, body) {
     );
     const identityProf = normalizeProfileForIdentity(profileNumber);
     const accountProf = normalizeProfileForAccount(profileNumber);
-    const exp = expiresAt ? toSqlDateStart(expiresAt) : null;
+    const exp = resolveAccountExpiry(expiresAt, isUniversalPlus);
     const costInput = {
         costMode: body.costMode ?? body.tipoCosto,
         costAmount: body.costAmount ?? body.valorCosto,
@@ -500,9 +531,13 @@ async function createAccountOne(conn, body) {
         motherCostTotal: body.motherCostTotal ?? body.parentAccountCostTotal,
         motherProfilesTotal: body.motherProfilesTotal ?? body.parentProfilesTotal,
     };
+    const hasCostInput = [costInput.costAmount, costInput.unitCost, costInput.screenCost, costInput.motherCostTotal, costInput.motherProfilesTotal]
+        .some((value) => value !== undefined && value !== null && String(value).trim() !== "");
+    if (isUniversalPlus && !hasCostInput) {
+        costInput.costMode = "screen";
+        costInput.unitCost = 3500;
+    }
     const costModel = validateCostModelInput(costInput);
-
-    const { pid, pname, platformSlug } = await resolvePlatform(conn, { platformId, platformName });
     const isYouTubeChannel = isYouTubeChannelProduct({ platformName: pname, platformSlug });
     const isYouTubeTotp = isYoutubeTotpProduct(`${pname} ${platformSlug}`);
     const totpSecret = String(body.totpSecret ?? body.totp_secret ?? "").trim();
@@ -553,7 +588,7 @@ async function createAccountOne(conn, body) {
         pid,
         emailValue,
         accountProf,
-        password,
+        password: accountPassword,
         youtubeChannelName: isYouTubeChannel ? youtubeChannelName : null,
     });
     if (exactDuplicate) {
@@ -588,8 +623,9 @@ async function createAccountOne(conn, body) {
         pid,
         emailValue,
         identityProf,
-        password,
+        password: String(accountPassword).trim(),
         pin: normalizeOptionalValue(pin),
+        preservePasswordIfEmpty: isUniversalPlus,
     });
 
     const newId = await insertAccount(conn, {
@@ -597,7 +633,7 @@ async function createAccountOne(conn, body) {
         pid,
         pname,
         emailValue,
-        password,
+        password: String(accountPassword).trim(),
         accessUrl,
         pin: normalizeOptionalValue(pin),
         twoFactorSecret,
@@ -610,7 +646,7 @@ async function createAccountOne(conn, body) {
 
     if (totpSecret) await saveTotpSecret(conn, emailValue, totpSecret);
 
-    await propagatePassword(conn, { pid, emailValue, password, newId });
+    await propagatePassword(conn, { pid, emailValue, password: accountPassword, newId });
 
     return { id: newId, platformId: pid, platformName: pname };
 }
@@ -685,7 +721,7 @@ function normalizeBulkRows(rows) {
                 r.proveedor,
             ),
             profileNumber,
-            expiresAt: String(r.expiresAt || r.expires_at || r.expiracion || "").trim(),
+            expiresAt: String(r.expiresAt || r.expires_at || r.expiracion || r.fechaExpiracion || r.fecha_expiracion || r.validUntil || r.valid_until || r.validoHasta || r.validohasta || "").trim(),
             costMode: r.costMode ?? r.tipoCosto ?? r.tipo_costo ?? "",
             costAmount: r.costAmount ?? r.valorCosto ?? r.valor_costo ?? "",
             unitCost: r.unitCost ?? r.costoPantalla ?? r.costo_pantalla ?? "",
@@ -703,15 +739,30 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
     }
 
     const normalized = normalizeBulkRows(rows);
-    const candidates = normalized.filter((r) => r.email && r.password && (r.platformId || r.platformName));
-    if (candidates.length === 0) {
-        const err = new Error("❌ No hay filas válidas (requiere platformId o platformName, email, password).");
+    const platformRows = normalized.filter((r) => r.email && (r.platformId || r.platformName));
+    if (platformRows.length === 0) {
+        const err = new Error("❌ No hay filas válidas (requiere platformId o platformName y email).");
         err.status = 400;
         throw err;
     }
 
-    const mapByName = await resolvePlatformsByName(conn, candidates);
-    const mapById = await resolvePlatformsById(conn, candidates);
+    const mapByName = await resolvePlatformsByName(conn, platformRows);
+    const mapById = await resolvePlatformsById(conn, platformRows);
+    const platformForRow = (row) => row.platformId
+        ? mapById.get(Number(row.platformId))
+        : mapByName.get(String(row.platformName).toLowerCase());
+    const candidates = platformRows.filter((row) => {
+        const platform = platformForRow(row);
+        return Boolean(row.password) || isUniversalPlusProduct({
+            platformName: platform?.name || row.platformName,
+            platformSlug: platform?.slug,
+        });
+    });
+    if (candidates.length === 0) {
+        const err = new Error("❌ No hay filas válidas: se requiere correo, plataforma y contraseña (excepto Universal+).");
+        err.status = 400;
+        throw err;
+    }
 
     let inserted = 0;
     const missingPlatforms = new Set();
@@ -731,6 +782,9 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             missingPlatformRows += 1;
             continue;
         }
+
+        const isUniversalPlus = isUniversalPlusProduct({ platformName: platform.name, platformSlug: platform.slug });
+        if (!r.password && !isUniversalPlus) continue;
 
         const isYouTubeChannel = isYouTubeChannelProduct({ platformName: platform.name, platformSlug: platform.slug });
         if (isYouTubeChannel && !r.youtubeChannelName) {
@@ -752,7 +806,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
         const profileNumber = isYouTubeChannel ? null : r.profileNumber;
         const identityProf = normalizeProfileForIdentity(profileNumber);
         const accountProf = normalizeProfileForAccount(profileNumber);
-        const exp = r.expiresAt ? toSqlDateStart(r.expiresAt) : null;
+        const exp = resolveAccountExpiry(r.expiresAt, isUniversalPlus);
         let accessUrl;
         try {
             accessUrl = normalizeAccessUrl(r.accessUrl, {
@@ -769,6 +823,12 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             motherCostTotal: r.motherCostTotal,
             motherProfilesTotal: r.motherProfilesTotal,
         };
+        const hasCostInput = [costInput.costAmount, costInput.unitCost, costInput.motherCostTotal, costInput.motherProfilesTotal]
+            .some((value) => value !== undefined && value !== null && String(value).trim() !== "");
+        if (isUniversalPlus && !hasCostInput) {
+            costInput.costMode = "screen";
+            costInput.unitCost = 3500;
+        }
         let costModel;
         try {
             costModel = validateCostModelInput(costInput);
@@ -807,8 +867,9 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             pid,
             emailValue: r.email,
             identityProf,
-            password: r.password,
+            password: String(r.password || "").trim(),
             pin: r.pin,
+            preservePasswordIfEmpty: isUniversalPlus,
         });
 
         const newId = await insertAccount(conn, {
@@ -816,7 +877,7 @@ async function bulkInsertAccounts(conn, rows, options = {}) {
             pid,
             pname: platform.name,
             emailValue: r.email,
-            password: r.password,
+            password: String(r.password || "").trim(),
             accessUrl,
             pin: r.pin,
             twoFactorSecret: r.twoFactorSecret,

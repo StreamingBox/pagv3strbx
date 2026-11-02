@@ -23,6 +23,12 @@ function isIptvProduct(product = {}) {
     return compactProductName(product).includes("iptv");
 }
 
+function isUniversalPlusProduct(product = {}) {
+    const normalized = normalizeProductName(`${product.platformSlug || ""} ${product.platformName || ""}`);
+    return normalized.replace(/\s+/g, "").includes("universalplus")
+        || normalized.includes("universal pantalla");
+}
+
 function isDisneyCodeTvProduct(product = {}) {
     const compact = compactProductName(product);
     return compact.includes("disneypremium")
@@ -49,6 +55,7 @@ module.exports = {
     isChatGPTPersonalProduct,
     isDisneyCodeTvProduct,
     isIptvProduct,
+    isUniversalPlusProduct,
     isMicrosoftOfficeProduct,
     isYouTubeChannelProduct,
     isYouTubeMusicProduct,

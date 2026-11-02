@@ -1,5 +1,8 @@
+const { isUniversalPlusProduct } = require("./productDeliveryProfile");
+
 const GEMINI_5TB_COST_COP = 4000;
 const IPTV_COST_COP = 2350;
+const UNIVERSAL_PLUS_COST_COP = 3500;
 
 function normalizeProductName(value) {
     return String(value || "")
@@ -42,6 +45,10 @@ function isIptvPlan(plan) {
 function automaticUnitCostForPlan(plan) {
     if (isGemini5TbPlan(plan)) return GEMINI_5TB_COST_COP;
     if (isIptvPlan(plan)) return IPTV_COST_COP;
+    if (planCurrency(plan) === "COP" && isUniversalPlusProduct({
+        platformName: plan?.platform_name,
+        platformSlug: plan?.platform_slug,
+    })) return UNIVERSAL_PLUS_COST_COP;
     return 0;
 }
 
@@ -55,6 +62,7 @@ function automaticProfitForEntry({ plan, salePrice, unitCost }) {
 module.exports = {
     GEMINI_5TB_COST_COP,
     IPTV_COST_COP,
+    UNIVERSAL_PLUS_COST_COP,
     automaticProfitForEntry,
     automaticUnitCostForPlan,
     isGemini5TbPlan,

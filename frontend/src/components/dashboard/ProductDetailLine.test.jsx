@@ -14,4 +14,14 @@ describe("ProductDetailLine", () => {
         expect(container.querySelector("script")).toBeNull();
         expect(container.textContent).toContain("<script>alert(1)</script>");
     });
+
+    it("highlights the Google AI PLUS trial eligibility condition", () => {
+        const { container } = render(
+            <ProductDetailLine>**PRUEBA: Solo funciona en cuentas de Google que no tengan planes anteriores ni planes activos.**</ProductDetailLine>
+        );
+
+        expect(container.querySelector("strong")?.textContent).toBe(
+            "PRUEBA: Solo funciona en cuentas de Google que no tengan planes anteriores ni planes activos."
+        );
+    });
 });

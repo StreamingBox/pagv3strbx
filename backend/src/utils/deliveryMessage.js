@@ -38,7 +38,8 @@ function isAssistedActivationProduct(platformName) {
     return (
         (normalized.includes("canva") && normalized.includes("correo")) ||
         normalized.includes("notion") ||
-        normalized.includes("gemini")
+        normalized.includes("gemini") ||
+        normalized.includes("google ai plus")
     );
 }
 

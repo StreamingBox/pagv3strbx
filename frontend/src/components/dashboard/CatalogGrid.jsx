@@ -5,6 +5,7 @@ import { animate } from "animejs";
 import { getPlatformLogoCandidates } from "../../utils/platform.js";
 import { displayCurrency } from "../../utils/currency.js";
 import BalancedText from "../text/BalancedText.jsx";
+import ProductDetailLine from "./ProductDetailLine.jsx";
 import { isLiteSite } from "../../config/siteVariant.js";
 import { getGeminiPromoDaysRemaining, isGemini5Tb, sortCatalogItems } from "../../utils/catalogPromotion.js";
 
@@ -533,7 +534,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                         <div className="product-detail-content">
                             <h3>Características y condiciones</h3>
                             <ul>
-                                {selectedDetails.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}
+                                {selectedDetails.map((line, index) => <li key={`${line}-${index}`}><ProductDetailLine>{line}</ProductDetailLine></li>)}
                             </ul>
                         </div>
 

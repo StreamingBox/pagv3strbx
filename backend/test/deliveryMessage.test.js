@@ -55,6 +55,20 @@ test("Canva correo uses WhatsApp activation instructions without credential link
     }
 });
 
+test("Google AI PLUS sale directs the customer to WhatsApp for the activation link", () => {
+    const message = buildSingleItemMessage({
+        platformName: "Google AI PLUS",
+        type: "correo",
+        account: {},
+    });
+
+    assert.match(message, /Google AI PLUS/);
+    assert.match(message, /WhatsApp 3152485340/);
+    assert.match(message, /Hola, necesito ayuda para activar Google AI PLUS/);
+    assert.match(message, /Orden: ORD-TEST/);
+    assert.doesNotMatch(message, /Enlace de credenciales|Contraseña:|Expira:/);
+});
+
 test("YouTube Music delivery names the exact channel instead of treating it as a profile", () => {
     const message = buildSingleItemMessage({
         platformName: "YouTube Music",

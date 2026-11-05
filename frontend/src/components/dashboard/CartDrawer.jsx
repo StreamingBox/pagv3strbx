@@ -4,6 +4,7 @@ import { useCartCheckout } from "../../hooks/useCartCheckout.js";
 import CartItemsList from "./cart/CartItemsList.jsx";
 import CartFooter from "./cart/CartFooter.jsx";
 import CartResult from "./cart/CartResult.jsx";
+import ProductDetailLine from "./ProductDetailLine.jsx";
 
 import "./cartDrawer.css";
 
@@ -107,7 +108,7 @@ export default function CartDrawer({
                                             <strong>{item.platformName} - {item.durationName}</strong>
                                             <ul>
                                                 {String(item.productDetails).split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, index) => (
-                                                    <li key={`${line}-${index}`}>{line}</li>
+                                                    <li key={`${line}-${index}`}><ProductDetailLine>{line}</ProductDetailLine></li>
                                                 ))}
                                             </ul>
                                         </div>

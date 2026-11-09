@@ -23,6 +23,10 @@ Keep the staging database intact. Create `compose.cutover.env` from `compose.cut
 
 The web, API, and database bind only to loopback on ports 18081, 13100, and 13306 by default. The browser worker has no published host port. Do not use `docker compose down -v`; it removes persistent database data.
 
+## Versioned releases
+
+Run `bash deploy-release.sh` only on `srv2086935`, as root, with a full Git commit SHA. Stage `source.tar`, `dist.tgz`, and this checkout's `compose.release-images.template.yaml` under `/opt/pagev3-migration/staging/<sha>/`. Build locally and run `frontend/scripts/verify-release.mjs` before staging. `prepare` verifies both artifact hashes and the Git archive commit, extracts to a new immutable release directory, and builds version-tagged API/web images without changing live containers. Upload and read-back-verify fresh `source`, `database`, and `production` backups in Drive; then run `activate` with `BACKUP_SINCE=<UTC timestamp>` from before those backups. Activation checks the current Compose hashes and health, updates only API/web, and restores the previous images if health checks fail. It does not prune images/releases or alter product data directly.
+
 ## Backups
 
 The `maintenance` profile provides a daily backup and a retry-only Drive sync. The backup keeps a local copy if upload or remote verification fails. After a matching verified receipt is found, the runner removes only that new backup directory; older backups and all Drive history are preserved. The sync job intentionally does not use `--backfill` on the new host.

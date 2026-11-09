@@ -1,0 +1,9 @@
+services:
+  api:
+    image: pagev3-migration-api:${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+    build:
+      context: ${PAGEV3_RELEASE_ROOT:?Set PAGEV3_RELEASE_ROOT}/releases/${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+  web:
+    image: pagev3-migration-web:${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+    build:
+      context: ${PAGEV3_RELEASE_ROOT:?Set PAGEV3_RELEASE_ROOT}/releases/${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}

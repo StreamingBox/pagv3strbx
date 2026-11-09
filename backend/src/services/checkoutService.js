@@ -363,13 +363,19 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
                 err.status = 409;
                 throw err;
             }
+            const universalPlus = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug });
             const needsAccount = requiresInventoryAccount(plan);
             const resolvedAccount = needsAccount
-                ? await findAvailableAccountForPlatform(conn, plan.platform_id, { prioritizeSale: true })
+                ? await findAvailableAccountForPlatform(conn, plan.platform_id, {
+                    prioritizeSale: true,
+                    requireProviderExpiry: universalPlus,
+                })
                 : null;
 
             if (needsAccount && !resolvedAccount?.account) {
-                const err = new Error(`No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
+                const err = new Error(universalPlus
+                    ? "No hay cuentas de Universal+ con vigencia individual registrada en el inventario. Verifica la fecha recibida del proveedor y actualiza la cuenta."
+                    : `No hay cuentas disponibles para ${plan.platform_name}. Contacta al administrador.`);
                 err.status = 409;
                 throw err;
             }
@@ -379,7 +385,6 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
             // subscriptions.expires_at is the contractual calendar date in Colombia.
             // The account keeps a technical timestamp only for stock availability.
             const defaultExpiresAt = eventLink?.expiresAt || addDaysBogotaDateOnly(Number(plan.days));
-            const universalPlus = isUniversalPlusProduct({ platformName: plan.platform_name, platformSlug: plan.platform_slug });
             let expiresAt = defaultExpiresAt;
             if (universalPlus) {
                 const supplierExpiry = formatDateOnlyBogota(account?.expires_at);

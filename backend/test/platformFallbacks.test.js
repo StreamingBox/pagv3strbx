@@ -86,6 +86,35 @@ test("checkout prioritizes flagged accounts within each platform but keeps direc
     assert.equal(result.usedFallback, false);
 });
 
+test("Universal+ checkout selection excludes available accounts without provider expiry", async () => {
+    let selectionSql = "";
+    const conn = {
+        async query(sql) {
+            if (/FROM platform_fallbacks/.test(sql)) return [[]];
+
+            selectionSql = sql;
+            assert.match(sql, /AND pa\.expires_at IS NOT NULL/);
+            return [[{
+                id: 903,
+                platform_id: 10,
+                email: "universal@example.test",
+                password: null,
+                expires_at: "2026-12-01 04:59:59",
+                delivered_platform_name: "Universal+ Pantalla",
+                delivered_platform_slug: "universal-plus-pantalla",
+            }]];
+        },
+    };
+
+    const result = await findAvailableAccountForPlatform(conn, 10, {
+        prioritizeSale: true,
+        requireProviderExpiry: true,
+    });
+
+    assert.match(selectionSql, /ORDER BY FIELD\(pa\.platform_id, \?\), pa\.sale_priority DESC, RAND\(\), pa\.id ASC/);
+    assert.equal(result.account.id, 903);
+});
+
 test("replacement and support stock do not opt into sale priority", async () => {
     let selectionSql = "";
     const conn = {

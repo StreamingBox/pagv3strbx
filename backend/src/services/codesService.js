@@ -42,6 +42,13 @@ function normalizeSlug(slug) {
     return String(slug || "").trim().toLowerCase();
 }
 
+function resolveNetflixAccountCodeProvider({ listedProviderName, inventoryProvider } = {}) {
+    const listedProvider = String(listedProviderName || "").trim();
+    return listedProvider
+        ? normalizeCodeProvider(listedProvider)
+        : normalizeCodeProvider(inventoryProvider);
+}
+
 function pickPlatformIdentityFromSub(sub) {
     const raw =
         sub?.platformSlug ||
@@ -442,17 +449,15 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
         }
     }
 
-    // El proveedor indicado en inventario manda; si quedó en el valor por
-    // defecto, inferimos el portal desde la cuenta Netflix del listado proveedor.
-    let accountCodeProvider = requestedSlug === "netflix"
-        ? normalizeCodeProvider(sub.accountCodeProvider)
-        : STRBX_PROVIDER;
-    if (requestedSlug === "netflix" && accountCodeProvider === STRBX_PROVIDER) {
+    // Para Netflix, la asignación activa del listado de Proveedores es la fuente
+    // de verdad; el campo de inventario solo cubre cuentas sin asignación allí.
+    let accountCodeProvider = STRBX_PROVIDER;
+    if (requestedSlug === "netflix") {
         const listedProviderName = await getProviderForNetflixAccountEmail(soldAccountEmail);
-        if (listedProviderName) {
-            const inferredProvider = normalizeCodeProvider(listedProviderName);
-            if (inferredProvider !== STRBX_PROVIDER) accountCodeProvider = inferredProvider;
-        }
+        accountCodeProvider = resolveNetflixAccountCodeProvider({
+            listedProviderName,
+            inventoryProvider: sub.accountCodeProvider,
+        });
     }
     const jeffProviderConfig = getJeffProviderConfigForProvider(accountCodeProvider, process.env, {
         slug: requestedSlug,
@@ -725,4 +730,8 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     };
 }
 
-module.exports = { requestCodeForOrder, normalizeSlug, __test: { isValidAccessCode } };
+module.exports = {
+    requestCodeForOrder,
+    normalizeSlug,
+    __test: { isValidAccessCode, resolveNetflixAccountCodeProvider },
+};

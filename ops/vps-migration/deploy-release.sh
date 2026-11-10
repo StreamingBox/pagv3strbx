@@ -73,7 +73,8 @@ if [[ $ACTION == prepare ]]; then
     mkdir -m 755 "$RELEASE"
     tar -xf "$STAGE/source.tar" -C "$RELEASE"
     [[ ! -e $RELEASE/frontend/dist ]]
-    tar -xzf "$STAGE/dist.tgz" -C "$RELEASE/frontend"
+    mkdir -m 755 "$RELEASE/frontend/dist"
+    tar -xzf "$STAGE/dist.tgz" -C "$RELEASE/frontend/dist"
     [[ -f $RELEASE/frontend/dist/index.html ]]
     "${NEW[@]}" config --quiet
     "${NEW[@]}" build api web

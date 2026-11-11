@@ -122,6 +122,31 @@ describe("CatalogGrid Gemini promotion", () => {
     });
 });
 
+describe("per-user unavailable products", () => {
+    it("shows a restricted unlimited product as out of stock and disables purchase and alerts", () => {
+        const onNotifyMe = vi.fn();
+        const onAddToCart = vi.fn();
+        const { container } = render(
+            <CatalogGrid
+                catalog={[product({ purchaseBlocked: true, stock: 9 })]}
+                buyLoading={false}
+                onAddToCart={onAddToCart}
+                onNotifyMe={onNotifyMe}
+                cartCountByPlatformPriceId={new Map()}
+            />
+        );
+        const card = container.querySelector(".catalog-card");
+
+        expect(card.textContent).toContain("Sin Stock");
+        const action = card.querySelector(".catalog-card__btn--notify");
+        expect(action.disabled).toBe(true);
+        expect(action.textContent).toContain("No disponible");
+        fireEvent.click(action);
+        expect(onAddToCart).not.toHaveBeenCalled();
+        expect(onNotifyMe).not.toHaveBeenCalled();
+    });
+});
+
 describe("Spotify plan artwork", () => {
     it("uses distinct duration artwork while preserving the Spotify mark", () => {
         const plans = [

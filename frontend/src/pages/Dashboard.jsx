@@ -87,7 +87,8 @@ export default function Dashboard() {
                 item.platformPriceId,
                 {
                     stock: Number(item.stock || 0),
-                    isUnlimited: item.platformType === "correo",
+                    isUnlimited: item.platformType === "correo" && !item.purchaseBlocked,
+                    purchaseBlocked: Boolean(item.purchaseBlocked),
                     productDetails: item.productDetails || "",
                 },
             ])
@@ -130,6 +131,11 @@ export default function Dashboard() {
                     : { ...item, productDetails: stockInfo.productDetails };
                 if (updatedItem !== item) changed = true;
 
+                if (stockInfo.purchaseBlocked) {
+                    changed = true;
+                    continue;
+                }
+
                 if (stockInfo.isUnlimited) {
                     next.push(updatedItem);
                     continue;
@@ -169,6 +175,10 @@ export default function Dashboard() {
 
     function addToCart(item) {
         setError("");
+        if (item.purchaseBlocked) {
+            setError("Este producto no está disponible para tu cuenta.");
+            return;
+        }
         const isUnlimited = item.platformType === "correo";
         const stock = Number(item.stock || 0);
 
@@ -199,6 +209,10 @@ export default function Dashboard() {
 
     function addComboToCart(combo) {
         setError("");
+        if (combo.purchaseBlocked) {
+            setError("Este producto no está disponible para tu cuenta.");
+            return;
+        }
         const stock = Number(combo.stock || 0);
 
         setCart((prev) => {

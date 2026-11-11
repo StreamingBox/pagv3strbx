@@ -81,7 +81,7 @@ export default function ComboGrid({ combos, onAddCombo, cartCountByComboId }) {
                 {combos.map((combo, index) => {
                     const stock = Number(combo.stock || 0);
                     const inCartCount = cartCountByComboId?.get(combo.id) || 0;
-                    const outOfStock = stock <= 0;
+                    const outOfStock = Boolean(combo.purchaseBlocked) || stock <= 0;
                     const stockReached = !outOfStock && inCartCount >= stock;
                     const savings = Number(combo.savings || 0);
                     const compareAt = Number(combo.compare_at_price || combo.regular_total || 0);

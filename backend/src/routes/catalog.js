@@ -5,6 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, currencyAliases } = require("../utils/currency");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
+const { getRestrictedPlatformIds } = require("../services/userPlatformRestrictions.service");
 
 const router = express.Router();
 
@@ -151,10 +152,18 @@ router.get("/catalog", requireAuth, async (req, res) => {
       [liteFlag, liteFlag, liteFlag, liteFlag, liteFlag, ...aliases, ...aliases]
     );
 
+    const restrictedPlatformIds = await getRestrictedPlatformIds(pool, userId);
+    const visibleRows = rows.map((row) => {
+      if (!restrictedPlatformIds.has(Number(row.platformId))) {
+        return { ...row, purchaseBlocked: false };
+      }
+      return { ...row, stock: 0, directStock: 0, fallbackStock: 0, purchaseBlocked: true };
+    });
+
     res.set("Cache-Control", "private, no-store, no-cache, must-revalidate");
     res.set("Pragma", "no-cache");
     res.set("Expires", "0");
-    return res.json(rows);
+    return res.json(visibleRows);
   } catch (err) {
     console.error("GET /catalog error:", err);
     return res.status(500).json({ message: "Error interno." });

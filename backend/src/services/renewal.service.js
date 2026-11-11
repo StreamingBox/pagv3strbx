@@ -12,6 +12,7 @@ const { insertCredentialLinkWithRetry } = require("../utils/tokens");
 const { normalizeCurrency, sameCurrency } = require("../utils/currency");
 const { automaticUnitCostForPlan } = require("../utils/profitCosts");
 const { strbxReportedNetflixAccountSql } = require("../utils/strbxReportedAccounts");
+const { assertUserCanPurchasePlatforms } = require("./userPlatformRestrictions.service");
 
 async function renewSubscription({
     conn,
@@ -79,6 +80,8 @@ async function renewSubscription({
         err.status = 403;
         throw err;
     }
+
+    await assertUserCanPurchasePlatforms(conn, sub.user_id, [sub.platform_id]);
 
     // subscriptions.expires_at is the only contractual expiry source.
     const effectiveExpiresAt = sub.expires_at;

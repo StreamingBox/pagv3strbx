@@ -87,6 +87,7 @@ test("admin renewing their own overdue subscription through customer self-servic
                 }]];
             }
             if (sql.includes("COUNT(*) AS renewal_count")) return [[{ renewal_count: 0 }]];
+            if (sql.includes("user_platform_purchase_restrictions")) return [[]];
             if (sql.includes("SELECT renewal_order_code")) throw reachedRecentRenewalCheck;
             throw new Error("Unexpected query in renewal test");
         },

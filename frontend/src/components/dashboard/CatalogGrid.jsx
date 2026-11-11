@@ -234,12 +234,14 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
         return () => window.clearInterval(timer);
     }, []);
     const selectedDetails = useMemo(() => detailLines(selectedItem?.productDetails), [selectedItem]);
-    const selectedIsUnlimited = selectedItem?.platformType === "correo";
+    const selectedIsUnlimited = selectedItem?.platformType === "correo" && !selectedItem?.purchaseBlocked;
     const selectedStock = Number(selectedItem?.stock || 0);
     const selectedInCart = selectedItem
         ? (cartCountByPlatformPriceId?.get(selectedItem.platformPriceId) || 0)
         : 0;
-    const selectedUnavailable = Boolean(selectedItem) && !selectedIsUnlimited && selectedInCart >= selectedStock;
+    const selectedUnavailable = Boolean(selectedItem) && (
+        selectedItem.purchaseBlocked || (!selectedIsUnlimited && selectedInCart >= selectedStock)
+    );
     const sorted = useMemo(() => sortCatalogItems(catalog), [catalog]);
 
     function handleAdd(item) {
@@ -261,9 +263,9 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
         <>
         <div className="catalog-grid">
             {sorted.map((item, index) => {
-                const isUnlimited = item.platformType === 'correo';
+                const isUnlimited = item.platformType === 'correo' && !item.purchaseBlocked;
                 const stock = Number(item.stock || 0);
-                const outOfStock = !isUnlimited && stock <= 0;
+                const outOfStock = Boolean(item.purchaseBlocked) || (!isUnlimited && stock <= 0);
                 const inCartCount = cartCountByPlatformPriceId?.get(item.platformPriceId) || 0;
                 const stockReached = !isUnlimited && inCartCount >= stock;
                 const color = getPlatformColor(item.platformSlug, item.platformName);
@@ -438,7 +440,8 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
 
                             {outOfStock ? (
                                 <MotionButton
-                                    onClick={() => onNotifyMe && onNotifyMe(item)}
+                                    disabled={Boolean(item.purchaseBlocked)}
+                                    onClick={() => !item.purchaseBlocked && onNotifyMe && onNotifyMe(item)}
                                     className="catalog-card__btn catalog-card__btn--notify"
                                     style={{
                                         background: "linear-gradient(135deg, #f59e0b, #d97706)",
@@ -454,7 +457,7 @@ export default function CatalogGrid({ catalog, buyLoading, onAddToCart, onNotify
                                     whileHover={{ scale: 1.05, boxShadow: "0 0 15px rgba(245, 158, 11, 0.4)" }}
                                     whileTap={{ scale: 0.95 }}
                                 >
-                                    🔔 Avísame
+                                    {item.purchaseBlocked ? "No disponible" : "🔔 Avísame"}
                                 </MotionButton>
                             ) : (
                                 <MotionButton

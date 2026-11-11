@@ -5,6 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const { normalizeCurrency, currencyAliases } = require("../utils/currency");
 const { getSalesChannel, isLiteChannel } = require("../utils/salesChannel");
 const { BOGOTA_TODAY_SQL, bogotaDateSql } = require("../utils/date");
+const { getRestrictedPlatformIds } = require("../services/userPlatformRestrictions.service");
 
 const router = express.Router();
 
@@ -57,7 +58,7 @@ function cleanLiteComboConfig(body = {}) {
     };
 }
 
-async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") {
+async function getCatalogCombosForCurrency(currency, salesChannel = "reseller", userId = null) {
     const liteCatalog = isLiteChannel(salesChannel);
     const liteFlag = liteCatalog ? 1 : 0;
     const aliases = liteCatalog ? ["COP"] : currencyAliases(currency, "COP");
@@ -134,6 +135,7 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
          ORDER BY ci.combo_id ASC, ci.sort_order ASC, p.name ASC`,
         [liteFlag, liteFlag, ...aliases, ...comboIds]
     );
+    const restrictedPlatformIds = await getRestrictedPlatformIds(pool, userId);
 
     const [expectedRows] = await pool.query(
         `SELECT combo_id, SUM(quantity) AS expected_count
@@ -156,11 +158,13 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
             const regularTotal = comboItems.reduce((sum, item) => sum + Number(item.itemPrice || 0) * Number(item.quantity || 1), 0);
             const stock = comboItems.length
                 ? Math.min(...comboItems.map((item) => {
+                    if (restrictedPlatformIds.has(Number(item.platform_id))) return 0;
                     if (item.platformType === "correo") return 999999;
                     return Math.floor(Number(item.stock || 0) / Number(item.quantity || 1));
                 }))
                 : 0;
             const effectiveStock = stock === 999999 ? 999999 : Math.max(stock, 0);
+            const purchaseBlocked = comboItems.some((item) => restrictedPlatformIds.has(Number(item.platform_id)));
             const compareAt = Number(combo.compare_at_price || 0) > 0 ? Number(combo.compare_at_price) : regularTotal;
 
             return {
@@ -170,6 +174,7 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
                 regular_total: regularTotal,
                 savings: Math.max(compareAt - Number(combo.price || 0), 0),
                 stock: effectiveStock,
+                purchaseBlocked,
                 items: comboItems.map((item) => ({
                     platformPriceId: item.platformPriceId,
                     platformId: item.platform_id,
@@ -182,7 +187,8 @@ async function getCatalogCombosForCurrency(currency, salesChannel = "reseller") 
                     days: item.days,
                     price: Number(item.itemPrice || 0),
                     currency: item.itemCurrency,
-                    stock: Number(item.stock || 0),
+                    stock: restrictedPlatformIds.has(Number(item.platform_id)) ? 0 : Number(item.stock || 0),
+                    purchaseBlocked: restrictedPlatformIds.has(Number(item.platform_id)),
                     is_renewable: item.is_renewable,
                 })),
             };
@@ -200,7 +206,7 @@ router.get("/combos", requireAuth, async (req, res) => {
         const salesChannel = getSalesChannel(req);
         const [urows] = await pool.query("SELECT currency FROM users WHERE id = ? LIMIT 1", [userId]);
         const userCurrency = isLiteChannel(salesChannel) ? "COP" : normalizeCurrency(urows?.[0]?.currency || "COP", "COP");
-        const combos = await getCatalogCombosForCurrency(userCurrency, salesChannel);
+        const combos = await getCatalogCombosForCurrency(userCurrency, salesChannel, userId);
         return res.json(combos);
     } catch (err) {
         console.error("GET /combos error:", err);

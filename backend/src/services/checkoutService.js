@@ -24,6 +24,7 @@ const {
 } = require("../utils/profitCosts");
 const { eventLinkSnapshot, isEventLinkPlan } = require("../utils/eventLinks");
 const { isUniversalPlusProduct } = require("../utils/productDeliveryProfile");
+const { assertUserCanPurchasePlatforms } = require("./userPlatformRestrictions.service");
 
 function allocateComboPrices(comboPrice, comboItems) {
     const price = Number(comboPrice || 0);
@@ -300,6 +301,12 @@ async function checkoutService({ userId, items, combos, recordProfit, profitAmou
         }));
 
         purchaseEntries.push(...await loadComboEntries(conn, comboRequests, currency, salesChannel));
+
+        await assertUserCanPurchasePlatforms(
+            conn,
+            userId,
+            purchaseEntries.map((entry) => entry.plan.platform_id)
+        );
 
         const mixedCurrency = purchaseEntries.some((entry) => !sameCurrency(entry.plan.currency || "COP", currency));
         if (mixedCurrency) {

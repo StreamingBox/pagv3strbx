@@ -5,5 +5,5 @@ crm.strbx.com.co {
 
 strbx.com.co, www.strbx.com.co {
 	encode zstd gzip
-	reverse_proxy web:80
+	reverse_proxy pagev3-migration-web-1:80
 }

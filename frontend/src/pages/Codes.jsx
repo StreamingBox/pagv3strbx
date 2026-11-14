@@ -19,6 +19,7 @@ const PLATFORMS = [
 
 const DISPLAY_PLATFORMS = PLATFORMS
     .filter((platform) => platform.slug !== "chatgpt-business");
+const DISNEY_CODE_WINDOW_EXEMPT_ADMIN_EMAIL = "cuentastrbx@gmail.com";
 
 /* ─── Estilos globales del componente (fuera del render para no recrear en cada update) ─── */
 const S = {
@@ -223,6 +224,8 @@ export default function Codes() {
     const navigate = useNavigate();
     const { user, setUser } = useAuth();
     const isAdmin = String(user?.role || "").toLowerCase() === "admin";
+    const isDisneyWindowExemptAdmin = isAdmin
+        && String(user?.email || "").trim().toLowerCase() === DISNEY_CODE_WINDOW_EXEMPT_ADMIN_EMAIL;
 
     const [orderNumber, setOrderNumber] = useState("");
     const [activePlatform, setActivePlatform] = useState(null);
@@ -637,7 +640,9 @@ export default function Codes() {
                                 <span style={{ fontSize: 13, flexShrink: 0, color: "#8b5cf6" }}>ℹ</span>
                                 <p style={{ margin: 0, fontSize: 11, color: "var(--muted)", lineHeight: 1.65 }}>
                                     {activePlatform === "disney"
-                                        ? <>Disney+: solicita el código dentro de los primeros 15 minutos. Se entrega <span style={{ color: "var(--text)", fontWeight: 800 }}>uno por compra</span> y se bloquea si Disney detecta un nuevo inicio de sesión. Si no aplica, contacta a Soporte.</>
+                                        ? (isDisneyWindowExemptAdmin
+                                            ? <>Disney+: como administrador, puedes solicitar el código incluso después de los primeros 15 minutos. Se entrega <span style={{ color: "var(--text)", fontWeight: 800 }}>uno por compra</span> y se bloquea si Disney detecta un nuevo inicio de sesión.</>
+                                            : <>Disney+: solicita el código dentro de los primeros 15 minutos. Se entrega <span style={{ color: "var(--text)", fontWeight: 800 }}>uno por compra</span> y se bloquea si Disney detecta un nuevo inicio de sesión. Si no aplica, contacta a Soporte.</>)
                                         : activePlatform === "youtube-premium-totp"
                                         ? (isAdmin
                                             ? <>Como administrador, puedes volver a solicitar el código cuando lo necesites. El código cambia cada 30 segundos.</>

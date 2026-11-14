@@ -28,7 +28,11 @@ const { fetchCodeFromLiveonixProvider } = require("./liveonixProviderCodeService
 
 const { toCodeSlug } = require("../utils/platformSlugMap");
 const { isStoredDateOnlyExpired } = require("../utils/date");
-const { checkDisneyPurchaseWindow, DISNEY_CODE_WINDOW_MINUTES } = require("./disneyCodePolicy");
+const {
+    checkDisneyPurchaseWindow,
+    DISNEY_CODE_WINDOW_MINUTES,
+    isDisneyPurchaseWindowExemptAdmin,
+} = require("./disneyCodePolicy");
 
 const CHATGPT_CODE_REGEX = "(?:Tu\\s+c[o\\u00f3]digo\\s+de\\s+ChatGPT\\s+es|Your\\s+ChatGPT\\s+code\\s+is|Introduce\\s+este\\s+c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n\\s+temporal\\s+para\\s+continuar:?|Enter\\s+this\\s+temporary\\s+verification\\s+code\\s+to\\s+continue:?|c[o\\u00f3]digo\\s+de\\s+verificaci[o\\u00f3]n(?:\\s+temporal)?)[^0-9]{0,120}([0-9]{6})";
 
@@ -360,7 +364,9 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     let disneyPurchaseTimestamp = null;
     if (requestedSlug === "disney") {
         const purchaseWindow = checkDisneyPurchaseWindow(sub.purchaseCreatedAt);
-        if (!sub.purchaseOrderId || !purchaseWindow.allowed) {
+        const adminMayUseExpiredPurchaseWindow = purchaseWindow.status === "purchase_window_expired"
+            && isDisneyPurchaseWindowExemptAdmin(user);
+        if (!sub.purchaseOrderId || (!purchaseWindow.allowed && !adminMayUseExpiredPurchaseWindow)) {
             const expired = purchaseWindow.status === "purchase_window_expired";
             return {
                 http: expired ? 410 : 409,

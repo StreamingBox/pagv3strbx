@@ -2,6 +2,13 @@ const cheerio = require("cheerio");
 
 const DISNEY_CODE_WINDOW_MINUTES = 15;
 const DISNEY_CODE_WINDOW_MS = DISNEY_CODE_WINDOW_MINUTES * 60 * 1000;
+const DISNEY_CODE_WINDOW_EXEMPT_ADMIN_EMAIL = "cuentastrbx@gmail.com";
+
+function isDisneyPurchaseWindowExemptAdmin(user) {
+    return String(user?.role || "").trim().toLowerCase() === "admin"
+        && String(user?.verifiedRole || "").trim().toLowerCase() === "admin"
+        && String(user?.email || "").trim().toLowerCase() === DISNEY_CODE_WINDOW_EXEMPT_ADMIN_EMAIL;
+}
 
 function normalizeDisneyText(value) {
     return String(value || "")
@@ -93,6 +100,7 @@ module.exports = {
     DISNEY_CODE_WINDOW_MINUTES,
     checkDisneyPurchaseWindow,
     extractDisneyOtpCode,
+    isDisneyPurchaseWindowExemptAdmin,
     isDisneyLoginNotice,
     isDisneyOtpSubject,
     isDisneySender,

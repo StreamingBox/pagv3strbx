@@ -19,7 +19,7 @@ function requireAuth(req, res, next) {
         }
 
         return pool.query(
-            "SELECT status, auth_version FROM users WHERE id = ? LIMIT 1",
+            "SELECT status, auth_version, email, role FROM users WHERE id = ? LIMIT 1",
             [resolvedUserId]
         ).then(([rows]) => {
             const user = rows?.[0];
@@ -34,6 +34,8 @@ function requireAuth(req, res, next) {
                 sub: resolvedUserId,
                 id: resolvedUserId,
                 role: payload?.role || "user",
+                verifiedRole: user.role || "user",
+                email: user.email || "",
             };
 
             return next();

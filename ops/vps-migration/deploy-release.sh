@@ -77,8 +77,8 @@ if [[ $ACTION == prepare ]]; then
     tar -xzf "$STAGE/dist.tgz" -C "$RELEASE/frontend/dist"
     [[ -f $RELEASE/frontend/dist/index.html ]]
     "${NEW[@]}" config --quiet
-    "${NEW[@]}" build api web
-    docker image inspect "pagev3-migration-api:$SHA" "pagev3-migration-web:$SHA" >/dev/null
+    "${NEW[@]}" build api web netflix-tv-worker
+    docker image inspect "pagev3-migration-api:$SHA" "pagev3-migration-web:$SHA" "pagev3-migration-netflix-tv-worker:$SHA" >/dev/null
     echo "Prepared release $SHA; production containers were not changed."
     exit 0
 fi
@@ -101,7 +101,7 @@ OLD_OVERLAY=$OLD_STAGE/compose.release-images.yaml
 export PAGEV3_RELEASE_SHA=$PREVIOUS
 OLD=("${COMMON[@]}" -f "$OLD_OVERLAY")
 "${OLD[@]}" config --quiet
-for service in api web; do
+for service in api web netflix-tv-worker; do
     expected=$("${OLD[@]}" config --hash "$service" | awk -v service="$service" '$1 == service { print $2 }')
     actual=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' "pagev3-migration-$service-1")
     [[ -n $expected && $expected == "$actual" ]] || {
@@ -110,19 +110,22 @@ for service in api web; do
 done
 export PAGEV3_RELEASE_SHA=$SHA
 verify_backups
-docker image inspect "pagev3-migration-api:$SHA" "pagev3-migration-web:$SHA" >/dev/null
+docker image inspect "pagev3-migration-api:$SHA" "pagev3-migration-web:$SHA" "pagev3-migration-netflix-tv-worker:$SHA" >/dev/null
 
 rollback() {
     trap - ERR
-    echo 'Release health check failed; restoring the previous API and web images.' >&2
+    echo 'Release health check failed; restoring the previous API, web, and worker images.' >&2
     export PAGEV3_RELEASE_SHA=$PREVIOUS
-    "${OLD[@]}" up -d --no-deps --no-build --pull never api web
+    "${OLD[@]}" up -d --no-deps --no-build --pull never api web netflix-tv-worker
     wait_healthy pagev3-migration-api-1
     wait_healthy pagev3-migration-web-1
+    wait_healthy pagev3-migration-netflix-tv-worker-1
     exit 1
 }
 
 trap rollback ERR
+"${NEW[@]}" up -d --no-deps --no-build --pull never netflix-tv-worker
+wait_healthy pagev3-migration-netflix-tv-worker-1
 "${NEW[@]}" up -d --no-deps --no-build --pull never api
 wait_healthy pagev3-migration-api-1
 "${NEW[@]}" up -d --no-deps --no-build --pull never web
@@ -130,4 +133,4 @@ wait_healthy pagev3-migration-web-1
 curl --fail --silent --show-error http://127.0.0.1:13100/api/readiness
 curl --fail --silent --show-error -o /dev/null http://127.0.0.1:18081/
 trap - ERR
-docker inspect --format '{{.Name}} {{.Config.Image}} {{.State.Health.Status}}' pagev3-migration-api-1 pagev3-migration-web-1
+docker inspect --format '{{.Name}} {{.Config.Image}} {{.State.Health.Status}}' pagev3-migration-api-1 pagev3-migration-web-1 pagev3-migration-netflix-tv-worker-1

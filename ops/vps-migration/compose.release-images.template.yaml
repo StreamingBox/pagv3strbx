@@ -7,3 +7,8 @@ services:
     image: pagev3-migration-web:${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
     build:
       context: ${PAGEV3_RELEASE_ROOT:?Set PAGEV3_RELEASE_ROOT}/releases/${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+  netflix-tv-worker:
+    image: pagev3-migration-netflix-tv-worker:${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+    build:
+      context: ${PAGEV3_RELEASE_ROOT:?Set PAGEV3_RELEASE_ROOT}/releases/${PAGEV3_RELEASE_SHA:?Set PAGEV3_RELEASE_SHA}
+      dockerfile: ops/vps-migration/Dockerfile.worker

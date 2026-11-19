@@ -643,9 +643,8 @@ export default function AdminProviders() {
 
     const activeProviders = providers.filter((item) => Number(item.isActive) === 1);
     const topProviders = useMemo(() => [...providers]
-        .filter((provider) => Number(provider.accountCount || 0) > 0)
+        .filter((provider) => Number(provider.activeAccountCount || 0) > 0)
         .sort((left, right) => Number(right.activeAccountCount || 0) - Number(left.activeAccountCount || 0)
-            || Number(right.accountCount || 0) - Number(left.accountCount || 0)
             || String(left.name || "").localeCompare(String(right.name || "")))
         .slice(0, 5), [providers]);
     const upcomingRenewals = useMemo(() => accounts
@@ -984,7 +983,6 @@ export default function AdminProviders() {
                                 <div ref={topRankingRef} style={{ display: "grid", gap: 10 }}>
                                     {topProviders.map((provider, index) => {
                                         const activeCount = Number(provider.activeAccountCount || 0);
-                                        const totalCount = Number(provider.accountCount || 0);
                                         return <div key={provider.id} data-provider-rank className="admin-providers-ranking-row" style={{ display: "grid", gridTemplateColumns: "32px minmax(0, 1fr) auto", gap: 11, alignItems: "center", padding: "10px 0", borderBottom: index === topProviders.length - 1 ? 0 : "1px solid var(--stroke)" }}>
                                             <span style={{ width: 28, height: 28, display: "grid", placeItems: "center", borderRadius: 9, color: index === 0 ? "#111827" : "var(--text)", background: index === 0 ? "#fbbf24" : "rgba(139,92,246,.18)", border: "1px solid rgba(139,92,246,.32)", fontWeight: 900, fontSize: 12 }}>{index + 1}</span>
                                             <div style={{ minWidth: 0 }}>
@@ -996,7 +994,6 @@ export default function AdminProviders() {
                                                     <div data-provider-bar style={{ transformOrigin: "left center", width: `${activeCount ? Math.max(8, (activeCount / topProviderMax) * 100) : 3}%`, height: "100%", borderRadius: 99, background: index === 0 ? "#fbbf24" : "#8b5cf6" }} />
                                                 </div>
                                             </div>
-                                            <span style={{ color: "var(--muted)", fontSize: 11, whiteSpace: "nowrap" }}>{totalCount} total</span>
                                         </div>;
                                     })}
                                 </div>

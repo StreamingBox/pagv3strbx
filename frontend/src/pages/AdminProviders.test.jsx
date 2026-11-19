@@ -55,6 +55,26 @@ describe("saved provider account interface", () => {
         expect(screen.getByText("Fecha renovación tarjeta")).toBeInTheDocument();
     });
 
+    it("ranks only providers with active Netflix accounts", async () => {
+        apiFetch.mockImplementation(async (path) => ({
+            ok: true,
+            data: path === "/admin/providers" ? [
+                { id: 1, name: "Mayor histórico", isActive: 1, accountCount: 90, activeAccountCount: 0 },
+                { id: 2, name: "Más activas", isActive: 1, accountCount: 8, activeAccountCount: 8 },
+                { id: 3, name: "Menos activas", isActive: 1, accountCount: 70, activeAccountCount: 3 },
+            ] : path === "/admin/provider-platforms" ? [{ id: 18, name: "Netflix Internacional" }] : accounts,
+        }));
+        render(<AdminProviders />);
+
+        await screen.findByRole("button", { name: "Editar cuenta 12" });
+        const ranking = screen.getByText("Top 5 proveedores").closest("details");
+        expect(within(ranking).getByText("Más activas")).toBeInTheDocument();
+        expect(within(ranking).getByText("Menos activas")).toBeInTheDocument();
+        expect(within(ranking).queryByText("Mayor histórico")).not.toBeInTheDocument();
+        expect(within(ranking).getByText("8 activas")).toBeInTheDocument();
+        expect(within(ranking).queryByText(/total/)).not.toBeInTheDocument();
+    });
+
     it("filters expired card renewals and reported accounts", async () => {
         const section = await loadedPage();
         fireEvent.change(screen.getByLabelText("Filtrar vencimientos de renovación de tarjeta"), { target: { value: "expired" } });

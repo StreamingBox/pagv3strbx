@@ -170,6 +170,11 @@ test("code lookup extracts the current Spanish ChatGPT temporary code email", ()
     assert.equal(extractFallbackCode(haystack), "741563");
 });
 
+test("code lookup extracts Spotify's Spanish login code without matching unrelated numbers", () => {
+    assert.equal(extractFallbackCode("Tu código de inicio de sesión de Spotify es 000000"), "000000");
+    assert.equal(extractFallbackCode("Spotify alert 2026-11-19; reference 000000"), null);
+});
+
 test("Gmail IMAP config keeps strict TLS with explicit SNI", () => {
     const oldEnv = {
         GMAIL_EMAIL: process.env.GMAIL_EMAIL,

@@ -3,23 +3,28 @@ const test = require("node:test");
 const imapConfig = require("../src/utils/imapConfig");
 
 let mailboxMessages = [];
+let searches = [];
+test.beforeEach(() => {
+    mailboxMessages = [];
+    searches = [];
+});
 const connection = {
     async openBox() {},
     async end() {},
-    async search(criteria) {
+    async search(criteria, options) {
+        searches.push({ criteria, options });
         const uidCriterion = criteria.find((criterion) => Array.isArray(criterion) && criterion[0] === "UID");
         if (uidCriterion) {
-            const message = mailboxMessages.find((candidate) => candidate.uid === uidCriterion[1]);
-            return message ? [{ parts: [{ which: "", body: message.raw }] }] : [];
+            return mailboxMessages.filter(({ uid }) => uidCriterion.slice(1).includes(uid)).map(({ uid, raw }) => ({
+                attributes: { uid },
+                parts: [{ which: "", body: raw }],
+            }));
         }
         return mailboxMessages.map((message) => ({
             attributes: { uid: message.uid, date: message.date },
             parts: [{
-                which: "HEADER.FIELDS (FROM TO SUBJECT DATE)",
-                body: {
-                    from: [message.from || "Disney+ <disneyplus@trx.mail2.disneyplus.com>"],
-                    to: ["Client <client@example.test>"],
-                },
+                which: "HEADER.FIELDS (FROM)",
+                body: { from: [message.from] },
             }],
         }));
     },
@@ -29,7 +34,7 @@ imapConfig.getImapConfig = () => ({ host: "imap.example.test" });
 imapConfig.connectImapWithTlsFallback = async () => connection;
 const { fetchDisneyCodeFromGmail } = require("../src/services/gmailCodeService");
 
-function makeEmail({ uid, subject, body, html, date, from = "Disney+ <disneyplus@trx.mail2.disneyplus.com>" }) {
+function makeEmail({ uid, subject, body, html, date, from = "Disney+ <disneyplus@trx.mail2.disneyplus.com>", to = "Client <client@example.test>" }) {
     const dateHeader = date.toUTCString();
     const mimeBody = html && body == null
         ? ["Content-Type: text/html; charset=utf-8", "", html]
@@ -51,9 +56,10 @@ function makeEmail({ uid, subject, body, html, date, from = "Disney+ <disneyplus
     return {
         uid,
         date,
+        from,
         raw: [
             `From: ${from}`,
-            "To: Client <client@example.test>",
+            ...(to ? [`To: ${to}`] : []),
             `Subject: ${subject}`,
             `Date: ${dateHeader}`,
             "MIME-Version: 1.0",
@@ -88,6 +94,37 @@ test("blocks the code if Disney has a new-login notice after purchase", async ()
 
     assert.equal(result.ok, false);
     assert.equal(result.status, "device_already_entered");
+    assert.deepEqual(searches[1], { criteria: [["UID", 2, 1]], options: { bodies: [""], markSeen: false } });
+    assert.equal(searches.length, 2);
+});
+
+test("an empty Disney search does not fall back to the entire inbox", async () => {
+    const result = await fetchDisneyCodeFromGmail({
+        toEmail: " Client@Example.Test ",
+        purchasedAt: new Date(Date.now() - 40 * 86400_000),
+    });
+
+    assert.equal(result.status, "disney_code_not_found");
+    assert.equal(searches.length, 1);
+    assert.deepEqual(searches[0].criteria.slice(1), [
+        ["TO", "client@example.test"],
+        ["OR", ["FROM", "disneyplus.com"], ["FROM", "my.disney.com"]],
+    ]);
+});
+
+test("Disney messages must match the assigned address, not a substring or display name", async () => {
+    const now = Date.now();
+    mailboxMessages = ["other-client@example.test", "client@example.test <different@example.test>", ""].map((to, index) => makeEmail({
+        uid: index + 1,
+        subject: "Your one-time passcode for Disney+",
+        body: "123456",
+        date: new Date(now - 1000),
+        to,
+    }));
+    const result = await fetchDisneyCodeFromGmail({ toEmail: "client@example.test", purchasedAt: new Date(now - 2000) });
+
+    assert.equal(result.status, "disney_code_not_found");
+    assert.equal(result.code, undefined);
 });
 
 test("returns only an official Disney OTP when no new-login notice exists", async () => {

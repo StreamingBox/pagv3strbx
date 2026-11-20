@@ -261,7 +261,9 @@ async function fetchDisneyCodeFromGmail({ toEmail, purchasedAt }) {
 
     const sinceDate = new Date(purchaseDate.getTime() - 24 * 60 * 60 * 1000);
     const targetEmail = String(toEmail || "").trim().toLowerCase();
-    const fetchOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false };
+    if (!targetEmail) {
+        return { ok: false, status: "no_account", message: "Este pedido no tiene un correo asignado." };
+    }
     let conn;
     let stage = "connect";
 
@@ -271,57 +273,44 @@ async function fetchDisneyCodeFromGmail({ toEmail, purchasedAt }) {
         await conn.openBox("INBOX");
 
         stage = "search_headers";
-        let matchedToSearch = false;
-        let messages = await conn.search(
-            targetEmail ? [["SINCE", sinceDate], ["TO", targetEmail]] : [["SINCE", sinceDate]],
-            fetchOptions
+        const messages = await conn.search(
+            [["SINCE", sinceDate], ["TO", targetEmail], ["OR", ["FROM", "disneyplus.com"], ["FROM", "my.disney.com"]]],
+            { bodies: ["HEADER.FIELDS (FROM)"], markSeen: false }
         );
-        if (messages?.length) matchedToSearch = Boolean(targetEmail);
 
-        if (!messages || messages.length === 0) {
-            stage = "search_headers_fallback";
-            messages = await conn.search([["SINCE", sinceDate]], fetchOptions);
-        }
-        if (!messages || messages.length === 0) {
-            return {
-                ok: false,
-                status: "disney_code_not_found",
-                message: `No apareció un correo reciente de Disney con el código. Puedes volver a intentar dentro de los ${DISNEY_CODE_WINDOW_MINUTES} minutos de la compra.`,
-            };
-        }
-
-        messages.sort((a, b) => {
-            const first = safeToDate(a?.attributes?.date)?.getTime() ?? 0;
-            const second = safeToDate(b?.attributes?.date)?.getTime() ?? 0;
-            return second - first;
-        });
-
-        const inspected = [];
         const now = Date.now();
-        for (const msg of messages) {
+        const candidates = [];
+        for (const msg of messages || []) {
             const messageDate = safeToDate(msg?.attributes?.date);
             if (!messageDate || messageDate < purchaseDate || messageDate.getTime() > now) continue;
 
             const headerPart = msg?.parts?.find((part) => String(part.which || "").includes("HEADER"));
-            const headers = headerPart?.body || {};
-            const fromHeader = Array.isArray(headers.from) ? headers.from.join(" ") : String(headers.from || "");
-            const toHeader = Array.isArray(headers.to) ? headers.to.join(" ") : String(headers.to || "");
-            if (!isDisneySender(fromHeader)) continue;
+            const from = headerPart?.body?.from;
+            if (!isDisneySender(Array.isArray(from) ? from.join(" ") : from)) continue;
+            candidates.push({ uid: msg.attributes.uid, messageDate });
+        }
+        candidates.sort((a, b) => b.messageDate - a.messageDate);
 
+        const inspected = [];
+        if (candidates.length) {
             stage = "fetch_full_message";
-            const fullMessages = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
-            const raw = fullMessages?.[0]?.parts?.find((part) => part.which === "");
-            if (!raw?.body) continue;
+            const fullMessages = await conn.search(
+                [["UID", ...candidates.map(({ uid }) => uid)]],
+                { bodies: [""], markSeen: false }
+            );
+            const byUid = new Map(fullMessages.map((message) => [message.attributes.uid, message]));
 
             stage = "parse_message";
-            const parsed = await simpleParser(raw.body);
-            const parsedFrom = (parsed?.from?.value || []).map((entry) => entry.address || "").join(" ") || fromHeader;
-            const parsedTo = (parsed?.to?.value || []).map((entry) => entry.address || "").join(" ") || toHeader;
-            if (!isDisneySender(parsedFrom)) continue;
-            if (targetEmail && parsedTo && !parsedTo.toLowerCase().includes(targetEmail)) continue;
-            if (targetEmail && !matchedToSearch && !parsedTo.toLowerCase().includes(targetEmail)) continue;
+            for (const { uid, messageDate } of candidates) {
+                const raw = byUid.get(uid)?.parts?.find((part) => part.which === "");
+                if (!raw?.body) throw new Error("Incomplete Disney message fetch");
+                const parsed = await simpleParser(raw.body);
+                if (!parsed.from?.value.some(({ address }) => isDisneySender(address))) continue;
+                const recipients = [parsed.to].flat().flatMap((to) => to?.value || []);
+                if (!recipients.some(({ address }) => address?.toLowerCase() === targetEmail)) continue;
 
-            inspected.push({ parsed, messageDate });
+                inspected.push({ parsed, messageDate });
+            }
         }
 
         if (inspected.some(({ parsed }) => isDisneyLoginNotice(parsed))) {

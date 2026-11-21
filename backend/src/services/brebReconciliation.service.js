@@ -3,13 +3,22 @@ const cheerio = require("cheerio");
 
 const pool = require("../db");
 const { connectImapWithTlsFallback, getImapConfig, safeToDate } = require("../utils/imapConfig");
+const { sameCurrency } = require("../utils/currency");
 const { getManualTopupById, updateManualTopupStatus } = require("./manualTopups.service");
 const { notifyManualTopupAlert } = require("./telegramBot");
 const { extractSenderName } = require("../utils/manualTopupText");
 
 let running = false;
 const BOGOTA_UTC_OFFSET_HOURS = 5;
-const AUTO_TOPUP_METHOD_KEYS = new Set(["breb", "binance"]);
+const AUTO_TOPUP_METHOD_KEYS = new Set(["breb", "binance", "binance-ds"]);
+
+function isAutoReconciliationMethodKey(methodKey) {
+    return AUTO_TOPUP_METHOD_KEYS.has(String(methodKey || "").toLowerCase());
+}
+
+function matchesEmailCurrency(request, email, isBreb) {
+    return isBreb || sameCurrency(email?.asset, request?.currency);
+}
 
 function normalizeText(value) {
     return String(value || "")
@@ -469,6 +478,7 @@ async function findBestEmailForRequest(request) {
     for (const email of emails) {
         if (!email?.parsed || used.has(String(email.uid || ""))) continue;
         if (Number(email.amount || 0) !== expectedAmount) continue;
+        if (!matchesEmailCurrency(request, email, isBreb)) continue;
 
         const nameMatch = compareNames(expectedName, email.senderName);
         const timeMatch = compareTimes(expectedDate, email.receivedAt);
@@ -493,7 +503,7 @@ async function attemptAutoReconcileManualTopup(id) {
     const request = await getManualTopupById(id);
     if (!request) return null;
     if (String(request.status || "").toLowerCase() !== "submitted") return request;
-    if (!AUTO_TOPUP_METHOD_KEYS.has(String(request.methodKey || "").toLowerCase())) return request;
+    if (!isAutoReconciliationMethodKey(request.methodKey)) return request;
 
     const { email, reason, candidate } = await findBestEmailForRequest(request);
     const isBreb = String(request.methodKey || "").toLowerCase() === "breb";
@@ -588,10 +598,13 @@ async function processPendingBrebTopups() {
 module.exports = {
     attemptAutoReconcileManualTopup,
     processPendingBrebTopups,
+    isAutoReconciliationMethodKey,
     __testables: {
         compareNames,
         compareTimes,
         parseBrebEmail,
+        parseBinanceEmail,
         parseSpanishDateTime,
+        matchesEmailCurrency,
     },
 };

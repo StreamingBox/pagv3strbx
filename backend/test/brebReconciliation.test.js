@@ -2,12 +2,44 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+    isAutoReconciliationMethodKey,
     __testables: {
         compareNames,
         compareTimes,
         parseBrebEmail,
+        parseBinanceEmail,
+        matchesEmailCurrency,
     },
 } = require("../src/services/brebReconciliation.service");
+
+test("reconoce binance-ds como método conciliable automáticamente", () => {
+    assert.equal(isAutoReconciliationMethodKey("binance-ds"), true);
+    assert.equal(isAutoReconciliationMethodKey("binance"), true);
+    assert.equal(isAutoReconciliationMethodKey("other"), false);
+});
+
+test("lee el aviso de Binance con remitente, monto, activo y hora UTC", () => {
+    const receipt = parseBinanceEmail({
+        subject: "[Binance] Pago recibido correctamente - 2026-11-21 00:35:42 (UTC)",
+        text: [
+            "Fecha y hora: 2026-11-21 00:35:41 (UTC)",
+            "Remitente: Test_Sender_42",
+            "Monto: 2.3 USDT",
+        ].join("\n"),
+    }, { uid: 123 });
+
+    assert.equal(receipt?.parsed, true);
+    assert.equal(receipt?.amount, 2.3);
+    assert.equal(receipt?.asset, "USDT");
+    assert.equal(receipt?.senderName, "TEST SENDER 42");
+    assert.equal(receipt?.receivedAt?.toISOString(), "2026-11-21T00:35:41.000Z");
+});
+
+test("no cruza correos Binance entre monedas distintas", () => {
+    assert.equal(matchesEmailCurrency({ currency: "USD" }, { asset: "USDT" }, false), true);
+    assert.equal(matchesEmailCurrency({ currency: "MXN" }, { asset: "USDT" }, false), false);
+    assert.equal(matchesEmailCurrency({ currency: "COP" }, {}, true), true);
+});
 
 function parseReceipt(timePhrase) {
     return parseBrebEmail({

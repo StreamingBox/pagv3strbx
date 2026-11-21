@@ -266,7 +266,7 @@ export default function Topups() {
         ? Math.round(estimateAmount * Number(rechargePromotion.percent || 10) / 100)
         : 0;
     const isBreb = selectedMethod?.key === "breb";
-    const isBinance = selectedMethod?.key === "binance";
+    const isBinance = ["binance", "binance-ds"].includes(selectedMethod?.key);
 
     const highlightedStatus = useMemo(() => {
         const key = String(latestRequest?.status || "").toLowerCase();

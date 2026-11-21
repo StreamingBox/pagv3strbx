@@ -17,14 +17,15 @@ const {
     revokeManualTopupProofToken,
 } = require("../services/manualTopups.service");
 const { notifyManualTopupSubmitted, notifyManualTopupStatusChanged } = require("../services/telegramBot");
-const { attemptAutoReconcileManualTopup } = require("../services/brebReconciliation.service");
+const {
+    attemptAutoReconcileManualTopup,
+    isAutoReconciliationMethodKey,
+} = require("../services/brebReconciliation.service");
 const { normalizeCurrency, sameCurrency, displayCurrency } = require("../utils/currency");
 const { saveManualTopupProof } = require("../utils/manualTopupProofStorage");
 const { getRechargeBonusSettings, getRechargeBonusSnapshot } = require("../services/rechargeBonus.service");
 
 const router = express.Router();
-const AUTO_RECONCILE_METHOD_KEYS = new Set(["breb", "binance"]);
-
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 },
@@ -324,8 +325,8 @@ router.post("/wallet/manual-topups", requireAuth, uploadProof, async (req, res) 
         }
 
         const requiresProof = selectedMethod.key !== "breb";
-        const requiresPayerName = AUTO_RECONCILE_METHOD_KEYS.has(selectedMethod.key);
-        const usesAutoReconciliation = AUTO_RECONCILE_METHOD_KEYS.has(selectedMethod.key);
+        const requiresPayerName = isAutoReconciliationMethodKey(selectedMethod.key);
+        const usesAutoReconciliation = isAutoReconciliationMethodKey(selectedMethod.key);
 
         if (requiresPayerName && !payerName) {
             return res.status(400).json({ message: "Debes indicar el nombre o usuario del remitente." });

@@ -1,0 +1,173 @@
+.stock-planning-page {
+    gap: 22px;
+    align-items: stretch;
+}
+
+.stock-planning-header,
+.stock-planning-title,
+.stock-planning-controls,
+.stock-planning-metric-label,
+.stock-planning-target,
+.stock-planning-footnote {
+    display: flex;
+    align-items: center;
+}
+
+.stock-planning-header {
+    justify-content: space-between;
+    gap: 18px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--stroke);
+}
+
+.stock-planning-title { gap: 13px; min-width: 0; }
+.stock-planning-title-icon {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--stroke));
+    border-radius: 8px;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, var(--card));
+}
+.stock-planning-title h1 { margin: 0; font-size: 25px; line-height: 1.2; }
+.stock-planning-title p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
+
+.stock-planning-controls { gap: 9px; flex-wrap: wrap; }
+.stock-planning-field { display: grid; gap: 5px; min-width: 148px; color: var(--muted); font-size: 12px; }
+.stock-planning-field input,
+.stock-planning-field select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--stroke);
+    border-radius: 6px;
+    background: var(--input-bg);
+    color: var(--text);
+    color-scheme: dark;
+    font: inherit;
+    font-size: 13px;
+}
+html[data-theme="light"] .stock-planning-field input,
+html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
+.stock-planning-field input:focus-visible,
+.stock-planning-field select:focus-visible,
+.stock-planning-refresh:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.stock-planning-refresh {
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    margin-top: 18px;
+    border: 1px solid var(--stroke);
+    border-radius: 6px;
+    color: var(--accent);
+    background: var(--card);
+    cursor: pointer;
+}
+.stock-planning-refresh:hover:not(:disabled) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.stock-planning-refresh:disabled { cursor: wait; opacity: .65; }
+
+.stock-planning-explainer,
+.stock-planning-footnote {
+    gap: 9px;
+    margin: -5px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+}
+.stock-planning-explainer svg,
+.stock-planning-footnote svg { flex: 0 0 auto; color: var(--accent); }
+.stock-planning-error { padding: 12px 14px; border: 1px solid rgba(239, 68, 68, .35); border-radius: 6px; color: #fca5a5; background: rgba(239, 68, 68, .12); }
+
+.stock-planning-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+.stock-planning-metric {
+    --metric-accent: var(--accent);
+    min-width: 0;
+    padding: 15px 16px 14px;
+    border: 1px solid var(--stroke);
+    border-top: 2px solid var(--metric-accent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card) 90%, transparent);
+}
+.stock-planning-metric--stock { --metric-accent: #2dd4bf; }
+.stock-planning-metric--replenish { --metric-accent: #fbbf24; }
+.stock-planning-metric--replenish.is-covered { --metric-accent: #34d399; }
+.stock-planning-metric--expiring { --metric-accent: #fb923c; }
+.stock-planning-metric-label { gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.stock-planning-metric-label span { display: grid; place-items: center; color: var(--metric-accent); }
+.stock-planning-metric strong { display: block; margin-top: 10px; font-size: 27px; line-height: 1; font-variant-numeric: tabular-nums; }
+.stock-planning-metric small { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+.stock-planning-metric--replenish.is-needed strong { color: #fbbf24; }
+.stock-planning-metric--replenish.is-covered strong { color: #34d399; }
+
+.stock-planning-table-section { min-width: 0; }
+.stock-planning-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 11px;
+}
+.stock-planning-section-heading h2 { margin: 0; font-size: 18px; line-height: 1.3; }
+.stock-planning-section-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.stock-planning-target { gap: 7px; color: var(--muted); font-size: 12px; }
+.stock-planning-target svg { color: var(--accent); }
+.stock-planning-target b { color: var(--text); font-weight: 600; }
+
+.stock-planning-table-wrap { overflow: auto; max-height: min(65vh, 760px); border: 1px solid var(--stroke); border-radius: 8px; }
+.stock-planning-table { width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.stock-planning-table thead { position: sticky; top: 0; z-index: 1; }
+.stock-planning-table th,
+.stock-planning-table td { padding: 12px 14px; border-bottom: 1px solid var(--stroke); white-space: nowrap; }
+.stock-planning-table thead th { color: var(--muted); background: var(--bg0); font-size: 11px; font-weight: 700; text-align: right; }
+.stock-planning-table thead th:first-child { text-align: left; }
+.stock-planning-table tbody th { font-weight: 700; text-align: left; }
+.stock-planning-table tbody tr:last-child th,
+.stock-planning-table tbody tr:last-child td { border-bottom: 0; }
+.stock-planning-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.stock-planning-table .is-numeric { text-align: right; font-variant-numeric: tabular-nums; }
+.stock-planning-table .is-emphasized { font-weight: 700; }
+.stock-planning-gap { display: inline-block; min-width: 60px; text-align: center; font-weight: 700; }
+.stock-planning-gap.is-needed { color: #fbbf24; }
+.stock-planning-gap.is-covered { color: #34d399; font-size: 12px; }
+.stock-planning-state { padding: 34px 16px; border: 1px dashed var(--stroke); border-radius: 8px; color: var(--muted); text-align: center; }
+.stock-planning-footnote { margin: -5px 0 0; }
+
+@media (max-width: 1080px) {
+    .stock-planning-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+    .stock-planning-page { gap: 18px; }
+    .stock-planning-header { align-items: stretch; flex-direction: column; }
+    .stock-planning-title h1 { font-size: 22px; }
+    .stock-planning-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px; align-items: end; }
+    .stock-planning-field { min-width: 0; }
+    .stock-planning-refresh { margin-top: 0; }
+    .stock-planning-metrics { gap: 9px; }
+    .stock-planning-metric { padding: 13px 12px; }
+    .stock-planning-metric strong { font-size: 24px; }
+}
+
+@media (max-width: 420px) {
+    .stock-planning-metrics { grid-template-columns: 1fr; }
+    .stock-planning-metric { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 10px; }
+    .stock-planning-metric strong { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
+    .stock-planning-metric small { margin-top: 0; }
+    .stock-planning-controls { grid-template-columns: minmax(0, 1fr) 42px; }
+    .stock-planning-field:nth-child(2) { grid-column: 1; }
+    .stock-planning-refresh { grid-column: 2; grid-row: 2; }
+}

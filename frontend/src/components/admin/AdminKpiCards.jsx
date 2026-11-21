@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { ClipboardCheck, DatabaseZap, RefreshCcw, UsersRound } from "lucide-react";
+import { Boxes, ClipboardCheck, DatabaseZap, RefreshCcw, UsersRound } from "lucide-react";
 import IconBadge from "./IconBadge.jsx";
 import { apiFetch } from "../../api/api.js";
 import "../../styles/special-effects.css";
@@ -77,6 +77,7 @@ export default function AdminKpiCards({ onNavigate }) {
             items: [
                 { icon: "🔐", tone: "red", title: "Inventario de Cuentas", hint: "Crear y cargar cuentas/pines.", path: "/admin/accounts" },
                 { icon: "📦", tone: "cyan", title: "Inventario General", hint: "Control de stock global.", path: "/admin/inventory" },
+                { icon: <Boxes size={20} strokeWidth={2.4} aria-hidden />, tone: "teal", title: "Planeación de stock", hint: "Proyección y unidades por reponer.", path: "/admin/stock-planning" },
                 { icon: "🏭", tone: "orange", title: "Proveedores", hint: "Gestiona proveedores y sus cuentas.", path: "/admin/providers" },
                 { icon: <ClipboardCheck size={20} strokeWidth={2.4} aria-hidden />, tone: "violet", title: "Disponibilidad de perfiles", hint: "Perfiles libres y ocupados.", path: "/admin/inventory-audit" },
                 { icon: <DatabaseZap size={20} strokeWidth={2.4} aria-hidden />, tone: "amber", title: "Cuentas Maestras", hint: "Cuentas caidas y reemplazo automatico.", path: "/admin/master-accounts" },

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCcw, TrendingUp } from "lucide-react";
+import { Boxes, CalendarDays, Clock3, Info, PackageCheck, RefreshCcw, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { apiGet } from "../api/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import useAppLogout from "../hooks/useAppLogout.js";
 import { currentBogotaDateOnly } from "../utils/datetime.js";
+import "../styles/admin-stock-planning.css";
 
 function shiftDate(dateOnly, days) {
     const [year, month, day] = dateOnly.split("-").map(Number);
@@ -20,13 +21,12 @@ function formatAverage(value) {
     return Number(value || 0).toLocaleString("es-CO", { maximumFractionDigits: 2 });
 }
 
-const metricStyle = {
-    borderLeft: "2px solid var(--stroke)",
-    padding: "8px 14px",
-    display: "grid",
-    gap: 5,
-    minWidth: 0,
-};
+function formatDate(dateOnly) {
+    const [year, month, day] = dateOnly.split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day, 12)).toLocaleDateString("es-CO", {
+        day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+    });
+}
 
 export default function AdminStockPlanning() {
     const navigate = useNavigate();
@@ -71,64 +71,93 @@ export default function AdminStockPlanning() {
         <div className="page-shell-bg" aria-hidden><div className="bg-grid" /></div>
         <div className="page-inner">
             <AdminSidebar user={user} uploadingLogo={false} onOpenLogoPicker={() => navigate("/admin")} onLogout={logout} />
-            <main className="main" style={{ display: "flex", flexDirection: "column", gap: 20, minWidth: 0 }}>
-                <header className="dash-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-                    <div>
-                        <h1 style={{ margin: 0 }}>Planeación de stock</h1>
-                        <p style={{ color: "var(--muted)", margin: "6px 0 0" }}>Estimación de unidades por plataforma según ventas y fecha objetivo.</p>
+            <main className="main stock-planning-page">
+                <header className="stock-planning-header">
+                    <div className="stock-planning-title">
+                        <span className="stock-planning-title-icon" aria-hidden="true"><Boxes size={21} /></span>
+                        <div>
+                            <h1>Planeación de stock</h1>
+                            <p>Estima cuántas unidades necesitarás por plataforma.</p>
+                        </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "end", gap: 10, flexWrap: "wrap" }}>
-                        <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12 }}>
-                            Fecha objetivo
+                    <div className="stock-planning-controls">
+                        <label className="stock-planning-field">
+                            <span>Fecha objetivo</span>
                             <input aria-label="Fecha objetivo" type="date" min={today} max={shiftDate(today, 365)} value={targetDate} onChange={(event) => setTargetDate(event.target.value || today)} />
                         </label>
-                        <label style={{ display: "grid", gap: 5, color: "var(--muted)", fontSize: 12 }}>
-                            Historial
+                        <label className="stock-planning-field">
+                            <span>Historial de ventas</span>
                             <select aria-label="Ventana de historial" value={historyDays} onChange={(event) => setHistoryDays(event.target.value)}>
                                 <option value="30">30 días</option>
                                 <option value="60">60 días</option>
                                 <option value="90">90 días</option>
                             </select>
                         </label>
-                        <button className="btn-ghost" type="button" title="Actualizar planeación" aria-label="Actualizar planeación" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
-                            <RefreshCcw size={16} className={loading ? "availability-spin" : ""} />
+                        <button className="stock-planning-refresh" type="button" title="Actualizar planeación" aria-label="Actualizar planeación" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
+                            <RefreshCcw size={17} className={loading ? "availability-spin" : ""} />
                         </button>
                     </div>
                 </header>
 
-                <p style={{ margin: 0, color: "var(--muted)", fontSize: 13 }}>
-                    Promedio de compras nuevas de los {historyDays} días completos previos; las renovaciones próximas se muestran aparte y no se suman como nuevas pantallas.
+                <p className="stock-planning-explainer">
+                    <Info size={16} aria-hidden="true" />
+                    <span>Promedio de compras nuevas de los últimos {historyDays} días completos. Las renovaciones van aparte; la reposición compartida respeta la dirección de cada equivalencia activa.</span>
                 </p>
 
-                {error && <div role="alert" style={{ color: "#fca5a5", background: "rgba(239,68,68,.12)", border: "1px solid rgba(239,68,68,.35)", borderRadius: 6, padding: 12 }}>{error}</div>}
+                {error && <div className="stock-planning-error" role="alert">{error}</div>}
 
-                <section aria-label="Resumen de planeación" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", borderTop: "1px solid var(--stroke)", borderBottom: "1px solid var(--stroke)", padding: "16px 0", gap: 12 }}>
-                    <div style={metricStyle}><span style={{ color: "var(--muted)", fontSize: 12 }}>Unidades estimadas hasta la fecha</span><strong style={{ fontSize: 23 }}>{formatCount(totals.estimatedDemand)}</strong></div>
-                    <div style={metricStyle}><span style={{ color: "var(--muted)", fontSize: 12 }}>Stock vigente en la fecha</span><strong style={{ fontSize: 23 }}>{formatCount(totals.availableStock)}</strong></div>
-                    <div style={{ ...metricStyle, borderColor: totals.suggestedToReplenish ? "#f59e0b" : "#10b981" }}><span style={{ color: "var(--muted)", fontSize: 12 }}>Unidades sugeridas para reponer</span><strong style={{ fontSize: 23, color: totals.suggestedToReplenish ? "#fbbf24" : "#34d399" }}>{formatCount(totals.suggestedToReplenish)}</strong></div>
-                    <div style={metricStyle}><span style={{ color: "var(--muted)", fontSize: 12 }}>Suscripciones que vencen</span><strong style={{ fontSize: 23 }}>{formatCount(totals.expiringSubscriptions)}</strong></div>
+                <section className="stock-planning-metrics" aria-label="Resumen de planeación">
+                    <article className="stock-planning-metric stock-planning-metric--demand">
+                        <div className="stock-planning-metric-label"><span><TrendingUp size={17} /></span>Demanda estimada</div>
+                        <strong>{data ? formatCount(totals.estimatedDemand) : "—"}</strong>
+                        <small>Unidades hasta la fecha objetivo</small>
+                    </article>
+                    <article className="stock-planning-metric stock-planning-metric--stock">
+                        <div className="stock-planning-metric-label"><span><PackageCheck size={17} /></span>Stock con vigencia</div>
+                        <strong>{data ? formatCount(totals.availableStock) : "—"}</strong>
+                        <small>Disponible en la fecha objetivo</small>
+                    </article>
+                    <article className={`stock-planning-metric stock-planning-metric--replenish${totals.suggestedToReplenish ? " is-needed" : " is-covered"}`}>
+                        <div className="stock-planning-metric-label"><span><Boxes size={17} /></span>Unidades por reponer</div>
+                        <strong>{data ? formatCount(totals.suggestedToReplenish) : "—"}</strong>
+                        <small>{totals.suggestedToReplenish ? "Brecha entre demanda y stock" : "Stock suficiente para la demanda"}</small>
+                    </article>
+                    <article className="stock-planning-metric stock-planning-metric--expiring">
+                        <div className="stock-planning-metric-label"><span><Clock3 size={17} /></span>Vencimientos</div>
+                        <strong>{data ? formatCount(totals.expiringSubscriptions) : "—"}</strong>
+                        <small>Suscripciones durante el periodo</small>
+                    </article>
                 </section>
 
-                <section aria-label="Planeación por plataforma" style={{ minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 12, flexWrap: "wrap" }}>
-                        <h2 style={{ margin: 0, fontSize: 18 }}>Necesidad por plataforma</h2>
-                        {data && <span style={{ color: "var(--muted)", fontSize: 12 }}>{data.daysAhead === 0 ? "Hoy" : `En ${data.daysAhead} días`} · al {data.targetDate}</span>}
+                <section className="stock-planning-table-section" aria-label="Planeación por plataforma">
+                    <div className="stock-planning-section-heading">
+                        <div>
+                            <h2>Necesidad por plataforma</h2>
+                            {data && <p>{data.rows.length} plataformas incluidas</p>}
+                        </div>
+                        {data && <span className="stock-planning-target"><CalendarDays size={15} aria-hidden="true" />{data.daysAhead === 0 ? "Hoy" : `En ${data.daysAhead} días`} <b>{formatDate(data.targetDate)}</b></span>}
                     </div>
-                    {loading ? <p role="status" style={{ color: "var(--muted)" }}>Calculando con el historial…</p> : !data?.rows?.length ? <p style={{ color: "var(--muted)" }}>No hay plataformas activas que requieran inventario.</p> : (
-                        <div style={{ overflowX: "auto", border: "1px solid var(--stroke)", borderRadius: 6 }}>
-                            <table style={{ width: "100%", minWidth: 920, borderCollapse: "collapse", fontSize: 13 }}>
-                                <thead><tr style={{ background: "rgba(0,0,0,.18)", textAlign: "left" }}>
-                                    {["Plataforma", `Ventas nuevas · ${historyDays}d`, "Promedio / día", "Vencen en el periodo", "Demanda estimada", "Stock vigente", "Reponer"].map((label) => <th key={label} style={{ padding: "12px 14px", color: "var(--muted)", fontSize: 11, textTransform: "uppercase", whiteSpace: "nowrap" }}>{label}</th>)}
+                    {loading && !data ? <p className="stock-planning-state" role="status">Calculando con el historial…</p> : !data?.rows?.length ? <p className="stock-planning-state">No hay plataformas activas que requieran inventario.</p> : (
+                        <div className="stock-planning-table-wrap">
+                            <table className="stock-planning-table">
+                                <thead><tr>
+                                    <th scope="col">Plataforma</th>
+                                    <th scope="col" className="is-numeric">Ventas nuevas · {historyDays} días</th>
+                                    <th scope="col" className="is-numeric">Promedio / día</th>
+                                    <th scope="col" className="is-numeric">Vencen en el periodo</th>
+                                    <th scope="col" className="is-numeric">Demanda estimada</th>
+                                    <th scope="col" className="is-numeric">Stock vigente</th>
+                                    <th scope="col" className="is-numeric">Reponer</th>
                                 </tr></thead>
                                 <tbody>{data.rows.map((row) => (
-                                    <tr key={row.platformId} style={{ borderTop: "1px solid var(--stroke)" }}>
-                                        <td style={{ padding: "13px 14px", fontWeight: 700 }}>{row.platformName}</td>
-                                        <td style={{ padding: "13px 14px" }}>{formatCount(row.historicalSales)}</td>
-                                        <td style={{ padding: "13px 14px" }}>{formatAverage(row.averageDailySales)}</td>
-                                        <td style={{ padding: "13px 14px" }}>{formatCount(row.expiringSubscriptions)}</td>
-                                        <td style={{ padding: "13px 14px", fontWeight: 700 }}>{formatCount(row.estimatedDemand)}</td>
-                                        <td style={{ padding: "13px 14px" }}>{formatCount(row.availableStock)}</td>
-                                        <td style={{ padding: "13px 14px", fontWeight: 800, color: row.suggestedToReplenish ? "#fbbf24" : "#34d399" }}>{row.suggestedToReplenish ? formatCount(row.suggestedToReplenish) : "Cubierto"}</td>
+                                    <tr key={row.platformId}>
+                                        <th scope="row">{row.platformName}</th>
+                                        <td className="is-numeric">{formatCount(row.historicalSales)}</td>
+                                        <td className="is-numeric">{formatAverage(row.averageDailySales)}</td>
+                                        <td className="is-numeric">{formatCount(row.expiringSubscriptions)}</td>
+                                        <td className="is-numeric is-emphasized">{formatCount(row.estimatedDemand)}</td>
+                                        <td className="is-numeric">{formatCount(row.availableStock)}</td>
+                                        <td className="is-numeric"><span className={`stock-planning-gap${row.suggestedToReplenish ? " is-needed" : " is-covered"}`}>{row.suggestedToReplenish ? formatCount(row.suggestedToReplenish) : "Cubierto"}</span></td>
                                     </tr>
                                 ))}</tbody>
                             </table>
@@ -136,9 +165,7 @@ export default function AdminStockPlanning() {
                     )}
                 </section>
 
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--muted)", fontSize: 12 }}>
-                    <TrendingUp size={15} aria-hidden /><span>Estimación aproximada, no una orden de compra; usa el stock directo vigente en la fecha seleccionada.</span>
-                </div>
+                <p className="stock-planning-footnote"><Info size={15} aria-hidden="true" />Estimación orientativa, no una orden de compra. El stock refleja las cuentas vigentes en la fecha seleccionada.</p>
             </main>
         </div>
     </div>;

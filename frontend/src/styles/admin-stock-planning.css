@@ -129,6 +129,8 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 
 .stock-planning-table-wrap { overflow: auto; max-height: min(65vh, 760px); border: 1px solid var(--stroke); border-radius: 8px; }
 .stock-planning-table { width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.stock-planning-trend-table { min-width: 1080px; }
+.stock-planning-replenishment-table { min-width: 840px; }
 .stock-planning-table thead { position: sticky; top: 0; z-index: 1; }
 .stock-planning-table th,
 .stock-planning-table td { padding: 12px 14px; border-bottom: 1px solid var(--stroke); white-space: nowrap; }
@@ -143,6 +145,12 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 .stock-planning-gap { display: inline-block; min-width: 60px; text-align: center; font-weight: 700; }
 .stock-planning-gap.is-needed { color: #fbbf24; }
 .stock-planning-gap.is-covered { color: #34d399; font-size: 12px; }
+.stock-planning-gap.is-neutral { color: var(--muted); }
+.stock-planning-comparison { padding-top: 4px; }
+.stock-planning-change { font-weight: 700; }
+.stock-planning-change.is-positive { color: #34d399; }
+.stock-planning-change.is-negative { color: #f87171; }
+.stock-planning-change.is-neutral { color: var(--muted); }
 .stock-planning-state { padding: 34px 16px; border: 1px dashed var(--stroke); border-radius: 8px; color: var(--muted); text-align: center; }
 .stock-planning-footnote { margin: -5px 0 0; }
 

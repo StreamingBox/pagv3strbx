@@ -28,6 +28,27 @@ function formatDate(dateOnly) {
     });
 }
 
+function formatChange(value) {
+    if (value === null || value === undefined) return "Sin base previa";
+    const change = Number(value);
+    return `${change > 0 ? "+" : ""}${change.toLocaleString("es-CO", { maximumFractionDigits: 1 })}%`;
+}
+
+function changeTone(value) {
+    if (value === null || value === undefined || Number(value) === 0) return "is-neutral";
+    return Number(value) > 0 ? "is-positive" : "is-negative";
+}
+
+function formatReplenishment(value) {
+    if (value === null || value === undefined) return "—";
+    return value ? formatCount(value) : "Cubierto";
+}
+
+function replenishmentTone(value) {
+    if (value === null || value === undefined) return "is-neutral";
+    return value ? "is-needed" : "is-covered";
+}
+
 export default function AdminStockPlanning() {
     const navigate = useNavigate();
     const logout = useAppLogout();
@@ -101,7 +122,7 @@ export default function AdminStockPlanning() {
 
                 <p className="stock-planning-explainer">
                     <Info size={16} aria-hidden="true" />
-                    <span>Promedio de compras nuevas de los últimos {historyDays} días completos. Las renovaciones van aparte; la reposición compartida respeta la dirección de cada equivalencia activa.</span>
+                    <span>Promedio de ventas nuevas de los últimos {historyDays} días completos. Las renovaciones van aparte; la reposición compartida respeta la dirección de cada equivalencia activa.</span>
                 </p>
 
                 {error && <div className="stock-planning-error" role="alert">{error}</div>}
@@ -164,6 +185,71 @@ export default function AdminStockPlanning() {
                         </div>
                     )}
                 </section>
+
+                {data?.rows?.length > 0 && <>
+                    <section className="stock-planning-table-section stock-planning-comparison" aria-label="Comparativo de ventas">
+                        <div className="stock-planning-section-heading">
+                            <div>
+                                <h2>Comparativo de ventas</h2>
+                                <p>Ventas nuevas; semanas completas y mes actual hasta ayer.</p>
+                            </div>
+                        </div>
+                        <div className="stock-planning-table-wrap">
+                            <table className="stock-planning-table stock-planning-trend-table">
+                                <thead><tr>
+                                    <th scope="col">Plataforma / equivalencia</th>
+                                    <th scope="col" className="is-numeric">Últimos 7 días</th>
+                                    <th scope="col" className="is-numeric">7 días anteriores</th>
+                                    <th scope="col" className="is-numeric">Cambio semanal</th>
+                                    <th scope="col" className="is-numeric">Mes actual · {data.salesPeriods?.monthToDateDays || 0} días</th>
+                                    <th scope="col" className="is-numeric">Mes anterior · {data.salesPeriods?.previousMonthDays || 0} días</th>
+                                    <th scope="col" className="is-numeric">Cambio mensual</th>
+                                </tr></thead>
+                                <tbody>{data.rows.map((row) => {
+                                    const trend = row.salesTrend || {};
+                                    return <tr key={row.platformId}>
+                                        <th scope="row">{row.platformName}</th>
+                                        <td className="is-numeric">{formatCount(trend.recent7Sales)}</td>
+                                        <td className="is-numeric">{formatCount(trend.previous7Sales)}</td>
+                                        <td className={`is-numeric stock-planning-change ${changeTone(trend.weeklyChangePercent)}`}>{formatChange(trend.weeklyChangePercent)}</td>
+                                        <td className="is-numeric">{formatCount(trend.monthToDateSales)}</td>
+                                        <td className="is-numeric">{formatCount(trend.previousMonthSales)}</td>
+                                        <td className={`is-numeric stock-planning-change ${changeTone(trend.monthlyChangePercent)}`}>{formatChange(trend.monthlyChangePercent)}</td>
+                                    </tr>;
+                                })}</tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section className="stock-planning-table-section stock-planning-comparison" aria-label="Reposición por ritmo de ventas">
+                        <div className="stock-planning-section-heading">
+                            <div>
+                                <h2>Reposición según el ritmo de ventas</h2>
+                                <p>Unidades que faltarían para cubrir la demanda hasta {formatDate(data.targetDate)} si se mantiene cada ritmo.</p>
+                            </div>
+                        </div>
+                        <div className="stock-planning-table-wrap">
+                            <table className="stock-planning-table stock-planning-replenishment-table">
+                                <thead><tr>
+                                    <th scope="col">Plataforma / equivalencia</th>
+                                    <th scope="col" className="is-numeric">Ritmo últimos 7 días</th>
+                                    <th scope="col" className="is-numeric">Ritmo últimos 14 días</th>
+                                    <th scope="col" className="is-numeric">Ritmo mes actual</th>
+                                    <th scope="col" className="is-numeric">Historial · {historyDays} días</th>
+                                </tr></thead>
+                                <tbody>{data.rows.map((row) => {
+                                    const replenishment = row.salesTrend?.replenishment || {};
+                                    return <tr key={row.platformId}>
+                                        <th scope="row">{row.platformName}</th>
+                                        {[replenishment.recent7, replenishment.recent14, replenishment.monthToDate, replenishment.selectedHistory].map((value, index) => (
+                                            <td key={index} className="is-numeric"><span className={`stock-planning-gap ${replenishmentTone(value)}`}>{formatReplenishment(value)}</span></td>
+                                        ))}
+                                    </tr>;
+                                })}</tbody>
+                            </table>
+                        </div>
+                    </section>
+                </>}
 
                 <p className="stock-planning-footnote"><Info size={15} aria-hidden="true" />Estimación orientativa, no una orden de compra. El stock refleja las cuentas vigentes en la fecha seleccionada.</p>
             </main>

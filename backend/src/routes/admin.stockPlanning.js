@@ -17,6 +17,27 @@ function dayDistance(fromDate, toDate) {
     return Math.round((Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`)) / 86400000);
 }
 
+function buildSalesWindows(today, historyStartDate) {
+    const monthStartDate = `${today.slice(0, 7)}-01`;
+    const [year, month] = today.split("-").map(Number);
+    const previousMonthStartDate = new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 10);
+    const monthToDateDays = dayDistance(monthStartDate, today);
+    const previousMonthDays = Math.min(monthToDateDays, dayDistance(previousMonthStartDate, monthStartDate));
+    const recent7StartDate = shiftDate(today, -7);
+    const previous7StartDate = shiftDate(today, -14);
+
+    return {
+        recent7StartDate,
+        previous7StartDate,
+        monthStartDate,
+        previousMonthStartDate,
+        previousMonthEndDate: shiftDate(previousMonthStartDate, previousMonthDays),
+        monthToDateDays,
+        previousMonthDays,
+        trendStartDate: [historyStartDate, previous7StartDate, previousMonthStartDate].sort()[0],
+    };
+}
+
 function isDateOnly(value) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
     const [year, month, day] = value.split("-").map(Number);
@@ -71,6 +92,21 @@ function countCoveredDemand(members, fallbacks) {
     return coveredDemand;
 }
 
+function forecastReplenishment(members, fallbacks, salesKey, periodDays, horizonDays) {
+    if (!periodDays) return null;
+    const projected = members.map((row) => ({
+        ...row,
+        estimatedDemand: Math.ceil((row[salesKey] / periodDays) * horizonDays),
+    }));
+    const demand = projected.reduce((sum, row) => sum + row.estimatedDemand, 0);
+    return Math.max(demand - countCoveredDemand(projected, fallbacks), 0);
+}
+
+function percentChange(current, previous) {
+    if (!previous) return current ? null : 0;
+    return Number((((current - previous) / previous) * 100).toFixed(1));
+}
+
 function normalizeParams(query, now = new Date()) {
     const today = currentBogotaDateOnly(now);
     if (query.targetDate !== undefined && typeof query.targetDate !== "string") {
@@ -92,22 +128,36 @@ function normalizeParams(query, now = new Date()) {
         return { error: "El historial debe ser de 30, 60 o 90 días." };
     }
 
+    const historyStartDate = shiftDate(today, -historyDays);
     return {
         today,
         targetDate,
         daysAhead,
         horizonDays: daysAhead + 1,
         historyDays,
-        historyStartDate: shiftDate(today, -historyDays),
+        historyStartDate,
+        salesWindows: buildSalesWindows(today, historyStartDate),
     };
 }
 
-function buildPlanningRows(rows, { historyDays, horizonDays }, fallbacks = []) {
+function buildPlanningRows(rows, { historyDays, horizonDays, salesWindows = { monthToDateDays: 0, previousMonthDays: 0 } }, fallbacks = [], salesTrends = []) {
+    const trendsByPlatformId = new Map(salesTrends.map((trend) => [Number(trend.platform_id), {
+        recent7Sales: Number(trend.recent_7_sales || 0),
+        previous7Sales: Number(trend.previous_7_sales || 0),
+        monthToDateSales: Number(trend.month_to_date_sales || 0),
+        previousMonthSales: Number(trend.previous_month_sales || 0),
+    }]));
     const platformRows = rows.map((row) => {
         const historicalSales = Number(row.historical_sales || 0);
         const averageDailySales = historicalSales / historyDays;
         const estimatedDemand = Math.ceil(averageDailySales * horizonDays);
         const availableStock = Number(row.available_stock || 0);
+        const salesTrend = trendsByPlatformId.get(Number(row.platform_id)) || {
+            recent7Sales: 0,
+            previous7Sales: 0,
+            monthToDateSales: 0,
+            previousMonthSales: 0,
+        };
 
         return {
             platformId: Number(row.platform_id),
@@ -119,6 +169,7 @@ function buildPlanningRows(rows, { historyDays, horizonDays }, fallbacks = []) {
             estimatedDemand,
             availableStock,
             suggestedToReplenish: Math.max(estimatedDemand - availableStock, 0),
+            ...salesTrend,
         };
     });
 
@@ -147,13 +198,17 @@ function buildPlanningRows(rows, { historyDays, horizonDays }, fallbacks = []) {
     }
 
     return [...groups.values()].map((members) => {
-        if (members.length === 1) return members[0];
         const historicalSales = members.reduce((sum, row) => sum + row.historicalSales, 0);
         const estimatedDemand = members.reduce((sum, row) => sum + row.estimatedDemand, 0);
         const availableStock = members.reduce((sum, row) => sum + row.availableStock, 0);
         const coveredDemand = countCoveredDemand(members, fallbacks);
+        const recent7Sales = members.reduce((sum, row) => sum + row.recent7Sales, 0);
+        const previous7Sales = members.reduce((sum, row) => sum + row.previous7Sales, 0);
+        const monthToDateSales = members.reduce((sum, row) => sum + row.monthToDateSales, 0);
+        const previousMonthSales = members.reduce((sum, row) => sum + row.previousMonthSales, 0);
+        const scenarioMembers = members.map((row) => ({ ...row, recent14Sales: row.recent7Sales + row.previous7Sales }));
         return {
-            platformId: members.map((row) => row.platformId).join("+"),
+            platformId: members.length === 1 ? members[0].platformId : members.map((row) => row.platformId).join("+"),
             platformName: members.map((row) => row.platformName).join(" + "),
             platformSlug: members.map((row) => row.platformSlug).join("+"),
             historicalSales,
@@ -162,6 +217,22 @@ function buildPlanningRows(rows, { historyDays, horizonDays }, fallbacks = []) {
             estimatedDemand,
             availableStock,
             suggestedToReplenish: Math.max(estimatedDemand - coveredDemand, 0),
+            salesTrend: {
+                recent7Sales,
+                previous7Sales,
+                weeklyChangePercent: percentChange(recent7Sales, previous7Sales),
+                monthToDateSales,
+                previousMonthSales,
+                monthlyChangePercent: salesWindows.monthToDateDays && salesWindows.previousMonthDays
+                    ? percentChange(monthToDateSales, previousMonthSales)
+                    : null,
+                replenishment: {
+                    recent7: forecastReplenishment(members, fallbacks, "recent7Sales", 7, horizonDays),
+                    recent14: forecastReplenishment(scenarioMembers, fallbacks, "recent14Sales", 14, horizonDays),
+                    monthToDate: forecastReplenishment(members, fallbacks, "monthToDateSales", salesWindows.monthToDateDays, horizonDays),
+                    selectedHistory: Math.max(estimatedDemand - coveredDemand, 0),
+                },
+            },
         };
     });
 }
@@ -217,20 +288,51 @@ const PLATFORM_FALLBACKS_QUERY = `
     WHERE is_active = 1
 `;
 
+const SALES_TREND_QUERY = `
+    SELECT p.id AS platform_id,
+           SUM(CASE WHEN o.created_at >= ? AND o.created_at < ? THEN 1 ELSE 0 END) AS recent_7_sales,
+           SUM(CASE WHEN o.created_at >= ? AND o.created_at < ? THEN 1 ELSE 0 END) AS previous_7_sales,
+           SUM(CASE WHEN o.created_at >= ? AND o.created_at < ? THEN 1 ELSE 0 END) AS month_to_date_sales,
+           SUM(CASE WHEN o.created_at >= ? AND o.created_at < ? THEN 1 ELSE 0 END) AS previous_month_sales
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    LEFT JOIN subscription_renewal_logs srl ON srl.renewal_order_id = o.id
+    JOIN platforms p ON p.id = COALESCE(oi.delivered_platform_id, oi.platform_id)
+    WHERE o.created_at >= ?
+      AND o.created_at < ?
+      AND srl.id IS NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM sales_adjustments sa
+          WHERE sa.order_item_id = oi.id AND sa.item_count_delta < 0
+      )
+      AND p.is_active = 1
+      AND COALESCE(p.type, 'normal') <> 'correo'
+      AND COALESCE(p.is_event_link, 0) = 0
+    GROUP BY p.id
+`;
+
 router.get("/admin/stock-planning", requireAuth, requireRole("admin"), async (req, res) => {
     const params = normalizeParams(req.query || {});
     if (params.error) return res.status(400).json({ message: params.error });
 
     try {
-        const [[rows], [fallbacks]] = await Promise.all([
+        const startAt = (date) => `${date} 05:00:00`;
+        const [[rows], [fallbacks], [salesTrends]] = await Promise.all([
             pool.query(STOCK_PLANNING_QUERY, [
-                `${params.historyStartDate} 05:00:00`,
-                `${params.today} 05:00:00`,
+                startAt(params.historyStartDate),
+                startAt(params.today),
                 params.targetDate,
                 params.today,
                 params.targetDate,
             ]),
             pool.query(PLATFORM_FALLBACKS_QUERY),
+            pool.query(SALES_TREND_QUERY, [
+                startAt(params.salesWindows.recent7StartDate), startAt(params.today),
+                startAt(params.salesWindows.previous7StartDate), startAt(params.salesWindows.recent7StartDate),
+                startAt(params.salesWindows.monthStartDate), startAt(params.today),
+                startAt(params.salesWindows.previousMonthStartDate), startAt(params.salesWindows.previousMonthEndDate),
+                startAt(params.salesWindows.trendStartDate), startAt(params.today),
+            ]),
         ]);
         return res.json({
             today: params.today,
@@ -238,7 +340,13 @@ router.get("/admin/stock-planning", requireAuth, requireRole("admin"), async (re
             daysAhead: params.daysAhead,
             historyDays: params.historyDays,
             historyStartDate: params.historyStartDate,
-            rows: buildPlanningRows(rows, params, fallbacks),
+            salesPeriods: {
+                recent7Days: 7,
+                previous7Days: 7,
+                monthToDateDays: params.salesWindows.monthToDateDays,
+                previousMonthDays: params.salesWindows.previousMonthDays,
+            },
+            rows: buildPlanningRows(rows, params, fallbacks, salesTrends),
         });
     } catch (error) {
         console.error("Error GET /admin/stock-planning:", error);
@@ -247,4 +355,4 @@ router.get("/admin/stock-planning", requireAuth, requireRole("admin"), async (re
 });
 
 module.exports = router;
-module.exports.__testing = { buildPlanningRows, dayDistance, normalizeParams, shiftDate, STOCK_PLANNING_QUERY, PLATFORM_FALLBACKS_QUERY };
+module.exports.__testing = { buildPlanningRows, buildSalesWindows, dayDistance, normalizeParams, shiftDate, STOCK_PLANNING_QUERY, PLATFORM_FALLBACKS_QUERY, SALES_TREND_QUERY };

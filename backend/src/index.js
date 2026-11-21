@@ -51,6 +51,7 @@ const adminLinks = require("./routes/admin.links");
 const adminAccountsRoutes = require("./routes/admin.accounts.routes");
 const adminInventoryRoutes = require("./routes/admin.inventory.routes");
 const adminInventoryAuditRoutes = require("./routes/admin.inventoryAudit.routes");
+const adminStockPlanningRoutes = require("./routes/admin.stockPlanning");
 const adminEventLinksRoutes = require("./routes/admin.eventLinks");
 
 const brandingRoutes = require("./routes/branding");
@@ -379,6 +380,7 @@ app.use("/api", adminProviders);
 app.use("/api", adminAccountsRoutes);
 app.use("/api", adminInventoryRoutes);
 app.use("/api", adminInventoryAuditRoutes);
+app.use("/api", adminStockPlanningRoutes);
 app.use("/api", adminEventLinksRoutes);
 app.use("/api", adminOrders);
 app.use("/api", adminPrices);

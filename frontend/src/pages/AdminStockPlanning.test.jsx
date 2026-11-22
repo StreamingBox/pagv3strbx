@@ -37,28 +37,41 @@ const planning = {
     ],
 };
 
+const profitability = {
+    currency: "COP",
+    platforms: [
+        { platformId: 18, salesCount: 3, trackedSalesCount: 3, untrackedSalesCount: 0, revenueTotal: 100000, trackedRevenue: 100000, netProfit: 40000 },
+        { platformId: 19, salesCount: 2, trackedSalesCount: 1, untrackedSalesCount: 1, revenueTotal: 50000, trackedRevenue: 20000, netProfit: 10000 },
+        { platformId: 3, salesCount: 1, trackedSalesCount: 1, untrackedSalesCount: 0, revenueTotal: 24000, trackedRevenue: 24000, netProfit: 12000 },
+    ],
+};
+
 describe("AdminStockPlanning views and platform filter", () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        apiGet.mockResolvedValue({ ok: true, data: planning });
+        apiGet.mockImplementation((url) => Promise.resolve(url.startsWith("/admin/analytics/platform-profit")
+            ? { ok: true, data: profitability }
+            : { ok: true, data: planning }));
     });
 
-    it("shows one table at a time across the three view buttons", async () => {
+    it("opens with the profitability heatmap and keeps one table active across all three views", async () => {
         render(<AdminStockPlanning />);
         await screen.findByRole("row", { name: /Netflix \+ Netflix Internacional/ });
 
-        expect(screen.getByRole("button", { name: /Necesidad/ })).toHaveAttribute("aria-pressed", "true");
-        expect(screen.getByRole("columnheader", { name: "Vencen en el periodo" })).toBeInTheDocument();
-        expect(screen.queryByRole("columnheader", { name: "Cambio mensual" })).not.toBeInTheDocument();
-
-        fireEvent.click(screen.getByRole("button", { name: /Ventas/ }));
         expect(screen.getByRole("button", { name: /Ventas/ })).toHaveAttribute("aria-pressed", "true");
-        expect(screen.getByRole("columnheader", { name: "Cambio mensual" })).toBeInTheDocument();
-        expect(screen.queryByRole("columnheader", { name: "Vencen en el periodo" })).not.toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name: "Utilidad neta · COP" })).toBeInTheDocument();
+        expect(await screen.findAllByText(/50\.000/)).toHaveLength(2);
+        expect(screen.getByText("5 / 6")).toBeInTheDocument();
+        expect(screen.getByText("Vender y reponer")).toBeInTheDocument();
+        expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("button", { name: /Necesidad/ }));
+        expect(screen.getByRole("columnheader", { name: "Vencen en el periodo" })).toBeInTheDocument();
+        expect(screen.queryByRole("columnheader", { name: "Utilidad neta · COP" })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /Reposición/ }));
         expect(screen.getByRole("columnheader", { name: "Ritmo últimos 14 días" })).toBeInTheDocument();
-        expect(screen.queryByRole("columnheader", { name: "Cambio mensual" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("columnheader", { name: "Utilidad neta · COP" })).not.toBeInTheDocument();
     });
 
     it("filters the active table and summary metrics, and keeps the selection across views", async () => {
@@ -71,8 +84,10 @@ describe("AdminStockPlanning views and platform filter", () => {
         expect(screen.getByText("1 de 2 grupos")).toBeInTheDocument();
         const demand = document.querySelector(".stock-planning-metric--demand");
         expect(within(demand).getByText("2")).toBeInTheDocument();
+        expect(screen.getAllByText(/12\.000/).length).toBeGreaterThan(0);
+        expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole("button", { name: /Ventas/ }));
+        fireEvent.click(screen.getByRole("button", { name: /Reposición/ }));
         expect(screen.getByRole("row", { name: /HBO Max/ })).toBeInTheDocument();
         expect(screen.queryByRole("row", { name: /Netflix \+ Netflix Internacional/ })).not.toBeInTheDocument();
     });

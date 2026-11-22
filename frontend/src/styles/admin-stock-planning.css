@@ -184,12 +184,15 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 .stock-planning-table-wrap { overflow-x: auto; border: 1px solid var(--stroke); border-radius: 8px; }
 .stock-planning-table { width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .stock-planning-trend-table { min-width: 1080px; }
+.stock-planning-commercial-table { min-width: 1320px; }
 .stock-planning-replenishment-table { min-width: 840px; }
+.stock-planning-commercial-table th:first-child { position: sticky; left: 0; z-index: 2; min-width: 220px; background: var(--bg0); box-shadow: 1px 0 0 var(--stroke); }
 .stock-planning-table thead { position: sticky; top: 0; z-index: 1; }
 .stock-planning-table th,
 .stock-planning-table td { padding: 12px 14px; border-bottom: 1px solid var(--stroke); white-space: nowrap; }
 .stock-planning-table thead th { color: var(--muted); background: var(--bg0); font-size: 11px; font-weight: 700; text-align: right; }
 .stock-planning-table thead th:first-child { text-align: left; }
+.stock-planning-commercial-table thead th:first-child { z-index: 3; }
 .stock-planning-table tbody th { font-weight: 700; text-align: left; }
 .stock-planning-table tbody tr:last-child th,
 .stock-planning-table tbody tr:last-child td { border-bottom: 0; }
@@ -202,6 +205,45 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 .stock-planning-gap.is-neutral { color: var(--muted); }
 .stock-planning-comparison { padding-top: 4px; }
 .stock-planning-view-note { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--stroke); color: var(--muted); background: color-mix(in srgb, var(--card) 90%, transparent); font-size: 12px; line-height: 1.45; }
+.stock-planning-view-warning { margin: 10px 0; color: #fbbf24; font-size: 12px; }
+.stock-planning-commercial-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 10px 0; border-block: 1px solid var(--stroke); }
+.stock-planning-commercial-summary > div { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 12px 14px; border-left: 1px solid var(--stroke); }
+.stock-planning-commercial-summary > div:first-child { border-left: 0; }
+.stock-planning-commercial-summary span { color: var(--muted); font-size: 11px; }
+.stock-planning-commercial-summary strong { overflow-wrap: anywhere; color: var(--text); font-size: 17px; line-height: 1.25; }
+.stock-planning-commercial-summary small { color: var(--muted); font-size: 10px; line-height: 1.35; }
+.stock-planning-heat-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 10px 0; color: var(--muted); font-size: 11px; }
+.stock-planning-heat-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stock-planning-heat-legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; background: var(--stroke); }
+.stock-planning-heat-legend i.is-volume { background: #38bdf8; }
+.stock-planning-heat-legend i.is-profit { background: #34d399; }
+.stock-planning-heat-legend i.is-loss { background: #fb7185; }
+.stock-planning-heat-legend i.is-pending { background: #fbbf24; }
+.stock-planning-commercial-table .stock-planning-heat-cell { min-width: 118px; }
+.stock-planning-heat-cell { position: relative; vertical-align: middle; }
+.stock-planning-heat-cell > span { display: block; font-weight: 750; }
+.stock-planning-heat-cell > i { display: block; height: 4px; max-width: 100%; margin: 6px 0 0 auto; border-radius: 4px; background: currentColor; opacity: .85; }
+.stock-planning-heat-cell small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; font-weight: 500; }
+.stock-planning-heat-cell.is-volume.is-low { color: #7dd3fc; background: color-mix(in srgb, #0ea5e9 7%, transparent); }
+.stock-planning-heat-cell.is-volume.is-medium { color: #38bdf8; background: color-mix(in srgb, #0ea5e9 15%, transparent); }
+.stock-planning-heat-cell.is-volume.is-high { color: #bae6fd; background: color-mix(in srgb, #0284c7 25%, transparent); }
+.stock-planning-heat-cell.is-profit.is-low { color: #6ee7b7; background: color-mix(in srgb, #10b981 8%, transparent); }
+.stock-planning-heat-cell.is-profit.is-medium { color: #34d399; background: color-mix(in srgb, #10b981 16%, transparent); }
+.stock-planning-heat-cell.is-profit.is-high { color: #a7f3d0; background: color-mix(in srgb, #059669 26%, transparent); }
+.stock-planning-heat-cell.is-profit.is-empty { color: var(--muted); }
+.stock-planning-heat-cell.is-loss { color: #fda4af; background: color-mix(in srgb, #e11d48 18%, transparent); }
+.stock-planning-heat-cell.is-cost-pending { color: #fcd34d; background: color-mix(in srgb, #f59e0b 13%, transparent); }
+.stock-planning-heat-cell.is-replenish.is-low { color: #fbbf24; background: color-mix(in srgb, #f59e0b 8%, transparent); }
+.stock-planning-heat-cell.is-replenish.is-medium { color: #fbbf24; background: color-mix(in srgb, #f59e0b 16%, transparent); }
+.stock-planning-heat-cell.is-replenish.is-high { color: #fca5a5; background: color-mix(in srgb, #ef4444 20%, transparent); }
+.stock-planning-heat-cell.is-covered { color: #34d399; background: color-mix(in srgb, #10b981 8%, transparent); }
+.stock-planning-heat-cell.is-empty { color: var(--muted); }
+.stock-planning-action { display: inline-flex; align-items: center; min-height: 26px; padding: 4px 8px; border: 1px solid var(--stroke); border-radius: 6px; font-size: 11px; font-weight: 700; }
+.stock-planning-action.is-profit { color: #6ee7b7; border-color: color-mix(in srgb, #34d399 36%, var(--stroke)); background: color-mix(in srgb, #10b981 11%, transparent); }
+.stock-planning-action.is-replenish { color: #fcd34d; border-color: color-mix(in srgb, #f59e0b 36%, var(--stroke)); background: color-mix(in srgb, #f59e0b 10%, transparent); }
+.stock-planning-action.is-pending { color: #fcd34d; border-color: color-mix(in srgb, #f59e0b 30%, var(--stroke)); background: color-mix(in srgb, #f59e0b 7%, transparent); }
+.stock-planning-action.is-risk { color: #fda4af; border-color: color-mix(in srgb, #fb7185 36%, var(--stroke)); background: color-mix(in srgb, #e11d48 10%, transparent); }
+.stock-planning-action.is-neutral { color: var(--muted); }
 .stock-planning-change { font-weight: 700; }
 .stock-planning-change.is-positive { color: #34d399; }
 .stock-planning-change.is-negative { color: #f87171; }
@@ -211,6 +253,9 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 
 @media (max-width: 1080px) {
     .stock-planning-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stock-planning-commercial-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stock-planning-commercial-summary > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--stroke); }
+    .stock-planning-commercial-summary > div:nth-child(4) { border-top: 1px solid var(--stroke); }
 }
 
 @media (max-width: 700px) {
@@ -230,6 +275,9 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 
 @media (max-width: 420px) {
     .stock-planning-metrics { grid-template-columns: 1fr; }
+    .stock-planning-commercial-summary { grid-template-columns: 1fr; }
+    .stock-planning-commercial-summary > div { border-left: 0; border-top: 1px solid var(--stroke); }
+    .stock-planning-commercial-summary > div:first-child { border-top: 0; }
     .stock-planning-metric { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 3px 10px; }
     .stock-planning-metric strong { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
     .stock-planning-metric small { margin-top: 0; }

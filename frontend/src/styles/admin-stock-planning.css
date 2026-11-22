@@ -112,6 +112,60 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 .stock-planning-metric--replenish.is-needed strong { color: #fbbf24; }
 .stock-planning-metric--replenish.is-covered strong { color: #34d399; }
 
+.stock-planning-workspace { display: grid; gap: 15px; min-width: 0; }
+.stock-planning-workspace-controls { display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+.stock-planning-view-switch {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(100%, 560px);
+    padding: 4px;
+    border: 1px solid var(--stroke);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card) 90%, transparent);
+}
+.stock-planning-view-switch button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 7px 10px;
+    border: 0;
+    border-radius: 6px;
+    color: var(--muted);
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 650;
+    cursor: pointer;
+}
+.stock-planning-view-switch button:hover { color: var(--text); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.stock-planning-view-switch button[aria-pressed="true"] {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 16%, var(--card));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.stock-planning-view-switch button:focus-visible,
+.stock-planning-platform-filter select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stock-planning-view-switch svg { flex: 0 0 auto; color: var(--accent); }
+.stock-planning-platform-filter { display: grid; gap: 5px; min-width: 220px; color: var(--muted); font-size: 12px; }
+.stock-planning-platform-filter select {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid var(--stroke);
+    border-radius: 6px;
+    color: var(--text);
+    background: var(--input-bg);
+    color-scheme: dark;
+    font: inherit;
+    font-size: 13px;
+}
+html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: light; }
+.stock-planning-platform-filter select:disabled { opacity: .65; }
+
 .stock-planning-table-section { min-width: 0; }
 .stock-planning-section-heading {
     display: flex;
@@ -127,7 +181,7 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 .stock-planning-target svg { color: var(--accent); }
 .stock-planning-target b { color: var(--text); font-weight: 600; }
 
-.stock-planning-table-wrap { overflow: auto; max-height: min(65vh, 760px); border: 1px solid var(--stroke); border-radius: 8px; }
+.stock-planning-table-wrap { overflow-x: auto; border: 1px solid var(--stroke); border-radius: 8px; }
 .stock-planning-table { width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .stock-planning-trend-table { min-width: 1080px; }
 .stock-planning-replenishment-table { min-width: 840px; }
@@ -147,6 +201,7 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 .stock-planning-gap.is-covered { color: #34d399; font-size: 12px; }
 .stock-planning-gap.is-neutral { color: var(--muted); }
 .stock-planning-comparison { padding-top: 4px; }
+.stock-planning-view-note { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--stroke); color: var(--muted); background: color-mix(in srgb, var(--card) 90%, transparent); font-size: 12px; line-height: 1.45; }
 .stock-planning-change { font-weight: 700; }
 .stock-planning-change.is-positive { color: #34d399; }
 .stock-planning-change.is-negative { color: #f87171; }
@@ -165,6 +220,9 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
     .stock-planning-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px; align-items: end; }
     .stock-planning-field { min-width: 0; }
     .stock-planning-refresh { margin-top: 0; }
+    .stock-planning-workspace-controls { align-items: stretch; flex-direction: column; }
+    .stock-planning-view-switch { width: 100%; }
+    .stock-planning-platform-filter { min-width: 0; }
     .stock-planning-metrics { gap: 9px; }
     .stock-planning-metric { padding: 13px 12px; }
     .stock-planning-metric strong { font-size: 24px; }
@@ -178,4 +236,5 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
     .stock-planning-controls { grid-template-columns: minmax(0, 1fr) 42px; }
     .stock-planning-field:nth-child(2) { grid-column: 1; }
     .stock-planning-refresh { grid-column: 2; grid-row: 2; }
+    .stock-planning-view-switch button { gap: 5px; padding-inline: 5px; font-size: 12px; }
 }

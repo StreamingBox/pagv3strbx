@@ -38,6 +38,14 @@ function formatChange(value) {
     return `${change > 0 ? "+" : ""}${change.toLocaleString("es-CO", { maximumFractionDigits: 1 })}%`;
 }
 
+function formatSalesDelta(current, previous) {
+    if (current === null || current === undefined || previous === null || previous === undefined) return "Sin base comparable";
+    const difference = Number(current) - Number(previous);
+    if (!Number.isFinite(difference)) return "Sin base comparable";
+    if (difference === 0) return "Sin cambio";
+    return `${formatCount(Math.abs(difference))} ${difference < 0 ? "menos" : "más"}`;
+}
+
 function changeTone(value) {
     if (value === null || value === undefined || Number(value) === 0) return "is-neutral";
     return Number(value) > 0 ? "is-positive" : "is-negative";
@@ -68,8 +76,7 @@ function combinePlatformProfit(platformIds, profitsById) {
         revenueTotal: sum.revenueTotal + row.revenueTotal,
         trackedRevenue: sum.trackedRevenue + row.trackedRevenue,
         netProfit: sum.netProfit + row.netProfit,
-        marginPct: 0,
-    }), { salesCount: 0, trackedSalesCount: 0, untrackedSalesCount: 0, revenueTotal: 0, trackedRevenue: 0, netProfit: 0, marginPct: 0 });
+    }), { salesCount: 0, trackedSalesCount: 0, untrackedSalesCount: 0, revenueTotal: 0, trackedRevenue: 0, netProfit: 0 });
 }
 
 function commercialAction(row, { profitReady, profitError }) {
@@ -165,7 +172,6 @@ export default function AdminStockPlanning() {
 
     const commercialRows = useMemo(() => visibleRows.map((row) => {
         const finance = combinePlatformProfit(String(row.platformId), profitsById);
-        finance.marginPct = finance.trackedRevenue > 0 ? (finance.netProfit / finance.trackedRevenue) * 100 : 0;
         return { ...row, finance };
     }).sort((a, b) => b.finance.netProfit - a.finance.netProfit
         || Number(b.salesTrend?.monthToDateSales || 0) - Number(a.salesTrend?.monthToDateSales || 0)
@@ -335,14 +341,26 @@ export default function AdminStockPlanning() {
                                             <span><i className="is-loss" aria-hidden="true" />Rojo: utilidad negativa</span>
                                             <span><i className="is-pending" aria-hidden="true" />Costo pendiente: utilidad parcial</span>
                                         </div>
+                                        <details className="stock-planning-glossary">
+                                            <summary>Glosario: cómo leer estas cifras</summary>
+                                            <dl>
+                                                <div><dt>Venta · 7 días</dt><dd>Unidades vendidas en los últimos siete días; debajo se compara con los siete días anteriores.</dd></div>
+                                                <div><dt>Venta · mes actual</dt><dd>Unidades vendidas desde el inicio de este mes. El texto inferior muestra el mismo tramo del mes pasado.</dd></div>
+                                                <div><dt>Periodo comparable</dt><dd>La misma cantidad de días transcurridos del mes anterior; no es el total de ese mes.</dd></div>
+                                                <div><dt>Diferencia de ventas</dt><dd>Cuántas unidades subieron o bajaron y qué porcentaje representa frente al periodo comparable.</dd></div>
+                                                <div><dt>Utilidad neta · COP</dt><dd>Ganancia registrada en ventas con costo comparable; puede ser parcial si faltan costos.</dd></div>
+                                                <div><dt>Stock</dt><dd>Cuentas que seguirán vigentes en la fecha objetivo seleccionada.</dd></div>
+                                                <div><dt>Reponer</dt><dd>Faltante estimado si continúa el ritmo de ventas hasta la fecha objetivo; es una guía, no una orden de compra.</dd></div>
+                                                <div><dt>Sugerencia</dt><dd>Orientación basada en ventas, utilidad y stock disponible.</dd></div>
+                                            </dl>
+                                        </details>
                                         <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-commercial-table">
                                             <thead><tr>
                                                 <th scope="col">Plataforma / equivalencia</th>
                                                 <th scope="col" className="is-numeric">Venta · 7 días</th>
                                                 <th scope="col" className="is-numeric">Venta · mes actual</th>
-                                                <th scope="col" className="is-numeric">Cambio mensual</th>
+                                                <th scope="col" className="is-numeric">Diferencia de ventas</th>
                                                 <th scope="col" className="is-numeric">Utilidad neta · COP</th>
-                                                <th scope="col" className="is-numeric">Margen registrado</th>
                                                 <th scope="col" className="is-numeric">Stock</th>
                                                 <th scope="col" className="is-numeric">Reponer</th>
                                                 <th scope="col">Sugerencia</th>
@@ -359,17 +377,19 @@ export default function AdminStockPlanning() {
                                                         <span>{formatCount(weeklySales)}</span><i style={{ width: heatWidth(weeklySales, heatMaxima.recent7) }} aria-hidden="true" />
                                                         <small>{formatChange(trend.weeklyChangePercent)} vs. semana anterior</small>
                                                     </td>
-                                                    <td className={`is-numeric stock-planning-heat-cell is-volume ${heatTier(monthlySales, heatMaxima.month)}`} title={`${formatCount(monthlySales)} ventas; periodo equivalente anterior: ${formatCount(trend.previousMonthSales)}`}>
+                                                    <td className={`is-numeric stock-planning-heat-cell is-volume ${heatTier(monthlySales, heatMaxima.month)}`} title={`${formatCount(monthlySales)} ventas este mes; ${trend.previousMonthSales === null || trend.previousMonthSales === undefined ? "sin periodo comparable" : `${formatCount(trend.previousMonthSales)} ventas en el mismo tramo del mes pasado`}`}>
                                                         <span>{formatCount(monthlySales)}</span><i style={{ width: heatWidth(monthlySales, heatMaxima.month) }} aria-hidden="true" />
-                                                        <small>{formatCount(trend.previousMonthSales)} periodo anterior</small>
+                                                        <small>{trend.previousMonthSales === null || trend.previousMonthSales === undefined ? "Sin base comparable" : `${formatCount(trend.previousMonthSales)} mismo tramo del mes pasado`}</small>
                                                     </td>
-                                                    <td className={`is-numeric stock-planning-change ${changeTone(trend.monthlyChangePercent)}`}>{formatChange(trend.monthlyChangePercent)}</td>
+                                                    <td className={`is-numeric stock-planning-change ${changeTone(trend.monthlyChangePercent)}`} title="Diferencia frente al mismo tramo del mes pasado">
+                                                        <span>{formatSalesDelta(trend.monthToDateSales, trend.previousMonthSales)}</span>
+                                                        <small>{formatChange(trend.monthlyChangePercent)} vs. periodo comparable</small>
+                                                    </td>
                                                     <td className={`is-numeric stock-planning-heat-cell ${row.finance.trackedSalesCount ? profit < 0 ? "is-loss" : `is-profit ${heatTier(profit, heatMaxima.profit)}` : row.finance.untrackedSalesCount ? "is-cost-pending" : "is-empty"}`} title="Utilidad neta de ventas COP con costo comparable registrado">
                                                         <span>{row.finance.trackedSalesCount ? formatCop(profit) : row.finance.untrackedSalesCount ? "Costo pendiente" : "—"}</span>
                                                         {row.finance.trackedSalesCount > 0 && <i style={{ width: heatWidth(profit, heatMaxima.profit) }} aria-hidden="true" />}
                                                         {row.finance.untrackedSalesCount > 0 && <small>{formatCount(row.finance.untrackedSalesCount)} venta(s) sin costo</small>}
                                                     </td>
-                                                    <td className={`is-numeric stock-planning-change ${row.finance.trackedSalesCount ? changeTone(row.finance.marginPct) : "is-neutral"}`}>{row.finance.trackedSalesCount ? `${formatAverage(row.finance.marginPct)}%` : "—"}</td>
                                                     <td className="is-numeric">{formatCount(row.availableStock)}</td>
                                                     <td className={`is-numeric stock-planning-heat-cell ${row.suggestedToReplenish ? `is-replenish ${heatTier(row.suggestedToReplenish, heatMaxima.replenishment)}` : "is-covered"}`}>
                                                         <span>{row.suggestedToReplenish ? formatCount(row.suggestedToReplenish) : "Cubierto"}</span>

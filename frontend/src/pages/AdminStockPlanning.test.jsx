@@ -20,7 +20,7 @@ const planning = {
             availableStock: 31, suggestedToReplenish: 94,
             salesTrend: {
                 recent7Sales: 60, previous7Sales: 99, weeklyChangePercent: -39.4,
-                monthToDateSales: 245, previousMonthSales: 257, monthlyChangePercent: -4.7,
+                monthToDateSales: 272, previousMonthSales: 277, monthlyChangePercent: -1.8,
                 replenishment: { recent7: 55, recent14: 83, monthToDate: 92, selectedHistory: 94 },
             },
         },
@@ -60,10 +60,20 @@ describe("AdminStockPlanning views and platform filter", () => {
 
         expect(screen.getByRole("button", { name: /Ventas/ })).toHaveAttribute("aria-pressed", "true");
         expect(screen.getByRole("columnheader", { name: "Utilidad neta · COP" })).toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name: "Diferencia de ventas" })).toBeInTheDocument();
+        expect(screen.queryByRole("columnheader", { name: "Margen registrado" })).not.toBeInTheDocument();
         expect(await screen.findAllByText(/50\.000/)).toHaveLength(2);
         expect(screen.getByText("5 / 6")).toBeInTheDocument();
         expect(screen.getByText("Vender y reponer")).toBeInTheDocument();
         expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
+        const netflixRow = screen.getByRole("row", { name: /Netflix \+ Netflix Internacional/ });
+        expect(within(netflixRow).getByText("5 menos")).toBeInTheDocument();
+        expect(within(netflixRow).getByText("277 mismo tramo del mes pasado")).toBeInTheDocument();
+        expect(within(netflixRow).getByText("-1,8% vs. periodo comparable")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText("Glosario: cómo leer estas cifras"));
+        expect(screen.getByText(/La misma cantidad de días transcurridos del mes anterior/)).toBeInTheDocument();
+        expect(screen.getByText(/es una guía, no una orden de compra/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /Necesidad/ }));
         expect(screen.getByRole("columnheader", { name: "Vencen en el periodo" })).toBeInTheDocument();

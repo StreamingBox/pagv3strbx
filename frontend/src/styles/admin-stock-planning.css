@@ -104,7 +104,7 @@ html[data-theme="light"] .stock-planning-field select { color-scheme: light; }
 .stock-planning-metric--stock { --metric-accent: #2dd4bf; }
 .stock-planning-metric--replenish { --metric-accent: #fbbf24; }
 .stock-planning-metric--replenish.is-covered { --metric-accent: #34d399; }
-.stock-planning-metric--expiring { --metric-accent: #fb923c; }
+.stock-planning-metric--today { --metric-accent: #fb923c; }
 .stock-planning-metric-label { gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .stock-planning-metric-label span { display: grid; place-items: center; color: var(--metric-accent); }
 .stock-planning-metric strong { display: block; margin-top: 10px; font-size: 27px; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -184,8 +184,9 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 .stock-planning-table-wrap { overflow-x: auto; border: 1px solid var(--stroke); border-radius: 8px; }
 .stock-planning-table { width: 100%; min-width: 920px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
 .stock-planning-trend-table { min-width: 1080px; }
-.stock-planning-commercial-table { min-width: 1200px; }
-.stock-planning-replenishment-table { min-width: 840px; }
+.stock-planning-need-table { min-width: 1260px; }
+.stock-planning-commercial-table { min-width: 1500px; }
+.stock-planning-replenishment-table { min-width: 1280px; }
 .stock-planning-commercial-table th:first-child { position: sticky; left: 0; z-index: 2; min-width: 220px; background: var(--bg0); box-shadow: 1px 0 0 var(--stroke); }
 .stock-planning-table thead { position: sticky; top: 0; z-index: 1; }
 .stock-planning-table th,
@@ -193,6 +194,7 @@ html[data-theme="light"] .stock-planning-platform-filter select { color-scheme: 
 .stock-planning-table thead th { color: var(--muted); background: var(--bg0); font-size: 11px; font-weight: 700; text-align: right; }
 .stock-planning-table thead th:first-child { text-align: left; }
 .stock-planning-commercial-table thead th:first-child { z-index: 3; }
+.stock-planning-replenishment-table .is-recommended { background: color-mix(in srgb, var(--accent) 10%, var(--bg0)); box-shadow: inset 2px 0 var(--accent); }
 .stock-planning-table tbody th { font-weight: 700; text-align: left; }
 .stock-planning-table tbody tr:last-child th,
 .stock-planning-table tbody tr:last-child td { border-bottom: 0; }

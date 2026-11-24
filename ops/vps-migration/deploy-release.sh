@@ -13,6 +13,9 @@ RELEASE=$ROOT/releases/$SHA
 [[ $(hostname) == "$EXPECTED_HOST" ]] || { echo 'Unexpected production host.' >&2; exit 1; }
 [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo 'Expected a full Git commit SHA.' >&2; exit 2; }
 [[ $ACTION == prepare || $ACTION == activate ]] || { echo 'Use prepare or activate.' >&2; exit 2; }
+[[ -f $STAGE/deploy-release.sh && $(readlink -f "${BASH_SOURCE[0]}") == $(readlink -f "$STAGE/deploy-release.sh") ]] || {
+    echo 'Run the deployment script staged for this release.' >&2; exit 1;
+}
 
 exec 9>/run/lock/pagev3-release-deploy.lock
 flock -n 9 || { echo 'Another PageV3 release is running.' >&2; exit 1; }
@@ -72,6 +75,9 @@ if [[ $ACTION == prepare ]]; then
     [[ $(git get-tar-commit-id < "$STAGE/source.tar") == "$SHA" ]]
     mkdir -m 755 "$RELEASE"
     tar -xf "$STAGE/source.tar" -C "$RELEASE"
+    [[ -f $RELEASE/ops/vps-migration/deploy-release.sh ]] && cmp -s "$STAGE/deploy-release.sh" "$RELEASE/ops/vps-migration/deploy-release.sh" || {
+        echo 'Staged deployment script differs from the source archive.' >&2; exit 1;
+    }
     [[ ! -e $RELEASE/frontend/dist ]]
     mkdir -m 755 "$RELEASE/frontend/dist"
     tar -xzf "$STAGE/dist.tgz" -C "$RELEASE/frontend/dist"
@@ -84,42 +90,69 @@ if [[ $ACTION == prepare ]]; then
 fi
 
 [[ -f $RELEASE/frontend/dist/index.html ]] || { echo 'Prepared frontend release is missing.' >&2; exit 1; }
-API_IMAGE=$(docker inspect --format '{{.Config.Image}}' pagev3-migration-api-1)
-WEB_IMAGE=$(docker inspect --format '{{.Config.Image}}' pagev3-migration-web-1)
-[[ $API_IMAGE =~ ^pagev3-migration-api:([0-9a-f]{40})$ ]] || { echo 'Unexpected active API image.' >&2; exit 1; }
-PREVIOUS=${BASH_REMATCH[1]}
-[[ $WEB_IMAGE == "pagev3-migration-web:$PREVIOUS" ]] || { echo 'API and web releases do not match.' >&2; exit 1; }
-[[ $PREVIOUS != "$SHA" ]] || { echo 'This release is already active.' >&2; exit 1; }
-[[ $(docker inspect --format '{{.State.Health.Status}}' pagev3-migration-api-1) == healthy ]]
-[[ $(docker inspect --format '{{.State.Health.Status}}' pagev3-migration-web-1) == healthy ]]
-[[ $(docker inspect --format '{{.State.Health.Status}}' pagev3-migration-netflix-tv-worker-1) == healthy ]]
-
-OLD_STAGE=$ROOT/staging/$PREVIOUS
-OLD_OVERLAY=$OLD_STAGE/compose.release-images.yaml
-[[ -f $OLD_OVERLAY ]] || OLD_OVERLAY=$OLD_STAGE/compose.release-images.template.yaml
-[[ -f $OLD_OVERLAY ]] || { echo 'Previous release overlay is missing; refusing activation.' >&2; exit 1; }
-export PAGEV3_RELEASE_SHA=$PREVIOUS
-OLD=("${COMMON[@]}" -f "$OLD_OVERLAY")
-"${OLD[@]}" config --quiet
+declare -A PREVIOUS_SHA OLD_OVERLAY
+already_active=1
 for service in api web netflix-tv-worker; do
+    container="pagev3-migration-$service-1"
+    [[ $(docker inspect --format '{{.State.Health.Status}}' "$container") == healthy ]] || {
+        echo "Active $service is not healthy; refusing activation." >&2; exit 1;
+    }
+
+    image=$(docker inspect --format '{{.Config.Image}}' "$container")
+    [[ $image =~ ^pagev3-migration-${service}:([0-9a-f]{40})$ ]] || {
+        echo "Unexpected active $service image." >&2; exit 1;
+    }
+    previous=${BASH_REMATCH[1]}
+    PREVIOUS_SHA[$service]=$previous
+    [[ $previous == "$SHA" ]] || already_active=0
+
+    old_stage=$ROOT/staging/$previous
+    old_overlay=$old_stage/compose.release-images.yaml
+    [[ -f $old_overlay ]] || old_overlay=$old_stage/compose.release-images.template.yaml
+    [[ -f $old_overlay ]] || { echo "Previous $service release overlay is missing; refusing activation." >&2; exit 1; }
+    OLD_OVERLAY[$service]=$old_overlay
+
+    export PAGEV3_RELEASE_SHA=$previous
+    OLD=("${COMMON[@]}" -f "$old_overlay")
+    "${OLD[@]}" config --quiet
     expected=$("${OLD[@]}" config --hash "$service" | awk -v service="$service" '$1 == service { print $2 }')
-    actual=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' "pagev3-migration-$service-1")
+    actual=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.config-hash"}}' "$container")
     [[ -n $expected && $expected == "$actual" ]] || {
         echo "Active $service configuration drifted; refusing activation." >&2; exit 1;
     }
+    docker image inspect "pagev3-migration-$service:$previous" >/dev/null || {
+        echo "Rollback image for $service is missing; refusing activation." >&2; exit 1;
+    }
 done
+[[ $already_active == 0 ]] || { echo 'This release is already active.' >&2; exit 1; }
 export PAGEV3_RELEASE_SHA=$SHA
 verify_backups
 docker image inspect "pagev3-migration-api:$SHA" "pagev3-migration-web:$SHA" "pagev3-migration-netflix-tv-worker:$SHA" >/dev/null
 
 rollback() {
     trap - ERR
-    echo 'Release health check failed; restoring the previous API, web, and worker images.' >&2
-    export PAGEV3_RELEASE_SHA=$PREVIOUS
-    "${OLD[@]}" up -d --no-deps --no-build --pull never api web netflix-tv-worker
-    wait_healthy pagev3-migration-api-1
-    wait_healthy pagev3-migration-web-1
-    wait_healthy pagev3-migration-netflix-tv-worker-1
+    echo 'Release health check failed; restoring each service to its previous image.' >&2
+    local failed=0 service previous container
+    for service in web api netflix-tv-worker; do
+        previous=${PREVIOUS_SHA[$service]}
+        container="pagev3-migration-$service-1"
+        export PAGEV3_RELEASE_SHA=$previous
+        OLD=("${COMMON[@]}" -f "${OLD_OVERLAY[$service]}")
+        if ! "${OLD[@]}" up -d --no-deps --no-build --pull never "$service"; then
+            echo "Rollback command failed for $service." >&2
+            failed=1
+            continue
+        fi
+        if ! wait_healthy "$container"; then
+            echo "Rollback health check failed for $service." >&2
+            failed=1
+        fi
+    done
+    if (( failed )); then
+        echo 'Rollback was incomplete; inspect all three service images and health states.' >&2
+        exit 1
+    fi
+    echo 'Previous per-service release set restored and healthy.' >&2
     exit 1
 }
 

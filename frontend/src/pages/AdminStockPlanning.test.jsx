@@ -16,22 +16,22 @@ const planning = {
     rows: [
         {
             platformId: "18+19", platformName: "Netflix + Netflix Internacional", historicalSales: 375,
-            averageDailySales: 12.5, expiringSubscriptions: 130, estimatedDemand: 125,
-            availableStock: 31, suggestedToReplenish: 94,
+            averageDailySales: 12.5, forecastDailySales: 11.91, expiringSubscriptions: 130, estimatedDemand: 121,
+            availableStock: 31, suggestedToReplenish: 90,
             salesTrend: {
-                recent7Sales: 60, previous7Sales: 99, weeklyChangePercent: -39.4,
+                todaySales: 4, recent7Sales: 60, previous7Sales: 99, weeklyChangePercent: -39.4,
                 monthToDateSales: 272, previousMonthSales: 277, monthlyChangePercent: -1.8,
-                replenishment: { recent7: 55, recent14: 83, monthToDate: 92, selectedHistory: 94 },
+                replenishment: { weighted: 90, recent7: 55, recent14: 83, recent30: 94, recent90: 94, monthToDate: 92, selectedHistory: 94 },
             },
         },
         {
             platformId: 3, platformName: "HBO Max", historicalSales: 10,
-            averageDailySales: 0.33, expiringSubscriptions: 2, estimatedDemand: 2,
+            averageDailySales: 0.33, forecastDailySales: 0.22, expiringSubscriptions: 2, estimatedDemand: 2,
             availableStock: 4, suggestedToReplenish: 0,
             salesTrend: {
-                recent7Sales: 1, previous7Sales: 2, weeklyChangePercent: -50,
+                todaySales: 1, recent7Sales: 1, previous7Sales: 2, weeklyChangePercent: -50,
                 monthToDateSales: 4, previousMonthSales: 5, monthlyChangePercent: -20,
-                replenishment: { recent7: 0, recent14: 0, monthToDate: 0, selectedHistory: 0 },
+                replenishment: { weighted: 0, recent7: 0, recent14: 0, recent30: 0, recent90: 0, monthToDate: 0, selectedHistory: 0 },
             },
         },
     ],
@@ -59,11 +59,14 @@ describe("AdminStockPlanning views and platform filter", () => {
         await screen.findByRole("row", { name: /Netflix \+ Netflix Internacional/ });
 
         expect(screen.getByRole("button", { name: /Ventas/ })).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByLabelText("Ventana de historial")).toHaveValue("300");
         expect(screen.getByRole("columnheader", { name: "Utilidad neta · COP" })).toBeInTheDocument();
         expect(screen.getByRole("columnheader", { name: "Diferencia de ventas" })).toBeInTheDocument();
         expect(screen.queryByRole("columnheader", { name: "Margen registrado" })).not.toBeInTheDocument();
         expect(await screen.findAllByText(/50\.000/)).toHaveLength(2);
         expect(screen.getByText("5 / 6")).toBeInTheDocument();
+        const todaySales = document.querySelector(".stock-planning-metric--today");
+        expect(within(todaySales).getByText("5")).toBeInTheDocument();
         expect(screen.getByText("Vender y reponer")).toBeInTheDocument();
         expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
         const netflixRow = screen.getByRole("row", { name: /Netflix \+ Netflix Internacional/ });
@@ -73,14 +76,16 @@ describe("AdminStockPlanning views and platform filter", () => {
 
         fireEvent.click(screen.getByText("Glosario: cómo leer estas cifras"));
         expect(screen.getByText(/La misma cantidad de días transcurridos del mes anterior/)).toBeInTheDocument();
-        expect(screen.getByText(/es una guía, no una orden de compra/)).toBeInTheDocument();
+        expect(screen.getByText(/La semana influye, pero no determina sola el resultado/)).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /Necesidad/ }));
         expect(screen.getByRole("columnheader", { name: "Vencen en el periodo" })).toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name: "Ritmo previsto / día" })).toBeInTheDocument();
         expect(screen.queryByRole("columnheader", { name: "Utilidad neta · COP" })).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /Reposición/ }));
         expect(screen.getByRole("columnheader", { name: "Ritmo últimos 14 días" })).toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name: "Proyección ponderada" })).toBeInTheDocument();
         expect(screen.queryByRole("columnheader", { name: "Utilidad neta · COP" })).not.toBeInTheDocument();
     });
 

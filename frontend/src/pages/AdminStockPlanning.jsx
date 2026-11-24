@@ -95,7 +95,7 @@ export default function AdminStockPlanning() {
     const { user } = useAuth();
     const today = currentBogotaDateOnly();
     const [targetDate, setTargetDate] = useState(() => shiftDate(today, 7));
-    const [historyDays, setHistoryDays] = useState("30");
+    const [historyDays, setHistoryDays] = useState("300");
     const [activeView, setActiveView] = useState("sales");
     const [platformFilter, setPlatformFilter] = useState("all");
     const [reloadKey, setReloadKey] = useState(0);
@@ -158,8 +158,8 @@ export default function AdminStockPlanning() {
         estimatedDemand: sum.estimatedDemand + Number(row.estimatedDemand || 0),
         availableStock: sum.availableStock + Number(row.availableStock || 0),
         suggestedToReplenish: sum.suggestedToReplenish + Number(row.suggestedToReplenish || 0),
-        expiringSubscriptions: sum.expiringSubscriptions + Number(row.expiringSubscriptions || 0),
-    }), { estimatedDemand: 0, availableStock: 0, suggestedToReplenish: 0, expiringSubscriptions: 0 }), [visibleRows]);
+        todaySales: sum.todaySales + Number(row.salesTrend?.todaySales || 0),
+    }), { estimatedDemand: 0, availableStock: 0, suggestedToReplenish: 0, todaySales: 0 }), [visibleRows]);
 
     const profitsById = useMemo(() => new Map((profitData?.platforms || []).map((row) => [Number(row.platformId), {
         salesCount: Number(row.salesCount || 0),
@@ -224,6 +224,9 @@ export default function AdminStockPlanning() {
                                 <option value="30">30 días</option>
                                 <option value="60">60 días</option>
                                 <option value="90">90 días</option>
+                                <option value="180">180 días</option>
+                                <option value="270">270 días</option>
+                                <option value="300">Máximo · 300 días</option>
                             </select>
                         </label>
                         <button className="stock-planning-refresh" type="button" title="Actualizar planeación" aria-label="Actualizar planeación" disabled={loading} onClick={() => setReloadKey((value) => value + 1)}>
@@ -234,16 +237,16 @@ export default function AdminStockPlanning() {
 
                 <p className="stock-planning-explainer">
                     <Info size={16} aria-hidden="true" />
-                    <span>Promedio de ventas nuevas de los últimos {historyDays} días completos. Las renovaciones van aparte; la reposición compartida respeta la dirección de cada equivalencia activa.</span>
+                    <span>Proyección ponderada: 15% últimos 7 días, 35% últimos 30, 30% últimos 90 y 20% del historial elegido. Ventas reales de hoy aparte; renovaciones excluidas. Las equivalencias activas comparten stock en la dirección configurada.</span>
                 </p>
 
                 {error && <div className="stock-planning-error" role="alert">{error}</div>}
 
                 <section className="stock-planning-metrics" aria-label="Resumen de planeación">
                     <article className="stock-planning-metric stock-planning-metric--demand">
-                        <div className="stock-planning-metric-label"><span><TrendingUp size={17} /></span>Demanda estimada</div>
+                        <div className="stock-planning-metric-label"><span><TrendingUp size={17} /></span>Demanda prevista</div>
                         <strong>{data ? formatCount(totals.estimatedDemand) : "—"}</strong>
-                        <small>Unidades hasta la fecha objetivo</small>
+                        <small>Ventas estimadas hasta {data ? formatDate(data.targetDate) : "la fecha elegida"}</small>
                     </article>
                     <article className="stock-planning-metric stock-planning-metric--stock">
                         <div className="stock-planning-metric-label"><span><PackageCheck size={17} /></span>Stock con vigencia</div>
@@ -251,14 +254,14 @@ export default function AdminStockPlanning() {
                         <small>Disponible en la fecha objetivo</small>
                     </article>
                     <article className={`stock-planning-metric stock-planning-metric--replenish${totals.suggestedToReplenish ? " is-needed" : " is-covered"}`}>
-                        <div className="stock-planning-metric-label"><span><Boxes size={17} /></span>Unidades por reponer</div>
+                        <div className="stock-planning-metric-label"><span><Boxes size={17} /></span>Faltante estimado</div>
                         <strong>{data ? formatCount(totals.suggestedToReplenish) : "—"}</strong>
-                        <small>{totals.suggestedToReplenish ? "Brecha entre demanda y stock" : "Stock suficiente para la demanda"}</small>
+                        <small>{totals.suggestedToReplenish ? "Demanda prevista menos stock vigente" : "El stock cubre la proyección"}</small>
                     </article>
-                    <article className="stock-planning-metric stock-planning-metric--expiring">
-                        <div className="stock-planning-metric-label"><span><Clock3 size={17} /></span>Vencimientos</div>
-                        <strong>{data ? formatCount(totals.expiringSubscriptions) : "—"}</strong>
-                        <small>Suscripciones durante el periodo</small>
+                    <article className="stock-planning-metric stock-planning-metric--today">
+                        <div className="stock-planning-metric-label"><span><Clock3 size={17} /></span>Ventas de hoy</div>
+                        <strong>{data ? formatCount(totals.todaySales) : "—"}</strong>
+                        <small>Unidades reales vendidas hoy</small>
                     </article>
                 </section>
 
@@ -289,20 +292,24 @@ export default function AdminStockPlanning() {
                         {loading && !data ? <p className="stock-planning-state" role="status">Calculando con el historial…</p>
                             : !visibleRows.length ? <p className="stock-planning-state">{data?.rows?.length ? "No hay resultados para esta plataforma." : "No hay plataformas activas que requieran inventario."}</p>
                                 : <div className="stock-planning-view-content">
-                                    {activeView === "need" && <div className="stock-planning-table-wrap"><table className="stock-planning-table">
+                                    {activeView === "need" && <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-need-table">
                                         <thead><tr>
                                             <th scope="col">Plataforma</th>
+                                            <th scope="col" className="is-numeric">Ventas hoy</th>
                                             <th scope="col" className="is-numeric">Ventas nuevas · {historyDays} días</th>
-                                            <th scope="col" className="is-numeric">Promedio / día</th>
+                                            <th scope="col" className="is-numeric">Promedio histórico / día</th>
+                                            <th scope="col" className="is-numeric">Ritmo previsto / día</th>
                                             <th scope="col" className="is-numeric">Vencen en el periodo</th>
-                                            <th scope="col" className="is-numeric">Demanda estimada</th>
+                                            <th scope="col" className="is-numeric">Demanda hasta fecha</th>
                                             <th scope="col" className="is-numeric">Stock vigente</th>
-                                            <th scope="col" className="is-numeric">Reponer</th>
+                                            <th scope="col" className="is-numeric">Faltante</th>
                                         </tr></thead>
                                         <tbody>{visibleRows.map((row) => <tr key={row.platformId}>
                                             <th scope="row">{row.platformName}</th>
+                                            <td className="is-numeric">{formatCount(row.salesTrend?.todaySales)}</td>
                                             <td className="is-numeric">{formatCount(row.historicalSales)}</td>
                                             <td className="is-numeric">{formatAverage(row.averageDailySales)}</td>
+                                            <td className="is-numeric is-emphasized">{formatAverage(row.forecastDailySales)}</td>
                                             <td className="is-numeric">{formatCount(row.expiringSubscriptions)}</td>
                                             <td className="is-numeric is-emphasized">{formatCount(row.estimatedDemand)}</td>
                                             <td className="is-numeric">{formatCount(row.availableStock)}</td>
@@ -311,7 +318,7 @@ export default function AdminStockPlanning() {
                                     </table></div>}
 
                                     {activeView === "sales" && <>
-                                        <p className="stock-planning-view-note">Mapa ordenado por utilidad registrada en COP. Cruza movimiento, margen y stock para decidir qué vender o reponer.</p>
+                                        <p className="stock-planning-view-note">Compara ventas reales, ritmo previsto, cambio frente al mismo tramo del mes pasado, utilidad y stock vigente.</p>
                                         {profitError && <p className="stock-planning-view-warning" role="status">No se pudo cargar la utilidad; se mantienen visibles las ventas y el stock. Actualiza para reintentar.</p>}
                                         <section className="stock-planning-commercial-summary" aria-label="Resumen comercial del mes actual">
                                             <div>
@@ -345,24 +352,29 @@ export default function AdminStockPlanning() {
                                             <summary>Glosario: cómo leer estas cifras</summary>
                                             <dl>
                                                 <div><dt>Venta · 7 días</dt><dd>Unidades vendidas en los últimos siete días; debajo se compara con los siete días anteriores.</dd></div>
+                                                <div><dt>Ventas hoy</dt><dd>Ventas nuevas registradas desde la medianoche de hoy en Bogotá. No es una proyección.</dd></div>
+                                                <div><dt>Ritmo previsto / día</dt><dd>Estimación diaria que combina 15% de los últimos 7 días, 35% de los últimos 30, 30% de los últimos 90 y 20% del historial elegido. La semana influye, pero no determina sola el resultado.</dd></div>
+                                                <div><dt>Demanda prevista</dt><dd>Ritmo previsto por los días que faltan hasta la fecha elegida; es una estimación de ventas, no una garantía.</dd></div>
                                                 <div><dt>Venta · mes actual</dt><dd>Unidades vendidas desde el inicio de este mes. El texto inferior muestra el mismo tramo del mes pasado.</dd></div>
                                                 <div><dt>Periodo comparable</dt><dd>La misma cantidad de días transcurridos del mes anterior; no es el total de ese mes.</dd></div>
                                                 <div><dt>Diferencia de ventas</dt><dd>Cuántas unidades subieron o bajaron y qué porcentaje representa frente al periodo comparable.</dd></div>
                                                 <div><dt>Utilidad neta · COP</dt><dd>Ganancia registrada en ventas con costo comparable; puede ser parcial si faltan costos.</dd></div>
-                                                <div><dt>Stock</dt><dd>Cuentas que seguirán vigentes en la fecha objetivo seleccionada.</dd></div>
-                                                <div><dt>Reponer</dt><dd>Faltante estimado si continúa el ritmo de ventas hasta la fecha objetivo; es una guía, no una orden de compra.</dd></div>
+                                                <div><dt>Stock vigente</dt><dd>Cuentas disponibles que seguirán vigentes en la fecha objetivo seleccionada.</dd></div>
+                                                <div><dt>Faltante</dt><dd>Demanda prevista hasta la fecha menos stock vigente allí. Si sale “Cubierto”, el stock actual cubre la proyección.</dd></div>
                                                 <div><dt>Sugerencia</dt><dd>Orientación basada en ventas, utilidad y stock disponible.</dd></div>
                                             </dl>
                                         </details>
                                         <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-commercial-table">
                                             <thead><tr>
                                                 <th scope="col">Plataforma / equivalencia</th>
+                                                <th scope="col" className="is-numeric">Ventas hoy</th>
+                                                <th scope="col" className="is-numeric">Ritmo previsto / día</th>
                                                 <th scope="col" className="is-numeric">Venta · 7 días</th>
                                                 <th scope="col" className="is-numeric">Venta · mes actual</th>
                                                 <th scope="col" className="is-numeric">Diferencia de ventas</th>
                                                 <th scope="col" className="is-numeric">Utilidad neta · COP</th>
-                                                <th scope="col" className="is-numeric">Stock</th>
-                                                <th scope="col" className="is-numeric">Reponer</th>
+                                                <th scope="col" className="is-numeric">Stock en fecha objetivo</th>
+                                                <th scope="col" className="is-numeric">Faltante al objetivo</th>
                                                 <th scope="col">Sugerencia</th>
                                             </tr></thead>
                                             <tbody>{commercialRows.map((row) => {
@@ -373,6 +385,8 @@ export default function AdminStockPlanning() {
                                                 const profit = row.finance.netProfit;
                                                 return <tr key={row.platformId}>
                                                     <th scope="row">{row.platformName}</th>
+                                                    <td className="is-numeric">{formatCount(trend.todaySales)}</td>
+                                                    <td className="is-numeric is-emphasized">{formatAverage(row.forecastDailySales)}</td>
                                                     <td className={`is-numeric stock-planning-heat-cell is-volume ${heatTier(weeklySales, heatMaxima.recent7)}`} title={`${formatCount(weeklySales)} ventas; semana anterior: ${formatCount(trend.previous7Sales)}`}>
                                                         <span>{formatCount(weeklySales)}</span><i style={{ width: heatWidth(weeklySales, heatMaxima.recent7) }} aria-hidden="true" />
                                                         <small>{formatChange(trend.weeklyChangePercent)} vs. semana anterior</small>
@@ -402,22 +416,25 @@ export default function AdminStockPlanning() {
                                     </>}
 
                                     {activeView === "replenishment" && <>
-                                        <p className="stock-planning-view-note">Unidades que faltarían para cubrir la demanda hasta {formatDate(data.targetDate)} si se mantiene cada ritmo.</p>
+                                        <p className="stock-planning-view-note">Escenarios de faltante para {formatDate(data.targetDate)}. La proyección ponderada es la referencia; los demás escenarios sirven para comparar y no son órdenes de compra.</p>
                                         <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-replenishment-table">
                                             <thead><tr>
                                                 <th scope="col">Plataforma / equivalencia</th>
+                                                <th scope="col" className="is-numeric is-recommended">Proyección ponderada</th>
                                                 <th scope="col" className="is-numeric">Ritmo últimos 7 días</th>
+                                                <th scope="col" className="is-numeric">Ritmo últimos 30 días</th>
+                                                <th scope="col" className="is-numeric">Ritmo últimos 90 días</th>
                                                 <th scope="col" className="is-numeric">Ritmo últimos 14 días</th>
                                                 <th scope="col" className="is-numeric">Ritmo mes actual</th>
                                                 <th scope="col" className="is-numeric">Historial · {historyDays} días</th>
                                             </tr></thead>
                                             <tbody>{visibleRows.map((row) => {
                                                 const replenishment = row.salesTrend?.replenishment || {};
-                                                const values = [replenishment.recent7, replenishment.recent14, replenishment.monthToDate, replenishment.selectedHistory];
+                                                const values = [replenishment.weighted, replenishment.recent7, replenishment.recent30, replenishment.recent90, replenishment.recent14, replenishment.monthToDate, replenishment.selectedHistory];
                                                 return <tr key={row.platformId}>
                                                     <th scope="row">{row.platformName}</th>
                                                     {values.map((value, index) => (
-                                                        <td key={index} className={`is-numeric stock-planning-heat-cell ${value === 0 ? "is-covered" : `is-replenish ${heatTier(value, heatMaxima.replenishment)}`}`}>
+                                                        <td key={index} className={`is-numeric stock-planning-heat-cell ${index === 0 ? "is-recommended" : ""} ${value === 0 ? "is-covered" : `is-replenish ${heatTier(value, heatMaxima.replenishment)}`}`}>
                                                             <span>{formatReplenishment(value)}</span>
                                                             {value > 0 && <i style={{ width: heatWidth(value, heatMaxima.replenishment) }} aria-hidden="true" />}
                                                         </td>

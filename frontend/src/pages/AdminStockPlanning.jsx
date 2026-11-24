@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Boxes, CalendarDays, Clock3, Info, PackageCheck, RefreshCcw, TrendingUp } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Boxes, CalendarDays, Clock3, Info, PackageCheck, RefreshCcw, TrendingUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import AdminSidebar from "../components/admin/AdminSidebar.jsx";
 import { apiGet } from "../api/api.js";
@@ -56,6 +56,26 @@ function formatReplenishment(value) {
     return value ? formatCount(value) : "Cubierto";
 }
 
+function sortRows(rows, sort) {
+    if (!sort) return rows;
+    const valueFor = (row) => {
+        if (sort.key === "monthlySalesDelta") {
+            const previous = row.salesTrend?.previousMonthSales;
+            return previous === null || previous === undefined ? null : Number(row.salesTrend?.monthToDateSales || 0) - Number(previous);
+        }
+        return sort.key.split(".").reduce((value, key) => value?.[key], row);
+    };
+    const collator = new Intl.Collator("es-CO", { numeric: true, sensitivity: "base" });
+    return [...rows].sort((left, right) => {
+        const a = valueFor(left);
+        const b = valueFor(right);
+        if (a === null || a === undefined) return b === null || b === undefined ? 0 : 1;
+        if (b === null || b === undefined) return -1;
+        const result = typeof a === "number" && typeof b === "number" ? a - b : collator.compare(String(a), String(b));
+        return sort.direction === "asc" ? result : -result;
+    });
+}
+
 function heatTier(value, maximum) {
     const ratio = maximum > 0 ? Math.abs(Number(value || 0)) / maximum : 0;
     if (!ratio) return "is-empty";
@@ -79,16 +99,6 @@ function combinePlatformProfit(platformIds, profitsById) {
     }), { salesCount: 0, trackedSalesCount: 0, untrackedSalesCount: 0, revenueTotal: 0, trackedRevenue: 0, netProfit: 0 });
 }
 
-function commercialAction(row, { profitReady, profitError }) {
-    if (!profitReady) return { label: profitError ? "Utilidad no disponible" : "Calculando utilidad", tone: "neutral" };
-    if (!row.finance.trackedSalesCount && row.finance.salesCount) return { label: "Completar costos", tone: "pending" };
-    if (row.finance.trackedSalesCount && row.finance.netProfit < 0) return { label: "Revisar margen", tone: "risk" };
-    if (row.suggestedToReplenish > 0) return { label: row.availableStock > 0 ? "Vender y reponer" : "Reponer", tone: "replenish" };
-    if (row.finance.netProfit > 0 && row.availableStock > 0) return { label: "Priorizar venta", tone: "profit" };
-    if (!row.finance.salesCount && row.salesTrend?.monthToDateSales > 0) return { label: "Validar moneda", tone: "pending" };
-    return { label: "Observar", tone: "neutral" };
-}
-
 export default function AdminStockPlanning() {
     const navigate = useNavigate();
     const logout = useAppLogout();
@@ -98,6 +108,7 @@ export default function AdminStockPlanning() {
     const [historyDays, setHistoryDays] = useState("300");
     const [activeView, setActiveView] = useState("sales");
     const [platformFilter, setPlatformFilter] = useState("all");
+    const [sorts, setSorts] = useState({});
     const [reloadKey, setReloadKey] = useState(0);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -190,6 +201,21 @@ export default function AdminStockPlanning() {
         profit: Math.max(0, ...commercialRows.map((row) => Math.abs(row.finance.netProfit))),
         replenishment: Math.max(0, ...visibleRows.flatMap((row) => Object.values(row.salesTrend?.replenishment || {}).map((value) => Number(value || 0)))),
     }), [commercialRows, visibleRows]);
+
+    const sortableHeader = (label, key, view, numeric = true) => {
+        const sort = sorts[view];
+        const active = sort?.key === key;
+        const nextDirection = active && sort.direction === "asc" ? "desc" : "asc";
+        const SortIcon = active ? sort.direction === "asc" ? ArrowUp : ArrowDown : ArrowUpDown;
+        return <th key={key} scope="col" className={numeric ? "is-numeric stock-planning-sortable" : "stock-planning-sortable"} aria-sort={active ? sort.direction === "asc" ? "ascending" : "descending" : "none"}>
+            <button type="button" className="stock-planning-sort-button" aria-label={label} title={`Ordenar ${nextDirection === "asc" ? "ascendente" : "descendente"} por ${label}`} onClick={() => setSorts((current) => ({
+                ...current,
+                [view]: { key, direction: current[view]?.key === key && current[view].direction === "asc" ? "desc" : "asc" },
+            }))}>
+                <span>{label}</span><SortIcon size={13} aria-hidden="true" />
+            </button>
+        </th>;
+    };
 
     const profitLeader = commercialRows.find((row) => row.finance.trackedSalesCount > 0);
     const salesLeader = [...visibleRows]
@@ -294,17 +320,17 @@ export default function AdminStockPlanning() {
                                 : <div className="stock-planning-view-content">
                                     {activeView === "need" && <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-need-table">
                                         <thead><tr>
-                                            <th scope="col">Plataforma</th>
-                                            <th scope="col" className="is-numeric">Ventas hoy</th>
-                                            <th scope="col" className="is-numeric">Ventas nuevas · {historyDays} días</th>
-                                            <th scope="col" className="is-numeric">Promedio histórico / día</th>
-                                            <th scope="col" className="is-numeric">Ritmo previsto / día</th>
-                                            <th scope="col" className="is-numeric">Vencen en el periodo</th>
-                                            <th scope="col" className="is-numeric">Demanda hasta fecha</th>
-                                            <th scope="col" className="is-numeric">Stock vigente</th>
-                                            <th scope="col" className="is-numeric">Faltante</th>
+                                            {sortableHeader("Plataforma", "platformName", "need", false)}
+                                            {sortableHeader("Ventas hoy", "salesTrend.todaySales", "need")}
+                                            {sortableHeader(`Ventas nuevas · ${historyDays} días`, "historicalSales", "need")}
+                                            {sortableHeader("Promedio histórico / día", "averageDailySales", "need")}
+                                            {sortableHeader("Ritmo previsto / día", "forecastDailySales", "need")}
+                                            {sortableHeader("Vencen en el periodo", "expiringSubscriptions", "need")}
+                                            {sortableHeader("Demanda hasta fecha", "estimatedDemand", "need")}
+                                            {sortableHeader("Stock vigente", "availableStock", "need")}
+                                            {sortableHeader("Faltante", "suggestedToReplenish", "need")}
                                         </tr></thead>
-                                        <tbody>{visibleRows.map((row) => <tr key={row.platformId}>
+                                        <tbody>{sortRows(visibleRows, sorts.need).map((row) => <tr key={row.platformId}>
                                             <th scope="row">{row.platformName}</th>
                                             <td className="is-numeric">{formatCount(row.salesTrend?.todaySales)}</td>
                                             <td className="is-numeric">{formatCount(row.historicalSales)}</td>
@@ -361,25 +387,22 @@ export default function AdminStockPlanning() {
                                                 <div><dt>Utilidad neta · COP</dt><dd>Ganancia registrada en ventas con costo comparable; puede ser parcial si faltan costos.</dd></div>
                                                 <div><dt>Stock vigente</dt><dd>Cuentas disponibles que seguirán vigentes en la fecha objetivo seleccionada.</dd></div>
                                                 <div><dt>Faltante</dt><dd>Demanda prevista hasta la fecha menos stock vigente allí. Si sale “Cubierto”, el stock actual cubre la proyección.</dd></div>
-                                                <div><dt>Sugerencia</dt><dd>Orientación basada en ventas, utilidad y stock disponible.</dd></div>
                                             </dl>
                                         </details>
                                         <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-commercial-table">
                                             <thead><tr>
-                                                <th scope="col">Plataforma / equivalencia</th>
-                                                <th scope="col" className="is-numeric">Ventas hoy</th>
-                                                <th scope="col" className="is-numeric">Ritmo previsto / día</th>
-                                                <th scope="col" className="is-numeric">Venta · 7 días</th>
-                                                <th scope="col" className="is-numeric">Venta · mes actual</th>
-                                                <th scope="col" className="is-numeric">Diferencia de ventas</th>
-                                                <th scope="col" className="is-numeric">Utilidad neta · COP</th>
-                                                <th scope="col" className="is-numeric">Stock en fecha objetivo</th>
-                                                <th scope="col" className="is-numeric">Faltante al objetivo</th>
-                                                <th scope="col">Sugerencia</th>
+                                                {sortableHeader("Plataforma / equivalencia", "platformName", "sales", false)}
+                                                {sortableHeader("Ventas hoy", "salesTrend.todaySales", "sales")}
+                                                {sortableHeader("Ritmo previsto / día", "forecastDailySales", "sales")}
+                                                {sortableHeader("Venta · 7 días", "salesTrend.recent7Sales", "sales")}
+                                                {sortableHeader("Venta · mes actual", "salesTrend.monthToDateSales", "sales")}
+                                                {sortableHeader("Diferencia de ventas", "monthlySalesDelta", "sales")}
+                                                {sortableHeader("Utilidad neta · COP", "finance.netProfit", "sales")}
+                                                {sortableHeader("Stock en fecha objetivo", "availableStock", "sales")}
+                                                {sortableHeader("Faltante al objetivo", "suggestedToReplenish", "sales")}
                                             </tr></thead>
-                                            <tbody>{commercialRows.map((row) => {
+                                            <tbody>{sortRows(commercialRows, sorts.sales).map((row) => {
                                                 const trend = row.salesTrend || {};
-                                                const action = commercialAction(row, { profitReady: Boolean(profitData), profitError });
                                                 const weeklySales = Number(trend.recent7Sales || 0);
                                                 const monthlySales = Number(trend.monthToDateSales || 0);
                                                 const profit = row.finance.netProfit;
@@ -409,7 +432,6 @@ export default function AdminStockPlanning() {
                                                         <span>{row.suggestedToReplenish ? formatCount(row.suggestedToReplenish) : "Cubierto"}</span>
                                                         {row.suggestedToReplenish > 0 && <i style={{ width: heatWidth(row.suggestedToReplenish, heatMaxima.replenishment) }} aria-hidden="true" />}
                                                     </td>
-                                                    <td><span className={`stock-planning-action is-${action.tone}`}>{action.label}</span></td>
                                                 </tr>;
                                             })}</tbody>
                                         </table></div>
@@ -419,16 +441,16 @@ export default function AdminStockPlanning() {
                                         <p className="stock-planning-view-note">Escenarios de faltante para {formatDate(data.targetDate)}. La proyección ponderada es la referencia; los demás escenarios sirven para comparar y no son órdenes de compra.</p>
                                         <div className="stock-planning-table-wrap"><table className="stock-planning-table stock-planning-replenishment-table">
                                             <thead><tr>
-                                                <th scope="col">Plataforma / equivalencia</th>
-                                                <th scope="col" className="is-numeric is-recommended">Proyección ponderada</th>
-                                                <th scope="col" className="is-numeric">Ritmo últimos 7 días</th>
-                                                <th scope="col" className="is-numeric">Ritmo últimos 30 días</th>
-                                                <th scope="col" className="is-numeric">Ritmo últimos 90 días</th>
-                                                <th scope="col" className="is-numeric">Ritmo últimos 14 días</th>
-                                                <th scope="col" className="is-numeric">Ritmo mes actual</th>
-                                                <th scope="col" className="is-numeric">Historial · {historyDays} días</th>
+                                                {sortableHeader("Plataforma / equivalencia", "platformName", "replenishment", false)}
+                                                {sortableHeader("Proyección ponderada", "salesTrend.replenishment.weighted", "replenishment")}
+                                                {sortableHeader("Ritmo últimos 7 días", "salesTrend.replenishment.recent7", "replenishment")}
+                                                {sortableHeader("Ritmo últimos 30 días", "salesTrend.replenishment.recent30", "replenishment")}
+                                                {sortableHeader("Ritmo últimos 90 días", "salesTrend.replenishment.recent90", "replenishment")}
+                                                {sortableHeader("Ritmo últimos 14 días", "salesTrend.replenishment.recent14", "replenishment")}
+                                                {sortableHeader("Ritmo mes actual", "salesTrend.replenishment.monthToDate", "replenishment")}
+                                                {sortableHeader(`Historial · ${historyDays} días`, "salesTrend.replenishment.selectedHistory", "replenishment")}
                                             </tr></thead>
-                                            <tbody>{visibleRows.map((row) => {
+                                            <tbody>{sortRows(visibleRows, sorts.replenishment).map((row) => {
                                                 const replenishment = row.salesTrend?.replenishment || {};
                                                 const values = [replenishment.weighted, replenishment.recent7, replenishment.recent30, replenishment.recent90, replenishment.recent14, replenishment.monthToDate, replenishment.selectedHistory];
                                                 return <tr key={row.platformId}>

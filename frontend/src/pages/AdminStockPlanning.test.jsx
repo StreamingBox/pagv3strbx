@@ -58,17 +58,16 @@ describe("AdminStockPlanning views and platform filter", () => {
         render(<AdminStockPlanning />);
         await screen.findByRole("row", { name: /Netflix \+ Netflix Internacional/ });
 
-        expect(screen.getByRole("button", { name: /Ventas/ })).toHaveAttribute("aria-pressed", "true");
+        expect(screen.getByRole("button", { name: "Ventas", exact: true })).toHaveAttribute("aria-pressed", "true");
         expect(screen.getByLabelText("Ventana de historial")).toHaveValue("300");
         expect(screen.getByRole("columnheader", { name: "Utilidad neta · COP" })).toBeInTheDocument();
         expect(screen.getByRole("columnheader", { name: "Diferencia de ventas" })).toBeInTheDocument();
         expect(screen.queryByRole("columnheader", { name: "Margen registrado" })).not.toBeInTheDocument();
+        expect(screen.queryByRole("columnheader", { name: "Sugerencia" })).not.toBeInTheDocument();
         expect(await screen.findAllByText(/50\.000/)).toHaveLength(2);
         expect(screen.getByText("5 / 6")).toBeInTheDocument();
         const todaySales = document.querySelector(".stock-planning-metric--today");
         expect(within(todaySales).getByText("5")).toBeInTheDocument();
-        expect(screen.getByText("Vender y reponer")).toBeInTheDocument();
-        expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
         const netflixRow = screen.getByRole("row", { name: /Netflix \+ Netflix Internacional/ });
         expect(within(netflixRow).getByText("5 menos")).toBeInTheDocument();
         expect(within(netflixRow).getByText("277 mismo tramo del mes pasado")).toBeInTheDocument();
@@ -77,6 +76,7 @@ describe("AdminStockPlanning views and platform filter", () => {
         fireEvent.click(screen.getByText("Glosario: cómo leer estas cifras"));
         expect(screen.getByText(/La misma cantidad de días transcurridos del mes anterior/)).toBeInTheDocument();
         expect(screen.getByText(/La semana influye, pero no determina sola el resultado/)).toBeInTheDocument();
+        expect(screen.queryByText("Sugerencia")).not.toBeInTheDocument();
 
         fireEvent.click(screen.getByRole("button", { name: /Necesidad/ }));
         expect(screen.getByRole("columnheader", { name: "Vencen en el periodo" })).toBeInTheDocument();
@@ -100,10 +100,31 @@ describe("AdminStockPlanning views and platform filter", () => {
         const demand = document.querySelector(".stock-planning-metric--demand");
         expect(within(demand).getByText("2")).toBeInTheDocument();
         expect(screen.getAllByText(/12\.000/).length).toBeGreaterThan(0);
-        expect(screen.getByText("Priorizar venta")).toBeInTheDocument();
-
         fireEvent.click(screen.getByRole("button", { name: /Reposición/ }));
         expect(screen.getByRole("row", { name: /HBO Max/ })).toBeInTheDocument();
         expect(screen.queryByRole("row", { name: /Netflix \+ Netflix Internacional/ })).not.toBeInTheDocument();
+    });
+
+    it("sorts the selected column both ways in every table view", async () => {
+        render(<AdminStockPlanning />);
+        await screen.findByRole("row", { name: /Netflix \+ Netflix Internacional/ });
+        const orderedPlatforms = () => screen.getAllByRole("row").slice(1)
+            .map((row) => within(row).getByRole("rowheader").textContent);
+
+        const monthlyDifference = screen.getByRole("button", { name: "Diferencia de ventas" });
+        fireEvent.click(monthlyDifference);
+        expect(screen.getByRole("columnheader", { name: "Diferencia de ventas" })).toHaveAttribute("aria-sort", "ascending");
+        expect(orderedPlatforms()[0]).toMatch(/Netflix/);
+        fireEvent.click(monthlyDifference);
+        expect(screen.getByRole("columnheader", { name: "Diferencia de ventas" })).toHaveAttribute("aria-sort", "descending");
+        expect(orderedPlatforms()[0]).toBe("HBO Max");
+
+        fireEvent.click(screen.getByRole("button", { name: /Necesidad/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Demanda hasta fecha" }));
+        expect(orderedPlatforms()[0]).toBe("HBO Max");
+
+        fireEvent.click(screen.getByRole("button", { name: /Reposición/ }));
+        fireEvent.click(screen.getByRole("button", { name: "Proyección ponderada" }));
+        expect(orderedPlatforms()[0]).toBe("HBO Max");
     });
 });

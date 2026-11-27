@@ -73,6 +73,9 @@ if [[ $ACTION == prepare ]]; then
     [[ $(sha256sum "$STAGE/source.tar" | cut -d' ' -f1) == "$SOURCE_SHA256" ]]
     [[ $(sha256sum "$STAGE/dist.tgz" | cut -d' ' -f1) == "$DIST_SHA256" ]]
     [[ $(git get-tar-commit-id < "$STAGE/source.tar") == "$SHA" ]]
+    [[ $(tar -tf "$STAGE/source.tar" | awk '$0 == "ops/vps-migration/deploy-release.sh"') == "ops/vps-migration/deploy-release.sh" ]] || {
+        echo 'Source archive must contain the repository tree at its root.' >&2; exit 1;
+    }
     mkdir -m 755 "$RELEASE"
     tar -xf "$STAGE/source.tar" -C "$RELEASE"
     [[ -f $RELEASE/ops/vps-migration/deploy-release.sh ]] || {

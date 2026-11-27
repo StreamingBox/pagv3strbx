@@ -19,6 +19,12 @@ const {
     isDisneyOtpSubject,
     isDisneySender,
 } = require("./disneyCodePolicy");
+const {
+    APPLE_TV_CODE_WINDOW_MINUTES,
+    extractAppleTvOtpCode,
+    isAppleSender,
+    isAppleTvOtpSubject,
+} = require("./appleTvCodePolicy");
 
 function minutesAgoToSinceDate(maxAgeMinutes) {
     // Retrocedemos 24 horas para garantizar la captura de los últimos mensajes con SINCE, mitigando problemas de Timezone
@@ -240,6 +246,138 @@ async function fetchCodeFromGmail({ toEmail, gmailFromContains, codeRegex, maxAg
     }
 }
 
+async function fetchAppleTvCodeFromGmail({ toEmail }) {
+    const targetEmail = String(toEmail || "").trim().toLowerCase();
+    if (!targetEmail) {
+        return { ok: false, status: "no_account", message: "Este pedido no tiene un correo asignado." };
+    }
+
+    const config = getImapConfig();
+    if (!config) {
+        return {
+            ok: false,
+            status: "config_error",
+            message: "Faltan variables GMAIL_EMAIL o GMAIL_IMAP_PASS en el servidor.",
+        };
+    }
+
+    const sinceDate = minutesAgoToSinceDate(APPLE_TV_CODE_WINDOW_MINUTES);
+    const headerOptions = { bodies: ["HEADER.FIELDS (FROM TO SUBJECT DATE)"], markSeen: false };
+    let conn;
+    let stage = "connect";
+
+    try {
+        conn = await connectImapWithTlsFallback(config, "appleTvCodeService");
+        stage = "open_box";
+        await conn.openBox("INBOX");
+
+        stage = "search_headers";
+        let messages = await conn.search([["SINCE", sinceDate], ["TO", targetEmail]], headerOptions);
+        if (!messages || messages.length === 0) {
+            stage = "search_headers_fallback";
+            messages = await conn.search([["SINCE", sinceDate]], headerOptions);
+        }
+        if (!messages || messages.length === 0) {
+            return {
+                ok: false,
+                status: "apple_tv_code_not_found",
+                message: "No apareció un correo reciente de Apple TV con el código.",
+            };
+        }
+
+        messages.sort((a, b) => {
+            const first = safeToDate(a?.attributes?.date)?.getTime() ?? 0;
+            const second = safeToDate(b?.attributes?.date)?.getTime() ?? 0;
+            return second - first;
+        });
+
+        let sawExpiredAppleMessage = false;
+        let sawAppleSender = false;
+        let sawOtpSubject = false;
+        const now = Date.now();
+
+        for (const msg of messages) {
+            const messageDate = safeToDate(msg?.attributes?.date);
+            if (!messageDate || messageDate.getTime() > now) continue;
+
+            const ageMinutes = (now - messageDate.getTime()) / 60000;
+            const headerPart = msg?.parts?.find((part) => String(part.which || "").includes("HEADER"));
+            const headers = headerPart?.body || {};
+            const fromHeader = Array.isArray(headers.from) ? headers.from.join(" ") : String(headers.from || "");
+
+            if (!isAppleSender(fromHeader)) continue;
+            if (ageMinutes > APPLE_TV_CODE_WINDOW_MINUTES) {
+                sawExpiredAppleMessage = true;
+                continue;
+            }
+            sawAppleSender = true;
+
+            stage = "fetch_full_message";
+            const fullMessages = await conn.search([["UID", msg.attributes.uid]], { bodies: [""], markSeen: false });
+            const raw = fullMessages?.[0]?.parts?.find((part) => part.which === "");
+            if (!raw?.body) continue;
+
+            stage = "parse_message";
+            const parsed = await simpleParser(raw.body);
+            const parsedFrom = (parsed?.from?.value || []).map((entry) => entry.address || "").join(" ") || fromHeader;
+            const parsedTo = [parsed?.to].flat().flatMap((to) => to?.value || [])
+                .map((entry) => String(entry.address || "").trim().toLowerCase());
+            if (!isAppleSender(parsedFrom)) continue;
+            if (!parsedTo.includes(targetEmail)) continue;
+            if (!isAppleTvOtpSubject(parsed?.subject)) continue;
+
+            sawOtpSubject = true;
+            const code = extractAppleTvOtpCode(parsed);
+            if (code) return { ok: true, code, emailDate: messageDate };
+        }
+
+        if (sawExpiredAppleMessage && !sawAppleSender) {
+            return {
+                ok: false,
+                status: "expired",
+                message: `El código de Apple TV venció; solo se aceptan correos de los últimos ${APPLE_TV_CODE_WINDOW_MINUTES} minutos.`,
+            };
+        }
+        if (!sawAppleSender) {
+            return {
+                ok: false,
+                status: "sender_mismatch",
+                message: "No se encontraron correos recientes enviados por Apple.",
+            };
+        }
+        return {
+            ok: false,
+            status: sawOtpSubject ? "regex_mismatch" : "apple_tv_code_not_found",
+            message: sawOtpSubject
+                ? "El correo de Apple TV no contenía un código reconocible."
+                : "No apareció un correo reciente de Apple TV con el código.",
+        };
+    } catch (err) {
+        console.error("[appleTvCodeService] error", {
+            stage,
+            message: err?.message || String(err),
+            code: err?.code || null,
+            imapTlsInsecure: getEnvBool("IMAP_TLS_INSECURE"),
+        });
+        if (isTlsCertificateError(err)) {
+            return { ok: false, status: "imap_tls_error", message: `Error TLS en Gmail IMAP durante ${stage}.` };
+        }
+        if (isImapAuthenticationError(err)) {
+            return { ok: false, status: "imap_auth_error", message: getImapAuthenticationMessage() };
+        }
+        if (isImapTimeoutError(err)) {
+            return { ok: false, status: "imap_timeout", message: "El buzón de códigos no respondió a tiempo. Intenta nuevamente en unos segundos." };
+        }
+        return { ok: false, status: "imap_error", message: "No se pudo revisar el buzón de Apple TV. Contacta a Soporte si el problema continúa." };
+    } finally {
+        if (conn) {
+            try {
+                await conn.end();
+            } catch (_) { }
+        }
+    }
+}
+
 async function fetchDisneyCodeFromGmail({ toEmail, purchasedAt }) {
     const config = getImapConfig();
     if (!config) {
@@ -360,4 +498,4 @@ async function fetchDisneyCodeFromGmail({ toEmail, purchasedAt }) {
     }
 }
 
-module.exports = { fetchCodeFromGmail, fetchDisneyCodeFromGmail };
+module.exports = { fetchCodeFromGmail, fetchDisneyCodeFromGmail, fetchAppleTvCodeFromGmail };

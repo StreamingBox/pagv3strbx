@@ -1,6 +1,6 @@
 // BACKEND: pagv2strbx/src/services/codesService.js
 
-const { fetchCodeFromGmail, fetchDisneyCodeFromGmail } = require("./gmailCodeService");
+const { fetchCodeFromGmail, fetchDisneyCodeFromGmail, fetchAppleTvCodeFromGmail } = require("./gmailCodeService");
 const { fetchNetflixFlow } = require("./netflixFlowService");
 const { credFingerprint } = require("../utils/credFingerprint");
 const {
@@ -630,6 +630,12 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
                 20000,
                 "Tiempo de espera agotado consultando Disney/Gmail."
             );
+        } else if (requestedSlug === "appletv") {
+            fetchingResult = await withTimeout(
+                fetchAppleTvCodeFromGmail({ toEmail: soldAccountEmail }),
+                20000,
+                "Tiempo de espera agotado consultando Apple TV/Gmail."
+            );
         } else {
             fetchingResult = await withTimeout(
                 fetchCodeFromGmail({
@@ -715,7 +721,7 @@ async function requestCodeForOrder({ orderNumber, platformSlug, user, action = "
     const responseBody = {
         ok: true,
         orderNumber: Number(orderNumber),
-        platform: requestedSlug,
+        platform: requestedSlug === "appletv" ? "Apple TV" : requestedSlug,
         type: fetchingResult.type || "code",
     };
 

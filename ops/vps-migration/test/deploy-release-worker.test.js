@@ -17,7 +17,7 @@ test("versioned releases build, activate, health-check, and roll back the worker
 
 test("mixed active releases are validated and rolled back per service", () => {
     assert.match(deploy, /Run the deployment script staged for this release/);
-    assert.match(deploy, /cmp -s "\$STAGE\/deploy-release\.sh" "\$RELEASE\/ops\/vps-migration\/deploy-release\.sh"/);
+    assert.ok(deploy.includes("cmp -s <(sed 's/\\r$//' \"$STAGE/deploy-release.sh\") <(sed 's/\\r$//' \"$RELEASE/ops/vps-migration/deploy-release.sh\")"));
     assert.match(deploy, /declare -A PREVIOUS_SHA OLD_OVERLAY/);
     assert.match(deploy, /PREVIOUS_SHA\[\$service\]=\$previous/);
     assert.match(deploy, /config --hash "\$service"/);

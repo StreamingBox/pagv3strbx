@@ -75,7 +75,10 @@ if [[ $ACTION == prepare ]]; then
     [[ $(git get-tar-commit-id < "$STAGE/source.tar") == "$SHA" ]]
     mkdir -m 755 "$RELEASE"
     tar -xf "$STAGE/source.tar" -C "$RELEASE"
-    [[ -f $RELEASE/ops/vps-migration/deploy-release.sh ]] && cmp -s "$STAGE/deploy-release.sh" "$RELEASE/ops/vps-migration/deploy-release.sh" || {
+    [[ -f $RELEASE/ops/vps-migration/deploy-release.sh ]] || {
+        echo 'Staged deployment script is missing from the source archive.' >&2; exit 1;
+    }
+    cmp -s <(sed 's/\r$//' "$STAGE/deploy-release.sh") <(sed 's/\r$//' "$RELEASE/ops/vps-migration/deploy-release.sh") || {
         echo 'Staged deployment script differs from the source archive.' >&2; exit 1;
     }
     [[ ! -e $RELEASE/frontend/dist ]]
